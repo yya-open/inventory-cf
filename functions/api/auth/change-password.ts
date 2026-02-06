@@ -4,7 +4,6 @@ import { verifyPassword, hashPassword } from "../../_password";
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
   const user = await requireAuth(env, request, "viewer");
-  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const { old_password, new_password } = await request.json<any>();
   const oldP = String(old_password || "");
   const newP = String(new_password || "");

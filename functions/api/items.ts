@@ -2,7 +2,6 @@ import { requireAuth, errorResponse } from "../_auth";
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
   const user = await requireAuth(env, request, "viewer");
-  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const url = new URL(request.url);
   const keyword = (url.searchParams.get("keyword") || "").trim();
 
