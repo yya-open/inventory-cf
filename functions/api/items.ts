@@ -1,4 +1,6 @@
-export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
+import { requireAuth, errorResponse } from "../_auth";
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  const user = await requireAuth(env, request, "viewer");
   const url = new URL(request.url);
   const keyword = (url.searchParams.get("keyword") || "").trim();
 
@@ -12,7 +14,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
   return Response.json({ ok: true, data: results });
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  const user = await requireAuth(env, request, "admin");
   const body = await request.json();
   const { id, sku, name, brand, model, category, unit, warning_qty } = body;
 

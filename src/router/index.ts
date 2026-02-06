@@ -5,16 +5,52 @@ import StockOut from "../views/StockOut.vue";
 import TxList from "../views/TxList.vue";
 import Warnings from "../views/Warnings.vue";
 import Items from "../views/Items.vue";
+import Login from "../views/Login.vue";
+import Users from "../views/Users.vue";
+import ImportItems from "../views/ImportItems.vue";
+import { fetchMe, useAuth, can } from "../store/auth";
+import { ElMessage } from "element-plus";
 
-export default createRouter({
+const router = createRouter({
   history: createWebHistory(),
   routes: [
     { path: "/", redirect: "/stock" },
-    { path: "/stock", component: StockQuery },
-    { path: "/in", component: StockIn },
-    { path: "/out", component: StockOut },
-    { path: "/tx", component: TxList },
-    { path: "/warnings", component: Warnings },
-    { path: "/items", component: Items },
+    { path: "/login", component: Login, meta: { public: true } },
+
+    { path: "/stock", component: StockQuery, meta: { role: "viewer" } },
+    { path: "/tx", component: TxList, meta: { role: "viewer" } },
+    { path: "/warnings", component: Warnings, meta: { role: "viewer" } },
+
+    { path: "/in", component: StockIn, meta: { role: "operator" } },
+    { path: "/out", component: StockOut, meta: { role: "operator" } },
+
+    { path: "/items", component: Items, meta: { role: "admin" } },
+    { path: "/import/items", component: ImportItems, meta: { role: "admin" } },
+    { path: "/users", component: Users, meta: { role: "admin" } },
   ],
 });
+
+router.beforeEach(async (to) => {
+  if ((to.meta as any)?.public) return true;
+  const auth = useAuth();
+  if (!auth.token) return { path: "/login", query: { redirect: to.fullPath } };
+
+  if (!auth.user) {
+    try {
+      await fetchMe();
+    } catch (e: any) {
+      auth.token = "";
+      localStorage.removeItem("token");
+      return { path: "/login" };
+    }
+  }
+
+  const need = (to.meta as any)?.role as any;
+  if (need && !can(need)) {
+    ElMessage.warning("权限不足");
+    return { path: "/stock" };
+  }
+  return true;
+});
+
+export default router;

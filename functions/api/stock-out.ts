@@ -1,3 +1,4 @@
+import { requireAuth, errorResponse } from "../_auth";
 function txNo() {
   const d = new Date();
   const y = d.getFullYear();
@@ -7,7 +8,8 @@ function txNo() {
   return `OUT${y}${m}${day}-${rand}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  const user = await requireAuth(env, request, "operator");
   const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
 
   const q = Number(qty);
@@ -25,9 +27,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
 
   const no = txNo();
   await env.DB.prepare(
-    `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark)
-     VALUES (?, 'OUT', ?, ?, ?, ?, ?)`
-  ).bind(no, item_id, warehouse_id, q, target ?? null, remark ?? null).run();
+    `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
+     VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?)`
+  ).bind(no, item_id, warehouse_id, q, target ?? null, remark ?? null, user.username).run();
 
   return Response.json({ ok: true, tx_no: no });
 };

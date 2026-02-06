@@ -20,6 +20,7 @@
       />
 
       <el-button type="primary" @click="load">查询</el-button>
+      <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
       <el-button @click="reset">重置</el-button>
       <el-button type="success" plain @click="exportCsv" :disabled="rows.length===0">导出CSV</el-button>
     </div>

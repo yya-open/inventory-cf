@@ -1,4 +1,6 @@
-export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
+import { requireAuth, errorResponse } from "../_auth";
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  const user = await requireAuth(env, request, "viewer");
   const url = new URL(request.url);
   const warehouse_id = Number(url.searchParams.get("warehouse_id") || 1);
 

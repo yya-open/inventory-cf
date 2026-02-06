@@ -5,6 +5,7 @@
       <el-button type="primary" @click="load">查询</el-button>
       <el-button @click="keyword=''; load()">重置</el-button>
       <el-button type="success" @click="openCreate">新增配件</el-button>
+      <el-button @click="$router.push('/import/items')">Excel 导入</el-button>
     </div>
 
     <el-table :data="rows" border v-loading="loading">
