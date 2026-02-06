@@ -11,7 +11,7 @@ function stNo() {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, \"admin\");
+    const user = await requireAuth(env, request, "admin");
 
     const { warehouse_id = 1 } = await request.json();
     const wid = Number(warehouse_id);

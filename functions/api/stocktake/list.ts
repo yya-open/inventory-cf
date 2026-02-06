@@ -2,7 +2,7 @@ import { requireAuth, errorResponse } from "../_auth";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, \"viewer\");
+    const user = await requireAuth(env, request, "viewer");
 
     const url = new URL(request.url);
     const warehouse_id = url.searchParams.get("warehouse_id");

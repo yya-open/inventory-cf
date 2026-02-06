@@ -4,7 +4,7 @@ type Line = { sku: string; counted_qty: number };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, \"admin\");
+    const user = await requireAuth(env, request, "admin");
 
     const body = await request.json();
     const id = Number(body.id);
