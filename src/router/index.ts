@@ -4,6 +4,9 @@ import StockIn from "../views/StockIn.vue";
 import StockOut from "../views/StockOut.vue";
 import TxList from "../views/TxList.vue";
 import Warnings from "../views/Warnings.vue";
+import BatchTx from "../views/BatchTx.vue";
+import Stocktake from "../views/Stocktake.vue";
+import Dashboard from "../views/Dashboard.vue";
 import Items from "../views/Items.vue";
 import Login from "../views/Login.vue";
 import Users from "../views/Users.vue";
@@ -20,6 +23,11 @@ const router = createRouter({
     { path: "/stock", component: StockQuery, meta: { role: "viewer" } },
     { path: "/tx", component: TxList, meta: { role: "viewer" } },
     { path: "/warnings", component: Warnings, meta: { role: "viewer" } },
+
+    { path: "/dashboard", component: Dashboard, meta: { role: "viewer" } },
+
+    { path: "/batch", component: BatchTx, meta: { role: "operator" } },
+    { path: "/stocktake", component: Stocktake, meta: { role: "admin" } },
 
     { path: "/in", component: StockIn, meta: { role: "operator" } },
     { path: "/out", component: StockOut, meta: { role: "operator" } },

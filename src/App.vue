@@ -6,13 +6,16 @@
         <el-menu-item index="/stock">库存查询</el-menu-item>
         <el-menu-item index="/tx">出入库明细</el-menu-item>
         <el-menu-item index="/warnings">预警中心</el-menu-item>
+        <el-menu-item index="/dashboard">报表与看板</el-menu-item>
 
         <el-menu-item v-if="can('operator')" index="/in">入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/out">出库</el-menu-item>
+        <el-menu-item v-if="can('operator')" index="/batch">批量出入库</el-menu-item>
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/users">用户管理</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
       </el-menu>
       <div style="padding: 12px; color: #999; font-size: 12px">
         默认仓库：主仓（id=1）
