@@ -1,11 +1,11 @@
 <template>
-  <div style="padding:16px">
-    <el-card>
+  <div class="stocktake-page">
+    <el-card class="stocktake-card">
       <template #header>
-        <div style="display:flex; justify-content:space-between; align-items:center;">
-          <div style="font-weight:700">库存盘点</div>
-          <div style="display:flex; gap:10px; align-items:center;">
-            <el-select v-model="warehouseId" style="width:180px" placeholder="选择仓库">
+        <div class="page-header">
+          <div class="title">库存盘点</div>
+          <div class="actions">
+            <el-select v-model="warehouseId" class="wh-select" placeholder="选择仓库">
               <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
             </el-select>
             <el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
@@ -13,63 +13,110 @@
         </div>
       </template>
 
-      <div style="display:flex; gap:16px;">
-        <div style="width:360px;">
-          <el-table :data="list" height="560" border @row-click="openStocktake">
+      <div class="body">
+        <!-- Left: list -->
+        <div class="panel left">
+          <div class="panel-header">
+            <div class="panel-title">盘点单列表</div>
+            <div class="panel-tools">
+              <el-input v-model="listKeyword" size="small" clearable placeholder="搜索 ID / 单号 / 状态" style="width: 190px;" />
+              <el-button size="small" @click="loadList">刷新</el-button>
+            </div>
+          </div>
+
+          <el-table
+            ref="listTableRef"
+            :data="sortedList"
+            height="620"
+            border
+            highlight-current-row
+            :row-class-name="rowClassName"
+            @row-click="openStocktake"
+          >
             <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="st_no" label="盘点单号" min-width="160" />
-            <el-table-column prop="status" label="状态" width="90" />
-            <el-table-column prop="created_at" label="创建" min-width="150" />
+            <el-table-column prop="st_no" label="盘点单号" min-width="170" />
+            <el-table-column label="状态" width="110">
+              <template #default="{ row }">
+                <el-tag :type="row.status==='DRAFT' ? 'info' : 'success'" size="small">{{ row.status }}</el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column prop="created_at" label="创建时间" min-width="160" />
+            <el-table-column label="操作" width="90" fixed="right">
+              <template #default="{ row }">
+                <el-button
+                  type="danger"
+                  link
+                  :disabled="row.status!=='DRAFT'"
+                  @click.stop="deleteStocktake(row)"
+                >删除</el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </div>
 
-        <div style="flex:1;">
-          <div v-if="!detail" style="color:#999; padding:16px;">点击左侧盘点单查看明细</div>
+        <!-- Right: detail -->
+        <div class="panel right">
+          <div v-if="!detail" class="empty">
+            <el-empty description="点击左侧盘点单查看明细" />
+          </div>
 
           <div v-else>
-            <div style="display:flex; align-items:center; justify-content:space-between; margin-bottom:10px;">
-              <div>
-                <div style="font-weight:700">{{ detail.stocktake.st_no }} · {{ detail.stocktake.warehouse_name }}</div>
-                <div style="color:#888; font-size:12px;">状态：{{ detail.stocktake.status }}　创建：{{ detail.stocktake.created_at }}</div>
+            <div class="detail-header">
+              <div class="detail-title">
+                <div class="main">
+                  <span class="mono">{{ detail.stocktake.st_no }}</span>
+                  <span class="sep">·</span>
+                  <span>{{ detail.stocktake.warehouse_name }}</span>
+                </div>
+                <div class="sub">
+                  <el-tag :type="detail.stocktake.status==='DRAFT' ? 'info' : 'success'" size="small">
+                    {{ detail.stocktake.status }}
+                  </el-tag>
+                  <span class="muted">创建：{{ detail.stocktake.created_at }}</span>
+                </div>
               </div>
-              <div style="display:flex; gap:10px; align-items:center;">
+
+              <div class="detail-actions">
                 <el-button @click="downloadCountTemplate" :disabled="detail.stocktake.status!=='DRAFT'">下载盘点模板</el-button>
-                <el-upload :show-file-list="false" accept=".xlsx,.xls" :before-upload="beforeUpload" :disabled="detail.stocktake.status!=='DRAFT'">
-                  <el-button type="primary" :disabled="detail.stocktake.status!=='DRAFT'">导入盘点结果</el-button>
+                <el-upload
+                  :show-file-list="false"
+                  accept=".xlsx,.xls"
+                  :before-upload="beforeUpload"
+                  :disabled="detail.stocktake.status!=='DRAFT'"
+                >
+                  <el-button :disabled="detail.stocktake.status!=='DRAFT'">导入盘点结果</el-button>
                 </el-upload>
-                <el-button type="danger" @click="applyStocktake" :disabled="detail.stocktake.status!=='DRAFT'" :loading="applying">
-                  应用差异（生成盘盈盘亏）
-                </el-button>
+                <el-button type="primary" @click="saveLines" :loading="saving" :disabled="detail.stocktake.status!=='DRAFT'">保存</el-button>
+                <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="detail.stocktake.status!=='DRAFT'">应用盘点</el-button>
+                <el-button type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
               </div>
             </div>
 
-            <el-input v-model="keyword" placeholder="搜索 SKU/名称" style="width:320px; margin-bottom:10px;" />
+            <div class="detail-tools">
+              <el-input v-model="lineKeyword" clearable placeholder="搜索 SKU / 名称" style="max-width: 260px;" />
+              <div class="muted" style="margin-left:auto;">
+                共 {{ filteredLines.length }} 条明细
+              </div>
+            </div>
 
-            <el-table :data="filteredLines" height="510" border>
+            <el-table :data="filteredLines" height="520" stripe size="small" border>
               <el-table-column prop="sku" label="SKU" width="160" />
               <el-table-column prop="name" label="名称" min-width="180" />
-              <el-table-column prop="category" label="分类" width="140" />
-              <el-table-column prop="system_qty" label="系统库存" width="110" />
-              <el-table-column label="盘点数量" width="140">
+              <el-table-column prop="system_qty" label="系统数量" width="110" />
+              <el-table-column label="盘点数量" width="130">
                 <template #default="{ row }">
-                  <el-input-number v-model="row.counted_qty" :min="0" :disabled="detail.stocktake.status!=='DRAFT'" @change="markDirty(row)" />
+                  <el-input
+                    v-model="row.counted_qty"
+                    type="number"
+                    size="small"
+                    :disabled="detail.stocktake.status!=='DRAFT'"
+                    @change="markDirty(row)"
+                  />
                 </template>
               </el-table-column>
-              <el-table-column prop="diff_qty" label="差异" width="110">
-                <template #default="{ row }">
-                  <span :style="{ color: row.diff_qty>0 ? '#d4380d' : (row.diff_qty<0 ? '#0958d9' : '#666') }">
-                    {{ row.diff_qty ?? '' }}
-                  </span>
-                </template>
-              </el-table-column>
+              <el-table-column prop="diff_qty" label="差异" width="90" />
+              <el-table-column prop="updated_at" label="更新时间" width="170" />
             </el-table>
-
-            <div style="margin-top:10px; display:flex; justify-content:flex-end; gap:10px;">
-              <el-button @click="refreshDetail">刷新</el-button>
-              <el-button type="primary" @click="saveInline" :disabled="detail.stocktake.status!=='DRAFT' || !dirty.size" :loading="saving">
-                保存修改（{{ dirty.size }}）
-              </el-button>
-            </div>
           </div>
         </div>
       </div>
@@ -77,8 +124,35 @@
   </div>
 </template>
 
+<style scoped>
+.stocktake-page{ padding:16px; }
+.stocktake-card{ border-radius:12px; }
+.page-header{ display:flex; justify-content:space-between; align-items:center; }
+.title{ font-weight:800; font-size:16px; }
+.actions{ display:flex; gap:10px; align-items:center; }
+.wh-select{ width:180px; }
+.body{ display:flex; gap:16px; }
+.panel{ background: var(--el-bg-color); border:1px solid var(--el-border-color-light); border-radius:12px; overflow:hidden; }
+.left{ width:420px; flex:0 0 420px; }
+.right{ flex:1; padding:12px; min-height: 680px; }
+.panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
+.panel-title{ font-weight:700; }
+.panel-tools{ display:flex; gap:8px; align-items:center; }
+.empty{ padding:36px 0; }
+.detail-header{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
+.detail-title .main{ font-weight:800; font-size:14px; }
+.detail-title .sub{ display:flex; gap:10px; align-items:center; margin-top:6px; }
+.muted{ color: var(--el-text-color-secondary); font-size:12px; }
+.sep{ margin:0 6px; color: var(--el-text-color-secondary); }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.detail-tools{ display:flex; align-items:center; gap:10px; margin:10px 0; }
+.row-selected td{ background: var(--el-color-primary-light-9) !important; }
+</style>
+
+
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
@@ -88,7 +162,13 @@ const warehouseId = ref(1);
 
 const list = ref<any[]>([]);
 const detail = ref<any|null>(null);
-const keyword = ref("");
+
+// list selection + scroll
+const listTableRef = ref<any>(null);
+const selectedId = ref<number | null>(null);
+
+const lineKeyword = ref("");
+const listKeyword = ref("");
 const creating = ref(false);
 const applying = ref(false);
 const saving = ref(false);
@@ -97,12 +177,78 @@ const dirty = ref<Set<number>>(new Set());
 
 const filteredLines = computed(()=>{
   if (!detail.value) return [];
-  const k = keyword.value.trim().toLowerCase();
+  const k = lineKeyword.value.trim().toLowerCase();
   if (!k) return detail.value.lines;
   return detail.value.lines.filter((x:any)=>
     String(x.sku||"").toLowerCase().includes(k) || String(x.name||"").toLowerCase().includes(k)
   );
 });
+
+
+const filteredList = computed(()=>{
+  const k = listKeyword.value.trim().toLowerCase();
+  if (!k) return list.value;
+  return list.value.filter((x:any)=>{
+    return String(x.id||"").includes(k)
+      || String(x.st_no||"").toLowerCase().includes(k)
+      || String(x.status||"").toLowerCase().includes(k);
+  });
+});
+
+const sortedList = computed(()=>{
+  return (filteredList.value || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
+});
+
+function rowClassName({ row }: any){
+  return Number(row?.id) === Number(selectedId.value) ? "row-selected" : "";
+}
+
+function scrollToSelected(){
+  if (!selectedId.value) return;
+  const idx = sortedList.value.findIndex((x:any)=>Number(x.id)===Number(selectedId.value));
+  if (idx < 0) return;
+  const el = listTableRef.value?.$el as HTMLElement | undefined;
+  const body = el?.querySelector?.(".el-table__body-wrapper") as HTMLElement | null;
+  const trs = body?.querySelectorAll?.("tbody tr") as NodeListOf<HTMLElement> | undefined;
+  const tr = trs?.[idx];
+  tr?.scrollIntoView({ block: "center" });
+}
+
+watch(sortedList, async () => {
+  await nextTick();
+  scrollToSelected();
+});
+
+async function deleteStocktake(row:any){
+  if (!row?.id) return;
+  if (String(row.status) !== "DRAFT"){
+    ElMessage.warning("仅草稿状态可删除");
+    return;
+  }
+  try{
+    await ElMessageBox.confirm(
+      `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
+      "删除确认",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+    );
+  }catch{
+    return;
+  }
+  try{
+    await apiPost("/api/stocktake/delete", { id: Number(row.id) });
+    ElMessage.success("删除成功");
+    if (Number(selectedId.value) === Number(row.id)){
+      selectedId.value = null;
+      detail.value = null;
+    }
+    await loadList();
+  }catch(e:any){
+    ElMessage.error(e.message || "删除失败");
+  }
+}
+
+
+
 
 function markDirty(row:any){
   if (row.counted_qty===null || row.counted_qty===undefined || row.counted_qty==="") {
@@ -123,17 +269,28 @@ async function loadWarehouses(){
   }
 }
 
+
+watch(warehouseId, async ()=>{
+  selectedId.value = null;
+  detail.value = null;
+  await loadList();
+});
+
 async function loadList(){
   try{
     const r:any = await apiGet(`/api/stocktake/list?warehouse_id=${warehouseId.value}`);
-    list.value = r.data || [];
+    list.value = (r.data || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
   }catch(e:any){
     ElMessage.error(e.message || "加载盘点单失败");
   }
 }
 
 async function openStocktake(row:any){
-  await loadDetail(row.id);
+  if (!row) return;
+  selectedId.value = Number(row.id);
+  await loadDetail(Number(row.id));
+  await nextTick();
+  scrollToSelected();
 }
 
 async function loadDetail(id:number){
