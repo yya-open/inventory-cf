@@ -11,7 +11,7 @@ function txNo() {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, \"admin\");
+    const user = await requireAuth(env, request, "admin");
 
     const { id } = await request.json();
     const st_id = Number(id);
