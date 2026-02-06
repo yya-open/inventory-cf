@@ -112,7 +112,7 @@ async function loadWarehouses() {
     warehouses.value = r.data;
     if (warehouses.value?.length && !warehouses.value.find(w=>w.id===warehouseId.value)) warehouseId.value = warehouses.value[0].id;
     }
-  } catch (e:any) {
+  } catch (e) {
     ElMessage.error(e?.message || "加载仓库失败");
   }
 }
@@ -180,12 +180,12 @@ async function submit() {
     } else {
       ElMessage.error(r.message || "提交失败");
     }
-    } catch (e:any) {
+    } catch (e) {
     ElMessage.error(e?.message || "提交失败");
   } finally {
     submitting.value = false;
     }
-  } catch (e:any) {
+  } catch (e) {
     ElMessage.error(e?.message || "加载仓库失败");
   }
 }
