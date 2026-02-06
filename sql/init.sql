@@ -74,4 +74,4 @@ INSERT OR IGNORE INTO items (id, sku, name, brand, model, category, unit, warnin
 
 -- Default admin (please change password after first login)
 INSERT OR IGNORE INTO users (id, username, password_hash, role, is_active, must_change_password)
-VALUES (1, 'admin', 'pbkdf2$120000$MEg44sOf2APw8x1HQEipVQ$lJNSCwzYFa7muergFXJDerqMFyjGY5Nv7bhBamAXUSU', 'admin', 1, 1);
+VALUES (1, 'admin', 'pbkdf2$100000$MEg44sOf2APw8x1HQEipVQ$x1a47ows6TbAAFmg4n4gBKAzZtPD0fEX7D8lHXitiQ0', 'admin', 1, 1);
