@@ -6,8 +6,3 @@ pages_build_output_dir = "dist"
 
 [vars]
 JWT_SECRET = "uJ8pL2NmQ9vX5zA7dE3rT1wY6gH0bN4o"
-
-[[d1_databases]]
-binding = "DB"
-database_name = "inventory_db"
-# ⚠️ 不要填 database_id（避免 UUID 校验问题）
