@@ -21,13 +21,14 @@
             <div class="panel-tools">
               <el-input v-model="listKeyword" size="small" clearable placeholder="搜索 ID / 单号 / 状态" style="width: 190px;" />
               <el-button size="small" @click="loadList">刷新</el-button>
+              <el-button size="small" @click="toggleList">{{ listCollapsed ? "展开" : "收起" }}</el-button>
             </div>
           </div>
 
           <el-table
             ref="listTableRef"
             :data="sortedList"
-            height="620"
+            :height="listTableHeight"
             border
             highlight-current-row
             :row-class-name="rowClassName"
@@ -131,10 +132,10 @@
 .title{ font-weight:800; font-size:16px; }
 .actions{ display:flex; gap:10px; align-items:center; }
 .wh-select{ width:180px; }
-.body{ display:flex; gap:16px; }
+.body{ display:flex; flex-direction:column; gap:16px; }
 .panel{ background: var(--el-bg-color); border:1px solid var(--el-border-color-light); border-radius:12px; overflow:hidden; }
-.left{ width:420px; flex:0 0 420px; }
-.right{ flex:1; padding:12px; min-height: 680px; }
+.left{ width:100%; }
+.right{ width:100%; padding:12px; min-height: 520px; }
 .panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
 .panel-title{ font-weight:700; }
 .panel-tools{ display:flex; gap:8px; align-items:center; }
@@ -166,6 +167,19 @@ const detail = ref<any|null>(null);
 // list selection + scroll
 const listTableRef = ref<any>(null);
 const selectedId = ref<number | null>(null);
+
+const listCollapsed = ref(false);
+const listTableHeight = computed(() => (listCollapsed.value ? 220 : 360));
+const toggleList = () => {
+  listCollapsed.value = !listCollapsed.value;
+  // 展开后若有选中项，滚动定位到选中行
+  if (!listCollapsed.value) {
+    nextTick(() => {
+      if (selectedId.value != null) scrollToSelected();
+    });
+  }
+};
+
 
 const lineKeyword = ref("");
 const listKeyword = ref("");
