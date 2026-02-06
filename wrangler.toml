@@ -4,5 +4,3 @@ compatibility_date = "2025-01-01"
 pages_build_output_dir = "dist"
 
 
-[vars]
-JWT_SECRET = "uJ8pL2NmQ9vX5zA7dE3rT1wY6gH0bN4o"
