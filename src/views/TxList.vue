@@ -63,9 +63,6 @@
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
     </el-table>
 
-    <div style="margin-top:12px; color:#999; font-size:12px">
-      为了简单：后端默认最多返回 500 条最新记录（可在 functions/api/tx.ts 调整）。管理员可在右上方“清空记录”。
-    </div>
   </el-card>
 </template>
 

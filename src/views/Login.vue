@@ -2,7 +2,7 @@
   <div style="height:100vh; display:flex; align-items:center; justify-content:center; background:#f7f8fa">
     <el-card style="width: 420px">
       <div style="font-size:18px; font-weight:700; margin-bottom:16px">登录</div>
-      <el-form @submit.prevent>
+      <el-form @submit.prevent label-position="top">
         <el-form-item label="账号">
           <el-input v-model="username" placeholder="请输入账号" />
         </el-form-item>
@@ -10,9 +10,6 @@
           <el-input v-model="password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
         <el-button type="primary" style="width:100%" :loading="loading" @click="doLogin">登录</el-button>
-        <div style="margin-top:12px; color:#999; font-size:12px">
-          默认管理员：admin / admin123（首次登录请修改密码）
-        </div>
       </el-form>
     </el-card>
 
@@ -43,12 +40,12 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuth();
 
-const username = ref("admin");
-const password = ref("admin123");
+const username = ref("");
+const password = ref("");
 const loading = ref(false);
 
 const showChange = ref(false);
-const oldP = ref("admin123");
+const oldP = ref("");
 const newP = ref("");
 const changing = ref(false);
 
