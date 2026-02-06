@@ -89,7 +89,7 @@ import { apiGet, apiPost } from "../api/client";
 
 type Row = { sku: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
 
-const mode = ref<"IN"|"OUT">("IN");
+const mode = ref<"IN" | "OUT">("IN");
 const warehouses = ref<any[]>([]);
 const warehouseId = ref<number>(1);
 const headerSource = ref("");
@@ -107,20 +107,22 @@ function clearRows() {
 
 async function loadWarehouses() {
   try {
-    const r:any = await apiGet("/api/warehouses");
+    const r: any = await apiGet("/api/warehouses");
     if (r?.ok) {
-    warehouses.value = r.data;
-    if (warehouses.value?.length && !warehouses.value.find(w=>w.id===warehouseId.value)) warehouseId.value = warehouses.value[0].id;
+      warehouses.value = r.data;
+      if (warehouses.value?.length && !warehouses.value.find((w: any) => w.id === warehouseId.value)) {
+        warehouseId.value = warehouses.value[0].id;
+      }
     }
   } catch (e) {
-    ElMessage.error(e?.message || "加载仓库失败");
+    const err: any = e;
+    ElMessage.error(err?.message || "加载仓库失败");
   }
 }
 
 function downloadTemplate() {
-  const header = mode.value === "IN"
-    ? ["sku","qty","unit_price","source","remark"]
-    : ["sku","qty","target","remark"];
+  const header =
+    mode.value === "IN" ? ["sku", "qty", "unit_price", "source", "remark"] : ["sku", "qty", "target", "remark"];
   const ws = XLSX.utils.aoa_to_sheet([header]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "template");
@@ -138,9 +140,11 @@ function beforeUpload(file: File) {
     for (const r of json) {
       const sku = String(r.sku ?? r.SKU ?? r["Sku"] ?? "").trim();
       const qty = Number(r.qty ?? r.QTY ?? r["数量"] ?? 0);
-      if (!sku || !qty || qty<=0) continue;
+      if (!sku || !qty || qty <= 0) continue;
+
       const row: Row = { sku, qty };
-      if (mode.value==="IN") {
+
+      if (mode.value === "IN") {
         const p = Number(r.unit_price ?? r.price ?? r["单价"] ?? "");
         if (!Number.isNaN(p)) row.unit_price = p;
         const src = String(r.source ?? r["来源"] ?? "").trim();
@@ -149,8 +153,10 @@ function beforeUpload(file: File) {
         const tgt = String(r.target ?? r["去向"] ?? "").trim();
         if (tgt) row.target = tgt;
       }
+
       const rm = String(r.remark ?? r["备注"] ?? "").trim();
       if (rm) row.remark = rm;
+
       parsed.push(row);
     }
     rows.value = rows.value.concat(parsed);
@@ -162,35 +168,35 @@ function beforeUpload(file: File) {
 
 async function submit() {
   if (!rows.value.length) return ElMessage.warning("请先添加或导入明细");
+
   submitting.value = true;
   try {
     const payload: any = {
       warehouse_id: warehouseId.value,
       remark: headerRemark.value || null,
-      lines: rows.value
+      lines: rows.value,
     };
-    if (mode.value==="IN") payload.source = headerSource.value || null;
-    if (mode.value==="OUT") payload.target = headerTarget.value || null;
+    if (mode.value === "IN") payload.source = headerSource.value || null;
+    if (mode.value === "OUT") payload.target = headerTarget.value || null;
 
-    const url = mode.value==="IN" ? "/api/batch/stock-in" : "/api/batch/stock-out";
-    const r:any = await apiPost(url, payload);
+    const url = mode.value === "IN" ? "/api/batch/stock-in" : "/api/batch/stock-out";
+    const r: any = await apiPost(url, payload);
+
     if (r?.ok) {
       ElMessage.success(`成功提交 ${r.count} 条（自动合并同 SKU）`);
       rows.value = [];
     } else {
-      ElMessage.error(r.message || "提交失败");
-    }
-    } catch (e) {
-    ElMessage.error(e?.message || "提交失败");
-  } finally {
-    submitting.value = false;
+      ElMessage.error(r?.message || "提交失败");
     }
   } catch (e) {
-    ElMessage.error(e?.message || "加载仓库失败");
+    const err: any = e;
+    ElMessage.error(err?.message || "提交失败");
+  } finally {
+    submitting.value = false;
   }
 }
 
-onMounted(async ()=>{
+onMounted(async () => {
   await loadWarehouses();
   addRow();
 });
