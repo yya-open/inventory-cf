@@ -59,19 +59,26 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         i.sku, i.name, i.brand, i.model, i.category,
         COALESCE(s.qty,0) as qty,
         COALESCE(i.warning_qty,0) as warning_qty,
-        (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap
+        (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap,
+        (
+          SELECT MAX(tx.created_at)
+          FROM stock_tx tx
+          WHERE tx.warehouse_id = ? AND tx.item_id = i.id
+        ) as last_tx_at
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
       WHERE ${whereParts.join(" AND ")}
       ORDER BY ${orderBy}
     `;
-    const { results } = await env.DB.prepare(sql).bind(...binds).all();
+    // bind order: last_tx warehouse_id, stock join warehouse_id, then filters
+    const bindAll = [warehouse_id, ...binds];
+    const { results } = await env.DB.prepare(sql).bind(...bindAll).all();
 
     // fetch warehouse name
     const w = await env.DB.prepare("SELECT name FROM warehouses WHERE id=?").bind(warehouse_id).first<{ name: string }>();
     const warehouseName = w?.name || `仓库#${warehouse_id}`;
 
-    const header = ["仓库", "SKU", "名称", "品牌", "型号", "分类", "库存", "预警值", "缺口(预警-库存)"];
+    const header = ["仓库", "SKU", "名称", "品牌", "型号", "分类", "库存", "预警值", "缺口(预警-库存)", "最后变动时间"];
     const lines: string[] = [];
     lines.push(header.join(","));
     for (const r of (results as any[])) {
@@ -86,6 +93,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
           csvEscape(r.qty),
           csvEscape(r.warning_qty),
           csvEscape(r.gap),
+          csvEscape(r.last_tx_at),
         ].join(",")
       );
     }

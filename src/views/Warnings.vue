@@ -40,9 +40,36 @@
       </div>
     </div>
 
-    <div v-if="selectedIds.length" style="display:flex; gap:12px; align-items:center; margin-bottom:10px">
+    <div v-if="selectedIds.length" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px">
       <el-tag type="info">已选 {{ selectedIds.length }} 条</el-tag>
-      <el-input-number v-model="bulkWarningQty" :min="0" :step="1" controls-position="right" />
+
+      <el-select v-model="bulkMode" style="width:220px">
+        <el-option label="统一设置预警值" value="set" />
+        <el-option label="在原预警值基础上 +X" value="add" />
+        <el-option label="设置为当前库存 +X" value="qty_plus" />
+      </el-select>
+
+      <el-input-number
+        v-if="bulkMode === 'set'"
+        v-model="bulkWarningQty"
+        :min="0"
+        :step="1"
+        controls-position="right"
+      />
+      <el-input-number
+        v-else
+        v-model="bulkDelta"
+        :min="bulkMode === 'add' ? -999999 : 0"
+        :step="1"
+        controls-position="right"
+      />
+
+      <el-button-group v-if="bulkMode !== 'set'">
+        <el-button size="small" @click="bulkDelta += 1">+1</el-button>
+        <el-button size="small" @click="bulkDelta += 5">+5</el-button>
+        <el-button size="small" @click="bulkDelta += 10">+10</el-button>
+      </el-button-group>
+
       <el-button type="primary" :loading="bulkSaving" @click="applyBulkWarning">应用到已选</el-button>
       <el-button @click="clearSelection">清空选择</el-button>
       <div style="color:#909399">（批量设置预警值仅管理员可用）</div>
@@ -75,6 +102,12 @@
           <span :style="{ color: row.gap >= 0 ? '#d93025' : '#606266', fontWeight: '600' }">
             {{ row.gap }}
           </span>
+        </template>
+      </el-table-column>
+
+      <el-table-column prop="last_tx_at" label="最后变动" width="170">
+        <template #default="{ row }">
+          <span style="color:#606266">{{ formatTime(row.last_tx_at) }}</span>
         </template>
       </el-table-column>
 
@@ -121,6 +154,8 @@ const filters = reactive<{ warehouse_id: number; category: string; keyword: stri
 const selected = ref<any[]>([]);
 const selectedIds = computed(() => selected.value.map((r) => Number(r.item_id)).filter((n) => Number.isFinite(n)));
 const bulkWarningQty = ref<number>(0);
+const bulkDelta = ref<number>(5);
+const bulkMode = ref<"set" | "add" | "qty_plus">("set");
 const bulkSaving = ref(false);
 
 const warehouseName = computed(() => {
@@ -148,10 +183,14 @@ async function applyBulkWarning() {
   if (!selectedIds.value.length) return;
   try {
     bulkSaving.value = true;
-    await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, {
-      item_ids: selectedIds.value,
-      warning_qty: Number(bulkWarningQty.value || 0),
-    });
+    const payload: any = { item_ids: selectedIds.value, mode: bulkMode.value };
+    if (bulkMode.value === "set") {
+      payload.warning_qty = Number(bulkWarningQty.value || 0);
+    } else {
+      payload.delta = Number(bulkDelta.value || 0);
+      payload.warehouse_id = Number(filters.warehouse_id || 1);
+    }
+    await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
     ElMessage.success("已更新预警值");
     clearSelection();
     await load();
@@ -196,11 +235,30 @@ async function load() {
       qty: Number(r.qty ?? 0),
       warning_qty: Number(r.warning_qty ?? 0),
       gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
+      last_tx_at: r.last_tx_at ?? "",
     }));
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
     loading.value = false;
+  }
+}
+
+function formatTime(v: any) {
+  if (!v) return "-";
+  try {
+    // most likely ISO string from DB
+    const d = new Date(v);
+    if (isNaN(d.getTime())) return String(v);
+    const yyyy = d.getFullYear();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dd = String(d.getDate()).padStart(2, "0");
+    const hh = String(d.getHours()).padStart(2, "0");
+    const mi = String(d.getMinutes()).padStart(2, "0");
+    const ss = String(d.getSeconds()).padStart(2, "0");
+    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+  } catch {
+    return String(v);
   }
 }
 
@@ -267,6 +325,7 @@ function exportXlsx() {
       库存: r.qty,
       预警值: r.warning_qty,
       缺口: r.gap,
+      最后变动: formatTime(r.last_tx_at),
     }));
 
     const ws = XLSX.utils.json_to_sheet(data);

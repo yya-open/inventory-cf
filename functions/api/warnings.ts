@@ -30,6 +30,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const sort = (url.searchParams.get("sort") || "gap_desc").trim();
 
     const whereParts: string[] = ["i.enabled=1"];
+    // Note: we need warehouse_id twice (stock join + last_tx subquery)
     const binds: any[] = [warehouse_id];
 
     if (only_alert) {
@@ -55,13 +56,20 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         i.sku, i.name, i.brand, i.model, i.category, i.unit,
         COALESCE(i.warning_qty,0) as warning_qty,
         COALESCE(s.qty,0) as qty,
-        (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap
+        (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap,
+        (
+          SELECT MAX(tx.created_at)
+          FROM stock_tx tx
+          WHERE tx.warehouse_id = ? AND tx.item_id = i.id
+        ) as last_tx_at
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
       WHERE ${whereParts.join(" AND ")}
       ORDER BY ${orderBy}
     `;
-    const { results } = await env.DB.prepare(sql).bind(...binds).all();
+    // bind order: last_tx warehouse_id, stock join warehouse_id, then filters
+    const bindAll = [warehouse_id, ...binds];
+    const { results } = await env.DB.prepare(sql).bind(...bindAll).all();
     return Response.json({ ok: true, data: results });
   } catch (e: any) {
     return errorResponse(e);
