@@ -34,8 +34,16 @@
             :row-class-name="rowClassName"
             @row-click="openStocktake"
           >
-            <el-table-column prop="id" label="ID" width="70" />
-            <el-table-column prop="st_no" label="盘点单号" min-width="170" />
+	            <!-- 显示序号（避免删除导致 ID 断号带来的困惑），真实 id 仍保留在 row.id 供接口使用 -->
+	            <el-table-column label="序号" width="70">
+	              <template #default="scope">{{ scope.$index + 1 }}</template>
+	            </el-table-column>
+	            <el-table-column label="盘点单号" min-width="190">
+	              <template #default="{ row }">
+	                <span class="mono">{{ row.st_no }}</span>
+	                <span class="muted" style="margin-left:6px;">#{{ row.id }}</span>
+	              </template>
+	            </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
                 <el-tag :type="row.status==='DRAFT' ? 'info' : 'success'" size="small">{{ row.status }}</el-tag>
@@ -328,7 +336,10 @@ async function createStocktake(){
     const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
     ElMessage.success("盘点单已创建");
     await loadList();
-    await loadDetail(r.id);
+	    selectedId.value = Number(r.id);
+	    await loadDetail(Number(r.id));
+	    await nextTick();
+	    scrollToSelected();
   }catch(e:any){
     ElMessage.error(e.message || "创建失败");
   }finally{
@@ -371,8 +382,13 @@ function beforeUpload(file: File){
   return false;
 }
 
-async function saveInline(){
-  if (!detail.value || !dirty.value.size) return;
+	// 保存按钮回调（模板里绑定的是 saveLines）
+	async function saveLines(){
+	  if (!detail.value) return;
+	  if (!dirty.value.size){
+	    ElMessage.info("没有需要保存的修改");
+	    return;
+	  }
   saving.value = true;
   try{
     const lines = detail.value.lines
