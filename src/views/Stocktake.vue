@@ -52,12 +52,12 @@
             <el-table-column prop="created_at" label="创建时间" min-width="160" />
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
-                <el-button
-                  type="danger"
-                  link
-                  :disabled="row.status!=='DRAFT'"
-                  @click.stop="deleteStocktake(row)"
-                >删除</el-button>
+                <template v-if="row.status==='DRAFT'">
+                  <el-button type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
+                </template>
+                <template v-else>
+                  <el-button type="warning" link @click.stop="rollbackStocktakeByRow(row)">撤销</el-button>
+                </template>
               </template>
             </el-table-column>
           </el-table>
@@ -86,7 +86,7 @@
               </div>
 
               <div class="detail-actions">
-                <el-button @click="downloadCountTemplate" :disabled="detail.stocktake.status!=='DRAFT'">下载盘点模板</el-button>
+                <el-button @click="downloadCountTemplate">下载盘点模板</el-button>
                 <el-upload
                   :show-file-list="false"
                   accept=".xlsx,.xls"
@@ -97,6 +97,13 @@
                 </el-upload>
                 <el-button type="primary" @click="saveLines" :loading="saving" :disabled="detail.stocktake.status!=='DRAFT'">保存</el-button>
                 <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="detail.stocktake.status!=='DRAFT'">应用盘点</el-button>
+                <el-button
+                  v-if="detail.stocktake.status==='APPLIED'"
+                  type="warning"
+                  plain
+                  @click="rollbackStocktake"
+                  :loading="rolling"
+                >撤销盘点</el-button>
                 <el-button type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
               </div>
             </div>
@@ -193,6 +200,7 @@ const lineKeyword = ref("");
 const listKeyword = ref("");
 const creating = ref(false);
 const applying = ref(false);
+const rolling = ref(false);
 const saving = ref(false);
 
 const dirty = ref<Set<number>>(new Set());
@@ -420,6 +428,40 @@ async function applyStocktake(){
   }finally{
     applying.value = false;
   }
+}
+
+async function rollbackStocktake(){
+  if (!detail.value) return;
+  if (detail.value.stocktake.status !== 'APPLIED') return;
+  try{
+    await ElMessageBox.confirm(
+      "撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。确认继续？",
+      "确认撤销盘点",
+      { type: "warning", confirmButtonText: "撤销", cancelButtonText: "取消" }
+    );
+  }catch{ return; }
+
+  rolling.value = true;
+  try{
+    const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id });
+    ElMessage.success(`撤销成功：恢复 ${r.reversed} 条差异库存`);
+    await loadList();
+    await refreshDetail();
+  }catch(e:any){
+    ElMessage.error(e.message || "撤销失败");
+  }finally{
+    rolling.value = false;
+  }
+}
+
+async function rollbackStocktakeByRow(row:any){
+  if (!row?.id) return;
+  // 若当前未打开或打开的不是该行，则先打开确保右侧展示一致
+  if (Number(selectedId.value) !== Number(row.id)) {
+    selectedId.value = Number(row.id);
+    await loadDetail(Number(row.id));
+  }
+  await rollbackStocktake();
 }
 
 onMounted(async ()=>{
