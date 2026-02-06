@@ -6,4 +6,3 @@ pages_build_output_dir = "dist"
 [[d1_databases]]
 binding = "DB"
 database_name = "inventory_db"
-database_id = " a40be859-8c89-432c-bbe8-3f715e8e0dd6"
