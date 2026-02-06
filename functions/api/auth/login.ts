@@ -3,6 +3,7 @@ import { verifyPassword } from "../../_password";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
+  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const { username, password } = await request.json<any>();
   const u = (username || "").trim();
   const p = String(password || "");

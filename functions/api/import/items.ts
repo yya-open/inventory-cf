@@ -13,6 +13,7 @@ type ItemRow = {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
   await requireAuth(env, request, "admin");
+  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const body = await request.json<any>();
   const items: ItemRow[] = Array.isArray(body.items) ? body.items : [];
   const mode = (body.mode || "upsert") as "upsert" | "skip" | "overwrite";

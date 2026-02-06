@@ -11,6 +11,7 @@ function txNo() {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
   const user = await requireAuth(env, request, "operator");
+  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
 
   const q = Number(qty);

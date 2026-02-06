@@ -4,6 +4,7 @@ import { hashPassword } from "../_password";
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
   await requireAuth(env, request, "admin");
+  if (!env?.DB) return errorResponse(500, "缺少 D1 绑定：请在 Pages 绑定中添加 DB -> inventory_db");
   const { results } = await env.DB.prepare("SELECT id, username, role, is_active, must_change_password, created_at FROM users ORDER BY id ASC").all();
   return json(true, results);
 
