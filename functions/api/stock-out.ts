@@ -9,6 +9,7 @@ function txNo() {
 }
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   const user = await requireAuth(env, request, "operator");
   const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
 
@@ -32,4 +33,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   ).bind(no, item_id, warehouse_id, q, target ?? null, remark ?? null, user.username).run();
 
   return Response.json({ ok: true, tx_no: no });
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };

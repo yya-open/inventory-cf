@@ -2,6 +2,7 @@ import { json, requireAuth, errorResponse } from "../../_auth";
 import { verifyPassword, hashPassword } from "../../_password";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   const user = await requireAuth(env, request, "viewer");
   const { old_password, new_password } = await request.json<any>();
   const oldP = String(old_password || "");
@@ -17,4 +18,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   const ph = await hashPassword(newP);
   await env.DB.prepare("UPDATE users SET password_hash=?, must_change_password=0 WHERE id=?").bind(ph, user.id).run();
   return json(true);
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };

@@ -2,6 +2,7 @@ import { json, signJwt, errorResponse } from "../../_auth";
 import { verifyPassword } from "../../_password";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   const { username, password } = await request.json<any>();
   const u = (username || "").trim();
   const p = String(password || "");
@@ -18,4 +19,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
   const token = await signJwt({ sub: row.id, u: row.username, r: row.role }, env.JWT_SECRET, 7 * 24 * 3600);
   return json(true, { token, user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password } });
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };

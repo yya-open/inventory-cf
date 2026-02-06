@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   const user = await requireAuth(env, request, "viewer");
   const url = new URL(request.url);
   const keyword = (url.searchParams.get("keyword") || "").trim();
@@ -12,9 +13,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   const { results } = await env.DB.prepare(sql).bind(...binds).all();
 
   return Response.json({ ok: true, data: results });
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   const user = await requireAuth(env, request, "admin");
   const body = await request.json();
   const { id, sku, name, brand, model, category, unit, warning_qty } = body;
@@ -49,4 +55,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   }
 
   return Response.json({ ok: true });
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };

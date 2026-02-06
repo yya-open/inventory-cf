@@ -11,6 +11,7 @@ type ItemRow = {
 };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   await requireAuth(env, request, "admin");
   const body = await request.json<any>();
   const items: ItemRow[] = Array.isArray(body.items) ? body.items : [];
@@ -68,4 +69,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   }
 
   return json(true, { inserted, updated, skipped, errors });
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };

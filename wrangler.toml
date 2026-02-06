@@ -1,0 +1,4 @@
+name = "inventory-cf"
+compatibility_date = "2025-01-01"
+pages_build_output_dir = "dist"
+# 用于本地 / CLI 操作 D1（Pages 线上绑定仍在控制台里配置）

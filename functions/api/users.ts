@@ -2,12 +2,18 @@ import { json, requireAuth, errorResponse } from "../_auth";
 import { hashPassword } from "../_password";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   await requireAuth(env, request, "admin");
   const { results } = await env.DB.prepare("SELECT id, username, role, is_active, must_change_password, created_at FROM users ORDER BY id ASC").all();
   return json(true, results);
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   await requireAuth(env, request, "admin");
   const { username, password, role } = await request.json<any>();
   const u = (username || "").trim();
@@ -26,9 +32,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     return json(false, null, "用户名已存在", 400);
   }
   return json(true);
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };
 
 export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
   await requireAuth(env, request, "admin");
   const { id, role, is_active, reset_password } = await request.json<any>();
   const uid = Number(id);
@@ -49,4 +60,8 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   }
 
   return json(true);
+
+  } catch (e: any) {
+    return errorResponse(e);
+  }
 };
