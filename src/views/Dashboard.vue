@@ -28,7 +28,15 @@
 
       <div v-if="data" style="display:grid; grid-template-columns: 1.1fr 0.9fr; gap:12px;">
         <el-card shadow="never">
-          <template #header><b>近 {{ days }} 天出库趋势</b> <span style="color:#999;font-size:12px;">（{{ data.range.from }} ~ {{ data.range.to }}）</span></template>
+          <template #header>
+            <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap;">
+              <div>
+                <b>近 {{ days }} 天{{ activeTypeLabel }}趋势</b>
+                <span style="color:#999;font-size:12px;">（{{ data.range.from }} ~ {{ data.range.to }}）</span>
+              </div>
+              <el-segmented v-model="activeType" :options="typeOptions" size="small" />
+            </div>
+          </template>
           <div style="display:flex; flex-direction:column; gap:6px;">
             <div v-for="r in seriesFilled" :key="r.day" style="display:flex; align-items:center; gap:10px;">
               <div style="width:96px; color:#666; font-size:12px;">{{ r.day }}</div>
@@ -41,16 +49,16 @@
         </el-card>
 
         <el-card shadow="never">
-          <template #header><b>出库 Top 10</b></template>
-          <el-table :data="data.top_out" size="small" border height="360">
+          <template #header><b>{{ activeTypeLabel }} Top 10</b></template>
+          <el-table :data="topTable" size="small" border height="360">
             <el-table-column prop="sku" label="SKU" width="120"/>
             <el-table-column prop="name" label="名称" min-width="140"/>
             <el-table-column prop="qty" label="数量" width="80"/>
           </el-table>
 
           <div style="margin-top:10px;">
-            <b>按分类出库</b>
-            <el-table :data="data.category_out" size="small" border height="240" style="margin-top:8px;">
+            <b>按分类{{ activeTypeLabel }}</b>
+            <el-table :data="categoryTable" size="small" border height="240" style="margin-top:8px;">
               <el-table-column prop="category" label="分类" min-width="140"/>
               <el-table-column prop="qty" label="数量" width="90"/>
             </el-table>
@@ -73,6 +81,25 @@ const warehouseId = ref(1);
 const days = ref(30);
 const data = ref<any|null>(null);
 const loading = ref(false);
+
+// 出库 / 入库切换
+const activeType = ref<"OUT" | "IN">("OUT");
+const typeOptions = [
+  { label: "出库", value: "OUT" },
+  { label: "入库", value: "IN" },
+];
+
+const activeTypeLabel = computed(() => (activeType.value === "OUT" ? "出库" : "入库"));
+
+const topTable = computed(() => {
+  if (!data.value) return [];
+  return activeType.value === "OUT" ? (data.value.top_out || []) : (data.value.top_in || []);
+});
+
+const categoryTable = computed(() => {
+  if (!data.value) return [];
+  return activeType.value === "OUT" ? (data.value.category_out || []) : (data.value.category_in || []);
+});
 
 async function loadWarehouses(){
   try{
@@ -99,8 +126,9 @@ async function refresh(){
 const seriesFilled = computed(()=>{
   if (!data.value) return [];
   // fill missing days with 0
+  const raw = activeType.value === "OUT" ? (data.value.daily_out || []) : (data.value.daily_in || []);
   const map = new Map<string, number>();
-  for (const r of data.value.daily_out || []) map.set(r.day, Number(r.qty));
+  for (const r of raw) map.set(r.day, Number(r.qty));
   const out: any[] = [];
   const to = new Date(data.value.range.to);
   const from = new Date(data.value.range.from);

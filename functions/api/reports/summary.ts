@@ -33,6 +33,16 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        LIMIT 10`
     ).bind(warehouse_id, from, to).all();
 
+    // top in items
+    const { results: topIn } = await env.DB.prepare(
+      `SELECT i.sku, i.name, SUM(t.qty) AS qty
+       FROM stock_tx t JOIN items i ON i.id=t.item_id
+       WHERE t.warehouse_id=? AND t.type='IN' AND date(t.created_at) BETWEEN date(?) AND date(?)
+       GROUP BY t.item_id
+       ORDER BY qty DESC
+       LIMIT 10`
+    ).bind(warehouse_id, from, to).all();
+
     // daily series (OUT)
     const { results: dailyOut } = await env.DB.prepare(
       `SELECT date(created_at) AS day, SUM(qty) AS qty
@@ -42,11 +52,30 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        ORDER BY day ASC`
     ).bind(warehouse_id, from, to).all();
 
+    // daily series (IN)
+    const { results: dailyIn } = await env.DB.prepare(
+      `SELECT date(created_at) AS day, SUM(qty) AS qty
+       FROM stock_tx
+       WHERE warehouse_id=? AND type='IN' AND date(created_at) BETWEEN date(?) AND date(?)
+       GROUP BY day
+       ORDER BY day ASC`
+    ).bind(warehouse_id, from, to).all();
+
     // category out
     const { results: catOut } = await env.DB.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
        WHERE t.warehouse_id=? AND t.type='OUT' AND date(t.created_at) BETWEEN date(?) AND date(?)
+       GROUP BY category
+       ORDER BY qty DESC
+       LIMIT 20`
+    ).bind(warehouse_id, from, to).all();
+
+    // category in
+    const { results: catIn } = await env.DB.prepare(
+      `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
+       FROM stock_tx t JOIN items i ON i.id=t.item_id
+       WHERE t.warehouse_id=? AND t.type='IN' AND date(t.created_at) BETWEEN date(?) AND date(?)
        GROUP BY category
        ORDER BY qty DESC
        LIMIT 20`
@@ -62,8 +91,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         tx_count: Number(sum?.tx_count ?? 0),
       },
       top_out: topOut,
+      top_in: topIn,
       daily_out: dailyOut,
+      daily_in: dailyIn,
       category_out: catOut,
+      category_in: catIn,
     });
   } catch (e:any) {
     return errorResponse(e);

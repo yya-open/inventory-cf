@@ -18,7 +18,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        FROM stocktake s
        LEFT JOIN warehouses w ON w.id = s.warehouse_id
        ${where}
-       ORDER BY s.id ASC
+       ORDER BY s.id DESC
        LIMIT 200`
     ).bind(...binds).all();
 
