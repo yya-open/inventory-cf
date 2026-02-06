@@ -194,9 +194,6 @@ import { apiGet, apiPost } from "../api/client";
 const warehouses = ref<any[]>([]);
 const warehouseId = ref(1);
 
-// left list selection
-const listTableRef = ref<any>(null);
-const selectedId = ref<number|null>(null);
 
 const list = ref<any[]>([]);
 const listKeyword = ref("");
