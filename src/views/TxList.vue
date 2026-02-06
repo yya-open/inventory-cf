@@ -23,6 +23,16 @@
       <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
       <el-button @click="reset">重置</el-button>
       <el-button type="success" plain @click="exportCsv" :disabled="rows.length===0">导出CSV</el-button>
+
+      <el-button
+        v-if="isAdmin"
+        type="danger"
+        plain
+        @click="clearTx"
+        :disabled="loading"
+      >
+        清空记录
+      </el-button>
     </div>
 
     <el-table :data="rows" border v-loading="loading">
@@ -54,16 +64,17 @@
     </el-table>
 
     <div style="margin-top:12px; color:#999; font-size:12px">
-      为了简单：后端默认最多返回 500 条最新记录（可在 functions/api/tx.ts 调整）。
+      为了简单：后端默认最多返回 500 条最新记录（可在 functions/api/tx.ts 调整）。管理员可在右上方“清空记录”。
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { ElMessage } from "element-plus";
-import { apiGet } from "../api/client";
+import { ref, onMounted, computed } from "vue";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { apiGet, apiPost } from "../api/client";
 import { useRoute } from "vue-router";
+import { useAuth } from "../store/auth";
 
 const route = useRoute();
 
@@ -74,6 +85,9 @@ const loading = ref(false);
 const type = ref<string>("");
 const item_id = ref<number | undefined>(undefined);
 const dateRange = ref<[string, string] | null>(null);
+
+const auth = useAuth();
+const isAdmin = computed(() => auth.user?.role === "admin");
 
 function reset() {
   type.value = "";
@@ -128,6 +142,57 @@ async function load() {
     rows.value = j.data;
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
+async function clearTx() {
+  try {
+    const params = new URLSearchParams();
+    if (type.value) params.set("type", type.value);
+    if (item_id.value) params.set("item_id", String(item_id.value));
+    if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
+    if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+
+    const hasFilter = [...params.keys()].length > 0;
+
+    const action = await ElMessageBox.confirm(
+      hasFilter
+        ? "将清空【当前筛选条件】下的出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。"
+        : "当前没有筛选条件，将清空【全部】出入库明细记录。\n\n此操作不可恢复，请谨慎！",
+      "清空出入库明细",
+      {
+        type: "warning",
+        confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部",
+        cancelButtonText: hasFilter ? "清空全部" : "取消",
+        distinguishCancelAndClose: true,
+      }
+    ).then(
+      () => (hasFilter ? "filtered" : "all"),
+      (reason) => {
+        if (reason === "cancel" && hasFilter) return "all";
+        return null;
+      }
+    );
+
+    if (!action) return;
+
+    loading.value = true;
+    const body: any = { mode: action };
+    if (action === "filtered") {
+      if (type.value) body.type = type.value;
+      if (item_id.value) body.item_id = item_id.value;
+      if (dateRange.value?.[0]) body.date_from = `${dateRange.value[0]} 00:00:00`;
+      if (dateRange.value?.[1]) body.date_to = `${dateRange.value[1]} 23:59:59`;
+    }
+
+    const r = await apiPost<{ ok: boolean; data: { deleted: number } }>("/api/tx/clear", body);
+    ElMessage.success(`已清空 ${r.data.deleted} 条记录`);
+    await load();
+  } catch (e: any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "清空失败");
   } finally {
     loading.value = false;
   }
