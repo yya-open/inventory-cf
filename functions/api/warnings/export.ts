@@ -6,6 +6,22 @@ function csvEscape(v: any) {
   return s;
 }
 
+function getSort(sqlKey: string) {
+  switch (sqlKey) {
+    case "gap_asc":
+      return "gap ASC, qty ASC, i.id DESC";
+    case "qty_asc":
+      return "qty ASC, gap DESC, i.id DESC";
+    case "sku_asc":
+      return "i.sku ASC, i.id DESC";
+    case "name_asc":
+      return "i.name ASC, i.id DESC";
+    case "gap_desc":
+    default:
+      return "gap DESC, qty ASC, i.id DESC";
+  }
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "viewer");
@@ -15,9 +31,15 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const warehouse_id = Number(url.searchParams.get("warehouse_id") || 1);
     const category = (url.searchParams.get("category") || "").trim();
     const keyword = (url.searchParams.get("keyword") || "").trim();
+    const only_alert = (url.searchParams.get("only_alert") ?? "1") !== "0";
+    const sort = (url.searchParams.get("sort") || "gap_desc").trim();
 
-    const whereParts: string[] = ["i.enabled=1", "COALESCE(s.qty,0) <= i.warning_qty"];
+    const whereParts: string[] = ["i.enabled=1"];
     const binds: any[] = [warehouse_id];
+
+    if (only_alert) {
+      whereParts.push("COALESCE(s.qty,0) <= COALESCE(i.warning_qty,0)");
+    }
 
     if (category) {
       whereParts.push("i.category = ?");
@@ -30,16 +52,18 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       binds.push(like, like, like, like);
     }
 
+    const orderBy = getSort(sort);
+
     const sql = `
       SELECT
         i.sku, i.name, i.brand, i.model, i.category,
         COALESCE(s.qty,0) as qty,
-        i.warning_qty as warning_qty,
-        (i.warning_qty - COALESCE(s.qty,0)) as need_qty
+        COALESCE(i.warning_qty,0) as warning_qty,
+        (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
       WHERE ${whereParts.join(" AND ")}
-      ORDER BY need_qty DESC, i.id DESC
+      ORDER BY ${orderBy}
     `;
     const { results } = await env.DB.prepare(sql).bind(...binds).all();
 
@@ -47,22 +71,23 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const w = await env.DB.prepare("SELECT name FROM warehouses WHERE id=?").bind(warehouse_id).first<{ name: string }>();
     const warehouseName = w?.name || `仓库#${warehouse_id}`;
 
-    const header = ["仓库", "SKU", "名称", "品牌", "型号", "分类", "库存", "预警值", "建议补货"];
+    const header = ["仓库", "SKU", "名称", "品牌", "型号", "分类", "库存", "预警值", "缺口(预警-库存)"];
     const lines: string[] = [];
     lines.push(header.join(","));
     for (const r of (results as any[])) {
-      const need = Math.max(Number(r.need_qty || 0), 0);
-      lines.push([
-        csvEscape(warehouseName),
-        csvEscape(r.sku),
-        csvEscape(r.name),
-        csvEscape(r.brand),
-        csvEscape(r.model),
-        csvEscape(r.category),
-        csvEscape(r.qty),
-        csvEscape(r.warning_qty),
-        csvEscape(need),
-      ].join(","));
+      lines.push(
+        [
+          csvEscape(warehouseName),
+          csvEscape(r.sku),
+          csvEscape(r.name),
+          csvEscape(r.brand),
+          csvEscape(r.model),
+          csvEscape(r.category),
+          csvEscape(r.qty),
+          csvEscape(r.warning_qty),
+          csvEscape(r.gap),
+        ].join(",")
+      );
     }
 
     const now = new Date();

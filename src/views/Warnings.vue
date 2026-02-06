@@ -9,20 +9,54 @@
         <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
       </el-select>
 
-      <el-input v-model="filters.keyword" style="width:260px" clearable placeholder="搜索：名称/SKU/品牌/型号" @keyup.enter="load" />
+      <el-input v-model="filters.keyword" style="width:240px" clearable placeholder="搜索：名称/SKU/品牌/型号" @keyup.enter="load" />
+
+      <el-switch
+        v-model="filters.only_alert"
+        active-text="只看异常"
+        inactive-text="显示全部"
+        @change="load"
+      />
+
+      <el-select v-model="filters.sort" style="width:200px" @change="load">
+        <el-option label="缺口从大到小" value="gap_desc" />
+        <el-option label="缺口从小到大" value="gap_asc" />
+        <el-option label="库存从小到大" value="qty_asc" />
+        <el-option label="SKU A→Z" value="sku_asc" />
+        <el-option label="名称 A→Z" value="name_asc" />
+      </el-select>
 
       <el-button type="primary" @click="load">查询</el-button>
       <el-button @click="reset">重置</el-button>
 
-      <el-button type="warning" plain :loading="exporting" @click="exportCsv">一键导出</el-button>
+      <el-button type="warning" plain :loading="exportingCsv" @click="exportCsv">导出 CSV</el-button>
+      <el-button type="success" plain :loading="exportingXlsx" @click="exportXlsx">导出 Excel</el-button>
 
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
-        <el-tag v-if="rows.length" type="danger">预警：{{ rows.length }} 条</el-tag>
+        <el-tag v-if="rows.length" type="danger">
+          {{ filters.only_alert ? "预警" : "列表" }}：{{ rows.length }} 条
+        </el-tag>
         <el-button size="small" type="info" plain @click="$router.push('/stock')">去库存查询</el-button>
       </div>
     </div>
 
-    <el-table :data="rows" v-loading="loading" stripe>
+    <div v-if="selectedIds.length" style="display:flex; gap:12px; align-items:center; margin-bottom:10px">
+      <el-tag type="info">已选 {{ selectedIds.length }} 条</el-tag>
+      <el-input-number v-model="bulkWarningQty" :min="0" :step="1" controls-position="right" />
+      <el-button type="primary" :loading="bulkSaving" @click="applyBulkWarning">应用到已选</el-button>
+      <el-button @click="clearSelection">清空选择</el-button>
+      <div style="color:#909399">（批量设置预警值仅管理员可用）</div>
+    </div>
+
+    <el-table
+      ref="tableRef"
+      :data="rows"
+      v-loading="loading"
+      stripe
+      @selection-change="onSelectionChange"
+      row-key="item_id"
+    >
+      <el-table-column type="selection" width="46" />
       <el-table-column prop="sku" label="SKU" width="160" />
       <el-table-column prop="name" label="名称" min-width="180" />
       <el-table-column prop="brand" label="品牌" width="120" />
@@ -30,10 +64,20 @@
       <el-table-column prop="category" label="分类" width="120" />
       <el-table-column prop="qty" label="库存" width="90">
         <template #default="{ row }">
-          <span style="color:#d93025; font-weight:600">{{ row.qty }}</span>
+          <span :style="{ color: row.qty <= row.warning_qty ? '#d93025' : '#1f883d', fontWeight: '600' }">
+            {{ row.qty }}
+          </span>
         </template>
       </el-table-column>
       <el-table-column prop="warning_qty" label="预警值" width="90" />
+      <el-table-column prop="gap" label="缺口" width="90">
+        <template #default="{ row }">
+          <span :style="{ color: row.gap >= 0 ? '#d93025' : '#606266', fontWeight: '600' }">
+            {{ row.gap }}
+          </span>
+        </template>
+      </el-table-column>
+
       <el-table-column label="操作" width="190" fixed="right">
         <template #default="{ row }">
           <el-button size="small" type="primary" plain @click="goIn(row.item_id)">入库</el-button>
@@ -42,31 +86,46 @@
       </el-table-column>
     </el-table>
 
-    <el-empty v-if="!loading && rows.length===0" description="暂无预警项目" />
+    <el-empty v-if="!loading && rows.length===0" description="暂无数据" />
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from "vue";
+import { ref, reactive, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
-import { apiGet } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
+import * as XLSX from "xlsx";
 
 const router = useRouter();
 const { token } = useAuth();
 
+const tableRef = ref<any>(null);
 const rows = ref<any[]>([]);
 const loading = ref(false);
-const exporting = ref(false);
+const exportingCsv = ref(false);
+const exportingXlsx = ref(false);
 
 const warehouses = ref<{ id: number; name: string }[]>([]);
 const categories = ref<string[]>([]);
 
-const filters = reactive<{ warehouse_id: number; category: string; keyword: string }>({
+const filters = reactive<{ warehouse_id: number; category: string; keyword: string; only_alert: boolean; sort: string }>({
   warehouse_id: 1,
   category: "",
   keyword: "",
+  only_alert: true,
+  sort: "gap_desc",
+});
+
+const selected = ref<any[]>([]);
+const selectedIds = computed(() => selected.value.map((r) => Number(r.item_id)).filter((n) => Number.isFinite(n)));
+const bulkWarningQty = ref<number>(0);
+const bulkSaving = ref(false);
+
+const warehouseName = computed(() => {
+  const w = warehouses.value.find((x) => x.id === Number(filters.warehouse_id));
+  return w?.name || `仓库#${filters.warehouse_id}`;
 });
 
 function goIn(item_id: number) {
@@ -76,6 +135,33 @@ function goTx(item_id: number) {
   router.push({ path: "/tx", query: { item_id: String(item_id), warehouse_id: String(filters.warehouse_id) } });
 }
 
+function onSelectionChange(list: any[]) {
+  selected.value = list || [];
+}
+
+function clearSelection() {
+  selected.value = [];
+  tableRef.value?.clearSelection?.();
+}
+
+async function applyBulkWarning() {
+  if (!selectedIds.value.length) return;
+  try {
+    bulkSaving.value = true;
+    await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, {
+      item_ids: selectedIds.value,
+      warning_qty: Number(bulkWarningQty.value || 0),
+    });
+    ElMessage.success("已更新预警值");
+    clearSelection();
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.message || "批量更新失败");
+  } finally {
+    bulkSaving.value = false;
+  }
+}
+
 async function loadMeta() {
   try {
     const w = await apiGet<{ ok: boolean; data: any[] }>(`/api/warehouses`);
@@ -83,14 +169,14 @@ async function loadMeta() {
     if (!warehouses.value.find((x) => x.id === filters.warehouse_id) && warehouses.value.length) {
       filters.warehouse_id = warehouses.value[0].id;
     }
-  } catch (e: any) {
-    // 不阻塞页面，仓库列表失败时仍可用默认仓库
+  } catch {
+    // 不阻塞页面
   }
 
   try {
     const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`);
     categories.value = c.data || [];
-  } catch (e: any) {
+  } catch {
     categories.value = [];
   }
 }
@@ -100,10 +186,17 @@ async function load() {
     loading.value = true;
     const qs = new URLSearchParams();
     qs.set("warehouse_id", String(filters.warehouse_id || 1));
+    qs.set("only_alert", filters.only_alert ? "1" : "0");
+    qs.set("sort", filters.sort || "gap_desc");
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
     const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/warnings?` + qs.toString());
-    rows.value = j.data || [];
+    rows.value = (j.data || []).map((r: any) => ({
+      ...r,
+      qty: Number(r.qty ?? 0),
+      warning_qty: Number(r.warning_qty ?? 0),
+      gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
+    }));
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
@@ -114,14 +207,18 @@ async function load() {
 function reset() {
   filters.category = "";
   filters.keyword = "";
+  filters.only_alert = true;
+  filters.sort = "gap_desc";
   load();
 }
 
 async function exportCsv() {
   try {
-    exporting.value = true;
+    exportingCsv.value = true;
     const qs = new URLSearchParams();
     qs.set("warehouse_id", String(filters.warehouse_id || 1));
+    qs.set("only_alert", filters.only_alert ? "1" : "0");
+    qs.set("sort", filters.sort || "gap_desc");
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
 
@@ -148,11 +245,46 @@ async function exportCsv() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    ElMessage.success("已导出");
+    ElMessage.success("已导出 CSV");
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {
-    exporting.value = false;
+    exportingCsv.value = false;
+  }
+}
+
+function exportXlsx() {
+  try {
+    exportingXlsx.value = true;
+
+    const data = rows.value.map((r) => ({
+      仓库: warehouseName.value,
+      SKU: r.sku,
+      名称: r.name,
+      品牌: r.brand,
+      型号: r.model,
+      分类: r.category,
+      库存: r.qty,
+      预警值: r.warning_qty,
+      缺口: r.gap,
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data);
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "预警中心");
+
+    const now = new Date();
+    const y = now.getFullYear();
+    const m = String(now.getMonth() + 1).padStart(2, "0");
+    const d = String(now.getDate()).padStart(2, "0");
+    const filename = `warnings_${y}${m}${d}.xlsx`;
+
+    XLSX.writeFile(wb, filename);
+    ElMessage.success("已导出 Excel");
+  } catch (e: any) {
+    ElMessage.error((e as any)?.message || "导出失败");
+  } finally {
+    exportingXlsx.value = false;
   }
 }
 
