@@ -54,14 +54,14 @@
       <el-table-column prop="username" label="用户" width="130" />
       <el-table-column label="动作" min-width="160">
         <template #default="{ row }">
-          <el-tag :type="tagType(row.action)" effect="light">{{ row.action }}</el-tag>
+          <el-tag :title="row.action" :type="tagType(row.action)" effect="light">{{ actionLabel(row.action) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column label="实体" min-width="180">
         <template #default="{ row }">
           <div class="entity-cell">
-            <div class="entity-name">{{ row.item_name || row.entity || '-' }}</div>
-            <div class="entity-meta" v-if="row.item_name">{{ row.entity }}</div>
+            <div class="entity-name">{{ row.item_name || entityLabel(row.entity) || "-" }}</div>
+            <div class="entity-meta" v-if="row.item_name">{{ entityLabel(row.entity) }}</div>
           </div>
         </template>
       </el-table-column>
@@ -117,6 +117,43 @@
 import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
+
+
+const ACTION_LABEL: Record<string, string> = {
+  STOCK_IN: "入库",
+  STOCK_OUT: "出库",
+  BATCH_IN: "批量入库",
+  BATCH_OUT: "批量出库",
+  STOCKTAKE_APPLY: "盘点生效",
+  STOCKTAKE_ROLLBACK: "撤销盘点",
+  STOCKTAKE_DELETE: "删除盘点单",
+  ITEM_CREATE: "新增配件",
+  ITEM_UPDATE: "修改配件",
+  ITEM_DELETE: "删除配件",
+  USER_CREATE: "新增用户",
+  USER_UPDATE: "修改用户",
+  USER_DELETE: "删除用户",
+  USER_RESET_PASSWORD: "重置密码",
+  TX_CLEAR: "清空出入库明细",
+  AUDIT_DELETE: "删除审计日志",
+};
+
+const ENTITY_LABEL: Record<string, string> = {
+  stock_tx: "出入库流水",
+  stocktake: "盘点单",
+  items: "配件",
+  users: "用户",
+  audit_log: "审计日志",
+  stock: "库存",
+  warehouse: "仓库",
+};
+
+function actionLabel(a: string) {
+  return ACTION_LABEL[a] || a;
+}
+function entityLabel(e: string) {
+  return ENTITY_LABEL[e] || e;
+}
 
 const rows = ref<any[]>([]);
 const loading = ref(false);

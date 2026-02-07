@@ -40,11 +40,11 @@
     <el-table :data="rows" border v-loading="loading">
       <el-table-column prop="created_at" label="时间" width="170" />
       <el-table-column prop="tx_no" label="单号" width="190" />
-      <el-table-column prop="type" label="类型" width="90">
+      <el-table-column prop="type" label="类型" width="120">
         <template #default="{row}">
-          <el-tag v-if="row.type==='IN'" type="success">IN</el-tag>
-          <el-tag v-else-if="row.type==='OUT'" type="danger">OUT</el-tag>
-          <el-tag v-else type="info">{{ row.type }}</el-tag>
+          <el-tag :type="typeTagType(row.type)" effect="light" :title="row.type">
+            {{ typeLabel(row.type) }}
+          </el-tag>
         </template>
       </el-table-column>
       <el-table-column label="配件" min-width="260">
@@ -94,6 +94,24 @@ import { apiGet, apiPost } from "../api/client";
 import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
+
+
+const TYPE_LABEL: Record<string, string> = {
+  IN: "入库",
+  OUT: "出库",
+  ADJUST: "盘点调整",
+  REVERSAL: "撤销盘点",
+};
+function typeLabel(t: string) {
+  return TYPE_LABEL[t] || t;
+}
+function typeTagType(t: string) {
+  if (t === "IN") return "success";
+  if (t === "OUT") return "danger";
+  if (t === "ADJUST") return "warning";
+  if (t === "REVERSAL") return "info";
+  return "info";
+}
 
 const route = useRoute();
 
