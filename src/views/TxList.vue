@@ -8,6 +8,10 @@
         <el-option label="撤销盘点(REVERSAL)" value="REVERSAL" />
       </el-select>
 
+      <el-select v-model="warehouse_id" placeholder="仓库" clearable style="width:160px">
+        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+      </el-select>
+
       <el-select
         v-model="item_id"
         filterable
@@ -125,6 +129,9 @@ function typeTagType(t: string) {
 
 const route = useRoute();
 
+const warehouses = ref<{ id: number; name: string }[]>([]);
+const warehouse_id = ref<number | undefined>(undefined);
+
 const items = ref<any[]>([]);
 const itemsLoading = ref(false);
 let itemsReqSeq = 0;
@@ -150,6 +157,7 @@ function onSearch(){
 function reset() {
   type.value = "";
   item_id.value = undefined;
+  warehouse_id.value = undefined;
   dateRange.value = null;
   page.value = 1;
   load();
@@ -182,6 +190,7 @@ async function doExport() {
       const params = new URLSearchParams();
       if (type.value) params.set("type", type.value);
       if (item_id.value) params.set("item_id", String(item_id.value));
+      if (warehouse_id.value) params.set("warehouse_id", String(warehouse_id.value));
       if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
       if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
       params.set("page", String(p));
@@ -247,6 +256,15 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
+async function loadWarehouses() {
+  try {
+    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/warehouses`);
+    warehouses.value = (j.data || []).map((x: any) => ({ id: Number(x.id), name: String(x.name) }));
+  } catch {
+    warehouses.value = [];
+  }
+}
+
 async function loadItems(keyword = "", pageNo = 1) {
   itemsLoading.value = true;
   const seq = ++itemsReqSeq;
@@ -293,6 +311,7 @@ async function load() {
     const params = new URLSearchParams();
     if (type.value) params.set("type", type.value);
     if (item_id.value) params.set("item_id", String(item_id.value));
+    if (warehouse_id.value) params.set("warehouse_id", String(warehouse_id.value));
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
 
@@ -314,6 +333,7 @@ async function clearTx() {
     const params = new URLSearchParams();
     if (type.value) params.set("type", type.value);
     if (item_id.value) params.set("item_id", String(item_id.value));
+    if (warehouse_id.value) params.set("warehouse_id", String(warehouse_id.value));
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
 
@@ -365,6 +385,7 @@ async function clearTx() {
     if (action === "filtered") {
       if (type.value) body.type = type.value;
       if (item_id.value) body.item_id = item_id.value;
+      if (warehouse_id.value) body.warehouse_id = warehouse_id.value;
       if (dateRange.value?.[0]) body.date_from = `${dateRange.value[0]} 00:00:00`;
       if (dateRange.value?.[1]) body.date_to = `${dateRange.value[1]} 23:59:59`;
     }
@@ -383,6 +404,9 @@ async function clearTx() {
 onMounted(async () => {
   const qid = Number(route.query.item_id);
   if (qid) item_id.value = qid;
+  const qwid = Number(route.query.warehouse_id);
+  if (qwid) warehouse_id.value = qwid;
+  await loadWarehouses();
   await loadItems();
   await ensureSelectedItemLabel(item_id.value);
   await load();

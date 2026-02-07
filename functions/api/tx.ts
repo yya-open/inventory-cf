@@ -4,6 +4,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   const user = await requireAuth(env, request, "viewer");
   const url = new URL(request.url);
   const type = url.searchParams.get("type") || "";
+  const warehouse_id = url.searchParams.get("warehouse_id");
   const item_id = url.searchParams.get("item_id");
   const date_from = url.searchParams.get("date_from");
   const date_to = url.searchParams.get("date_to");
@@ -16,6 +17,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   const binds: any[] = [];
 
   if (type) { wh.push(`t.type=?`); binds.push(type); }
+  if (warehouse_id) { wh.push(`t.warehouse_id=?`); binds.push(Number(warehouse_id)); }
   if (item_id) { wh.push(`t.item_id=?`); binds.push(Number(item_id)); }
   if (date_from) { wh.push(`t.created_at >= ?`); binds.push(date_from); }
   if (date_to) { wh.push(`t.created_at <= ?`); binds.push(date_to); }

@@ -53,6 +53,9 @@ CREATE TABLE IF NOT EXISTS stock_tx (
 
 CREATE INDEX IF NOT EXISTS idx_stock_tx_created_at ON stock_tx(created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_item ON stock_tx(item_id);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_created ON stock_tx(warehouse_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_item_created ON stock_tx(warehouse_id, item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_wh_item ON stock(warehouse_id, item_id);
 
 
 -- Users & Auth

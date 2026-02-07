@@ -1,24 +1,24 @@
 <template>
   <el-card>
     <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px">
-      <el-select v-model="filters.warehouse_id" style="width:180px" placeholder="选择仓库" @change="load">
+      <el-select v-model="filters.warehouse_id" style="width:180px" placeholder="选择仓库" @change="reload">
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
 
-      <el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="load">
+      <el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="reload">
         <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
       </el-select>
 
-      <el-input v-model="filters.keyword" style="width:240px" clearable placeholder="搜索：名称/SKU/品牌/型号" @keyup.enter="load" />
+      <el-input v-model="filters.keyword" style="width:240px" clearable placeholder="搜索：名称/SKU/品牌/型号" @keyup.enter="reload" />
 
       <el-switch
         v-model="filters.only_alert"
         active-text="只看异常"
         inactive-text="显示全部"
-        @change="load"
+        @change="reload"
       />
 
-      <el-select v-model="filters.sort" style="width:200px" @change="load">
+      <el-select v-model="filters.sort" style="width:200px" @change="reload">
         <el-option label="缺口从大到小" value="gap_desc" />
         <el-option label="缺口从小到大" value="gap_asc" />
         <el-option label="库存从小到大" value="qty_asc" />
@@ -26,7 +26,7 @@
         <el-option label="名称 A→Z" value="name_asc" />
       </el-select>
 
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="reload">查询</el-button>
       <el-button @click="reset">重置</el-button>
 
       <el-button type="warning" plain :loading="exportingCsv" @click="exportCsv">导出 CSV</el-button>
@@ -34,7 +34,7 @@
 
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
         <el-tag v-if="rows.length" type="danger">
-          {{ filters.only_alert ? "预警" : "列表" }}：{{ rows.length }} 条
+          {{ filters.only_alert ? "预警" : "列表" }}：{{ pager.total }} 条
         </el-tag>
         <el-button size="small" type="info" plain @click="$router.push('/stock')">去库存查询</el-button>
       </div>
@@ -119,6 +119,19 @@
       </el-table-column>
     </el-table>
 
+    <el-pagination
+      v-if="pager.total > pager.page_size"
+      style="margin-top:12px; display:flex; justify-content:flex-end"
+      background
+      layout="total, sizes, prev, pager, next, jumper"
+      :total="pager.total"
+      :page-size="pager.page_size"
+      :current-page="pager.page"
+      :page-sizes="[20, 50, 100, 200]"
+      @current-change="onPageChange"
+      @size-change="onPageSizeChange"
+    />
+
     <el-empty v-if="!loading && rows.length===0" description="暂无数据" />
   </el-card>
 </template>
@@ -137,6 +150,7 @@ const { token } = useAuth();
 const tableRef = ref<any>(null);
 const rows = ref<any[]>([]);
 const loading = ref(false);
+const pager = reactive<{ page: number; page_size: number; total: number }>({ page: 1, page_size: 50, total: 0 });
 const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
 
@@ -227,9 +241,17 @@ async function load() {
     qs.set("warehouse_id", String(filters.warehouse_id || 1));
     qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
+    qs.set("page", String(pager.page));
+    qs.set("page_size", String(pager.page_size));
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
-    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/warnings?` + qs.toString());
+
+    const j = await apiGet<{ ok: boolean; data: any[]; total?: number; page?: number; page_size?: number }>(`/api/warnings?` + qs.toString());
+
+    pager.total = Number((j as any).total ?? (j.data || []).length);
+    pager.page = Number((j as any).page ?? pager.page);
+    pager.page_size = Number((j as any).page_size ?? pager.page_size);
+
     rows.value = (j.data || []).map((r: any) => ({
       ...r,
       qty: Number(r.qty ?? 0),
@@ -237,11 +259,30 @@ async function load() {
       gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
       last_tx_at: r.last_tx_at ?? "",
     }));
+
+    // Changing pages should not keep previous selection silently
+    clearSelection();
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
     loading.value = false;
   }
+}
+
+function reload() {
+  pager.page = 1;
+  reload();
+}
+
+function onPageChange(p: number) {
+  pager.page = Number(p || 1);
+  reload();
+}
+
+function onPageSizeChange(ps: number) {
+  pager.page_size = Number(ps || 50);
+  pager.page = 1;
+  reload();
 }
 
 function formatTime(v: any) {
@@ -267,7 +308,7 @@ function reset() {
   filters.keyword = "";
   filters.only_alert = true;
   filters.sort = "gap_desc";
-  load();
+  reload();
 }
 
 async function exportCsv() {
