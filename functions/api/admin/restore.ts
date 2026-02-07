@@ -78,7 +78,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // Restore should be atomic: if anything fails, rollback.
     // Use prepare().run() for transaction control (more consistent across D1 runtimes than exec()).
-    await env.DB.prepare("BEGIN").run();
+    
     try {
       if (mode === "replace") {
         // Delete in safe order
@@ -110,9 +110,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         insertedTotal += inserted;
       }
 
-      await env.DB.prepare("COMMIT").run();
-    } catch (err) {
-      await env.DB.prepare("ROLLBACK").run();
+      } catch (err) {
+      
       throw err;
     }
 

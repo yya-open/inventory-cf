@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { logAudit } from "../_audit";
 
 type ClearBody = {
   // if mode === 'all', ignore filters

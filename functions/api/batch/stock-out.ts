@@ -117,11 +117,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     );
 
     try {
-      await env.DB.prepare("BEGIN IMMEDIATE").run();
       await env.DB.batch(stmts);
-      await env.DB.prepare("COMMIT").run();
-    } catch (e: any) {
-      await env.DB.prepare("ROLLBACK").run().catch(() => {});
+      } catch (e: any) {
       if (String(e?.message || "").includes("JSON path error")) {
         return Response.json({ ok: false, message: "库存不足（可能存在并发出库），本次批量出库已全部回滚" }, { status: 409 });
       }

@@ -12,18 +12,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const { id } = await request.json();
     const st_id = Number(id);
     if (!st_id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
-
-    // Lock with a write transaction to avoid concurrent apply/rollback races.
-    try {
-      await env.DB.prepare("BEGIN IMMEDIATE").run();
-
-      const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
+    // D1 环境不允许 SQL BEGIN/COMMIT；使用条件 UPDATE + batch 保证幂等。
+const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
       if (!st) {
-        await env.DB.prepare("ROLLBACK").run().catch(() => {});
         return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
       }
       if (st.status !== "DRAFT") {
-        await env.DB.prepare("ROLLBACK").run().catch(() => {});
         return Response.json({ ok: false, message: "盘点单已应用或状态不允许" }, { status: 400 });
       }
 
@@ -76,13 +70,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         throw new Error("盘点单状态已变化（可能被其他人应用/撤销），本次操作已回滚");
       }
 
-      await env.DB.prepare("COMMIT").run();
 
       // Best-effort audit
       logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted }).catch(() => {});
       return Response.json({ ok: true, adjusted });
     } catch (e: any) {
-      await env.DB.prepare("ROLLBACK").run().catch(() => {});
       // Map conflict to 409 to be more explicit
       if (String(e?.message || "").includes("状态已变化")) {
         return Response.json({ ok: false, message: e.message }, { status: 409 });

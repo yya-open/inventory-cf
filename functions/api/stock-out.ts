@@ -35,22 +35,18 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     let inserted = 0;
 
     try {
-      await env.DB.prepare("BEGIN IMMEDIATE").run();
+      // D1 的 batch 本身是原子事务，不要使用 SQL BEGIN/COMMIT（Cloudflare 会报错）
       const rs = await env.DB.batch(stmts);
-      inserted = rs[1]?.meta?.changes || 0;
+      inserted = (rs[1] as any)?.meta?.changes || 0;
 
       if (inserted === 0) {
-        await env.DB.prepare("ROLLBACK").run().catch(() => {});
         return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
       }
-
-      await env.DB.prepare("COMMIT").run();
+    }
     } catch (e) {
-      await env.DB.prepare("ROLLBACK").run().catch(() => {});
       throw e;
     }
-
-    // Best-effort audit
+// Best-effort audit
     logAudit(env.DB, request, user, "STOCK_OUT", "stock_tx", no, {
       item_id,
       warehouse_id,
