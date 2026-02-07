@@ -183,7 +183,8 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessageBox } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 
@@ -269,7 +270,7 @@ watch(sortedList, async () => {
 async function deleteStocktake(row:any){
   if (!row?.id) return;
   if (String(row.status) !== "DRAFT"){
-    ElMessage.warning("仅草稿状态可删除");
+    msgWarn("仅草稿状态可删除");
     return;
   }
   let confirmText = "";
@@ -291,14 +292,14 @@ async function deleteStocktake(row:any){
   }
   try{
     await apiPost("/api/stocktake/delete", { id: Number(row.id), confirm: confirmText });
-    ElMessage.success("删除成功");
+    msgSuccess("删除成功");
     if (Number(selectedId.value) === Number(row.id)){
       selectedId.value = null;
       detail.value = null;
     }
     await loadList();
   }catch(e:any){
-    ElMessage.error(e.message || "删除失败");
+    msgError(e.message || "删除失败");
   }
 }
 
@@ -320,7 +321,7 @@ async function loadWarehouses(){
     warehouses.value = r.data || [];
     if (warehouses.value?.length) warehouseId.value = warehouses.value[0].id;
   }catch(e:any){
-    ElMessage.error(e.message || "加载仓库失败");
+    msgError(e.message || "加载仓库失败");
   }
 }
 
@@ -350,7 +351,7 @@ async function loadList(){
     listTotal.value = Number(r.total || 0);
     list.value = (r.data || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
   }catch(e:any){
-    ElMessage.error(e.message || "加载盘点单失败");
+    msgError(e.message || "加载盘点单失败");
   }
 }
 
@@ -368,7 +369,7 @@ async function loadDetail(id:number){
     detail.value = r;
     dirty.value = new Set();
   }catch(e:any){
-    ElMessage.error(e.message || "加载盘点明细失败");
+    msgError(e.message || "加载盘点明细失败");
   }
 }
 
@@ -381,14 +382,14 @@ async function createStocktake(){
   creating.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
-    ElMessage.success("盘点单已创建");
+    msgSuccess("盘点单已创建");
     await loadList();
 	    selectedId.value = Number(r.id);
 	    await loadDetail(Number(r.id));
 	    await nextTick();
 	    scrollToSelected();
   }catch(e:any){
-    ElMessage.error(e.message || "创建失败");
+    msgError(e.message || "创建失败");
   }finally{
     creating.value = false;
   }
@@ -431,11 +432,11 @@ function beforeUpload(file: File){
         }))
         .filter((x:any)=>x.sku && x.counted_qty !== null);
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
-      ElMessage.success(`导入完成：更新 ${r.updated} 行`);
-      if (r.unknown?.length) ElMessage.warning(`有 ${r.unknown.length} 个 SKU 未识别（已跳过）`);
+      msgSuccess(`导入完成：更新 ${r.updated} 行`);
+      if (r.unknown?.length) msgWarn(`有 ${r.unknown.length} 个 SKU 未识别（已跳过）`);
       await refreshDetail();
     }catch(err:any){
-      ElMessage.error(err.message || "导入失败");
+      msgError(err.message || "导入失败");
     }
   };
   reader.readAsArrayBuffer(file);
@@ -446,7 +447,7 @@ function beforeUpload(file: File){
 	async function saveLines(){
 	  if (!detail.value) return;
 	  if (!dirty.value.size){
-	    ElMessage.info("没有需要保存的修改");
+	    msgInfo("没有需要保存的修改");
 	    return;
 	  }
   saving.value = true;
@@ -464,10 +465,10 @@ function beforeUpload(file: File){
       })
       .filter((x:any)=>x.sku && (x.counted_qty === null || !Number.isNaN(x.counted_qty)));
     const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
-    ElMessage.success(`已保存：${r.updated} 行`);
+    msgSuccess(`已保存：${r.updated} 行`);
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(e.message || "保存失败");
+    msgError(e.message || "保存失败");
   }finally{
     saving.value = false;
   }
@@ -482,10 +483,10 @@ async function applyStocktake(){
   applying.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id });
-    ElMessage.success(`已应用：生成 ${r.adjusted} 条调整记录`);
+    msgSuccess(`已应用：生成 ${r.adjusted} 条调整记录`);
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(e.message || "应用失败");
+    msgError(e.message || "应用失败");
   }finally{
     applying.value = false;
   }
@@ -513,11 +514,11 @@ async function rollbackStocktake(){
   rolling.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id, confirm: confirmText });
-    ElMessage.success(`撤销成功：恢复 ${r.reversed} 条差异库存`);
+    msgSuccess(`撤销成功：恢复 ${r.reversed} 条差异库存`);
     await loadList();
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(e.message || "撤销失败");
+    msgError(e.message || "撤销失败");
   }finally{
     rolling.value = false;
   }

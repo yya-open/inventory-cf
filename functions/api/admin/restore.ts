@@ -73,37 +73,47 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "缺少备份数据 tables" }, { status: 400 });
     }
 
-    if (mode === "replace") {
-      // Delete in safe order
-      const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
-      await env.DB.batch(stmts);
-    }
-
     let insertedTotal = 0;
     const insertedByTable: Record<string, number> = {};
 
-    for (const t of INSERT_ORDER) {
-      const rows = (tables as any)[t] as any[] | undefined;
-      if (!rows?.length) continue;
-      const cols = TABLE_COLUMNS[t];
-      if (!cols) continue;
-
-      const verb = mode === "merge" ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
-      const placeholders = cols.map(() => "?").join(",");
-      const sql = `${verb} INTO ${t} (${cols.join(",")}) VALUES (${placeholders})`;
-
-      let i = 0;
-      let inserted = 0;
-      while (i < rows.length) {
-        const chunk = rows.slice(i, i + 50);
-        const batch = chunk.map((r) => env.DB.prepare(sql).bind(...pick(r, cols)));
-        const res = await env.DB.batch(batch);
-        for (const rr of res) inserted += Number((rr as any)?.meta?.changes ?? 0);
-        i += 50;
+    // Restore should be atomic: if anything fails, rollback.
+    // D1 runtime does not reliably support DB.exec() across environments; use prepare().run() for txn control.
+    await env.DB.prepare("BEGIN").run();
+    try {
+      if (mode === "replace") {
+        // Delete in safe order
+        const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
+        await env.DB.batch(stmts);
       }
 
-      insertedByTable[t] = inserted;
-      insertedTotal += inserted;
+      for (const t of INSERT_ORDER) {
+        const rows = (tables as any)[t] as any[] | undefined;
+        if (!rows?.length) continue;
+        const cols = TABLE_COLUMNS[t];
+        if (!cols) continue;
+
+        const verb = mode === "merge" ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
+        const placeholders = cols.map(() => "?").join(",");
+        const sql = `${verb} INTO ${t} (${cols.join(",")}) VALUES (${placeholders})`;
+
+        let i = 0;
+        let inserted = 0;
+        while (i < rows.length) {
+          const chunk = rows.slice(i, i + 50);
+          const batch = chunk.map((r) => env.DB.prepare(sql).bind(...pick(r, cols)));
+          const res = await env.DB.batch(batch);
+          for (const rr of res) inserted += Number((rr as any)?.meta?.changes ?? 0);
+          i += 50;
+        }
+
+        insertedByTable[t] = inserted;
+        insertedTotal += inserted;
+      }
+
+      await env.DB.prepare("COMMIT").run();
+    } catch (err) {
+      await env.DB.prepare("ROLLBACK").run();
+      throw err;
     }
 
     await logAudit(env.DB, request, actor, "ADMIN_RESTORE", "backup", null, {

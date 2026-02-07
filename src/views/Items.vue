@@ -73,7 +73,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { apiGet, apiPost } from "../api/client";
 import { useRouter } from "vue-router";
 
@@ -155,7 +155,7 @@ async function load() {
     const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?keyword=${encodeURIComponent(keyword.value)}`);
     rows.value = j.data;
   } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
+    msgError(e?.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -163,7 +163,7 @@ async function load() {
 
 async function save() {
   if (!form.sku?.trim() || !form.name?.trim()) {
-    ElMessage.warning("SKU 和 名称 为必填");
+    msgWarn("SKU 和 名称 为必填");
     return;
   }
   try {
@@ -178,11 +178,11 @@ async function save() {
       unit: form.unit?.trim() || "个",
       warning_qty: Number(form.warning_qty || 0),
     });
-    ElMessage.success("保存成功");
+    msgSuccess("保存成功");
     dlgVisible.value = false;
     await load();
   } catch (e: any) {
-    ElMessage.error(e?.message || "保存失败");
+    msgError(e?.message || "保存失败");
   } finally {
     saving.value = false;
   }

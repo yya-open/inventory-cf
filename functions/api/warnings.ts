@@ -29,27 +29,42 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const only_alert = (url.searchParams.get("only_alert") ?? "1") !== "0";
     const sort = (url.searchParams.get("sort") || "gap_desc").trim();
 
+    const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+    const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
+    const offset = (page - 1) * pageSize;
+
     const whereParts: string[] = ["i.enabled=1"];
-    // Note: we need warehouse_id twice (stock join + last_tx subquery)
-    const binds: any[] = [warehouse_id];
+    const filterBinds: any[] = [];
 
     if (only_alert) {
       whereParts.push("COALESCE(s.qty,0) <= COALESCE(i.warning_qty,0)");
     }
-
     if (category) {
       whereParts.push("i.category = ?");
-      binds.push(category);
+      filterBinds.push(category);
     }
-
     if (keyword) {
       whereParts.push("(i.name LIKE ? OR i.sku LIKE ? OR i.brand LIKE ? OR i.model LIKE ?)");
       const like = `%${keyword}%`;
-      binds.push(like, like, like, like);
+      filterBinds.push(like, like, like, like);
     }
 
+    const where = whereParts.length ? `WHERE ${whereParts.join(" AND ")}` : "";
     const orderBy = getSort(sort);
 
+    // Count (for pagination)
+    const totalRow = await env.DB.prepare(
+      `SELECT COUNT(1) AS c
+       FROM items i
+       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
+       ${where}`
+    )
+      .bind(warehouse_id, ...filterBinds)
+      .first<any>();
+
+    const total = Number(totalRow?.c || 0);
+
+    // Data (optimize last_tx_at using one aggregated join instead of per-row subquery)
     const sql = `
       SELECT
         i.id as item_id,
@@ -57,20 +72,26 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         COALESCE(i.warning_qty,0) as warning_qty,
         COALESCE(s.qty,0) as qty,
         (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap,
-        (
-          SELECT MAX(tx.created_at)
-          FROM stock_tx tx
-          WHERE tx.warehouse_id = ? AND tx.item_id = i.id
-        ) as last_tx_at
+        lt.last_tx_at as last_tx_at
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
-      WHERE ${whereParts.join(" AND ")}
+      LEFT JOIN (
+        SELECT item_id, MAX(created_at) as last_tx_at
+        FROM stock_tx
+        WHERE warehouse_id=?
+        GROUP BY item_id
+      ) lt ON lt.item_id = i.id
+      ${where}
       ORDER BY ${orderBy}
+      LIMIT ? OFFSET ?
     `;
-    // bind order: last_tx warehouse_id, stock join warehouse_id, then filters
-    const bindAll = [warehouse_id, ...binds];
-    const { results } = await env.DB.prepare(sql).bind(...bindAll).all();
-    return Response.json({ ok: true, data: results });
+
+    // bind order: stock join warehouse_id, last_tx subquery warehouse_id, then filters, then paging
+    const { results } = await env.DB.prepare(sql)
+      .bind(warehouse_id, warehouse_id, ...filterBinds, pageSize, offset)
+      .all();
+
+    return Response.json({ ok: true, data: results, total, page, page_size: pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }

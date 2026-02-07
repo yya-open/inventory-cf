@@ -7,6 +7,7 @@ type ClearBody = {
   mode?: "filtered" | "all";
   type?: string;
   item_id?: number;
+  warehouse_id?: number;
   date_from?: string;
   date_to?: string;
   // hard confirmation
@@ -39,6 +40,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         wh.push("item_id=?");
         binds.push(Number(body.item_id));
       }
+      if (body.warehouse_id) {
+        wh.push("warehouse_id=?");
+        binds.push(Number(body.warehouse_id));
+      }
       if (body.date_from) {
         wh.push("created_at >= ?");
         binds.push(body.date_from);
@@ -63,6 +68,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           : {
               type: body.type,
               item_id: body.item_id,
+              warehouse_id: body.warehouse_id,
               date_from: body.date_from,
               date_to: body.date_to,
             },

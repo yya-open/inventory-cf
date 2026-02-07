@@ -32,7 +32,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { login, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
 
@@ -58,28 +58,28 @@ async function doLogin() {
       showChange.value = true;
       return;
     }
-    ElMessage.success("登录成功");
+    msgSuccess("登录成功");
     const redirect = (route.query.redirect as string) || "/stock";
     router.replace(redirect);
   } catch (e: any) {
-    ElMessage.error(e.message || "登录失败");
+    msgError(e.message || "登录失败");
   } finally {
     loading.value = false;
   }
 }
 
 async function changePassword() {
-  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
+  if (newP.value.length < 6) return msgWarn("新密码至少 6 位");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
     showChange.value = false;
-    ElMessage.success("密码已更新，请重新登录");
+    msgSuccess("密码已更新，请重新登录");
     auth.token = "";
     localStorage.removeItem("token");
     router.replace("/login");
   } catch (e: any) {
-    ElMessage.error(e.message || "修改失败");
+    msgError(e.message || "修改失败");
   } finally {
     changing.value = false;
   }
