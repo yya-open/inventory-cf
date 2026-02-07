@@ -7,7 +7,7 @@
 
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
       <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="keyword = ''; page.value=1; load()">重置</el-button>
+      <el-button @click="onReset">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>
       <el-button type="warning" plain @click="$router.push('/warnings')">查看预警</el-button>
     </div>
@@ -90,6 +90,12 @@ async function loadWarehouses() {
 }
 
 function onSearch(){
+  page.value = 1;
+  load();
+}
+
+function onReset(){
+  keyword.value = "";
   page.value = 1;
   load();
 }

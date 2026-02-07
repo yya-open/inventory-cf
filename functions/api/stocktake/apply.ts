@@ -6,7 +6,7 @@ function txNo(stNo: string, itemId: number) {
   return `ADJ${stNo}-${itemId}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "admin");
 
@@ -105,8 +105,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     // Best-effort audit
-    logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted }).catch(() => {});
-
+    waitUntil(logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted }).catch(() => {}));
     return Response.json({ ok: true, adjusted });
   } catch (e: any) {
     return errorResponse(e);

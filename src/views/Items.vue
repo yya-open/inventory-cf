@@ -3,7 +3,7 @@
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
       <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="keyword=''; page.value=1; load()">重置</el-button>
+      <el-button @click="onReset">重置</el-button>
       <el-button type="success" @click="openCreate">新增配件</el-button>
       <el-button @click="$router.push('/import/items')">Excel 导入</el-button>
     </div>
@@ -140,6 +140,12 @@ function onSearch(){
   load();
 }
 
+function onReset(){
+  keyword.value = "";
+  page.value = 1;
+  load();
+}
+
 function onPageChange(){
   load();
 }
@@ -154,6 +160,7 @@ async function load() {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?keyword=${encodeURIComponent(keyword.value)}`);
     rows.value = j.data;
+    total.value = Array.isArray(j.data) ? j.data.length : 0;
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

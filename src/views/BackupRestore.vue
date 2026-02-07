@@ -96,7 +96,7 @@
           </template>
 
           <div style="display:flex; flex-direction:column; gap:12px">
-            <el-upload :auto-upload="false" :show-file-list="false" accept=".json,.gz" @change="onPick">
+            <el-upload :auto-upload="false" :show-file-list="false" accept=".json,.gz" :on-change="onPick">
               <el-button>选择备份（.json / .json.gz）</el-button>
             </el-upload>
 
