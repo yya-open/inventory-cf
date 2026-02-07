@@ -1,6 +1,11 @@
-import * as XLSX from "xlsx";
+// XLSX is a large dependency. We load it dynamically so it doesn't bloat the initial bundle.
 
-export function exportToXlsx(filename: string, sheetName: string, rows: any[]) {
+async function loadXlsx() {
+  return await import("xlsx");
+}
+
+export async function exportToXlsx(filename: string, sheetName: string, rows: any[]) {
+  const XLSX = await loadXlsx();
   const ws = XLSX.utils.json_to_sheet(rows);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName);
@@ -14,7 +19,8 @@ export function exportToXlsx(filename: string, sheetName: string, rows: any[]) {
   URL.revokeObjectURL(url);
 }
 
-export function readFirstSheet(file: File) {
+export async function readFirstSheet(file: File) {
+  const XLSX = await loadXlsx();
   return new Promise<any[]>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = (e) => {
@@ -33,9 +39,9 @@ export function readFirstSheet(file: File) {
   });
 }
 
-export function exportTemplateItems() {
+export async function exportTemplateItems() {
   const rows = [
     { "SKU": "SSD-1T-NVME", "名称": "NVMe SSD 1TB", "品牌": "Samsung", "型号": "980", "分类": "硬盘", "单位": "块", "预警值": 1 },
   ];
-  exportToXlsx("配件导入模板.xlsx", "items", rows);
+  await exportToXlsx("配件导入模板.xlsx", "items", rows);
 }

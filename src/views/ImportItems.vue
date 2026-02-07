@@ -97,8 +97,12 @@ async function onPick(uploadFile: any) {
   }
 }
 
-function downloadTemplate() {
-  exportTemplateItems();
+async function downloadTemplate() {
+  try {
+    await exportTemplateItems();
+  } catch (e:any) {
+    ElMessage.error(e?.message || "生成模板失败");
+  }
 }
 
 async function submit() {

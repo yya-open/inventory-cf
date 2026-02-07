@@ -32,9 +32,9 @@
       />
 
       <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
+      <el-button @click="exportBackend" :disabled="total===0 || loading">导出（后台CSV）</el-button>
       <el-button @click="reset">重置</el-button>
-      <el-button type="success" plain @click="exportCsv" :disabled="rows.length===0">导出CSV</el-button>
+      <el-button type="success" plain @click="doExportLocalXlsx" :disabled="total===0 || loading">导出Excel（本地）</el-button>
 
       <el-button
         v-if="isAdmin"
@@ -100,10 +100,10 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { apiGet, apiPost } from "../api/client";
-import * as XLSX from "xlsx";
+import { apiGet, apiPost, apiDownload } from "../api/client";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
+import { exportToXlsx } from "../utils/excel";
 
 
 const TYPE_LABEL: Record<string, string> = {
@@ -170,7 +170,23 @@ function toCsvCell(v: any) {
   return `"${escaped}"`;
 }
 
-async function doExport() {
+async function exportBackend() {
+  try {
+    const params = new URLSearchParams();
+    if (type.value) params.set("type", type.value);
+    if (item_id.value) params.set("item_id", String(item_id.value));
+    if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
+    if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+    // Max rows safeguard (default 50k, can tweak if needed)
+    params.set("max", "50000");
+    await apiDownload(`/api/tx/export?${params.toString()}`, `stock_tx_${new Date().toISOString().slice(0,10)}.csv`);
+    ElMessage.success("后台导出已开始（CSV 可直接用 Excel 打开）");
+  } catch (e: any) {
+    ElMessage.error(e?.message || "导出失败");
+  }
+}
+
+async function doExportLocalXlsx() {
   try {
     loading.value = true;
     // 拉取全部符合筛选条件的数据（按页循环，避免只导出当前页）
@@ -209,42 +225,13 @@ async function doExport() {
       "备注": r.remark || ""
     }));
 
-    const ws = XLSX.utils.json_to_sheet(data, { skipHeader: false });
-    const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "明细");
-    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
-    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.xlsx`;
-    a.click();
-    URL.revokeObjectURL(url);
+    await exportToXlsx(`stock_tx_${new Date().toISOString().slice(0,10)}.xlsx`, "明细", data);
     ElMessage.success(`已导出 ${data.length} 条`);
   } catch (e:any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {
     loading.value = false;
   }
-}
-
-function exportCsv() {
-  const headers = ["时间","单号","类型","SKU","名称","仓库","数量","变动","来源","去向","备注"];
-  const lines = [headers.map(toCsvCell).join(",")];
-  for (const r of rows.value) {
-    lines.push([
-      r.created_at, r.tx_no, r.type, r.sku, r.name, r.warehouse_name, r.qty,
-      signedDelta(r),
-      r.source || "", r.target || "", r.remark || ""
-    ].map(toCsvCell).join(","));
-  }
-  const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
 }
 
 async function loadItems(keyword = "", pageNo = 1) {
