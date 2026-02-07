@@ -16,21 +16,28 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   const q = Number(qty);
   if (!item_id || !q || q <= 0) return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
 
+  const no = txNo();
+
+  // Atomic: update stock AND write tx in one statement.
+  // If stock is insufficient, the UPDATE returns 0 rows and the INSERT inserts 0 rows.
   const r = await env.DB.prepare(
-    `UPDATE stock
-     SET qty = qty - ?, updated_at=datetime('now')
-     WHERE item_id=? AND warehouse_id=? AND qty >= ?`
-  ).bind(q, item_id, warehouse_id, q).run();
+    `WITH upd AS (
+        UPDATE stock
+        SET qty = qty - ?, updated_at=datetime('now')
+        WHERE item_id=? AND warehouse_id=? AND qty >= ?
+        RETURNING 1
+     )
+     INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
+     SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?
+     FROM upd`
+  ).bind(
+    q, item_id, warehouse_id, q,
+    no, item_id, warehouse_id, q, target ?? null, remark ?? null, user.username
+  ).run();
 
   if ((r.meta?.changes || 0) === 0) {
     return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
   }
-
-  const no = txNo();
-  await env.DB.prepare(
-    `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
-     VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?)`
-  ).bind(no, item_id, warehouse_id, q, target ?? null, remark ?? null, user.username).run();
 
   return Response.json({ ok: true, tx_no: no });
 

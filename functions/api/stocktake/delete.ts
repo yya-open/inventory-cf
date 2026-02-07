@@ -14,11 +14,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "仅草稿状态可删除；已应用盘点请先撤销" }, { status: 400 });
     }
 
-    // delete lines first
-    await env.DB.prepare(`DELETE FROM stocktake_line WHERE stocktake_id=?`).bind(id).run();
-    const r = await env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status='DRAFT'`).bind(id).run();
+    // Transaction: delete lines + header together
+    const r = await env.DB.batch([
+      env.DB.prepare(`DELETE FROM stocktake_line WHERE stocktake_id=?`).bind(id),
+      env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status='DRAFT'`).bind(id),
+    ]);
 
-    return Response.json({ ok: true, changes: (r as any)?.meta?.changes ?? 0 });
+    const changes = Number((r?.[1] as any)?.meta?.changes ?? 0);
+    return Response.json({ ok: true, changes });
   } catch (e: any) {
     return errorResponse(e);
   }

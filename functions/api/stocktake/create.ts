@@ -17,26 +17,26 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const wid = Number(warehouse_id);
 
     const no = stNo();
-    const ins = await env.DB.prepare(
-      `INSERT INTO stocktake (st_no, warehouse_id, status, created_by) VALUES (?, ?, 'DRAFT', ?)`
-    ).bind(no, wid, user.username).run();
 
-    const st_id = ins.meta.last_row_id as number;
+    // Transaction: header + lines (avoid "header exists but lines missing")
+    await env.DB.batch([
+      env.DB.prepare(
+        `INSERT INTO stocktake (st_no, warehouse_id, status, created_by) VALUES (?, ?, 'DRAFT', ?)`
+      ).bind(no, wid, user.username),
+      env.DB.prepare(
+        `INSERT INTO stocktake_line (stocktake_id, item_id, system_qty, counted_qty, diff_qty)
+         SELECT (SELECT id FROM stocktake WHERE st_no=?), i.id,
+                COALESCE(s.qty, 0) AS system_qty,
+                NULL AS counted_qty,
+                NULL AS diff_qty
+         FROM items i
+         LEFT JOIN stock s ON s.item_id = i.id AND s.warehouse_id = ?
+         WHERE i.enabled = 1`
+      ).bind(no, wid),
+    ]);
 
-    // create lines for all enabled items
-    // system_qty from stock; default 0
-    await env.DB.prepare(
-      `INSERT INTO stocktake_line (stocktake_id, item_id, system_qty, counted_qty, diff_qty)
-       SELECT ?, i.id,
-              COALESCE(s.qty, 0) AS system_qty,
-              NULL AS counted_qty,
-              NULL AS diff_qty
-       FROM items i
-       LEFT JOIN stock s ON s.item_id = i.id AND s.warehouse_id = ?
-       WHERE i.enabled = 1`
-    ).bind(st_id, wid).run();
-
-    return Response.json({ ok: true, id: st_id, st_no: no });
+    const row = await env.DB.prepare(`SELECT id FROM stocktake WHERE st_no=?`).bind(no).first<any>();
+    return Response.json({ ok: true, id: Number(row?.id), st_no: no });
   } catch (e:any) {
     return errorResponse(e);
   }

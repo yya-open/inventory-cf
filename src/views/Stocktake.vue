@@ -374,10 +374,23 @@ function beforeUpload(file: File){
       const wb = XLSX.read(data, { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" });
-      const lines = json.map(r=>({
-        sku: String(r.sku ?? r.SKU ?? "").trim(),
-        counted_qty: Number(r.counted_qty ?? r.qty ?? r["盘点数量"] ?? r["数量"] ?? "")
-      })).filter(x=>x.sku && !Number.isNaN(x.counted_qty));
+      // IMPORTANT: blank cells should NOT become 0.
+      // Excel import treats blank counted_qty as "ignore this row" (do not overwrite existing counted_qty).
+      const parseCount = (v: any): number | null => {
+        if (v === null || v === undefined) return null;
+        const s = String(v).trim();
+        if (!s) return null;
+        const n = Number(s);
+        if (Number.isNaN(n)) return null;
+        return n;
+      };
+
+      const lines = json
+        .map((r:any)=>({
+          sku: String(r.sku ?? r.SKU ?? "").trim(),
+          counted_qty: parseCount(r.counted_qty ?? r.qty ?? r["盘点数量"] ?? r["数量"] ?? "")
+        }))
+        .filter((x:any)=>x.sku && x.counted_qty !== null);
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
       ElMessage.success(`导入完成：更新 ${r.updated} 行`);
       if (r.unknown?.length) ElMessage.warning(`有 ${r.unknown.length} 个 SKU 未识别（已跳过）`);
@@ -401,7 +414,16 @@ function beforeUpload(file: File){
   try{
     const lines = detail.value.lines
       .filter((l:any)=>dirty.value.has(l.id))
-      .map((l:any)=>({ sku: l.sku, counted_qty: Number(l.counted_qty) }));
+      .map((l:any)=>{
+        const raw = l.counted_qty;
+        const isEmpty = raw === null || raw === undefined || raw === "";
+        return {
+          sku: l.sku,
+          // When user clears the input, explicitly send null so backend clears counted_qty/diff_qty.
+          counted_qty: isEmpty ? null : Number(raw),
+        };
+      })
+      .filter((x:any)=>x.sku && (x.counted_qty === null || !Number.isNaN(x.counted_qty)));
     const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
     ElMessage.success(`已保存：${r.updated} 行`);
     await refreshDetail();

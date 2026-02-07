@@ -1,6 +1,12 @@
 <template>
   <el-card>
     <el-form label-width="90px" style="max-width: 560px">
+      <el-form-item label="仓库">
+        <el-select v-model="warehouse_id" placeholder="选择仓库" style="width: 100%" @change="loadQty">
+          <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+        </el-select>
+      </el-form-item>
+
       <el-form-item label="配件">
         <el-select v-model="item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%" @change="loadQty">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
@@ -41,6 +47,9 @@ import { useRoute } from "vue-router";
 
 const route = useRoute();
 
+const warehouses = ref<any[]>([]);
+const warehouse_id = ref<number>(1);
+
 const items = ref<any[]>([]);
 const item_id = ref<number | undefined>(undefined);
 const qty = ref(1);
@@ -50,6 +59,22 @@ const submitting = ref(false);
 
 const available = ref(0);
 const warning = ref(0);
+
+async function loadWarehouses() {
+  try {
+    const r: any = await apiGet("/api/warehouses");
+    warehouses.value = r.data || [];
+
+    const qWarehouse = Number(route.query.warehouse_id);
+    if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
+      warehouse_id.value = qWarehouse;
+    } else if (warehouses.value?.length) {
+      warehouse_id.value = warehouses.value[0].id;
+    }
+  } catch (e: any) {
+    ElMessage.error((e as any)?.message || "加载仓库失败");
+  }
+}
 
 async function loadItems() {
   const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items`);
@@ -63,7 +88,10 @@ async function loadItems() {
 }
 
 async function loadQty() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/stock?keyword=&warehouse_id=1`);
+  if (!item_id.value) { available.value = 0; warning.value = 0; return; }
+  const j = await apiGet<{ ok: boolean; data: any[] }>(
+    `/api/stock?keyword=&warehouse_id=${warehouse_id.value}`
+  );
   const row = j.data.find((x: any) => x.item_id === item_id.value);
   available.value = row ? Number(row.qty) : 0;
   warning.value = row ? Number(row.warning_qty) : 0;
@@ -74,7 +102,7 @@ async function submit() {
     submitting.value = true;
     await apiPost(`/api/stock-out`, {
       item_id: item_id.value,
-      warehouse_id: 1,
+      warehouse_id: warehouse_id.value,
       qty: qty.value,
       target: target.value,
       remark: remark.value,
@@ -91,5 +119,8 @@ async function submit() {
   }
 }
 
-onMounted(loadItems);
+onMounted(async () => {
+  await loadWarehouses();
+  await loadItems();
+});
 </script>

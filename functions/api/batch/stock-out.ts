@@ -68,28 +68,60 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
     if (insufficient.length) return Response.json({ ok: false, message: "库存不足", insufficient }, { status: 400 });
 
+    // Atomic + safe against concurrent changes:
+    // - Each line uses an UPDATE ... RETURNING + INSERT-from-CTE so that "tx inserted but stock not updated" cannot happen.
+    // - After all lines, a guard statement checks the number of inserted tx rows.
+    //   If any line failed to update (e.g. concurrent depletion), the guard triggers a SQL error, making the whole batch rollback.
     const stmts: D1PreparedStatement[] = [];
     const txs: any[] = [];
+    const txNos: string[] = [];
+
     for (const [sku, l] of agg) {
       const item_id = skuToId.get(sku)!;
       const no = txNo();
       txs.push({ tx_no: no, sku, qty: l.qty });
+      txNos.push(no);
 
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
-           VALUES (?, 'OUT', ?, ?, ?, ?, ?, ?)`
-        ).bind(no, item_id, warehouse_id, l.qty, l.target ?? null, l.remark ?? null, user.username)
-      );
-
-      stmts.push(
-        env.DB.prepare(
-          `UPDATE stock SET qty = qty - ?, updated_at=datetime('now')
-           WHERE item_id=? AND warehouse_id=?`
-        ).bind(l.qty, item_id, warehouse_id)
+          `WITH upd AS (
+              UPDATE stock
+              SET qty = qty - ?, updated_at=datetime('now')
+              WHERE item_id=? AND warehouse_id=? AND qty >= ?
+              RETURNING 1
+           )
+           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
+           SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?
+           FROM upd`
+        ).bind(
+          l.qty, item_id, warehouse_id, l.qty,
+          no, item_id, warehouse_id, l.qty,
+          l.target ?? null, l.remark ?? null, user.username
+        )
       );
     }
-    await env.DB.batch(stmts);
+
+    // Guard: inserted tx count must equal line count, otherwise throw (rollback the whole transaction)
+    const phTx = txNos.map(() => "?").join(",");
+    stmts.push(
+      env.DB.prepare(
+        `SELECT CASE
+           WHEN (SELECT COUNT(*) FROM stock_tx WHERE tx_no IN (${phTx})) = ?
+           THEN 1
+           ELSE json_extract('{"a":1}', '$[')
+         END AS ok`
+      ).bind(...txNos, txNos.length)
+    );
+
+    try {
+      await env.DB.batch(stmts);
+    } catch (e: any) {
+      // Convert guard error to a clearer business error
+      if (String(e?.message || "").includes("JSON path error")) {
+        return Response.json({ ok: false, message: "库存不足（可能存在并发出库），本次批量出库已全部回滚" }, { status: 409 });
+      }
+      throw e;
+    }
 
     return Response.json({ ok: true, count: txs.length, txs });
   } catch (e: any) {

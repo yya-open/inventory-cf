@@ -18,16 +18,18 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
   const no = txNo();
 
-  await env.DB.prepare(
-    `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, unit_price, source, remark, created_by)
-     VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?)`
-  ).bind(no, item_id, warehouse_id, q, unit_price ?? null, source ?? null, remark ?? null, user.username).run();
-
-  await env.DB.prepare(
-    `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-     VALUES (?, ?, ?, datetime('now'))
-     ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now')`
-  ).bind(item_id, warehouse_id, q).run();
+  // Use a single transaction to avoid "stock updated but tx missing" (or vice versa)
+  await env.DB.batch([
+    env.DB.prepare(
+      `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, unit_price, source, remark, created_by)
+       VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?)`
+    ).bind(no, item_id, warehouse_id, q, unit_price ?? null, source ?? null, remark ?? null, user.username),
+    env.DB.prepare(
+      `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
+       VALUES (?, ?, ?, datetime('now'))
+       ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now')`
+    ).bind(item_id, warehouse_id, q),
+  ]);
 
   return Response.json({ ok: true, tx_no: no });
 

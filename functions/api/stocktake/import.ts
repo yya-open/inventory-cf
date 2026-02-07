@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 
-type Line = { sku: string; counted_qty: number };
+type Line = { sku: string; counted_qty: number | null | "" | undefined };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -33,8 +33,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       if (!sku) continue;
       const item_id = skuToId.get(sku);
       if (!item_id) { unknown.push(sku); continue; }
-      const counted = Number(l.counted_qty);
-      if (Number.isNaN(counted) || counted < 0) continue;
+
+      // Allow clearing counted_qty by sending null/"".
+      const raw: any = (l as any).counted_qty;
+      const isEmpty = raw === null || raw === undefined || (typeof raw === "string" && raw.trim() === "");
+      let counted: number | null = null;
+      if (!isEmpty) {
+        const n = Number(raw);
+        if (Number.isNaN(n) || n < 0) continue;
+        counted = n;
+      }
 
       // update counted and diff
       stmts.push(env.DB.prepare(
