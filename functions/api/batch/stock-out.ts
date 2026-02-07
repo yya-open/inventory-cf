@@ -94,19 +94,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       txs.push({ tx_no: no, sku, qty: l.qty });
       txNos.push(no);
 
+      // D1-compatible atomic pair: UPDATE then conditional INSERT (depends on changes()).
       stmts.push(
         env.DB.prepare(
-          `WITH upd AS (
-              UPDATE stock
-              SET qty = qty - ?, updated_at=datetime('now')
-              WHERE item_id=? AND warehouse_id=? AND qty >= ?
-              RETURNING 1
-           )
-           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
+          `UPDATE stock
+           SET qty = qty - ?, updated_at=datetime('now')
+           WHERE item_id=? AND warehouse_id=? AND qty >= ?`
+        ).bind(l.qty, item_id, warehouse_id, l.qty)
+      );
+
+      stmts.push(
+        env.DB.prepare(
+          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
            SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
-           FROM upd`
+           WHERE (SELECT changes()) > 0`
         ).bind(
-          l.qty, item_id, warehouse_id, l.qty,
           no, item_id, warehouse_id, l.qty,
           -l.qty,
           'BATCH_OUT', null, batch_no,
