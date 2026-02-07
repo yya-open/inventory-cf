@@ -103,7 +103,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessageBox } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { apiGet, apiPost } from "../api/client";
 import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
@@ -229,9 +230,9 @@ async function doExport() {
     a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
-    ElMessage.success(`已导出 ${data.length} 条`);
+    msgSuccess(`已导出 ${data.length} 条`);
   } catch (e:any) {
-    ElMessage.error(e?.message || "导出失败");
+    msgError(e?.message || "导出失败");
   } finally {
     loading.value = false;
   }
@@ -322,7 +323,7 @@ async function load() {
     rows.value = j.data;
     total.value = Number(j.total || 0);
   } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
+    msgError(e?.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -376,7 +377,7 @@ async function clearTx() {
     ).catch(() => ({ value: "" } as any));
 
     if (String(confirmText || "").trim() !== expected) {
-      ElMessage.warning("二次确认未通过，已取消操作");
+      msgWarn("二次确认未通过，已取消操作");
       return;
     }
 
@@ -391,11 +392,11 @@ async function clearTx() {
     }
 
     const r = await apiPost<{ ok: boolean; data: { deleted: number } }>("/api/tx/clear", body);
-    ElMessage.success(`已清空 ${r.data.deleted} 条记录`);
+    msgSuccess(`已清空 ${r.data.deleted} 条记录`);
     await load();
   } catch (e: any) {
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e?.message || "清空失败");
+    msgError(e?.message || "清空失败");
   } finally {
     loading.value = false;
   }

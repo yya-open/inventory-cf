@@ -86,7 +86,8 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessageBox } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPost } from "../api/client";
 
 const bk = ref({
@@ -108,9 +109,9 @@ async function downloadBackup() {
     if (bk.value.include_throttle) q.set("include_throttle", "1");
     q.set("download", "1");
     await apiDownload(`/api/admin/backup?${q.toString()}`, "inventory_backup.json");
-    ElMessage.success("备份已下载");
+    msgSuccess("备份已下载");
   } catch (e:any) {
-    ElMessage.error(e?.message || "下载失败");
+    msgError(e?.message || "下载失败");
   } finally {
     downloading.value = false;
   }
@@ -128,11 +129,11 @@ async function onPick(uploadFile: any) {
     if (!j?.tables) throw new Error("备份文件缺少 tables 字段");
     backupObj.value = j;
     backupMeta.value = { version: j.version, exported_at: j.exported_at };
-    ElMessage.success("备份文件已加载");
+    msgSuccess("备份文件已加载");
   } catch (e:any) {
     backupObj.value = null;
     backupMeta.value = null;
-    ElMessage.error(e?.message || "解析失败");
+    msgError(e?.message || "解析失败");
   }
 }
 
@@ -159,7 +160,7 @@ async function doRestore() {
     ).catch(() => ({ value: "" } as any));
 
     if (String(confirmText || "").trim() !== expected) {
-      ElMessage.warning("二次确认未通过，已取消");
+      msgWarn("二次确认未通过，已取消");
       return;
     }
 
@@ -171,10 +172,10 @@ async function doRestore() {
       backup: backupObj.value,
     });
     restoreResult.value = r.data;
-    ElMessage.success("恢复完成");
+    msgSuccess("恢复完成");
   } catch (e:any) {
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e?.message || "恢复失败");
+    msgError(e?.message || "恢复失败");
   } finally {
     restoring.value = false;
   }

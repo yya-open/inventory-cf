@@ -51,7 +51,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { msgError, msgSuccess } from "../utils/msg";
 import { apiGet, apiPost } from "../api/client";
 import { useRoute } from "vue-router";
 
@@ -84,7 +84,7 @@ async function loadWarehouses() {
       warehouse_id.value = warehouses.value[0].id;
     }
   } catch (e: any) {
-    ElMessage.error((e as any)?.message || "加载仓库失败");
+    msgError((e as any)?.message || "加载仓库失败");
   }
 }
 
@@ -136,13 +136,13 @@ async function submit() {
       target: target.value,
       remark: remark.value,
     });
-    ElMessage.success("出库成功");
+    msgSuccess("出库成功");
     qty.value = 1;
     target.value = "";
     remark.value = "";
     await loadQty();
   } catch (e: any) {
-    ElMessage.error(e?.message || "出库失败");
+    msgError(e?.message || "出库失败");
   } finally {
     submitting.value = false;
   }

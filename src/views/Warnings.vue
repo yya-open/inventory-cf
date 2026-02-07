@@ -138,7 +138,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { apiGet, apiPost } from "../api/client";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
@@ -205,11 +205,11 @@ async function applyBulkWarning() {
       payload.warehouse_id = Number(filters.warehouse_id || 1);
     }
     await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
-    ElMessage.success("已更新预警值");
+    msgSuccess("已更新预警值");
     clearSelection();
     await load();
   } catch (e: any) {
-    ElMessage.error(e?.message || "批量更新失败");
+    msgError(e?.message || "批量更新失败");
   } finally {
     bulkSaving.value = false;
   }
@@ -263,7 +263,7 @@ async function load() {
     // Changing pages should not keep previous selection silently
     clearSelection();
   } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
+    msgError(e?.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -344,9 +344,9 @@ async function exportCsv() {
     a.click();
     a.remove();
     URL.revokeObjectURL(url);
-    ElMessage.success("已导出 CSV");
+    msgSuccess("已导出 CSV");
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    msgError(e?.message || "导出失败");
   } finally {
     exportingCsv.value = false;
   }
@@ -380,9 +380,9 @@ function exportXlsx() {
     const filename = `warnings_${y}${m}${d}.xlsx`;
 
     XLSX.writeFile(wb, filename);
-    ElMessage.success("已导出 Excel");
+    msgSuccess("已导出 Excel");
   } catch (e: any) {
-    ElMessage.error((e as any)?.message || "导出失败");
+    msgError((e as any)?.message || "导出失败");
   } finally {
     exportingXlsx.value = false;
   }

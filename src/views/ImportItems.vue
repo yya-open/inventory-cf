@@ -50,7 +50,7 @@
 
 <script setup lang="ts">
 import { ref } from "vue";
-import { ElMessage } from "element-plus";
+import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
 import { readFirstSheet, exportTemplateItems } from "../utils/excel";
 import { apiPost } from "../api/client";
 
@@ -91,9 +91,9 @@ async function onPick(uploadFile: any) {
     const json = await readFirstSheet(file);
     const mapped = json.map(mapRow).filter(x => x.sku || x.name);
     preview.value = mapped.slice(0, 2000);
-    ElMessage.success(`已读取 ${preview.value.length} 行（最多预览 2000）`);
+    msgSuccess(`已读取 ${preview.value.length} 行（最多预览 2000）`);
   } catch (e:any) {
-    ElMessage.error("读取失败：" + (e.message || ""));
+    msgError("读取失败：" + (e.message || ""));
   }
 }
 
@@ -108,9 +108,9 @@ async function submit() {
     const r = await apiPost<{ ok:boolean; data:any }>("/api/import/items", { items: preview.value, mode: mode.value });
     result.value = r.data;
     showResult.value = true;
-    ElMessage.success("导入完成");
+    msgSuccess("导入完成");
   } catch (e:any) {
-    ElMessage.error(e.message || "导入失败");
+    msgError(e.message || "导入失败");
   } finally {
     uploading.value = false;
   }
