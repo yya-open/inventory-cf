@@ -5,7 +5,7 @@ import { nowIso } from "./_util";
 
 type RestoreMode = "merge" | "replace";
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
 
@@ -44,13 +44,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       .bind(jobId, mode, key, file.name || null, actor.username)
       .run();
 
-    logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_CREATE", "restore_job", jobId, {
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_CREATE", "restore_job", jobId, {
       mode,
       filename: file.name || null,
       file_key: key,
       size: file.size,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     return json(true, { id: jobId, status: "QUEUED", stage: "SCAN" });
   } catch (e: any) {
     return errorResponse(e);

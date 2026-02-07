@@ -13,7 +13,7 @@ function txNo() {
  * - 写入反向流水 stock_tx(type='REVERSAL')
  * - 将盘点单状态回退为 DRAFT，并清空 applied_at
  */
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "admin");
 
@@ -82,7 +82,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
 
       // Best-effort audit
-      logAudit(env.DB, request, user, "STOCKTAKE_ROLLBACK", "stocktake", st_id, { st_no: st.st_no, reversed }).catch(() => {});
+      waitUntil(logAudit(env.DB, request, user, "STOCKTAKE_ROLLBACK", "stocktake", st_id, { st_no: st.st_no, reversed }).catch(() => {}));
       return Response.json({ ok: true, reversed });
     } catch (e: any) {
       if (String(e?.message || "").includes("状态已变化")) {

@@ -46,7 +46,7 @@ function pick(obj: any, cols: string[]) {
 
 // POST /api/admin/restore_upload
 // multipart/form-data: file=<backup.json>, mode=merge|replace, confirm=...
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
 
@@ -105,7 +105,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       insertedTotal += inserted;
     }
 
-    logAudit(env.DB, request, actor, "ADMIN_RESTORE_UPLOAD", "backup", null, {
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE_UPLOAD", "backup", null, {
       mode,
       filename: (file as any).name || null,
       size: (file as any).size || null,
@@ -113,8 +113,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       exported_at: backup?.exported_at || null,
       inserted_total: insertedTotal,
       inserted_by_table: insertedByTable,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     return json(true, {
       mode,
       inserted_total: insertedTotal,

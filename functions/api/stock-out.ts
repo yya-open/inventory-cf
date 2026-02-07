@@ -10,7 +10,7 @@ function txNo() {
   return `OUT${y}${m}${day}-${rand}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
     const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
@@ -61,14 +61,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     // Best-effort audit (do not block main flow)
-    logAudit(env.DB, request, user, "STOCK_OUT", "stock_tx", no, {
+    waitUntil(logAudit(env.DB, request, user, "STOCK_OUT", "stock_tx", no, {
       item_id,
       warehouse_id: wid,
       qty: q,
       target: target ?? null,
       remark: remark ?? null,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     return Response.json({ ok: true, tx_no: no });
   } catch (e: any) {
     return errorResponse(e);

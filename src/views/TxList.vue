@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, onUnmounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import * as XLSX from "xlsx";
@@ -129,6 +129,21 @@ const dateRange = ref<[string, string] | null>(null);
 
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
+
+const LS_RESTORE_REFRESH = "inv_restore_refresh";
+const SEEN_KEY = "inv_restore_seen_tx";
+
+function maybeAutoRefresh() {
+  const t = Number(localStorage.getItem(LS_RESTORE_REFRESH) || 0);
+  const seen = Number(sessionStorage.getItem(SEEN_KEY) || 0);
+  if (t && t > seen) {
+    sessionStorage.setItem(SEEN_KEY, String(t));
+    load();
+    ElMessage.success("检测到刚完成恢复，已自动刷新");
+  }
+}
+
+const restoreHandler = () => maybeAutoRefresh();
 
 function onSearch(){
   page.value = 1;
@@ -328,5 +343,11 @@ async function clearTx() {
 onMounted(async () => {
   await loadItems();
   await load();
+  window.addEventListener("inv:restore:done", restoreHandler as any);
+  maybeAutoRefresh();
+});
+
+onUnmounted(() => {
+  window.removeEventListener("inv:restore:done", restoreHandler as any);
 });
 </script>
