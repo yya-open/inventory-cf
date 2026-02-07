@@ -11,12 +11,7 @@ function batchNo() {
 }
 
 function txNo() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 900000 + 100000);
-  return `IN${y}${m}${day}-${rand}`;
+  return `IN-${crypto.randomUUID()}`;
 }
 
 type Line = {
@@ -68,6 +63,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const stmts: D1PreparedStatement[] = [];
     const txs: any[] = [];
+
     for (const [sku, l] of agg) {
       const item_id = skuToId.get(sku)!;
       const no = txNo();
@@ -76,8 +72,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       stmts.push(
         env.DB.prepare(
           `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, unit_price, source, remark, created_by)
-           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(no, item_id, warehouse_id, l.qty, l.qty, 'BATCH_IN', null, batch_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
+           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(no, item_id, warehouse_id, l.qty, l.qty, "BATCH_IN", null, batch_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
       );
 
       stmts.push(
@@ -89,8 +85,17 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       );
     }
 
-    await env.DB.batch(stmts);
-    await logAudit(env.DB, request, user, 'BATCH_IN', 'stock_tx', batch_no, { warehouse_id, count: txs.length });
+    try {
+      await env.DB.prepare("BEGIN IMMEDIATE").run();
+      await env.DB.batch(stmts);
+      await env.DB.prepare("COMMIT").run();
+    } catch (e) {
+      await env.DB.prepare("ROLLBACK").run().catch(() => {});
+      throw e;
+    }
+
+    // Best-effort audit
+    logAudit(env.DB, request, user, "BATCH_IN", "stock_tx", batch_no, { warehouse_id, count: txs.length }).catch(() => {});
     return Response.json({ ok: true, batch_no, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);
