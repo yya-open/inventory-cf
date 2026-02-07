@@ -13,7 +13,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (job.status === "DONE") return json(true, { id: jobId, status: "DONE" });
 
-    // "取消" 这里等同于暂停（可续跑）
+    // “取消”这里等同于暂停（可续跑）
     await env.DB.prepare(`UPDATE restore_job SET status='PAUSED', updated_at=datetime('now') WHERE id=? AND status!='DONE'`)
       .bind(jobId)
       .run();

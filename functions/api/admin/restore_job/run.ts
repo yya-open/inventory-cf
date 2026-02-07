@@ -56,7 +56,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
       const order: string[] = [];
       const counts: Record<string, number> = {};
 
-      const start = Date.now();
       // Need a fresh stream; R2 object body is single-use -> re-get
       const scanObj = await env.BACKUP_BUCKET.get(job.file_key);
       if (!scanObj?.body) throw new Error("R2 文件读取失败（SCAN）");
@@ -69,11 +68,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         }
         counts[table] += 1;
         total += 1;
-
-        // safety: if scan takes too long, still finish scan (we need total for progress bar)
-        if (Date.now() - start > 25000) {
-          // keep going; SCAN should complete to enable accurate progress
-        }
       }
 
       perTable.__order__ = order;

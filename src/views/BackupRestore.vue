@@ -24,7 +24,10 @@
 
           <div style="display:flex; flex-direction:column; gap:10px">
             <el-checkbox v-model="bk.include_tx">包含出入库明细（stock_tx，可能很大）</el-checkbox>
-            <div v-if="bk.include_tx" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px">
+            <div
+              v-if="bk.include_tx"
+              style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
+            >
               <span style="color:#666; font-size:12px">明细时间范围：</span>
               <el-date-picker
                 v-model="bk.txRange"
@@ -36,12 +39,14 @@
                 value-format="YYYY-MM-DD"
               />
               <span style="color:#999; font-size:12px">（为空则导出全部）</span>
-</div>
+            </div>
 
-            <el-checkbox v-model="bk.include_stocktake">包含库存盘点（stocktake）</el-checkbox>
-
+            <el-checkbox v-model="bk.include_stocktake">包含盘点（stocktake / stocktake_line）</el-checkbox>
             <el-checkbox v-model="bk.include_audit">包含审计日志（audit_log，可能很大）</el-checkbox>
-            <div v-if="bk.include_audit" style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px">
+            <div
+              v-if="bk.include_audit"
+              style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
+            >
               <span style="color:#666; font-size:12px">审计时间范围：</span>
               <el-date-picker
                 v-model="bk.auditRange"
@@ -53,36 +58,30 @@
                 value-format="YYYY-MM-DD"
               />
               <span style="color:#999; font-size:12px">（为空则导出全部）</span>
-</div>
+            </div>
 
-            <el-checkbox v-model="bk.include_throttle">包含登录限流记录（auth_login_throttle）</el-checkbox>
+            <el-checkbox v-model="bk.include_throttle">包含登录限流（auth_login_throttle）</el-checkbox>
 
-            <el-divider style="margin:10px 0" />
+            <el-divider style="margin:8px 0" />
 
-            <div style="display:flex; gap:12px; flex-wrap:wrap; align-items:center">
-              <el-checkbox v-model="bk.gzip">启用压缩（.json.gz，更小更快）</el-checkbox>
-
-              <div style="display:flex; gap:8px; align-items:center">
-                <span style="color:#666; font-size:12px">分页：</span>
-                <el-input-number v-model="bk.page_size" :min="100" :max="5000" :step="100" controls-position="right" />
-                <span style="color:#999; font-size:12px">（大表建议 1000～2000）</span>
+            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+              <el-switch v-model="bk.gzip" active-text="gzip 压缩（推荐）" />
+              <div style="display:flex; align-items:center; gap:8px">
+                <span style="color:#666; font-size:12px">分页大小</span>
+                <el-input-number v-model="bk.page_size" :min="200" :max="5000" :step="200" />
               </div>
+              <span style="color:#999; font-size:12px">（大数据建议 1000～2000）</span>
+            </div>
+
+            <div style="display:flex; gap:10px; flex-wrap:wrap">
+              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载完整备份</el-button>
+              <el-button :loading="downloading" @click="downloadTxOnly" plain>只下载明细</el-button>
+              <el-button :loading="downloading" @click="downloadAuditOnly" plain>只下载审计</el-button>
             </div>
 
             <el-alert type="info" show-icon :closable="false">
-              默认仅备份：仓库、配件、库存、用户。
-              大表（明细/审计）请按需勾选，并建议开启压缩。
+              建议：明细/审计单独导出，配合时间范围与分页，避免文件过大。
             </el-alert>
-
-            <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载备份文件</el-button>
-              <el-button :loading="downloading" @click="downloadTxOnly" plain>仅导出明细</el-button>
-              <el-button :loading="downloading" @click="downloadAuditOnly" plain>仅导出审计</el-button>
-            </div>
-
-            <div style="color:#999; font-size:12px; line-height:1.6">
-              提示：如果备份很大，建议“仅导出明细/审计”分开下载，避免一次文件过大。
-            </div>
           </div>
         </el-card>
       </el-col>
@@ -248,7 +247,11 @@ async function downloadAuditOnly() {
   } catch (e:any) {
     msgError(e?.message || "下载失败");
   } finally {
-    downloading.value = falsconst pickedFile = ref<File | null>(null);
+    downloading.value = false;
+  }
+}
+
+const pickedFile = ref<File | null>(null);
 const pickedInfo = ref<string>("");
 
 async function onPick(uploadFile: any) {
@@ -320,7 +323,6 @@ async function createJob() {
     const r = await apiPostForm<any>("/api/admin/restore_job/create", form);
     jobId.value = r.data.id;
     msgSuccess("任务已创建");
-
     await refreshStatus();
   } catch (e:any) {
     msgError(e?.message || "创建任务失败");
@@ -345,14 +347,12 @@ async function refreshStatus() {
   }
 }
 
-let loopTimer: any = null;
-
 function stopLoop() {
   running.value = false;
-  if (loopTimer) {
-    clearTimeout(loopTimer);
-    loopTimer = null;
-  }
+}
+
+function sleep(ms: number) {
+  return new Promise((r) => setTimeout(r, ms));
 }
 
 async function startOrResume() {
@@ -365,32 +365,23 @@ async function startOrResume() {
   running.value = true;
   try {
     while (running.value) {
-      // 每次 run 处理一段数据，前端循环驱动（可暂停/可续跑）
-      const r = await apiPost<any>("/api/admin/restore_job/run", { id: jobId.value, max_rows: 2000, max_ms: 8000 });
+      const r = await apiPost<any>("/api/admin/restore_job/run", {
+        id: jobId.value,
+        max_rows: 2000,
+        max_ms: 8000,
+      });
+
       await refreshStatus();
 
       const st = jobStatus.value;
       const more = Boolean(r.data.more);
 
-      if (st === "DONE" || st === "FAILED") {
+      if (st === "DONE" || st === "FAILED" || st === "PAUSED" || st === "CANCELED") {
         stopLoop();
         return;
       }
 
-      // 如果被暂停/取消，停止循环
-      if (st === "PAUSED" || st === "CANCELED") {
-        stopLoop();
-        return;
-      }
-
-      if (!more) {
-        // 没有更多就等一会儿再拉一次状态
-        loopTimer = setTimeout(() => { startOrResume(); }, 1200);
-        return;
-      }
-
-      // 让出事件循环，避免 UI 卡顿
-      await new Promise((r) => setTimeout(r, 150));
+      await sleep(more ? 150 : 1000);
     }
   } catch (e:any) {
     stopLoop();
@@ -413,7 +404,4 @@ async function pauseJob() {
     pausing.value = false;
   }
 }
-
-lse;
-  }
-}
+</script>
