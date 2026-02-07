@@ -92,8 +92,16 @@
       />
     </div>
 
-    <el-dialog v-model="showPayload" title="详情" width="720px">
-      <el-input v-model="payloadText" type="textarea" :rows="18" readonly />
+    <el-dialog v-model="showPayload" title="详情" width="760px">
+      <div class="payload-toolbar">
+        <el-switch v-model="prettyMode" active-text="格式化" inactive-text="原始" />
+        <el-button @click="copyPayload" :disabled="!payloadToCopy">复制</el-button>
+      </div>
+
+      <el-scrollbar height="420px" class="payload-box">
+        <pre class="payload-pre">{{ displayPayload }}</pre>
+      </el-scrollbar>
+
       <template #footer>
         <el-button @click="showPayload=false">关闭</el-button>
       </template>
@@ -102,7 +110,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
 import { ElMessage, ElMessageBox } from "element-plus";
 
@@ -120,7 +128,16 @@ const pageSize = ref(50);
 const total = ref(0);
 
 const showPayload = ref(false);
-const payloadText = ref("");
+const rawPayload = ref("");
+const prettyPayload = ref("");
+const prettyMode = ref(true);
+
+const displayPayload = computed(() => {
+  if (!prettyMode.value) return rawPayload.value || "";
+  return prettyPayload.value || rawPayload.value || "";
+});
+const payloadToCopy = computed(() => displayPayload.value || "");
+
 
 const selectedIds = ref<number[]>([]);
 
@@ -154,9 +171,50 @@ function reset(){
   load();
 }
 
+function tryPrettyJson(text: string){
+  const t = String(text || "").trim();
+  if (!t) return "";
+  // Only pretty-print if it's valid JSON
+  try{
+    const obj = JSON.parse(t);
+    return JSON.stringify(obj, null, 2);
+  }catch{
+    return "";
+  }
+}
+
 function openPayload(row:any){
-  payloadText.value = row?.payload_json || "";
+  rawPayload.value = String(row?.payload_json || "");
+  prettyPayload.value = tryPrettyJson(rawPayload.value);
+  prettyMode.value = true;
   showPayload.value = true;
+}
+
+async function copyPayload(){
+  const txt = payloadToCopy.value;
+  if (!txt) return;
+  try{
+    await navigator.clipboard.writeText(txt);
+    ElMessage.success("已复制");
+  }catch{
+    // fallback for older browsers / permissions
+    const ta = document.createElement("textarea");
+    ta.value = txt;
+    ta.style.position = "fixed";
+    ta.style.left = "-9999px";
+    ta.style.top = "0";
+    ta.setAttribute("readonly", "true");
+    document.body.appendChild(ta);
+    ta.select();
+    try{
+      document.execCommand("copy");
+      ElMessage.success("已复制");
+    }catch{
+      ElMessage.error("复制失败");
+    }finally{
+      document.body.removeChild(ta);
+    }
+  }
 }
 
 async function load(){
@@ -228,4 +286,8 @@ onMounted(load);
 .entity-name{font-weight:600}
 .entity-meta{font-size:12px;color:#909399}
 .ip{word-break:break-all}
+.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
+.payload-box{border:1px solid var(--el-border-color);border-radius:10px}
+.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+
 </style>
