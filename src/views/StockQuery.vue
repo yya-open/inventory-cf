@@ -56,14 +56,11 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted } from "vue";
+import { ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
 import { useRouter, useRoute } from "vue-router";
-
-const LS_RESTORE_REFRESH = "inv_restore_refresh";
-const SEEN_KEY = "inv_restore_seen_stockquery";
 
 const router = useRouter();
 const route = useRoute();
@@ -78,18 +75,6 @@ const loading = ref(false);
 const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
-
-function maybeAutoRefresh() {
-  const t = Number(localStorage.getItem(LS_RESTORE_REFRESH) || 0);
-  const seen = Number(sessionStorage.getItem(SEEN_KEY) || 0);
-  if (t && t > seen) {
-    sessionStorage.setItem(SEEN_KEY, String(t));
-    load();
-    ElMessage.success("检测到刚完成恢复，已自动刷新");
-  }
-}
-
-const restoreHandler = () => maybeAutoRefresh();
 
 function goIn(item_id: number) {
   router.push({ path: "/in", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
@@ -167,11 +152,5 @@ function doExport() {
 onMounted(async () => {
   await loadWarehouses();
   await load();
-  window.addEventListener("inv:restore:done", restoreHandler as any);
-  maybeAutoRefresh();
-});
-
-onUnmounted(() => {
-  window.removeEventListener("inv:restore:done", restoreHandler as any);
 });
 </script>

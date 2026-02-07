@@ -72,13 +72,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted, onUnmounted } from "vue";
+import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { useRouter } from "vue-router";
-
-const LS_RESTORE_REFRESH = "inv_restore_refresh";
-const SEEN_KEY = "inv_restore_seen_items";
 
 const router = useRouter();
 
@@ -89,18 +86,6 @@ const loading = ref(false);
 const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
-
-function maybeAutoRefresh() {
-  const t = Number(localStorage.getItem(LS_RESTORE_REFRESH) || 0);
-  const seen = Number(sessionStorage.getItem(SEEN_KEY) || 0);
-  if (t && t > seen) {
-    sessionStorage.setItem(SEEN_KEY, String(t));
-    load();
-    ElMessage.success("检测到刚完成恢复，已自动刷新");
-  }
-}
-
-const restoreHandler = () => maybeAutoRefresh();
 
 const dlgVisible = ref(false);
 const saving = ref(false);
@@ -210,13 +195,5 @@ async function save() {
   }
 }
 
-onMounted(async () => {
-  await load();
-  window.addEventListener("inv:restore:done", restoreHandler as any);
-  maybeAutoRefresh();
-});
-
-onUnmounted(() => {
-  window.removeEventListener("inv:restore:done", restoreHandler as any);
-});
+onMounted(load);
 </script>
