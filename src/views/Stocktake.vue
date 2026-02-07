@@ -272,25 +272,17 @@ async function deleteStocktake(row:any){
     ElMessage.warning("仅草稿状态可删除");
     return;
   }
-  let confirmText = "";
   try{
-    const r = await ElMessageBox.prompt(
-      `此操作将永久删除盘点单 ${row.st_no || row.id}。\n请输入盘点单ID确认：${row.id}`,
+    await ElMessageBox.confirm(
+      `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
       "删除确认",
-      {
-        type: "warning",
-        confirmButtonText: "删除",
-        cancelButtonText: "取消",
-        inputPlaceholder: "请输入盘点单ID",
-        inputValidator: (v: string) => String(v || "").trim() !== "" || "请输入盘点单ID",
-      }
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
     );
-    confirmText = String(r.value || "").trim();
   }catch{
     return;
   }
   try{
-    await apiPost("/api/stocktake/delete", { id: Number(row.id), confirm: confirmText });
+    await apiPost("/api/stocktake/delete", { id: Number(row.id) });
     ElMessage.success("删除成功");
     if (Number(selectedId.value) === Number(row.id)){
       selectedId.value = null;
@@ -494,25 +486,17 @@ async function applyStocktake(){
 async function rollbackStocktake(){
   if (!detail.value) return;
   if (detail.value.stocktake.status !== 'APPLIED') return;
-  let confirmText = "";
   try{
-    const r = await ElMessageBox.prompt(
-      `撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。\n请输入盘点单ID确认：${detail.value.stocktake.id}`,
+    await ElMessageBox.confirm(
+      "撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。确认继续？",
       "确认撤销盘点",
-      {
-        type: "warning",
-        confirmButtonText: "撤销",
-        cancelButtonText: "取消",
-        inputPlaceholder: "输入盘点单ID",
-        inputValidator: (v: string) => (String(v).trim() ? true : "不能为空"),
-      }
+      { type: "warning", confirmButtonText: "撤销", cancelButtonText: "取消" }
     );
-    confirmText = String(r.value || "").trim();
   }catch{ return; }
 
   rolling.value = true;
   try{
-    const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id, confirm: confirmText });
+    const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id });
     ElMessage.success(`撤销成功：恢复 ${r.reversed} 条差异库存`);
     await loadList();
     await refreshDetail();

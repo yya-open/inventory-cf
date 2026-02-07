@@ -39,7 +39,20 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     // (audit_log.entity_id stores tx_no when entity='stock_tx')
     const { results } = await env.DB.prepare(
       `SELECT a.id, a.created_at, a.username, a.action, a.entity, a.entity_id, a.ip, a.ua, a.payload_json,
-              COALESCE(itx.name, iitems.name, json_extract(a.payload_json,'$.after.name'), json_extract(a.payload_json,'$.name')) AS item_name
+              -- For stock_tx/items, show item name
+              COALESCE(itx.name, iitems.name, json_extract(a.payload_json,'$.after.name'), json_extract(a.payload_json,'$.name')) AS item_name,
+              -- For users, show the username at the time of the operation (works even after deletion)
+              COALESCE(
+                CASE WHEN a.entity = 'users' THEN
+                  COALESCE(
+                    json_extract(a.payload_json,'$.after.username'),
+                    json_extract(a.payload_json,'$.before.username'),
+                    json_extract(a.payload_json,'$.username'),
+                    u.username
+                  )
+                END,
+                NULL
+              ) AS user_name
        FROM audit_log a
        LEFT JOIN stock_tx st
          ON a.entity = 'stock_tx' AND st.tx_no = a.entity_id
@@ -47,6 +60,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
          ON itx.id = st.item_id
        LEFT JOIN items iitems
          ON a.entity = 'items' AND iitems.id = CAST(a.entity_id AS INTEGER)
+       LEFT JOIN users u
+         ON a.entity = 'users' AND u.id = CAST(a.entity_id AS INTEGER)
        ${where}
        ORDER BY a.id DESC
        LIMIT ? OFFSET ?`

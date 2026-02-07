@@ -60,8 +60,8 @@
       <el-table-column label="实体" min-width="180">
         <template #default="{ row }">
           <div class="entity-cell">
-            <div class="entity-name">{{ row.item_name || entityLabel(row.entity) || "-" }}</div>
-            <div class="entity-meta" v-if="row.item_name">{{ entityLabel(row.entity) }}</div>
+            <div class="entity-name">{{ row.item_name || row.user_name || entityLabel(row.entity) || "-" }}</div>
+            <div class="entity-meta" v-if="row.item_name || row.user_name">{{ entityLabel(row.entity) }}</div>
           </div>
         </template>
       </el-table-column>
@@ -288,18 +288,7 @@ async function load(){
 
 async function deleteOne(id: number){
   try{
-    const { value: confirmText } = await ElMessageBox.prompt(
-      "此操作将永久删除该审计日志。请输入：删除",
-      "二次确认",
-      {
-        confirmButtonText: "继续删除",
-        cancelButtonText: "取消",
-        inputPlaceholder: "请输入 删除",
-        inputValidator: (v:any) => (String(v||"").trim() === "删除") || "请输入：删除",
-      }
-    );
-
-    await apiPost(`/api/audit/delete`, { id, confirm: String(confirmText).trim() });
+    await apiPost(`/api/audit/delete`, { id });
     ElMessage.success("已删除");
     // if delete makes current page empty, go back one page.
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
@@ -314,17 +303,7 @@ async function deleteSelected(){
   if (!ids.length) return;
   try{
     await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条审计日志？`, "删除确认", { type: "warning" });
-    const { value: confirmText } = await ElMessageBox.prompt(
-      `此操作将永久删除 ${ids.length} 条审计日志。请输入：删除`,
-      "二次确认",
-      {
-        confirmButtonText: "继续删除",
-        cancelButtonText: "取消",
-        inputPlaceholder: "请输入 删除",
-        inputValidator: (v:any) => (String(v||"").trim() === "删除") || "请输入：删除",
-      }
-    );
-    await apiPost(`/api/audit/delete`, { ids, confirm: String(confirmText).trim() });
+    await apiPost(`/api/audit/delete`, { ids });
     ElMessage.success("已删除");
     selectedIds.value = [];
     // adjust page if needed

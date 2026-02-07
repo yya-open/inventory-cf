@@ -4,14 +4,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   try {
   const user = await requireAuth(env, request, "viewer");
   const url = new URL(request.url);
-
-  // Optional: fetch by id (for remote selects to resolve label)
-  const id = Number(url.searchParams.get("id") || 0);
-  if (id) {
-    const row = await env.DB.prepare(`SELECT * FROM items WHERE id=?`).bind(id).first<any>();
-    if (!row) return Response.json({ ok: true, data: [], total: 0, page: 1, pageSize: 1 });
-    return Response.json({ ok: true, data: [row], total: 1, page: 1, pageSize: 1 });
-  }
   const keyword = (url.searchParams.get("keyword") || "").trim();
 
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
@@ -43,8 +35,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   const body = await request.json();
   const { id, sku, name, brand, model, category, unit, warning_qty } = body;
 
-  let newId: number | null = null;
-
   if (!sku || !name) return Response.json({ ok: false, message: "sku/name 必填" }, { status: 400 });
 
   const before = id ? await env.DB.prepare(`SELECT * FROM items WHERE id=?`).bind(id).first<any>() : null;
@@ -74,10 +64,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       unit || "个",
       Number(warning_qty || 0)
     ).run();
-    newId = Number((ins as any)?.meta?.last_row_id || 0) || null;
+    const newId = (ins as any)?.meta?.last_row_id;
   }
 
-  const entityId = id || newId;
+  const entityId = id || (typeof newId !== 'undefined' ? newId : null);
   await logAudit(env.DB, request, user, id ? 'ITEM_UPDATE' : 'ITEM_CREATE', 'items', entityId, { before, after: { sku, name, brand: brand || null, model: model || null, category: category || null, unit: unit || '个', warning_qty: Number(warning_qty || 0) } });
 
   return Response.json({ ok: true });
