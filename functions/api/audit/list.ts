@@ -39,12 +39,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     // (audit_log.entity_id stores tx_no when entity='stock_tx')
     const { results } = await env.DB.prepare(
       `SELECT a.id, a.created_at, a.username, a.action, a.entity, a.entity_id, a.ip, a.ua, a.payload_json,
-              i.name AS item_name
+              COALESCE(itx.name, iitems.name, json_extract(a.payload_json,'$.after.name'), json_extract(a.payload_json,'$.name')) AS item_name
        FROM audit_log a
        LEFT JOIN stock_tx st
          ON a.entity = 'stock_tx' AND st.tx_no = a.entity_id
-       LEFT JOIN items i
-         ON i.id = st.item_id
+       LEFT JOIN items itx
+         ON itx.id = st.item_id
+       LEFT JOIN items iitems
+         ON a.entity = 'items' AND iitems.id = CAST(a.entity_id AS INTEGER)
        ${where}
        ORDER BY a.id DESC
        LIMIT ? OFFSET ?`

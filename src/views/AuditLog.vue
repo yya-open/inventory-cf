@@ -45,7 +45,11 @@
       @selection-change="onSelect"
     >
       <el-table-column type="selection" width="48" />
-      <el-table-column prop="id" label="#" width="80" />
+      <el-table-column label="#" width="80">
+        <template #default="{ $index }">
+          {{ (page - 1) * pageSize + $index + 1 }}
+        </template>
+      </el-table-column>
       <el-table-column prop="created_at" label="时间" min-width="170" />
       <el-table-column prop="username" label="用户" width="130" />
       <el-table-column label="动作" min-width="160">
@@ -236,7 +240,7 @@ async function load(){
     params.set("page_size", String(pageSize.value));
 
     const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
-    rows.value = j.data || [];
+    rows.value = (j.data || []).map((r:any, idx:number)=>({ ...r }));
     total.value = Number(j.total || 0);
   }catch(e:any){
     ElMessage.error(e.message || "加载失败");
