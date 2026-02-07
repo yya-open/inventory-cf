@@ -11,12 +11,7 @@ function batchNo() {
 }
 
 function txNo() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 900000 + 100000);
-  return `OUT${y}${m}${day}-${rand}`;
+  return `OUT-${crypto.randomUUID()}`;
 }
 
 type Line = {
@@ -63,9 +58,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const missing = skus.filter((s) => !skuToId.has(s));
     if (missing.length) return Response.json({ ok: false, message: "以下 SKU 不存在/被禁用", missing }, { status: 400 });
 
-    // Check stock for all involved items
-    const itemIds = skus.map((s)=>skuToId.get(s)!);
-    const ph2 = itemIds.map(()=>"?").join(",");
+    // Check stock for all involved items (fast pre-check; still guarded against concurrency below)
+    const itemIds = skus.map((s) => skuToId.get(s)!);
+    const ph2 = itemIds.map(() => "?").join(",");
     const { results: stockRows } = await env.DB.prepare(
       `SELECT item_id, qty FROM stock WHERE warehouse_id=? AND item_id IN (${ph2})`
     ).bind(warehouse_id, ...itemIds).all();
@@ -80,10 +75,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
     if (insufficient.length) return Response.json({ ok: false, message: "库存不足", insufficient }, { status: 400 });
 
-    // Atomic + safe against concurrent changes:
-    // - Each line uses an UPDATE ... RETURNING + INSERT-from-CTE so that "tx inserted but stock not updated" cannot happen.
-    // - After all lines, a guard statement checks the number of inserted tx rows.
-    //   If any line failed to update (e.g. concurrent depletion), the guard triggers a SQL error, making the whole batch rollback.
+    // Concurrency-safe batch out:
+    // - Each line uses conditional UPDATE (qty>=?) + INSERT only if changes()>0
+    // - A guard statement verifies all tx rows were inserted; otherwise it throws to rollback everything.
     const stmts: D1PreparedStatement[] = [];
     const txs: any[] = [];
     const txNos: string[] = [];
@@ -94,7 +88,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       txs.push({ tx_no: no, sku, qty: l.qty });
       txNos.push(no);
 
-      // D1-compatible atomic pair: UPDATE then conditional INSERT (depends on changes()).
       stmts.push(
         env.DB.prepare(
           `UPDATE stock
@@ -108,16 +101,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
            SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
            WHERE (SELECT changes()) > 0`
-        ).bind(
-          no, item_id, warehouse_id, l.qty,
-          -l.qty,
-          'BATCH_OUT', null, batch_no,
-          l.target ?? null, l.remark ?? null, user.username
-        )
+        ).bind(no, item_id, warehouse_id, l.qty, -l.qty, "BATCH_OUT", null, batch_no, l.target ?? null, l.remark ?? null, user.username)
       );
     }
 
-    // Guard: inserted tx count must equal line count, otherwise throw (rollback the whole transaction)
     const phTx = txNos.map(() => "?").join(",");
     stmts.push(
       env.DB.prepare(
@@ -130,17 +117,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     );
 
     try {
+      await env.DB.prepare("BEGIN IMMEDIATE").run();
       await env.DB.batch(stmts);
+      await env.DB.prepare("COMMIT").run();
     } catch (e: any) {
-      // Convert guard error to a clearer business error
+      await env.DB.prepare("ROLLBACK").run().catch(() => {});
       if (String(e?.message || "").includes("JSON path error")) {
         return Response.json({ ok: false, message: "库存不足（可能存在并发出库），本次批量出库已全部回滚" }, { status: 409 });
       }
       throw e;
     }
 
-    await logAudit(env.DB, request, user, 'BATCH_OUT', 'stock_tx', batch_no, { warehouse_id, count: txs.length });
-
+    // Best-effort audit
+    logAudit(env.DB, request, user, "BATCH_OUT", "stock_tx", batch_no, { warehouse_id, count: txs.length }).catch(() => {});
     return Response.json({ ok: true, batch_no, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);
