@@ -13,7 +13,6 @@
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.role==='admin'?'danger':row.role==='operator'?'warning':'info'">
             {{ roleText(row.role) }}
           </el-tag>
@@ -21,13 +20,11 @@
       </el-table-column>
       <el-table-column prop="is_active" label="状态" width="110">
         <template #default="{ row }">
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.is_active? 'success':'info'">{{ row.is_active ? "启用" : "禁用" }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="must_change_password" label="需改密码" width="110">
         <template #default="{ row }">
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.must_change_password? 'warning':'success'">{{ row.must_change_password ? "是" : "否" }}</el-tag>
         </template>
       </el-table-column>
