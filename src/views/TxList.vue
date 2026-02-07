@@ -21,7 +21,7 @@
         value-format="YYYY-MM-DD"
       />
 
-      <el-button type="primary" @click="load">查询</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
       <el-button @click="reset">重置</el-button>
       <el-button type="success" plain @click="exportCsv" :disabled="rows.length===0">导出CSV</el-button>
@@ -71,6 +71,19 @@
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
     </el-table>
 
+    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :page-sizes="[20, 50, 100, 200]"
+        @current-change="onPageChange"
+        @size-change="onPageSizeChange"
+      />
+    </div>
+
   </el-card>
 </template>
 
@@ -87,6 +100,10 @@ const items = ref<any[]>([]);
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
+
 const type = ref<string>("");
 const item_id = ref<number | undefined>(undefined);
 const dateRange = ref<[string, string] | null>(null);
@@ -94,10 +111,16 @@ const dateRange = ref<[string, string] | null>(null);
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
 
+function onSearch(){
+  page.value = 1;
+  load();
+}
+
 function reset() {
   type.value = "";
   item_id.value = undefined;
   dateRange.value = null;
+  page.value = 1;
   load();
 }
 
@@ -136,11 +159,20 @@ function exportCsv() {
 }
 
 async function loadItems() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items`);
+  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
   items.value = j.data;
 
   const qid = Number(route.query.item_id);
   if (qid) item_id.value = qid;
+}
+
+function onPageChange(){
+  load();
+}
+
+function onPageSizeChange(){
+  page.value = 1;
+  load();
 }
 
 async function load() {
@@ -152,8 +184,12 @@ async function load() {
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
 
-    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/tx?${params.toString()}`);
+    params.set("page", String(page.value));
+    params.set("page_size", String(pageSize.value));
+
+    const j = await apiGet<any>(`/api/tx?${params.toString()}`);
     rows.value = j.data;
+    total.value = Number(j.total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

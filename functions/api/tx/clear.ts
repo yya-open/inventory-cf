@@ -46,6 +46,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // D1 returns changes in meta
     const deleted = (r as any)?.meta?.changes ?? 0;
+    await logAudit(env.DB, request, actor, 'TX_CLEAR', 'stock_tx', null, { mode, filters: mode === 'all' ? null : { type: body.type, item_id: body.item_id, date_from: body.date_from, date_to: body.date_to }, deleted });
     return Response.json({ ok: true, data: { deleted } });
   } catch (e: any) {
     return errorResponse(e);

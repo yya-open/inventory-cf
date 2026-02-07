@@ -1,4 +1,14 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "../_audit";
+
+function batchNo() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 900000 + 100000);
+  return `BIN${y}${m}${day}-${rand}`;
+}
 
 function txNo() {
   const d = new Date();
@@ -28,6 +38,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const lines: Line[] = Array.isArray(body.lines) ? body.lines : [];
 
     if (!lines.length) return Response.json({ ok: false, message: "没有明细行" }, { status: 400 });
+
+    const batch_no = batchNo();
 
     // normalize & aggregate by sku
     const agg = new Map<string, { sku: string; qty: number; unit_price?: number; source?: string; remark?: string }>();
@@ -63,9 +75,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, unit_price, source, remark, created_by)
-           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(no, item_id, warehouse_id, l.qty, l.qty, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
+          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, unit_price, source, remark, created_by)
+           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(no, item_id, warehouse_id, l.qty, l.qty, 'BATCH_IN', null, batch_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
       );
 
       stmts.push(
@@ -78,7 +90,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     await env.DB.batch(stmts);
-    return Response.json({ ok: true, count: txs.length, txs });
+    await logAudit(env.DB, request, user, 'BATCH_IN', 'stock_tx', batch_no, { warehouse_id, count: txs.length });
+    return Response.json({ ok: true, batch_no, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);
   }

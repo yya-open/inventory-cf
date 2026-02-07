@@ -61,6 +61,20 @@
               </template>
             </el-table-column>
           </el-table>
+
+          <div style="display:flex; justify-content:flex-end; margin-top:10px">
+            <el-pagination
+              v-model:current-page="listPage"
+              v-model:page-size="listPageSize"
+              :total="listTotal"
+              background
+              layout="total, sizes, prev, pager, next"
+              :page-sizes="[20, 50, 100, 200]"
+              @current-change="onListPageChange"
+              @size-change="onListPageSizeChange"
+            />
+          </div>
+
         </div>
 
         <!-- Right: detail -->
@@ -177,6 +191,9 @@ const warehouses = ref<any[]>([]);
 const warehouseId = ref(1);
 
 const list = ref<any[]>([]);
+const listPage = ref(1);
+const listPageSize = ref(50);
+const listTotal = ref(0);
 const detail = ref<any|null>(null);
 
 // list selection + scroll
@@ -306,9 +323,23 @@ watch(warehouseId, async ()=>{
   await loadList();
 });
 
+function onListPageChange(){
+  loadList();
+}
+
+function onListPageSizeChange(){
+  listPage.value = 1;
+  loadList();
+}
+
 async function loadList(){
   try{
-    const r:any = await apiGet(`/api/stocktake/list?warehouse_id=${warehouseId.value}`);
+    const params = new URLSearchParams();
+    params.set('warehouse_id', String(warehouseId.value));
+    params.set('page', String(listPage.value));
+    params.set('page_size', String(listPageSize.value));
+    const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`);
+    listTotal.value = Number(r.total || 0);
     list.value = (r.data || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
   }catch(e:any){
     ElMessage.error(e.message || "加载盘点单失败");

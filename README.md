@@ -66,6 +66,7 @@ wrangler d1 execute inventory_db --remote --file=sql/init.sql
 如果你是从旧版本升级（数据库里已经有表了），需要额外执行一次迁移：
 ```bash
 wrangler d1 execute inventory_db --remote --file=sql/migrate_audit_throttle.sql
+wrangler d1 execute inventory_db --remote --file=sql/migrate_trace_audit.sql
 ```
 
 可选环境变量（Pages → Settings → Environment variables）：

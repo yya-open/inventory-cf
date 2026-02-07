@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "./_audit";
 function txNo() {
   const d = new Date();
   const y = d.getFullYear();
@@ -27,17 +28,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         WHERE item_id=? AND warehouse_id=? AND qty >= ?
         RETURNING 1
      )
-     INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, target, remark, created_by)
-     SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?
+     INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
+     SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
      FROM upd`
   ).bind(
     q, item_id, warehouse_id, q,
-    no, item_id, warehouse_id, q, -q, target ?? null, remark ?? null, user.username
+    no, item_id, warehouse_id, q, -q, 'MANUAL_OUT', null, no, target ?? null, remark ?? null, user.username
   ).run();
 
   if ((r.meta?.changes || 0) === 0) {
     return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
   }
+
+  await logAudit(env.DB, request, user, 'STOCK_OUT', 'stock_tx', no, { item_id, warehouse_id, qty: q, target: target ?? null, remark: remark ?? null });
 
   return Response.json({ ok: true, tx_no: no });
 

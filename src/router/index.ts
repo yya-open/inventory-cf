@@ -10,6 +10,7 @@ import Dashboard from "../views/Dashboard.vue";
 import Items from "../views/Items.vue";
 import Login from "../views/Login.vue";
 import Users from "../views/Users.vue";
+import AuditLog from "../views/AuditLog.vue";
 import ImportItems from "../views/ImportItems.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { ElMessage } from "element-plus";
@@ -34,6 +35,7 @@ const router = createRouter({
 
     { path: "/items", component: Items, meta: { role: "admin" } },
     { path: "/import/items", component: ImportItems, meta: { role: "admin" } },
+    { path: "/audit", component: AuditLog, meta: { role: "admin" } },
     { path: "/users", component: Users, meta: { role: "admin" } },
   ],
 });

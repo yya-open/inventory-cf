@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "../_audit";
 
 function txNo() {
   const d = new Date();
@@ -39,9 +40,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       const remark = `盘点调整 ${st.st_no}`;
 
       stmts.push(env.DB.prepare(
-        `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, remark, created_by)
-         VALUES (?, 'ADJUST', ?, ?, ?, ?, ?, ?)`
-      ).bind(no, l.item_id, st.warehouse_id, qty, diff, remark, user.username));
+        `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, remark, created_by)
+         VALUES (?, 'ADJUST', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
+      ).bind(no, l.item_id, st.warehouse_id, qty, diff, 'STOCKTAKE_APPLY', st_id, st.st_no, remark, user.username));
 
       // set stock qty to counted_qty
       stmts.push(env.DB.prepare(
@@ -58,6 +59,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     ).bind(st_id));
 
     await env.DB.batch(stmts);
+
+    await logAudit(env.DB, request, user, 'STOCKTAKE_APPLY', 'stocktake', st_id, { st_no: st.st_no, adjusted });
 
     return Response.json({ ok:true, adjusted });
   } catch (e:any) {

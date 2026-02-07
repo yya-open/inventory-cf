@@ -2,8 +2,8 @@
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button @click="keyword=''; load()">重置</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
+      <el-button @click="keyword=''; page.value=1; load()">重置</el-button>
       <el-button type="success" @click="openCreate">新增配件</el-button>
       <el-button @click="$router.push('/import/items')">Excel 导入</el-button>
     </div>
@@ -23,6 +23,19 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :page-sizes="[20, 50, 100, 200]"
+        @current-change="onPageChange"
+        @size-change="onPageSizeChange"
+      />
+    </div>
 
     <el-dialog v-model="dlgVisible" :title="dlgTitle" width="560px">
       <el-form label-width="90px">
@@ -70,6 +83,10 @@ const keyword = ref("");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
+
 const dlgVisible = ref(false);
 const saving = ref(false);
 
@@ -116,6 +133,20 @@ function openEdit(row: any) {
 
 function goTx(itemId: number) {
   router.push({ path: "/tx", query: { item_id: String(itemId) } });
+}
+
+function onSearch(){
+  page.value = 1;
+  load();
+}
+
+function onPageChange(){
+  load();
+}
+
+function onPageSizeChange(){
+  page.value = 1;
+  load();
 }
 
 async function load() {

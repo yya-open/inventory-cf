@@ -14,6 +14,7 @@
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/audit">审计日志</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/users">用户管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
       </el-menu>
@@ -77,6 +78,7 @@ const title = computed(() => {
     "/warnings": "预警中心",
     "/items": "配件管理",
     "/import/items": "Excel 导入配件",
+    "/audit": "审计日志",
     "/users": "用户管理",
   };
   return map[route.path] || "系统";

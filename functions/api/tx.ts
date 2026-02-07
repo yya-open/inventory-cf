@@ -8,6 +8,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   const date_from = url.searchParams.get("date_from");
   const date_to = url.searchParams.get("date_to");
 
+  const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+  const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
+  const offset = (page - 1) * pageSize;
+
   const wh: string[] = [];
   const binds: any[] = [];
 
@@ -25,11 +29,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     JOIN warehouses w ON w.id=t.warehouse_id
     ${where}
     ORDER BY t.id DESC
-    LIMIT 500
+    LIMIT ? OFFSET ?
   `;
 
-  const { results } = await env.DB.prepare(sql).bind(...binds).all();
-  return Response.json({ ok: true, data: results });
+  const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM stock_tx t ${where}`).bind(...binds).first<any>();
+
+  const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+  return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
 
   } catch (e: any) {
     return errorResponse(e);

@@ -1,4 +1,14 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "../_audit";
+
+function batchNo() {
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 900000 + 100000);
+  return `BOUT${y}${m}${day}-${rand}`;
+}
 
 function txNo() {
   const d = new Date();
@@ -41,6 +51,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       agg.set(sku, cur);
     }
     if (!agg.size) return Response.json({ ok: false, message: "有效行为空（检查 sku/qty）" }, { status: 400 });
+
+    const batch_no = batchNo();
 
     const skus = Array.from(agg.keys());
     const placeholders = skus.map(() => "?").join(",");
@@ -90,13 +102,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
               WHERE item_id=? AND warehouse_id=? AND qty >= ?
               RETURNING 1
            )
-           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, target, remark, created_by)
-           SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?
+           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
+           SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
            FROM upd`
         ).bind(
           l.qty, item_id, warehouse_id, l.qty,
           no, item_id, warehouse_id, l.qty,
           -l.qty,
+          'BATCH_OUT', null, batch_no,
           l.target ?? null, l.remark ?? null, user.username
         )
       );
@@ -124,7 +137,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       throw e;
     }
 
-    return Response.json({ ok: true, count: txs.length, txs });
+    await logAudit(env.DB, request, user, 'BATCH_OUT', 'stock_tx', batch_no, { warehouse_id, count: txs.length });
+
+    return Response.json({ ok: true, batch_no, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);
   }

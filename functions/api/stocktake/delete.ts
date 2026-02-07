@@ -1,8 +1,9 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "../_audit";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "admin");
+    const actor = await requireAuth(env, request, "admin");
 
     const body: any = await request.json().catch(() => ({}));
     const id = Number(body?.id);
@@ -21,6 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     ]);
 
     const changes = Number((r?.[1] as any)?.meta?.changes ?? 0);
+    await logAudit(env.DB, request, actor, 'STOCKTAKE_DELETE', 'stocktake', id, { changes });
     return Response.json({ ok: true, changes });
   } catch (e: any) {
     return errorResponse(e);

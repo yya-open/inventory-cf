@@ -1,13 +1,13 @@
 <template>
   <el-card>
     <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
-      <el-select v-model="warehouse_id" style="width: 180px" placeholder="选择仓库" @change="load">
+      <el-select v-model="warehouse_id" style="width: 180px" placeholder="选择仓库" @change="onSearch">
         <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
       </el-select>
 
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button @click="keyword = ''; load()">重置</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
+      <el-button @click="keyword = ''; page.value=1; load()">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>
       <el-button type="warning" plain @click="$router.push('/warnings')">查看预警</el-button>
     </div>
@@ -60,6 +60,10 @@ const keyword = ref("");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
+
 function goIn(item_id: number) {
   router.push({ path: "/in", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
 }
@@ -83,6 +87,20 @@ async function loadWarehouses() {
   } catch (e: any) {
     ElMessage.error(e?.message || "加载仓库失败");
   }
+}
+
+function onSearch(){
+  page.value = 1;
+  load();
+}
+
+function onPageChange(){
+  load();
+}
+
+function onPageSizeChange(){
+  page.value = 1;
+  load();
 }
 
 async function load() {

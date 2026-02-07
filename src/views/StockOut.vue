@@ -77,7 +77,7 @@ async function loadWarehouses() {
 }
 
 async function loadItems() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items`);
+  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
   items.value = j.data;
 
   const qid = Number(route.query.item_id);

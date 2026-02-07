@@ -38,6 +38,9 @@ CREATE TABLE IF NOT EXISTS stock_tx (
   warehouse_id INTEGER NOT NULL,
   qty INTEGER NOT NULL CHECK(qty > 0),
   delta_qty INTEGER NOT NULL DEFAULT 0,
+  ref_type TEXT,
+  ref_id INTEGER,
+  ref_no TEXT,
   unit_price REAL,
   source TEXT,
   target TEXT,
@@ -92,3 +95,19 @@ INSERT OR IGNORE INTO items (id, sku, name, brand, model, category, unit, warnin
 -- Default admin (please change password after first login)
 INSERT OR IGNORE INTO users (id, username, password_hash, role, is_active, must_change_password)
 VALUES (1, 'admin', 'pbkdf2$100000$MEg44sOf2APw8x1HQEipVQ$x1a47ows6TbAAFmg4n4gBKAzZtPD0fEX7D8lHXitiQ0', 'admin', 1, 1);
+
+
+CREATE TABLE IF NOT EXISTS audit_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  user_id INTEGER,
+  username TEXT,
+  action TEXT NOT NULL,
+  entity TEXT,
+  entity_id TEXT,
+  payload_json TEXT,
+  ip TEXT,
+  ua TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+);
+CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id);
