@@ -8,7 +8,16 @@
       </el-form-item>
 
       <el-form-item label="配件">
-        <el-select v-model="item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
+        <el-select
+          v-model="item_id"
+          filterable
+          remote
+          reserve-keyword
+          :remote-method="remoteSearchItems"
+          :loading="itemsLoading"
+          placeholder="输入搜索 SKU/名称"
+          style="width: 100%"
+        >
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
         </el-select>
       </el-form-item>
@@ -49,6 +58,8 @@ const warehouses = ref<any[]>([]);
 const warehouse_id = ref<number>(1);
 
 const items = ref<any[]>([]);
+const itemsLoading = ref(false);
+let itemsReqSeq = 0;
 const item_id = ref<number | undefined>(undefined);
 const qty = ref(1);
 const unit_price = ref<number>(0);
@@ -72,12 +83,33 @@ async function loadWarehouses() {
   }
 }
 
-async function loadItems() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
-  items.value = j.data;
+async function loadItems(keyword = "") {
+  itemsLoading.value = true;
+  const seq = ++itemsReqSeq;
+  try {
+    const q = encodeURIComponent(keyword || "");
+    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=50&keyword=${q}`);
+    if (seq !== itemsReqSeq) return;
+    items.value = j.data || [];
+  } finally {
+    if (seq === itemsReqSeq) itemsLoading.value = false;
+  }
+}
 
-  const qid = Number(route.query.item_id);
-  if (qid) item_id.value = qid;
+async function ensureSelectedItemLabel(id: number) {
+  if (!id) return;
+  if (items.value.find((x: any) => Number(x.id) === id)) return;
+  try {
+    const j = await apiGet<{ ok: boolean; data: any }>(`/api/items?id=${id}`);
+    if (j?.data) items.value = [j.data, ...items.value];
+  } catch {
+    // ignore
+  }
+}
+
+// remote-method handler
+async function remoteSearchItems(keyword: string) {
+  await loadItems(keyword);
 }
 
 async function submit() {
@@ -105,6 +137,12 @@ async function submit() {
 
 onMounted(async () => {
   await loadWarehouses();
-  await loadItems();
+  await loadItems("");
+
+  const qid = Number(route.query.item_id);
+  if (qid) {
+    item_id.value = qid;
+    await ensureSelectedItemLabel(qid);
+  }
 });
 </script>

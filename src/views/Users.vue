@@ -210,18 +210,27 @@ async function doReset() {
 
 
 async function delUser(row: Row) {
+  let confirmText = "";
   try {
-    await ElMessageBox.confirm(
-      `确定要删除用户「${row.username}」吗？\n删除后无法恢复。`,
+    const r = await ElMessageBox.prompt(
+      `此操作将永久删除用户「${row.username}」。\n请输入用户名确认：${row.username}`,
       "删除用户",
-      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+      {
+        type: "warning",
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+        inputPlaceholder: row.username,
+        inputValidator: (val) =>
+          String(val || "").trim() === row.username ? true : "输入的用户名不匹配",
+      }
     );
+    confirmText = String(r.value || "").trim();
   } catch {
     return;
   }
   saving.value = true;
   try {
-    await apiDelete<any>("/api/users", { id: row.id });
+    await apiDelete<any>("/api/users", { id: row.id, confirm: confirmText });
     ElMessage.success("已删除");
     await load();
   } catch (e: any) {

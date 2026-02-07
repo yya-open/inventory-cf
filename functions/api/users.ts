@@ -1,6 +1,7 @@
 import { json, requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { hashPassword } from "../_password";
+import { requireConfirm } from "../_confirm";
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -128,7 +129,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { id } = await request.json<any>();
+    const { id, confirm } = await request.json<any>();
 
     const uid = Number(id);
     if (!uid) return json(false, null, "id 无效", 400);
@@ -139,6 +140,9 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
 
     const target = await env.DB.prepare("SELECT id, username, role, is_active FROM users WHERE id=?").bind(uid).first<any>();
     if (!target) return json(false, null, "用户不存在", 404);
+
+    // Hard protection: require typing the exact username to confirm deletion
+    requireConfirm({ confirm }, String(target.username), "二次确认不通过：请输入要删除的用户名");
 
     // 最后一个管理员保护（只对启用管理员生效）
     const isAdminActive = String(target.role) === "admin" && Number(target.is_active) === 1;

@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
+import { requireConfirm } from "../_confirm";
 
 function txNo() {
   const d = new Date();
@@ -22,9 +23,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requireAuth(env, request, "admin");
 
-    const { id } = await request.json();
+    const body: any = await request.json();
+    const { id } = body || {};
     const st_id = Number(id);
     if (!st_id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
+
+    // Hard protection: require typing the stocktake id
+    requireConfirm(body, String(st_id), "二次确认不通过：请输入盘点单 ID");
+
+    // Hard protection: require typing the stocktake id
+    requireConfirm(body, String(st_id), "二次确认不通过：请输入盘点单 ID");
 
     const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
     if (!st) return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });

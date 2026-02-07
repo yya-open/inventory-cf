@@ -8,7 +8,17 @@
         <el-option label="撤销盘点(REVERSAL)" value="REVERSAL" />
       </el-select>
 
-      <el-select v-model="item_id" filterable clearable placeholder="配件（可搜索）" style="width:320px">
+      <el-select
+        v-model="item_id"
+        filterable
+        remote
+        reserve-keyword
+        clearable
+        :remote-method="remoteSearchItems"
+        :loading="itemsLoading"
+        placeholder="配件（可搜索）"
+        style="width:320px"
+      >
         <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
       </el-select>
 
@@ -116,6 +126,8 @@ function typeTagType(t: string) {
 const route = useRoute();
 
 const items = ref<any[]>([]);
+const itemsLoading = ref(false);
+let itemsReqSeq = 0;
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
@@ -235,12 +247,35 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function loadItems() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
-  items.value = j.data;
+async function loadItems(keyword = "", pageNo = 1) {
+  itemsLoading.value = true;
+  const seq = ++itemsReqSeq;
+  try {
+    const q = new URLSearchParams();
+    q.set("page", String(pageNo));
+    q.set("page_size", "50");
+    if (keyword) q.set("keyword", keyword);
+    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?${q.toString()}`);
+    if (seq === itemsReqSeq) items.value = j.data || [];
+  } finally {
+    if (seq === itemsReqSeq) itemsLoading.value = false;
+  }
+}
 
-  const qid = Number(route.query.item_id);
-  if (qid) item_id.value = qid;
+async function ensureSelectedItemLabel(id?: number) {
+  if (!id) return;
+  if (items.value?.some((x) => Number(x.id) === Number(id))) return;
+  try {
+    const j = await apiGet<any>(`/api/items?id=${id}`);
+    const it = j.data?.[0];
+    if (it) items.value = [it, ...(items.value || [])];
+  } catch {
+    // ignore
+  }
+}
+
+function remoteSearchItems(query: string) {
+  loadItems(query, 1);
 }
 
 function onPageChange(){
@@ -305,8 +340,28 @@ async function clearTx() {
 
     if (!action) return;
 
+    // Hard protection: require typing a confirmation word
+    const expected = action === "all" ? "清空全部" : "清空";
+    const { value: confirmText } = await ElMessageBox.prompt(
+      action === "all"
+        ? "此操作将【永久清空全部】出入库明细。请输入：清空全部"
+        : "此操作将【永久清空当前筛选】的出入库明细。请输入：清空",
+      "二次确认",
+      {
+        confirmButtonText: "确认执行",
+        cancelButtonText: "取消",
+        inputPlaceholder: expected,
+        inputValue: "",
+      }
+    ).catch(() => ({ value: "" } as any));
+
+    if (String(confirmText || "").trim() !== expected) {
+      ElMessage.warning("二次确认未通过，已取消操作");
+      return;
+    }
+
     loading.value = true;
-    const body: any = { mode: action };
+    const body: any = { mode: action, confirm: expected };
     if (action === "filtered") {
       if (type.value) body.type = type.value;
       if (item_id.value) body.item_id = item_id.value;
@@ -326,7 +381,10 @@ async function clearTx() {
 }
 
 onMounted(async () => {
+  const qid = Number(route.query.item_id);
+  if (qid) item_id.value = qid;
   await loadItems();
+  await ensureSelectedItemLabel(item_id.value);
   await load();
 });
 </script>

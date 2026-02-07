@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
+import { requireConfirm } from "../_confirm";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -8,6 +9,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const body: any = await request.json().catch(() => ({}));
     const id = Number(body?.id);
     if (!id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
+
+    // Hard protection: require typing the stocktake id
+    requireConfirm(body, String(id), "二次确认不通过：请输入盘点单 ID");
 
     const st = await env.DB.prepare(`SELECT id, status FROM stocktake WHERE id=?`).bind(id).first() as any;
     if (!st) return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
