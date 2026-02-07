@@ -11,6 +11,7 @@ import Items from "../views/Items.vue";
 import Login from "../views/Login.vue";
 import Users from "../views/Users.vue";
 import AuditLog from "../views/AuditLog.vue";
+import BackupRestore from "../views/BackupRestore.vue";
 import ImportItems from "../views/ImportItems.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { ElMessage } from "element-plus";
@@ -32,6 +33,8 @@ const router = createRouter({
 
     { path: "/in", component: StockIn, meta: { role: "operator" } },
     { path: "/out", component: StockOut, meta: { role: "operator" } },
+
+    { path: "/backup", component: BackupRestore, meta: { role: "admin" } },
 
     { path: "/items", component: Items, meta: { role: "admin" } },
     { path: "/import/items", component: ImportItems, meta: { role: "admin" } },

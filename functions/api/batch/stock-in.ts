@@ -86,11 +86,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     try {
-      await env.DB.prepare("BEGIN IMMEDIATE").run();
       await env.DB.batch(stmts);
-      await env.DB.prepare("COMMIT").run();
-    } catch (e) {
-      await env.DB.prepare("ROLLBACK").run().catch(() => {});
+      } catch (e) {
       throw e;
     }
 

@@ -14,6 +14,7 @@
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/backup">备份/恢复</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/audit">审计日志</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/users">用户管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
