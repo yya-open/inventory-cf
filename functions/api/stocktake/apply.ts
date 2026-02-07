@@ -39,9 +39,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       const remark = `盘点调整 ${st.st_no}`;
 
       stmts.push(env.DB.prepare(
-        `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, remark, created_by)
-         VALUES (?, 'ADJUST', ?, ?, ?, ?, ?)`
-      ).bind(no, l.item_id, st.warehouse_id, qty, remark, user.username));
+        `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, remark, created_by)
+         VALUES (?, 'ADJUST', ?, ?, ?, ?, ?, ?)`
+      ).bind(no, l.item_id, st.warehouse_id, qty, diff, remark, user.username));
 
       // set stock qty to counted_qty
       stmts.push(env.DB.prepare(

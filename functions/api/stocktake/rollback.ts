@@ -49,9 +49,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       // 写入撤销流水
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, remark, created_by)
-           VALUES (?, 'REVERSAL', ?, ?, ?, ?, ?)`
-        ).bind(no, l.item_id, st.warehouse_id, qty, remark, user.username)
+          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, remark, created_by)
+           VALUES (?, 'REVERSAL', ?, ?, ?, ?, ?, ?)`
+        ).bind(no, l.item_id, st.warehouse_id, qty, -diff, remark, user.username)
       );
 
       // 将库存恢复到盘点前系统数量

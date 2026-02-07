@@ -90,12 +90,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
               WHERE item_id=? AND warehouse_id=? AND qty >= ?
               RETURNING 1
            )
-           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, target, remark, created_by)
-           SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?
+           INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, target, remark, created_by)
+           SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?
            FROM upd`
         ).bind(
           l.qty, item_id, warehouse_id, l.qty,
           no, item_id, warehouse_id, l.qty,
+          -l.qty,
           l.target ?? null, l.remark ?? null, user.username
         )
       );

@@ -37,6 +37,7 @@ CREATE TABLE IF NOT EXISTS stock_tx (
   item_id INTEGER NOT NULL,
   warehouse_id INTEGER NOT NULL,
   qty INTEGER NOT NULL CHECK(qty > 0),
+  delta_qty INTEGER NOT NULL DEFAULT 0,
   unit_price REAL,
   source TEXT,
   target TEXT,
@@ -63,3 +64,20 @@ CREATE TABLE IF NOT EXISTS users (
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+
+-- Login throttle (防爆破/限流)
+CREATE TABLE IF NOT EXISTS auth_login_throttle (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  ip TEXT NOT NULL,
+  username TEXT NOT NULL,
+  fail_count INTEGER NOT NULL DEFAULT 0,
+  first_fail_at TEXT,
+  last_fail_at TEXT,
+  locked_until TEXT,
+  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  UNIQUE(ip, username)
+);
+
+CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until);
+
+

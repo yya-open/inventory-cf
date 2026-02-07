@@ -63,9 +63,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, unit_price, source, remark, created_by)
-           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(no, item_id, warehouse_id, l.qty, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
+          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, unit_price, source, remark, created_by)
+           VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?)`
+        ).bind(no, item_id, warehouse_id, l.qty, l.qty, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
       );
 
       stmts.push(

@@ -4,6 +4,8 @@
       <el-select v-model="type" placeholder="类型" clearable style="width:140px">
         <el-option label="入库(IN)" value="IN" />
         <el-option label="出库(OUT)" value="OUT" />
+        <el-option label="盘点调整(ADJUST)" value="ADJUST" />
+        <el-option label="撤销盘点(REVERSAL)" value="REVERSAL" />
       </el-select>
 
       <el-select v-model="item_id" filterable clearable placeholder="配件（可搜索）" style="width:320px">
@@ -53,6 +55,12 @@
       </el-table-column>
       <el-table-column prop="warehouse_name" label="仓库" width="120" />
       <el-table-column prop="qty" label="数量" width="90" />
+      <el-table-column prop="delta_qty" label="变动" width="90">
+        <template #default="{row}">
+          <span v-if="typeof row.delta_qty === 'number'">{{ row.delta_qty > 0 ? '+' + row.delta_qty : row.delta_qty }}</span>
+          <span v-else>{{ row.type==='IN' ? '+'+row.qty : row.type==='OUT' ? -row.qty : (row.delta_qty||0) }}</span>
+        </template>
+      </el-table-column>
       <el-table-column label="来源/去向" width="200">
         <template #default="{row}">
           <span v-if="row.type==='IN'">{{ row.source || '-' }}</span>
@@ -93,6 +101,14 @@ function reset() {
   load();
 }
 
+function signedDelta(r: any) {
+  if (typeof r?.delta_qty === "number") return r.delta_qty;
+  // 兼容旧库：没有 delta_qty 时，用 IN/OUT 推断
+  if (r?.type === "IN") return Number(r.qty) || 0;
+  if (r?.type === "OUT") return -(Number(r.qty) || 0);
+  return 0;
+}
+
 function toCsvCell(v: any) {
   const s = String(v ?? "");
   // escape quotes
@@ -101,11 +117,12 @@ function toCsvCell(v: any) {
 }
 
 function exportCsv() {
-  const headers = ["时间","单号","类型","SKU","名称","仓库","数量","来源","去向","备注"];
+  const headers = ["时间","单号","类型","SKU","名称","仓库","数量","变动","来源","去向","备注"];
   const lines = [headers.map(toCsvCell).join(",")];
   for (const r of rows.value) {
     lines.push([
       r.created_at, r.tx_no, r.type, r.sku, r.name, r.warehouse_name, r.qty,
+      signedDelta(r),
       r.source || "", r.target || "", r.remark || ""
     ].map(toCsvCell).join(","));
   }
