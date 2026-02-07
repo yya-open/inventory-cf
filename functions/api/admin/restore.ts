@@ -57,6 +57,9 @@ function pick(obj: any, cols: string[]) {
 // mode:
 //  - replace: 清空并恢复（需要 confirm="清空并恢复"）
 //  - merge: 合并导入（需要 confirm="恢复"）
+//
+// 注意：Cloudflare D1 在 Pages Functions 环境中不建议使用 SQL BEGIN/COMMIT/ROLLBACK；
+// 本实现使用 batch + 分块写入，尽量保证一致性。
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
@@ -68,7 +71,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const backup = body.backup;
     const tables = backup?.tables || {};
 
-    // Validate
     if (!tables || typeof tables !== "object") {
       return Response.json({ ok: false, message: "缺少备份数据 tables" }, { status: 400 });
     }
@@ -76,52 +78,43 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     let insertedTotal = 0;
     const insertedByTable: Record<string, number> = {};
 
-    // Restore should be atomic: if anything fails, rollback.
-    // Use prepare().run() for transaction control (more consistent across D1 runtimes than exec()).
-    
-    try {
-      if (mode === "replace") {
-        // Delete in safe order
-        const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
-        await env.DB.batch(stmts);
-      }
-
-      for (const t of INSERT_ORDER) {
-        const rows = (tables as any)[t] as any[] | undefined;
-        if (!rows?.length) continue;
-        const cols = TABLE_COLUMNS[t];
-        if (!cols) continue;
-
-        const verb = mode === "merge" ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
-        const placeholders = cols.map(() => "?").join(",");
-        const sql = `${verb} INTO ${t} (${cols.join(",")}) VALUES (${placeholders})`;
-
-        let i = 0;
-        let inserted = 0;
-        while (i < rows.length) {
-          const chunk = rows.slice(i, i + 50);
-          const batch = chunk.map((r) => env.DB.prepare(sql).bind(...pick(r, cols)));
-          const res = await env.DB.batch(batch);
-          for (const rr of res) inserted += Number((rr as any)?.meta?.changes ?? 0);
-          i += 50;
-        }
-
-        insertedByTable[t] = inserted;
-        insertedTotal += inserted;
-      }
-
-    } catch (err) {
-      
-      throw err;
+    if (mode === "replace") {
+      const del = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
+      await env.DB.batch(del);
     }
 
-    await logAudit(env.DB, request, actor, "ADMIN_RESTORE", "backup", null, {
+    for (const t of INSERT_ORDER) {
+      const rows = (tables as any)[t] as any[] | undefined;
+      if (!rows?.length) continue;
+      const cols = TABLE_COLUMNS[t];
+      if (!cols) continue;
+
+      const verb = mode === "merge" ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
+      const placeholders = cols.map(() => "?").join(",");
+      const sql = `${verb} INTO ${t} (${cols.join(",")}) VALUES (${placeholders})`;
+
+      let i = 0;
+      let inserted = 0;
+      while (i < rows.length) {
+        const chunk = rows.slice(i, i + 50);
+        const batch = chunk.map((r) => env.DB.prepare(sql).bind(...pick(r, cols)));
+        const res = await env.DB.batch(batch);
+        for (const rr of res) inserted += Number((rr as any)?.meta?.changes ?? 0);
+        i += 50;
+      }
+
+      insertedByTable[t] = inserted;
+      insertedTotal += inserted;
+    }
+
+    // Best-effort audit
+    logAudit(env.DB, request, actor, "ADMIN_RESTORE", "backup", null, {
       mode,
       backup_version: backup?.version || null,
       exported_at: backup?.exported_at || null,
       inserted_total: insertedTotal,
       inserted_by_table: insertedByTable,
-    });
+    }).catch(() => {});
 
     return json(true, {
       mode,

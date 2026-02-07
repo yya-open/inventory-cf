@@ -1,13 +1,9 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
 
-function txNo() {
-  const d = new Date();
-  const y = d.getFullYear();
-  const m = String(d.getMonth() + 1).padStart(2, "0");
-  const day = String(d.getDate()).padStart(2, "0");
-  const rand = Math.floor(Math.random() * 900000 + 100000);
-  return `ADJ${y}${m}${day}-${rand}`;
+function txNo(stNo: string, itemId: number) {
+  // deterministic per stocktake+item to avoid double-apply on retries
+  return `ADJ${stNo}-${itemId}`;
 }
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
@@ -25,62 +21,91 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
     }
     if (st.status !== "DRAFT") {
-      return Response.json({ ok: false, message: "盘点单已应用" }, { status: 400 });
+      return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
     }
 
-    const { results } = await env.DB.prepare(
-      `SELECT l.*, i.sku
-       FROM stocktake_line l
-       JOIN items i ON i.id=l.item_id
-       WHERE l.stocktake_id=? 
-         AND l.counted_qty IS NOT NULL 
-         AND l.diff_qty IS NOT NULL 
-         AND l.diff_qty != 0`
-    ).bind(st_id).all();
+    // Mark as APPLIED first (idempotent guard)
+    const up = await env.DB.prepare(
+      `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=? AND status='DRAFT'`
+    ).bind(st_id).run();
 
-    const stmts: D1PreparedStatement[] = [];
+    if ((up as any)?.meta?.changes !== 1) {
+      return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
+    }
+
+    const lines = (await env.DB.prepare(
+      `SELECT * FROM stocktake_line WHERE stocktake_id=? AND counted_qty IS NOT NULL`
+    ).bind(st_id).all()) as any;
+
+    const rows: any[] = lines?.results || [];
     let adjusted = 0;
 
-    for (const l of results as any[]) {
-      const diff = Number(l.diff_qty);
-      const qty = Math.abs(diff);
-      const no = txNo();
-      const remark = `盘点调整 ${st.st_no}`;
+    // Apply per line in chunks (D1 batch)
+    // Idempotency: use EXISTS(stock_tx ref) guard + deterministic tx_no.
+    const warehouseId = Number(st.warehouse_id);
 
-      stmts.push(
+    const makeStmtsForLine = (r: any) => {
+      const itemId = Number(r.item_id);
+      const diff = Number(r.diff_qty || 0);
+      if (!itemId || !diff) return [];
+      const tx = txNo(String(st.st_no), itemId);
+
+      return [
+        // ensure stock row exists
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO stock (item_id, warehouse_id, qty, updated_at) VALUES (?, ?, 0, datetime('now'))`
+        ).bind(itemId, warehouseId),
+
+        // adjust stock only if not already applied for this (stocktake,item,warehouse)
+        env.DB.prepare(
+          `UPDATE stock
+           SET qty = qty + ?, updated_at=datetime('now')
+           WHERE item_id=? AND warehouse_id=?
+             AND (qty + ?) >= 0
+             AND NOT EXISTS (
+               SELECT 1 FROM stock_tx
+               WHERE ref_type='STOCKTAKE' AND ref_id=? AND item_id=? AND warehouse_id=?
+             )`
+        ).bind(diff, itemId, warehouseId, diff, st_id, itemId, warehouseId),
+
+        // insert tx if the previous UPDATE changed a row
         env.DB.prepare(
           `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, remark, created_by)
-           VALUES (?, 'ADJUST', ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(no, l.item_id, st.warehouse_id, qty, diff, "STOCKTAKE_APPLY", st_id, st.st_no, remark, user.username)
-      );
+           SELECT ?, 'ADJUST', ?, ?, ?, ?, 'STOCKTAKE', ?, ?, ?, ?
+           WHERE (SELECT changes()) > 0`
+        ).bind(
+          tx,
+          itemId,
+          warehouseId,
+          Math.abs(diff),
+          diff,
+          st_id,
+          String(st.st_no),
+          "盘点调整",
+          user.username
+        ),
+      ];
+    };
 
-      stmts.push(
-        env.DB.prepare(
-          `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-           VALUES (?, ?, ?, datetime('now'))
-           ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=datetime('now')`
-        ).bind(l.item_id, st.warehouse_id, Number(l.counted_qty))
-      );
+    const CHUNK_LINES = 20; // each line expands to 3 stmts; keep batch size reasonable
+    for (let i = 0; i < rows.length; i += CHUNK_LINES) {
+      const part = rows.slice(i, i + CHUNK_LINES);
+      const stmts: D1PreparedStatement[] = [];
+      for (const r of part) stmts.push(...makeStmtsForLine(r));
 
-      adjusted++;
+      if (!stmts.length) continue;
+
+      const res = await env.DB.batch(stmts);
+
+      // count inserted tx rows (every 3rd statement per line)
+      for (let k = 0; k < res.length; k += 3) {
+        const txIns = (res[k + 2] as any)?.meta?.changes || 0;
+        if (txIns > 0) adjusted += 1;
+      }
     }
 
-    // Conditional update: if already applied by others, changes will be 0
-    stmts.push(
-      env.DB.prepare(`UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=? AND status='DRAFT'`).bind(st_id)
-    );
-
-    const rs = await env.DB.batch(stmts);
-    const last = rs[rs.length - 1] as any;
-    const changes = Number(last?.meta?.changes || 0);
-    if (changes === 0) {
-      return Response.json({ ok: false, message: "盘点单状态已变化（可能被其他人应用/撤销）" }, { status: 409 });
-    }
-
-    // audit (best-effort)
-    try {
-      await logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted });
-    } catch {}
+    // Best-effort audit
+    logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted }).catch(() => {});
 
     return Response.json({ ok: true, adjusted });
   } catch (e: any) {

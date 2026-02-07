@@ -2,7 +2,12 @@ import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 
 function txNo() {
-  return `OUT-${crypto.randomUUID()}`;
+  const d = new Date();
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  const rand = Math.floor(Math.random() * 900000 + 100000);
+  return `OUT${y}${m}${day}-${rand}`;
 }
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
@@ -11,11 +16,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
 
     const q = Number(qty);
-    if (!item_id || !q || q <= 0) return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
+    const wid = Number(warehouse_id);
+
+    if (!item_id || !q || q <= 0) {
+      return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
+    }
 
     const no = txNo();
 
-    // Atomic (D1-compatible):
+    // Atomic (D1-compatible): run UPDATE then INSERT conditionally in a single batch.
     // - UPDATE uses qty>=? to prevent negative stock.
     // - INSERT only happens when the immediately previous UPDATE changed 1 row (SELECT changes()>0).
     const stmts: D1PreparedStatement[] = [
@@ -23,32 +32,38 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         `UPDATE stock
          SET qty = qty - ?, updated_at=datetime('now')
          WHERE item_id=? AND warehouse_id=? AND qty >= ?`
-      ).bind(q, item_id, warehouse_id, q),
+      ).bind(q, item_id, wid, q),
 
       env.DB.prepare(
         `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
          SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
          WHERE (SELECT changes()) > 0`
-      ).bind(no, item_id, warehouse_id, q, -q, "MANUAL_OUT", null, no, target ?? null, remark ?? null, user.username),
+      ).bind(
+        no,
+        item_id,
+        wid,
+        q,
+        -q,
+        "MANUAL_OUT",
+        null,
+        no,
+        target ?? null,
+        remark ?? null,
+        user.username
+      ),
     ];
 
-    let inserted = 0;
+    const rs = await env.DB.batch(stmts);
+    const inserted = (rs[1] as any)?.meta?.changes || 0;
 
-    try {
-      // D1 的 batch 本身是原子事务，不要使用 SQL BEGIN/COMMIT（Cloudflare 会报错）
-      const rs = await env.DB.batch(stmts);
-      inserted = (rs[1] as any)?.meta?.changes || 0;
-
-      if (inserted === 0) {
-        return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
-      }
-    } catch (e) {
-      throw e;
+    if (inserted === 0) {
+      return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
     }
-// Best-effort audit
+
+    // Best-effort audit (do not block main flow)
     logAudit(env.DB, request, user, "STOCK_OUT", "stock_tx", no, {
       item_id,
-      warehouse_id,
+      warehouse_id: wid,
       qty: q,
       target: target ?? null,
       remark: remark ?? null,
