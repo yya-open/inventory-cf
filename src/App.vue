@@ -17,7 +17,6 @@
         <el-menu-item v-if="can('admin')" index="/audit">审计日志</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/users">用户管理</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/backup">备份/恢复</el-menu-item>
       </el-menu>
       <div style="padding: 12px; color: #999; font-size: 12px">
         默认仓库：主仓（id=1）
@@ -77,14 +76,10 @@ const title = computed(() => {
     "/out": "出库",
     "/tx": "出入库明细",
     "/warnings": "预警中心",
-    "/dashboard": "报表与看板",
-    "/batch": "批量出入库",
-    "/stocktake": "库存盘点",
     "/items": "配件管理",
     "/import/items": "Excel 导入配件",
     "/audit": "审计日志",
     "/users": "用户管理",
-    "/backup": "备份/恢复",
   };
   return map[route.path] || "系统";
 });

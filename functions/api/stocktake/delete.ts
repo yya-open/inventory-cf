@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
-import { requireConfirm } from "../../_confirm";
+import { requireConfirm } from "../_confirm";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {

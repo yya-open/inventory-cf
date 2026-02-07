@@ -1,19 +1,17 @@
 import { createRouter, createWebHistory } from "vue-router";
-// Route-level code splitting: lazy-load views to reduce initial bundle size.
-const Login = () => import("../views/Login.vue");
-const StockQuery = () => import("../views/StockQuery.vue");
-const TxList = () => import("../views/TxList.vue");
-const Warnings = () => import("../views/Warnings.vue");
-const Dashboard = () => import("../views/Dashboard.vue");
-const StockIn = () => import("../views/StockIn.vue");
-const StockOut = () => import("../views/StockOut.vue");
-const BatchTx = () => import("../views/BatchTx.vue");
-const Stocktake = () => import("../views/Stocktake.vue");
-const Items = () => import("../views/Items.vue");
-const ImportItems = () => import("../views/ImportItems.vue");
-const AuditLog = () => import("../views/AuditLog.vue");
-const Users = () => import("../views/Users.vue");
-const BackupRestore = () => import("../views/BackupRestore.vue");
+import StockQuery from "../views/StockQuery.vue";
+import StockIn from "../views/StockIn.vue";
+import StockOut from "../views/StockOut.vue";
+import TxList from "../views/TxList.vue";
+import Warnings from "../views/Warnings.vue";
+import BatchTx from "../views/BatchTx.vue";
+import Stocktake from "../views/Stocktake.vue";
+import Dashboard from "../views/Dashboard.vue";
+import Items from "../views/Items.vue";
+import Login from "../views/Login.vue";
+import Users from "../views/Users.vue";
+import AuditLog from "../views/AuditLog.vue";
+import ImportItems from "../views/ImportItems.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { ElMessage } from "element-plus";
 
@@ -39,7 +37,6 @@ const router = createRouter({
     { path: "/import/items", component: ImportItems, meta: { role: "admin" } },
     { path: "/audit", component: AuditLog, meta: { role: "admin" } },
     { path: "/users", component: Users, meta: { role: "admin" } },
-    { path: "/backup", component: BackupRestore, meta: { role: "admin" } },
   ],
 });
 
