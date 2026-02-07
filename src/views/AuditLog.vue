@@ -116,8 +116,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
-import { ElMessageBox } from "element-plus";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 
 const ACTION_LABEL: Record<string, string> = {
@@ -237,7 +236,7 @@ async function copyPayload(){
   if (!txt) return;
   try{
     await navigator.clipboard.writeText(txt);
-    msgSuccess("已复制");
+    ElMessage.success("已复制");
   }catch{
     // fallback for older browsers / permissions
     const ta = document.createElement("textarea");
@@ -250,9 +249,9 @@ async function copyPayload(){
     ta.select();
     try{
       document.execCommand("copy");
-      msgSuccess("已复制");
+      ElMessage.success("已复制");
     }catch{
-      msgError("复制失败");
+      ElMessage.error("复制失败");
     }finally{
       document.body.removeChild(ta);
     }
@@ -281,7 +280,7 @@ async function load(){
     rows.value = (j.data || []).map((r:any, idx:number)=>({ ...r }));
     total.value = Number(j.total || 0);
   }catch(e:any){
-    msgError(e.message || "加载失败");
+    ElMessage.error(e.message || "加载失败");
   }finally{
     loading.value = false;
   }
@@ -301,12 +300,12 @@ async function deleteOne(id: number){
     );
 
     await apiPost(`/api/audit/delete`, { id, confirm: String(confirmText).trim() });
-    msgSuccess("已删除");
+    ElMessage.success("已删除");
     // if delete makes current page empty, go back one page.
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
-    msgError(e.message || "删除失败");
+    ElMessage.error(e.message || "删除失败");
   }
 }
 
@@ -326,14 +325,14 @@ async function deleteSelected(){
       }
     );
     await apiPost(`/api/audit/delete`, { ids, confirm: String(confirmText).trim() });
-    msgSuccess("已删除");
+    ElMessage.success("已删除");
     selectedIds.value = [];
     // adjust page if needed
     if (rows.value.length <= ids.length && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
     if (e === "cancel" || e === "close") return;
-    msgError(e.message || "删除失败");
+    ElMessage.error(e.message || "删除失败");
   }
 }
 

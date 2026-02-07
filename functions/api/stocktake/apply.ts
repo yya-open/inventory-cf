@@ -58,15 +58,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=?`
     ).bind(st_id));
 
-    // D1 runtime does not reliably support DB.exec() across environments; use prepare().run() for txn control.
-    await env.DB.prepare("BEGIN").run();
-    try {
-      await env.DB.batch(stmts);
-      await env.DB.prepare("COMMIT").run();
-    } catch (err) {
-      await env.DB.prepare("ROLLBACK").run();
-      throw err;
-    }
+    await env.DB.batch(stmts);
 
     await logAudit(env.DB, request, user, 'STOCKTAKE_APPLY', 'stocktake', st_id, { st_no: st.st_no, adjusted });
 

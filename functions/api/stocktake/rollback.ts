@@ -27,6 +27,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const { id } = body || {};
     const st_id = Number(id);
     if (!st_id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
+
+    // Hard protection: require typing the stocktake id
+    requireConfirm(body, String(st_id), "二次确认不通过：请输入盘点单 ID");
+
     // Hard protection: require typing the stocktake id
     requireConfirm(body, String(st_id), "二次确认不通过：请输入盘点单 ID");
 
@@ -76,15 +80,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       env.DB.prepare(`UPDATE stocktake SET status='DRAFT', applied_at=NULL WHERE id=?`).bind(st_id)
     );
 
-    // D1 runtime does not reliably support DB.exec() across environments; use prepare().run() for txn control.
-    await env.DB.prepare("BEGIN").run();
-    try {
-      await env.DB.batch(stmts);
-      await env.DB.prepare("COMMIT").run();
-    } catch (err) {
-      await env.DB.prepare("ROLLBACK").run();
-      throw err;
-    }
+    await env.DB.batch(stmts);
 
     await logAudit(env.DB, request, user, 'STOCKTAKE_ROLLBACK', 'stocktake', st_id, { st_no: st.st_no, reversed });
     return Response.json({ ok: true, reversed });

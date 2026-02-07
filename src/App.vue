@@ -61,7 +61,7 @@
 <script setup lang="ts">
 import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "./utils/msg";
+import { ElMessage } from "element-plus";
 import { apiPost } from "./api/client";
 import { can, logout, useAuth } from "./store/auth";
 
@@ -105,14 +105,14 @@ function goChangePwd() {
 }
 
 async function changePwd() {
-  if (newP.value.length < 6) return msgWarn("新密码至少 6 位");
+  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
-    msgSuccess("密码已更新，请重新登录");
+    ElMessage.success("密码已更新，请重新登录");
     doLogout();
   } catch (e: any) {
-    msgError(e.message || "修改失败");
+    ElMessage.error(e.message || "修改失败");
   } finally {
     changing.value = false;
   }

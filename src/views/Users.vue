@@ -105,8 +105,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
-import { ElMessageBox } from "element-plus";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 
 type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string };
@@ -138,7 +137,7 @@ async function load() {
     const r = await apiGet<{ ok:boolean; data: Row[] }>("/api/users");
     rows.value = r.data;
   } catch (e:any) {
-    msgError(e.message || "加载失败");
+    ElMessage.error(e.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -150,16 +149,16 @@ function openCreate() {
 }
 
 async function createUser() {
-  if (!form.value.username.trim()) return msgWarn("请输入账号");
-  if (form.value.password.length < 6) return msgWarn("密码至少 6 位");
+  if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
+  if (form.value.password.length < 6) return ElMessage.warning("密码至少 6 位");
   saving.value = true;
   try {
     await apiPost<any>("/api/users", form.value);
-    msgSuccess("创建成功");
+    ElMessage.success("创建成功");
     showCreate.value = false;
     await load();
   } catch (e:any) {
-    msgError(e.message || "创建失败");
+    ElMessage.error(e.message || "创建失败");
   } finally {
     saving.value = false;
   }
@@ -177,11 +176,11 @@ async function saveEdit() {
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value });
-    msgSuccess("已更新");
+    ElMessage.success("已更新");
     showEdit.value = false;
     await load();
   } catch (e:any) {
-    msgError(e.message || "更新失败");
+    ElMessage.error(e.message || "更新失败");
   } finally {
     saving.value = false;
   }
@@ -195,15 +194,15 @@ function openReset(row: Row) {
 
 async function doReset() {
   if (!editing.value) return;
-  if (resetPwd.value.length < 6) return msgWarn("密码至少 6 位");
+  if (resetPwd.value.length < 6) return ElMessage.warning("密码至少 6 位");
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, reset_password: resetPwd.value });
-    msgSuccess("已重置");
+    ElMessage.success("已重置");
     showReset.value = false;
     await load();
   } catch (e:any) {
-    msgError(e.message || "重置失败");
+    ElMessage.error(e.message || "重置失败");
   } finally {
     saving.value = false;
   }
@@ -232,10 +231,10 @@ async function delUser(row: Row) {
   saving.value = true;
   try {
     await apiDelete<any>("/api/users", { id: row.id, confirm: confirmText });
-    msgSuccess("已删除");
+    ElMessage.success("已删除");
     await load();
   } catch (e: any) {
-    msgError(e.message || "删除失败");
+    ElMessage.error(e.message || "删除失败");
   } finally {
     saving.value = false;
   }

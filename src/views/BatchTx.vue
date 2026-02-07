@@ -83,7 +83,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 
@@ -116,7 +116,7 @@ async function loadWarehouses() {
     }
   } catch (e) {
     const err: any = e;
-    msgError(err?.message || "加载仓库失败");
+    ElMessage.error(err?.message || "加载仓库失败");
   }
 }
 
@@ -160,14 +160,14 @@ function beforeUpload(file: File) {
       parsed.push(row);
     }
     rows.value = rows.value.concat(parsed);
-    msgSuccess(`导入 ${parsed.length} 行`);
+    ElMessage.success(`导入 ${parsed.length} 行`);
   };
   reader.readAsArrayBuffer(file);
   return false;
 }
 
 async function submit() {
-  if (!rows.value.length) return msgWarn("请先添加或导入明细");
+  if (!rows.value.length) return ElMessage.warning("请先添加或导入明细");
 
   submitting.value = true;
   try {
@@ -183,14 +183,14 @@ async function submit() {
     const r: any = await apiPost(url, payload);
 
     if (r?.ok) {
-      msgSuccess(`成功提交 ${r.count} 条（自动合并同 SKU）`);
+      ElMessage.success(`成功提交 ${r.count} 条（自动合并同 SKU）`);
       rows.value = [];
     } else {
-      msgError(r?.message || "提交失败");
+      ElMessage.error(r?.message || "提交失败");
     }
   } catch (e) {
     const err: any = e;
-    msgError(err?.message || "提交失败");
+    ElMessage.error(err?.message || "提交失败");
   } finally {
     submitting.value = false;
   }

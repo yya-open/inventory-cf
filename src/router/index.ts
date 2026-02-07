@@ -13,7 +13,7 @@ import Users from "../views/Users.vue";
 import AuditLog from "../views/AuditLog.vue";
 import ImportItems from "../views/ImportItems.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage } from "element-plus";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -57,7 +57,7 @@ router.beforeEach(async (to) => {
 
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
-    msgWarn("权限不足");
+    ElMessage.warning("权限不足");
     return { path: "/stock" };
   }
   return true;

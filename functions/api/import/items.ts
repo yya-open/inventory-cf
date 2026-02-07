@@ -22,8 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   let inserted = 0, updated = 0, skipped = 0;
   const errors: any[] = [];
 
-  // D1 runtime does not reliably support DB.exec() across environments; use prepare().run() for txn control.
-  await env.DB.prepare("BEGIN").run();
+  await env.DB.exec("BEGIN");
   try {
     for (let i = 0; i < items.length; i++) {
       const r = items[i];
@@ -63,9 +62,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         inserted++;
       }
     }
-    await env.DB.prepare("COMMIT").run();
+    await env.DB.exec("COMMIT");
   } catch (e: any) {
-    await env.DB.prepare("ROLLBACK").run();
+    await env.DB.exec("ROLLBACK");
     return json(false, null, "导入失败：" + (e?.message || "unknown"), 500);
   }
 

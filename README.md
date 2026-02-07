@@ -67,7 +67,6 @@ wrangler d1 execute inventory_db --remote --file=sql/init.sql
 ```bash
 wrangler d1 execute inventory_db --remote --file=sql/migrate_audit_throttle.sql
 wrangler d1 execute inventory_db --remote --file=sql/migrate_trace_audit.sql
-wrangler d1 execute inventory_db --remote --file=sql/migrate_perf_indexes.sql
 ```
 
 可选环境变量（Pages → Settings → Environment variables）：

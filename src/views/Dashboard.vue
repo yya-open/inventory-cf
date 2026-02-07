@@ -73,7 +73,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
-import { msgError, msgInfo, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 
 const warehouses = ref<any[]>([]);
@@ -107,7 +107,7 @@ async function loadWarehouses(){
     warehouses.value = r.data || [];
     if (warehouses.value?.length) warehouseId.value = warehouses.value[0].id;
   }catch(e:any){
-    msgError(e.message || "加载仓库失败");
+    ElMessage.error(e.message || "加载仓库失败");
   }
 }
 
@@ -117,7 +117,7 @@ async function refresh(){
     const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}`);
     data.value = r;
   }catch(e:any){
-    msgError(e.message || "加载报表失败");
+    ElMessage.error(e.message || "加载报表失败");
   }finally{
     loading.value = false;
   }
