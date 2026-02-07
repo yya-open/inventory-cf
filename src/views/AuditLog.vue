@@ -60,8 +60,8 @@
       <el-table-column label="实体" min-width="180">
         <template #default="{ row }">
           <div class="entity-cell">
-            <div class="entity-name">{{ row.item_name || entityLabel(row.entity) || "-" }}</div>
-            <div class="entity-meta" v-if="row.item_name">{{ entityLabel(row.entity) }}</div>
+            <div class="entity-name">{{ row.item_name || row.user_name || entityLabel(row.entity) || "-" }}</div>
+            <div class="entity-meta" v-if="row.item_name || row.user_name">{{ entityLabel(row.entity) }}</div>
           </div>
         </template>
       </el-table-column>
