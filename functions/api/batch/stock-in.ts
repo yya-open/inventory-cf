@@ -22,7 +22,7 @@ type Line = {
   remark?: string;
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
 
@@ -92,7 +92,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     // Best-effort audit
-    logAudit(env.DB, request, user, "BATCH_IN", "stock_tx", batch_no, { warehouse_id, count: txs.length }).catch(() => {});
+    waitUntil(logAudit(env.DB, request, user, "BATCH_IN", "stock_tx", batch_no, { warehouse_id, count: txs.length }).catch(() => {}));
     return Response.json({ ok: true, batch_no, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);

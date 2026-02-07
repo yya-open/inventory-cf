@@ -5,7 +5,7 @@ function txNo() {
   return `IN-${crypto.randomUUID()}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
     const { item_id, warehouse_id = 1, qty, unit_price, source, remark } = await request.json();
@@ -28,15 +28,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ).bind(item_id, warehouse_id, q),
       ]);
 // Best-effort audit (don't fail the already-committed business operation)
-    logAudit(env.DB, request, user, "STOCK_IN", "stock_tx", no, {
+    waitUntil(logAudit(env.DB, request, user, "STOCK_IN", "stock_tx", no, {
       item_id,
       warehouse_id,
       qty: q,
       unit_price: unit_price ?? null,
       source: source ?? null,
       remark: remark ?? null,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     return Response.json({ ok: true, tx_no: no });
   } catch (e: any) {
     return errorResponse(e);
