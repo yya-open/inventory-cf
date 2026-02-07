@@ -92,13 +92,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     // Replace-mode: do delete once
     if (mode === "replace" && Number(job.replaced_done || 0) === 0) {
       try {
-        await env.DB.prepare("BEGIN IMMEDIATE").run();
         const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
         await env.DB.batch(stmts);
         await env.DB.prepare(`UPDATE restore_job SET replaced_done=1, updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
-        await env.DB.prepare("COMMIT").run();
-      } catch (e) {
-        await env.DB.prepare("ROLLBACK").run().catch(() => {});
+        } catch (e) {
         throw e;
       }
     }
@@ -123,8 +120,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
     // We commit incrementally each run; each run chunk is atomic for its own rows.
     try {
-      await env.DB.prepare("BEGIN IMMEDIATE").run();
-
       let curTable = "";
       let curTableIndex = -1;
       let rowIndexInTable = -1;
@@ -168,7 +163,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
           const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
           if (s?.status === "PAUSED" || s?.status === "CANCELED") {
             await flush();
-            await env.DB.prepare("COMMIT").run();
             return json(true, { id: jobId, status: s.status, more: false });
           }
         }
@@ -207,8 +201,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         await env.DB.prepare(`UPDATE restore_job SET status='DONE', updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
       }
 
-      await env.DB.prepare("COMMIT").run();
-
       const more = !done;
       if (done) {
         logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_DONE", "restore_job", jobId, { inserted_changes: inserted }).catch(() => {});
@@ -225,7 +217,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         more,
       });
     } catch (e: any) {
-      await env.DB.prepare("ROLLBACK").run().catch(() => {});
       await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=datetime('now') WHERE id=?`)
         .bind(String(e?.message || e), jobId).run();
       return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });

@@ -285,7 +285,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const insertedByTable: Record<string, number> = {};
 
     // Start transaction (restore should be atomic)
-    await env.DB.prepare("BEGIN").run();
+    
     try {
       if (mode === "replace") {
         const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
@@ -339,9 +339,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         insertedTotal += inserted;
       }
 
-      await env.DB.prepare("COMMIT").run();
     } catch (err) {
-      await env.DB.prepare("ROLLBACK").run();
+      
       throw err;
     }
 
