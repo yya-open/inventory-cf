@@ -20,24 +20,33 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const binds: any[] = [];
 
     if (keyword) {
-      wh.push("(username LIKE ? OR action LIKE ? OR entity LIKE ? OR entity_id LIKE ?)");
+      wh.push("(a.username LIKE ? OR a.action LIKE ? OR a.entity LIKE ? OR a.entity_id LIKE ?)");
       binds.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
     }
-    if (action) { wh.push("action=?"); binds.push(action); }
-    if (entity) { wh.push("entity=?"); binds.push(entity); }
-    if (user) { wh.push("username=?"); binds.push(user); }
-    if (date_from) { wh.push("created_at >= ?"); binds.push(date_from); }
-    if (date_to) { wh.push("created_at <= ?"); binds.push(date_to); }
+    if (action) { wh.push("a.action=?"); binds.push(action); }
+    if (entity) { wh.push("a.entity=?"); binds.push(entity); }
+    if (user) { wh.push("a.username=?"); binds.push(user); }
+    if (date_from) { wh.push("a.created_at >= ?"); binds.push(date_from); }
+    if (date_to) { wh.push("a.created_at <= ?"); binds.push(date_to); }
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
 
-    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM audit_log ${where}`).bind(...binds).first<any>();
+    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM audit_log a ${where}`)
+      .bind(...binds)
+      .first<any>();
 
+    // Enrich entity display for stock_tx: show item name by joining via tx_no.
+    // (audit_log.entity_id stores tx_no when entity='stock_tx')
     const { results } = await env.DB.prepare(
-      `SELECT id, created_at, username, action, entity, entity_id, ip, ua, payload_json
-       FROM audit_log
+      `SELECT a.id, a.created_at, a.username, a.action, a.entity, a.entity_id, a.ip, a.ua, a.payload_json,
+              i.name AS item_name
+       FROM audit_log a
+       LEFT JOIN stock_tx st
+         ON a.entity = 'stock_tx' AND st.tx_no = a.entity_id
+       LEFT JOIN items i
+         ON i.id = st.item_id
        ${where}
-       ORDER BY id DESC
+       ORDER BY a.id DESC
        LIMIT ? OFFSET ?`
     ).bind(...binds, pageSize, offset).all();
 

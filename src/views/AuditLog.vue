@@ -1,31 +1,80 @@
 <template>
-  <el-card>
+  <el-card class="audit-card">
     <template #header>
-      <div style="display:flex; justify-content:space-between; align-items:center">
-        <div style="font-weight:700">审计日志</div>
-        <div style="display:flex; gap:8px; align-items:center">
-          <el-input v-model="keyword" placeholder="搜索 用户/动作/实体/ID" clearable style="width: 220px" />
-          <el-input v-model="action" placeholder="action" clearable style="width: 140px" />
-          <el-input v-model="entity" placeholder="entity" clearable style="width: 120px" />
-          <el-input v-model="user" placeholder="user" clearable style="width: 120px" />
-          <el-date-picker v-model="range" type="daterange" range-separator="-" start-placeholder="开始" end-placeholder="结束" />
+      <div class="audit-header">
+        <div class="title">审计日志</div>
+        <div class="tools">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="reset">重置</el-button>
+          <el-button type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
+            删除选中 ({{ selectedIds.length }})
+          </el-button>
         </div>
       </div>
+
+      <el-form class="audit-filters" :inline="true" @submit.prevent>
+        <el-form-item>
+          <el-input v-model="keyword" placeholder="搜索：用户/动作/实体/ID" clearable style="width: 240px" />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="action" placeholder="动作（如 STOCK_OUT）" clearable style="width: 170px" />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="entity" placeholder="实体（如 stock_tx）" clearable style="width: 150px" />
+        </el-form-item>
+        <el-form-item>
+          <el-input v-model="user" placeholder="用户（如 admin）" clearable style="width: 150px" />
+        </el-form-item>
+        <el-form-item>
+          <el-date-picker
+            v-model="range"
+            type="daterange"
+            range-separator="-"
+            start-placeholder="开始"
+            end-placeholder="结束"
+          />
+        </el-form-item>
+      </el-form>
     </template>
 
-    <el-table :data="rows" v-loading="loading" border style="width:100%">
+    <el-table
+      :data="rows"
+      v-loading="loading"
+      border
+      style="width:100%"
+      @selection-change="onSelect"
+    >
+      <el-table-column type="selection" width="48" />
       <el-table-column prop="id" label="#" width="80" />
       <el-table-column prop="created_at" label="时间" min-width="170" />
       <el-table-column prop="username" label="用户" width="130" />
-      <el-table-column prop="action" label="动作" min-width="160" />
-      <el-table-column prop="entity" label="实体" width="130" />
-      <el-table-column prop="entity_id" label="实体ID" min-width="120" />
-      <el-table-column prop="ip" label="IP" width="140" />
-      <el-table-column label="详情" width="90" fixed="right">
+      <el-table-column label="动作" min-width="160">
+        <template #default="{ row }">
+          <el-tag :type="tagType(row.action)" effect="light">{{ row.action }}</el-tag>
+        </template>
+      </el-table-column>
+      <el-table-column label="实体" min-width="180">
+        <template #default="{ row }">
+          <div class="entity-cell">
+            <div class="entity-name">{{ row.item_name || row.entity || '-' }}</div>
+            <div class="entity-meta" v-if="row.item_name">{{ row.entity }}</div>
+          </div>
+        </template>
+      </el-table-column>
+      <el-table-column prop="entity_id" label="实体ID" min-width="140" />
+      <el-table-column label="IP" width="180">
+        <template #default="{ row }">
+          <span class="ip">{{ row.ip || '-' }}</span>
+        </template>
+      </el-table-column>
+      <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openPayload(row)">查看</el-button>
+          <el-popconfirm title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
+            <template #reference>
+              <el-button link type="danger">删除</el-button>
+            </template>
+          </el-popconfirm>
         </template>
       </el-table-column>
     </el-table>
@@ -43,7 +92,7 @@
       />
     </div>
 
-    <el-dialog v-model="showPayload" title="payload_json" width="720px">
+    <el-dialog v-model="showPayload" title="详情" width="720px">
       <el-input v-model="payloadText" type="textarea" :rows="18" readonly />
       <template #footer>
         <el-button @click="showPayload=false">关闭</el-button>
@@ -54,8 +103,8 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { apiGet } from "../api/client";
-import { ElMessage } from "element-plus";
+import { apiGet, apiPost } from "../api/client";
+import { ElMessage, ElMessageBox } from "element-plus";
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -72,6 +121,21 @@ const total = ref(0);
 
 const showPayload = ref(false);
 const payloadText = ref("");
+
+const selectedIds = ref<number[]>([]);
+
+function onSelect(list: any[]) {
+  selectedIds.value = (list || []).map(r => Number(r.id)).filter(n => Number.isFinite(n));
+}
+
+function tagType(action: string) {
+  const a = String(action || "").toUpperCase();
+  if (a.includes("DELETE") || a.includes("CLEAR")) return "danger";
+  if (a.includes("ROLLBACK") || a.includes("DISABLE") || a.includes("RESET")) return "warning";
+  if (a.includes("STOCK_OUT") || a.includes("OUT")) return "warning";
+  if (a.includes("STOCK_IN") || a.includes("IN")) return "success";
+  return "info";
+}
 
 function onSearch(){
   page.value = 1;
@@ -123,5 +187,45 @@ async function load(){
   }
 }
 
+async function deleteOne(id: number){
+  try{
+    await apiPost(`/api/audit/delete`, { id });
+    ElMessage.success("已删除");
+    // if delete makes current page empty, go back one page.
+    if (rows.value.length === 1 && page.value > 1) page.value -= 1;
+    await load();
+  }catch(e:any){
+    ElMessage.error(e.message || "删除失败");
+  }
+}
+
+async function deleteSelected(){
+  const ids = selectedIds.value.slice();
+  if (!ids.length) return;
+  try{
+    await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条审计日志？`, "删除确认", { type: "warning" });
+    await apiPost(`/api/audit/delete`, { ids });
+    ElMessage.success("已删除");
+    selectedIds.value = [];
+    // adjust page if needed
+    if (rows.value.length <= ids.length && page.value > 1) page.value -= 1;
+    await load();
+  }catch(e:any){
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e.message || "删除失败");
+  }
+}
+
 onMounted(load);
 </script>
+
+<style scoped>
+.audit-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
+.title{font-weight:800;font-size:16px}
+.tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.audit-filters{margin-top:10px}
+.entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
+.entity-name{font-weight:600}
+.entity-meta{font-size:12px;color:#909399}
+.ip{word-break:break-all}
+</style>
