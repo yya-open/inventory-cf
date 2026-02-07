@@ -91,6 +91,7 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
 
@@ -137,6 +138,64 @@ function toCsvCell(v: any) {
   // escape quotes
   const escaped = s.replace(/"/g, '""');
   return `"${escaped}"`;
+}
+
+async function doExport() {
+  try {
+    loading.value = true;
+    // 拉取全部符合筛选条件的数据（按页循环，避免只导出当前页）
+    const all:any[] = [];
+    const maxPages = 200; // 防止无限循环
+    let p = 1;
+    let t = 0;
+    while (p <= maxPages) {
+      const params = new URLSearchParams();
+      if (type.value) params.set("type", type.value);
+      if (item_id.value) params.set("item_id", String(item_id.value));
+      if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
+      if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+      params.set("page", String(p));
+      params.set("page_size", "5000");
+      const j = await apiGet<any>(`/api/tx?${params.toString()}`);
+      const arr = j.data || [];
+      t = Number(j.total || 0);
+      all.push(...arr);
+      if (all.length >= t || arr.length === 0) break;
+      p += 1;
+      if (all.length >= 50000) break; // 保护：最多导出5万行
+    }
+
+    const data = all.map((r:any) => ({
+      "时间": r.created_at,
+      "单号": r.tx_no,
+      "类型": r.type,
+      "SKU": r.sku,
+      "名称": r.name,
+      "仓库": r.warehouse_name,
+      "数量": r.qty,
+      "变动": signedDelta(r),
+      "来源": r.source || "",
+      "去向": r.target || "",
+      "备注": r.remark || ""
+    }));
+
+    const ws = XLSX.utils.json_to_sheet(data, { skipHeader: false });
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, ws, "明细");
+    const out = XLSX.write(wb, { bookType: "xlsx", type: "array" });
+    const blob = new Blob([out], { type: "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.click();
+    URL.revokeObjectURL(url);
+    ElMessage.success(`已导出 ${data.length} 条`);
+  } catch (e:any) {
+    ElMessage.error(e?.message || "导出失败");
+  } finally {
+    loading.value = false;
+  }
 }
 
 function exportCsv() {

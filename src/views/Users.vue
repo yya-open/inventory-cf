@@ -9,7 +9,7 @@
     </div>
 
     <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="id" label="ID" width="70" />
+      <el-table-column type="index" label="ID" width="70" :index="(i)=>i+1" />
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">
