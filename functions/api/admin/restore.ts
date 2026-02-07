@@ -60,7 +60,7 @@ function pick(obj: any, cols: string[]) {
 //
 // 注意：Cloudflare D1 在 Pages Functions 环境中不建议使用 SQL BEGIN/COMMIT/ROLLBACK；
 // 本实现使用 batch + 分块写入，尽量保证一致性。
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
     const body = (await request.json().catch(() => ({}))) as RestoreBody;
@@ -108,14 +108,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     // Best-effort audit
-    logAudit(env.DB, request, actor, "ADMIN_RESTORE", "backup", null, {
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE", "backup", null, {
       mode,
       backup_version: backup?.version || null,
       exported_at: backup?.exported_at || null,
       inserted_total: insertedTotal,
       inserted_by_table: insertedByTable,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     return json(true, {
       mode,
       inserted_total: insertedTotal,

@@ -9,7 +9,7 @@ function parseJsonSafe(s: string, fallback: any) {
   try { return JSON.parse(s || ""); } catch { return fallback; }
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
     const body = await request.json<any>().catch(() => ({}));
@@ -81,7 +81,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
         .bind(total, JSON.stringify(perTable), JSON.stringify(cursor), cursor.table || null, jobId)
         .run();
 
-      logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_SCAN_DONE", "restore_job", jobId, { total_rows: total }).catch(() => {});
+      waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_SCAN_DONE", "restore_job", jobId, { total_rows: total }).catch(() => {}));
       return json(true, { id: jobId, status: "RUNNING", stage: "RESTORE", total_rows: total, processed_rows: Number(job.processed_rows || 0), more: true });
     }
 
@@ -203,7 +203,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
       const more = !done;
       if (done) {
-        logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_DONE", "restore_job", jobId, { inserted_changes: inserted }).catch(() => {});
+        waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_DONE", "restore_job", jobId, { inserted_changes: inserted }).catch(() => {}));
       }
 
       return json(true, {

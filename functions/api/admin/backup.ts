@@ -66,7 +66,7 @@ async function streamTableAsJsonArray(
 //  - table=stock_tx (export a single table; overrides include_*)
 //  - tx_since=YYYY-MM-DD, tx_until=YYYY-MM-DD (filter stock_tx by created_at)
 //  - audit_since=YYYY-MM-DD, audit_until=YYYY-MM-DD (filter audit_log by created_at)
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
     const url = new URL(request.url);
@@ -167,7 +167,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     });
 
     // Best-effort audit (don't block backup)
-    logAudit(env.DB, request, actor, "ADMIN_BACKUP", "backup", null, {
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_BACKUP", "backup", null, {
       tables,
       exported_at,
       gzip,
@@ -177,8 +177,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       tx_until: tx_until || undefined,
       audit_since: audit_since || undefined,
       audit_until: audit_until || undefined,
-    }).catch(() => {});
-
+    }).catch(() => {}));
     const now = new Date();
     const y = now.getUTCFullYear();
     const m = String(now.getUTCMonth() + 1).padStart(2, "0");

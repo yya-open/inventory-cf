@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
     const { id } = await request.json<any>();
@@ -18,7 +18,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .bind(jobId)
       .run();
 
-    logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_PAUSE", "restore_job", jobId, {}).catch(() => {});
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_RESTORE_JOB_PAUSE", "restore_job", jobId, {}).catch(() => {}));
     return json(true, { id: jobId, status: "PAUSED" });
   } catch (e: any) {
     return errorResponse(e);

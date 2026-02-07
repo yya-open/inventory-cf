@@ -96,7 +96,20 @@
           </template>
 
           <div style="display:flex; flex-direction:column; gap:12px">
-            <el-upload :auto-upload="false" :show-file-list="false" accept=".json,.gz" @change="onPick">
+            <!--
+              Element Plus Upload 在不同构建/浏览器下 raw 字段偶尔为空。
+              这里使用 v-model:file-list + change 事件双保险，确保选中文件后按钮可用。
+            -->
+            <el-upload
+              v-model:file-list="fileList"
+              :auto-upload="false"
+              :show-file-list="false"
+              :limit="1"
+              accept=".json,.gz"
+              :before-upload="beforeUpload"
+              :on-change="onPick"
+              @change="onPick"
+            >
               <el-button>选择备份（.json / .json.gz）</el-button>
             </el-upload>
 
@@ -159,7 +172,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed } from "vue";
+import { ref, computed, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
@@ -251,18 +264,39 @@ async function downloadAuditOnly() {
   }
 }
 
+// 选中文件（Upload 组件有时 raw 为空，用 fileList 双保险）
+const fileList = ref<any[]>([]);
 const pickedFile = ref<File | null>(null);
 const pickedInfo = ref<string>("");
 
+function beforeUpload() {
+  // 阻止组件自动上传，我们只在“创建恢复任务”时提交表单
+  return false;
+}
+
 async function onPick(uploadFile: any) {
-  const file: File = uploadFile.raw;
-  if (!file) return;
+  // uploadFile 可能是 UploadFile，也可能是原生事件，这里尽量兼容
+  const file: File | undefined = uploadFile?.raw || uploadFile?.file || uploadFile;
+  if (!file || typeof file.name !== "string") return;
   pickedFile.value = file;
+
+  // 同步 fileList（limit=1）
+  fileList.value = [{ name: file.name }];
 
   const mb = (file.size / 1024 / 1024).toFixed(2);
   pickedInfo.value = `${file.name}（${mb} MB）`;
   msgSuccess("已选择备份文件");
 }
+
+// 有些情况下 change 回调拿不到 raw，但 v-model:file-list 能拿到，做一次兜底
+watch(fileList, (list) => {
+  const f = list?.[0]?.raw as File | undefined;
+  if (f && (!pickedFile.value || pickedFile.value.name !== f.name || pickedFile.value.size !== f.size)) {
+    pickedFile.value = f;
+    const mb = (f.size / 1024 / 1024).toFixed(2);
+    pickedInfo.value = `${f.name}（${mb} MB）`;
+  }
+});
 
 const mode = ref<"merge"|"replace">("merge");
 
