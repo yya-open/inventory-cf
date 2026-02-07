@@ -96,7 +96,10 @@
           </template>
 
           <div style="display:flex; flex-direction:column; gap:12px">
-            <!-- 选择文件：用 file-list + onChange 双保险，避免某些浏览器/打包后 raw 丢失导致按钮不可点 -->
+            <!--
+              Element Plus Upload 在不同构建/浏览器下 raw 字段偶尔为空。
+              这里使用 v-model:file-list + change 事件双保险，确保选中文件后按钮可用。
+            -->
             <el-upload
               v-model:file-list="fileList"
               :auto-upload="false"
@@ -130,8 +133,8 @@
                 创建恢复任务
               </el-button>
 
-              <el-button type="danger" :disabled="runBtnDisabled" :loading="running" @click="startOrResume">
-                {{ runBtnText }}
+              <el-button type="danger" :disabled="!jobId" :loading="running" @click="startOrResume">
+                {{ jobStatus==='PAUSED' ? '继续恢复' : (jobStatus==='RUNNING' ? '恢复中...' : '开始恢复') }}
               </el-button>
 
               <el-button :disabled="!jobId || jobStatus!=='RUNNING'" :loading="pausing" @click="pauseJob">
@@ -158,10 +161,6 @@
               恢复完成 ✅
             </el-alert>
 
-            <el-alert v-if="jobStatus==='DONE' && restoreSummary" type="info" show-icon :closable="false">
-              {{ restoreSummary }}
-            </el-alert>
-
             <el-alert v-if="jobStatus==='FAILED'" type="error" show-icon :closable="false">
               恢复失败：{{ jobLastError || '未知错误' }}
             </el-alert>
@@ -177,9 +176,6 @@ import { ref, computed, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
-
-const LS_RESTORE_REFRESH = "inv_restore_refresh";
-const LS_RESTORE_SUMMARY = "inv_restore_summary";
 
 const bk = ref({
   include_tx: false,
@@ -268,37 +264,38 @@ async function downloadAuditOnly() {
   }
 }
 
+// 选中文件（Upload 组件有时 raw 为空，用 fileList 双保险）
 const fileList = ref<any[]>([]);
 const pickedFile = ref<File | null>(null);
 const pickedInfo = ref<string>("");
 
 function beforeUpload() {
-  // 阻止 el-upload 自动上传
+  // 阻止组件自动上传，我们只在“创建恢复任务”时提交表单
   return false;
 }
 
-function setPicked(f: File | null) {
-  pickedFile.value = f;
-  if (!f) {
-    pickedInfo.value = "";
-    return;
-  }
-  const mb = (f.size / 1024 / 1024).toFixed(2);
-  pickedInfo.value = `${f.name}（${mb} MB）`;
-}
+async function onPick(uploadFile: any) {
+  // uploadFile 可能是 UploadFile，也可能是原生事件，这里尽量兼容
+  const file: File | undefined = uploadFile?.raw || uploadFile?.file || uploadFile;
+  if (!file || typeof file.name !== "string") return;
+  pickedFile.value = file;
 
-function onPick(uploadFile: any) {
-  // Element Plus: uploadFile.raw 才是真正的 File
-  const f: File | null = uploadFile?.raw || fileList.value?.[0]?.raw || null;
-  if (!f) return;
-  setPicked(f);
+  // 同步 fileList（limit=1）
+  fileList.value = [{ name: file.name }];
+
+  const mb = (file.size / 1024 / 1024).toFixed(2);
+  pickedInfo.value = `${file.name}（${mb} MB）`;
   msgSuccess("已选择备份文件");
 }
 
-// 兜底：某些情况下 on-change 触发了但 raw 为空；只要 fileList 有 raw 也能拿到
-watch(fileList, (v) => {
-  const f: File | null = v?.[0]?.raw || null;
-  if (f) setPicked(f);
+// 有些情况下 change 回调拿不到 raw，但 v-model:file-list 能拿到，做一次兜底
+watch(fileList, (list) => {
+  const f = list?.[0]?.raw as File | undefined;
+  if (f && (!pickedFile.value || pickedFile.value.name !== f.name || pickedFile.value.size !== f.size)) {
+    pickedFile.value = f;
+    const mb = (f.size / 1024 / 1024).toFixed(2);
+    pickedInfo.value = `${f.name}（${mb} MB）`;
+  }
 });
 
 const mode = ref<"merge"|"replace">("merge");
@@ -311,9 +308,6 @@ const jobTotal = ref<number>(0);
 const jobProcessed = ref<number>(0);
 const jobCurrentTable = ref<string>("");
 const jobLastError = ref<string>("");
-const jobPerTable = ref<Record<string, any>>({});
-
-const doneNotified = ref(false);
 
 const running = ref(false);
 const pausing = ref(false);
@@ -328,26 +322,6 @@ const progressStatus = computed(() => {
   if (jobStatus.value === "FAILED") return "exception";
   if (jobStatus.value === "DONE") return "success";
   return undefined as any;
-});
-
-const runBtnText = computed(() => {
-  if (!jobId.value) return "开始恢复";
-  if (jobStatus.value === "RUNNING") return "恢复中...";
-  if (jobStatus.value === "PAUSED") return "继续恢复";
-  if (jobStatus.value === "DONE") return "已完成";
-  if (jobStatus.value === "FAILED") return "已失败";
-  return "开始恢复";
-});
-
-const runBtnDisabled = computed(() => {
-  if (!jobId.value) return true;
-  if (jobStatus.value === "DONE" || jobStatus.value === "FAILED" || jobStatus.value === "CANCELED") return true;
-  return false;
-});
-
-const restoreSummary = computed(() => {
-  if (jobStatus.value !== "DONE") return "";
-  return buildRestoreSummary(jobPerTable.value || {}, jobTotal.value || 0);
 });
 
 async function createJob() {
@@ -402,49 +376,8 @@ async function refreshStatus() {
     jobProcessed.value = Number(d.processed_rows || 0);
     jobCurrentTable.value = d.current_table || "";
     jobLastError.value = d.last_error || "";
-    jobPerTable.value = d.per_table || {};
-
-    maybeNotifyDone();
   } catch (e:any) {
     msgError(e?.message || "刷新失败");
-  }
-}
-
-function buildRestoreSummary(perTable: Record<string, any>, totalRows: number) {
-  const order: string[] = Array.isArray(perTable?.__order__) ? perTable.__order__ : [];
-  const parts: string[] = [];
-  const tables = order.length ? order : Object.keys(perTable || {}).filter((k) => k !== "__order__");
-  for (const t of tables) {
-    if (t === "__order__") continue;
-    const n = Number(perTable?.[t] ?? 0);
-    if (!Number.isFinite(n)) continue;
-    parts.push(`${t}=${n}`);
-    if (parts.length >= 6) break;
-  }
-  const more = tables.length > parts.length ? ` 等${tables.length}张表` : "";
-  return `恢复完成：共 ${totalRows || 0} 行，${parts.join("，")}${more}`;
-}
-
-function maybeNotifyDone() {
-  if (doneNotified.value) return;
-  if (jobStatus.value !== "DONE") return;
-
-  doneNotified.value = true;
-  try {
-    const summary = buildRestoreSummary(jobPerTable.value || {}, jobTotal.value || 0);
-    msgSuccess(summary, 6000);
-
-    const payload = {
-      at: Date.now(),
-      id: jobId.value,
-      total_rows: jobTotal.value || 0,
-      per_table: jobPerTable.value || {},
-    };
-    localStorage.setItem(LS_RESTORE_REFRESH, String(payload.at));
-    localStorage.setItem(LS_RESTORE_SUMMARY, JSON.stringify(payload));
-    window.dispatchEvent(new CustomEvent("inv:restore:done", { detail: payload }));
-  } catch {
-    // ignore
   }
 }
 
