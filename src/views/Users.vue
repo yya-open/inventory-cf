@@ -13,6 +13,7 @@
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.role==='admin'?'danger':row.role==='operator'?'warning':'info'">
             {{ roleText(row.role) }}
           </el-tag>
@@ -20,19 +21,24 @@
       </el-table-column>
       <el-table-column prop="is_active" label="状态" width="110">
         <template #default="{ row }">
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.is_active? 'success':'info'">{{ row.is_active ? "启用" : "禁用" }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="must_change_password" label="需改密码" width="110">
         <template #default="{ row }">
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-tag :type="row.must_change_password? 'warning':'success'">{{ row.must_change_password ? "是" : "否" }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="创建时间" min-width="170" />
       <el-table-column label="操作" min-width="260">
         <template #default="{ row }">
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-button size="small" @click="openEdit(row)">权限/状态</el-button>
           <el-button size="small" type="warning" plain @click="openReset(row)">重置密码</el-button>
+          <el-button size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
+        </div>
         </template>
       </el-table-column>
     </el-table>
@@ -101,14 +107,17 @@
 
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
-import { ElMessage } from "element-plus";
-import { apiGet, apiPost, apiPut } from "../api/client";
+import { useAuth } from "../store/auth";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 
 type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string };
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
+
+const auth = useAuth();
 
 const showCreate = ref(false);
 const showEdit = ref(false);
@@ -197,6 +206,29 @@ async function doReset() {
     await load();
   } catch (e:any) {
     ElMessage.error(e.message || "重置失败");
+  } finally {
+    saving.value = false;
+  }
+}
+
+
+async function delUser(row: Row) {
+  try {
+    await ElMessageBox.confirm(
+      `确定要删除用户「${row.username}」吗？\n删除后无法恢复。`,
+      "删除用户",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+    );
+  } catch {
+    return;
+  }
+  saving.value = true;
+  try {
+    await apiDelete<any>("/api/users", { id: row.id });
+    ElMessage.success("已删除");
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e.message || "删除失败");
   } finally {
     saving.value = false;
   }

@@ -60,3 +60,15 @@ export async function apiPut<T>(path: string, body: any) {
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
   return j as T;
 }
+
+export async function apiDelete<T>(path: string, body?: any) {
+  const r = await fetch(path, {
+    method: "DELETE",
+    headers: { "content-type": "application/json", ...authHeaders() },
+    body: body === undefined ? undefined : JSON.stringify(body),
+  });
+  const j = await parseJson(r);
+  if (r.status === 401) return handleUnauthorized(j?.message);
+  if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
+  return j as T;
+}
