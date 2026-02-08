@@ -46,7 +46,7 @@
 	            </el-table-column>
             <el-table-column label="状态" width="110">
               <template #default="{ row }">
-                <el-tag :type="row.status==='DRAFT' ? 'info' : 'success'" size="small">{{ row.status }}</el-tag>
+                <el-tag :type="row.status==='DRAFT' ? 'info' : ((row.status==='APPLYING' || row.status==='ROLLING') ? 'warning' : 'success')" size="small">{{ row.status }}</el-tag>
               </template>
             </el-table-column>
             <el-table-column prop="created_at" label="创建时间" min-width="160" />
@@ -55,8 +55,11 @@
                 <template v-if="row.status==='DRAFT'">
                   <el-button type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
                 </template>
-                <template v-else>
+                <template v-else-if="row.status==='APPLIED'">
                   <el-button type="warning" link @click.stop="rollbackStocktakeByRow(row)">撤销</el-button>
+                </template>
+                <template v-else>
+                  <span class="muted">-</span>
                 </template>
               </template>
             </el-table-column>
@@ -92,7 +95,7 @@
                   <span>{{ detail.stocktake.warehouse_name }}</span>
                 </div>
                 <div class="sub">
-                  <el-tag :type="detail.stocktake.status==='DRAFT' ? 'info' : 'success'" size="small">
+                  <el-tag :type="detail.stocktake.status==='DRAFT' ? 'info' : ((detail.stocktake.status==='APPLYING' || detail.stocktake.status==='ROLLING') ? 'warning' : 'success')" size="small">
                     {{ detail.stocktake.status }}
                   </el-tag>
                   <span class="muted">创建：{{ detail.stocktake.created_at }}</span>
@@ -110,14 +113,14 @@
                   <el-button :disabled="detail.stocktake.status!=='DRAFT'">导入盘点结果</el-button>
                 </el-upload>
                 <el-button type="primary" @click="saveLines" :loading="saving" :disabled="detail.stocktake.status!=='DRAFT'">保存</el-button>
-                <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="detail.stocktake.status!=='DRAFT'">应用盘点</el-button>
+                <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)">{{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}</el-button>
                 <el-button
-                  v-if="detail.stocktake.status==='APPLIED'"
+                  v-if="['APPLIED','ROLLING'].includes(detail.stocktake.status)"
                   type="warning"
                   plain
                   @click="rollbackStocktake"
                   :loading="rolling"
-                >撤销盘点</el-button>
+                >{{ detail.stocktake.status==='ROLLING' ? '继续撤销' : '撤销盘点' }}</el-button>
                 <el-button type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
               </div>
             </div>
@@ -467,8 +470,13 @@ function beforeUpload(file: File){
 
 async function applyStocktake(){
   if (!detail.value) return;
+  const stStatus = String(detail.value.stocktake.status || "");
+  const confirmMsg = stStatus === "APPLYING"
+    ? "检测到盘点单处于 APPLYING（上次应用可能中断）。点击“继续”将尝试补齐未完成的调整记录（幂等，不会重复生成已写入的调整流水）。"
+    : "将按盘点差异生成盘盈盘亏（ADJUST）并更新库存，且盘点单状态变为已应用，确认继续？";
+
   try{
-    await ElMessageBox.confirm("将按盘点差异生成盘盈盘亏（ADJUST）并更新库存，且盘点单状态变为已应用，确认继续？", "确认应用", { type: "warning" });
+    await ElMessageBox.confirm(confirmMsg, stStatus === "APPLYING" ? "继续应用" : "确认应用", { type: "warning" });
   }catch{ return; }
 
   applying.value = true;
@@ -485,11 +493,14 @@ async function applyStocktake(){
 
 async function rollbackStocktake(){
   if (!detail.value) return;
-  if (detail.value.stocktake.status !== 'APPLIED') return;
+  const stStatus = String(detail.value.stocktake.status || "");
+  if (!['APPLIED','ROLLING'].includes(stStatus)) return;
   try{
     await ElMessageBox.confirm(
-      "撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。确认继续？",
-      "确认撤销盘点",
+      stStatus === 'ROLLING'
+        ? "盘点单正处于撤销中（上次撤销可能中断）。点击“继续”将尝试补齐未完成的撤销流水与库存恢复（幂等，不会重复写入已存在的撤销流水）。"
+        : "撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。确认继续？",
+      stStatus === 'ROLLING' ? "继续撤销盘点" : "确认撤销盘点",
       { type: "warning", confirmButtonText: "撤销", cancelButtonText: "取消" }
     );
   }catch{ return; }

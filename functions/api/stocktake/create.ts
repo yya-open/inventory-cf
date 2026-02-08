@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { logAudit } from "../_audit";
 
 function stNo() {
   const d = new Date();
@@ -9,7 +10,7 @@ function stNo() {
   return `ST${y}${m}${day}-${rand}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "admin");
 
@@ -36,8 +37,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     ]);
 
     const row = await env.DB.prepare(`SELECT id FROM stocktake WHERE st_no=?`).bind(no).first<any>();
-    return Response.json({ ok: true, id: Number(row?.id), st_no: no });
-  } catch (e:any) {
+    const id = Number(row?.id);
+
+    // best-effort audit
+    if (id) {
+      waitUntil(
+        (async () => {
+          const cnt = await env.DB.prepare(`SELECT COUNT(1) AS c FROM stocktake_line WHERE stocktake_id=?`).bind(id).first<any>();
+          const lines = Number((cnt as any)?.c || 0);
+          await logAudit(env.DB, request, user, "STOCKTAKE_CREATE", "stocktake", id, { st_no: no, warehouse_id: wid, lines });
+        })().catch(() => {})
+      );
+    }
+
+    return Response.json({ ok: true, id, st_no: no });
+  } catch (e: any) {
     return errorResponse(e);
   }
 };

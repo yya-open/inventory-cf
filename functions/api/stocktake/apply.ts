@@ -6,6 +6,12 @@ function txNo(stNo: string, itemId: number) {
   return `ADJ${stNo}-${itemId}`;
 }
 
+/**
+ * 应用盘点（Apply）
+ * - 仅管理员可用
+ * - 状态流转：DRAFT -> APPLYING -> APPLIED
+ * - 若上次应用中断导致状态停留在 APPLYING，可再次调用继续应用（幂等）
+ */
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "admin");
@@ -20,22 +26,39 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!st) {
       return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
     }
-    if (st.status !== "DRAFT") {
+
+    const status = String(st.status || "");
+    if (status === "APPLIED") {
       return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
     }
-
-    // Mark as APPLIED first (idempotent guard)
-    const up = await env.DB.prepare(
-      `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=? AND status='DRAFT'`
-    ).bind(st_id).run();
-
-    if ((up as any)?.meta?.changes !== 1) {
-      return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
+    if (status !== "DRAFT" && status !== "APPLYING") {
+      return Response.json({ ok: false, message: "盘点单状态异常，无法应用" }, { status: 409 });
     }
 
-    const lines = (await env.DB.prepare(
-      `SELECT * FROM stocktake_line WHERE stocktake_id=? AND counted_qty IS NOT NULL`
-    ).bind(st_id).all()) as any;
+    // 状态推进：DRAFT -> APPLYING；若已是 APPLYING 视为继续应用
+    if (status === "DRAFT") {
+      const up = await env.DB.prepare(
+        `UPDATE stocktake SET status='APPLYING' WHERE id=? AND status='DRAFT'`
+      )
+        .bind(st_id)
+        .run();
+
+      if ((up as any)?.meta?.changes !== 1) {
+        // 可能被并发修改
+        const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
+        if (String(cur?.status) === "APPLIED") {
+          return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
+        }
+        return Response.json({ ok: false, message: "盘点单状态已变化，请刷新后重试" }, { status: 409 });
+      }
+    }
+
+    const lines =
+      (await env.DB.prepare(
+        `SELECT * FROM stocktake_line WHERE stocktake_id=? AND counted_qty IS NOT NULL`
+      )
+        .bind(st_id)
+        .all()) as any;
 
     const rows: any[] = lines?.results || [];
     let adjusted = 0;
@@ -104,8 +127,29 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
+    // Finalize status: APPLYING -> APPLIED
+    const done = await env.DB.prepare(
+      `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=? AND status='APPLYING'`
+    )
+      .bind(st_id)
+      .run();
+
+    if ((done as any)?.meta?.changes !== 1) {
+      // 如果并发或重复请求导致 changes=0，则检查是否已 APPLIED
+      const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
+      if (String(cur?.status) !== "APPLIED") {
+        return Response.json({ ok: false, message: "盘点单状态异常，未能完成应用" }, { status: 409 });
+      }
+    }
+
     // Best-effort audit
-    waitUntil(logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, { st_no: st.st_no, adjusted }).catch(() => {}));
+    waitUntil(
+      logAudit(env.DB, request, user, "STOCKTAKE_APPLY", "stocktake", st_id, {
+        st_no: st.st_no,
+        adjusted,
+      }).catch(() => {})
+    );
+
     return Response.json({ ok: true, adjusted });
   } catch (e: any) {
     return errorResponse(e);
