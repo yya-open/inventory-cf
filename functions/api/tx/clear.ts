@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { logAudit } from "../_audit";
+import { toSqlRange } from "../_date";
 
 type ClearBody = {
   // if mode === 'all', ignore filters
@@ -32,13 +33,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         wh.push("item_id=?");
         binds.push(Number(body.item_id));
       }
-      if (body.date_from) {
+      const fromSql = toSqlRange(body.date_from, false);
+      const toSql = toSqlRange(body.date_to, true);
+      if (fromSql) {
         wh.push("created_at >= ?");
-        binds.push(body.date_from);
+        binds.push(fromSql);
       }
-      if (body.date_to) {
+      if (toSql) {
         wh.push("created_at <= ?");
-        binds.push(body.date_to);
+        binds.push(toSql);
       }
     }
 

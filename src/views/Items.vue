@@ -184,9 +184,20 @@ function onPageSizeChange(){
 async function load() {
   try {
     loading.value = true;
-    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?keyword=${encodeURIComponent(keyword.value)}`);
-    rows.value = j.data;
-    total.value = Array.isArray(j.data) ? j.data.length : 0;
+    const qs = new URLSearchParams();
+    if (keyword.value) qs.set("keyword", keyword.value);
+    qs.set("page", String(page.value));
+    qs.set("page_size", String(pageSize.value));
+
+    const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
+      `/api/items?${qs.toString()}`
+    );
+    rows.value = Array.isArray(j.data) ? j.data : [];
+    total.value = Number(j.total || 0);
+
+    // In case backend clamps page/pageSize
+    if (typeof j.page === "number") page.value = j.page;
+    if (typeof j.pageSize === "number") pageSize.value = j.pageSize;
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

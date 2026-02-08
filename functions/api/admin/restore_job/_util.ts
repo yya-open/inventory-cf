@@ -6,7 +6,7 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
   stock: ["id","item_id","warehouse_id","qty","updated_at"],
   stock_tx: ["id","tx_no","type","item_id","warehouse_id","qty","delta_qty","ref_type","ref_id","ref_no","unit_price","source","target","remark","created_at","created_by"],
   users: ["id","username","password_hash","role","is_active","must_change_password","created_at"],
-  auth_login_throttle: ["id","ip","username","fail_count","first_fail_at","last_fail_at","locked_until","updated_at","updated_at"],
+  auth_login_throttle: ["id","ip","username","fail_count","first_fail_at","last_fail_at","locked_until","updated_at"],
   audit_log: ["id","user_id","username","action","entity","entity_id","payload_json","ip","ua","created_at"],
   stocktake: ["id","st_no","warehouse_id","status","created_at","created_by","applied_at"],
   stocktake_line: ["id","stocktake_id","item_id","system_qty","counted_qty","diff_qty","updated_at"],

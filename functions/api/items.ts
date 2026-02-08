@@ -38,6 +38,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   if (!sku || !name) return Response.json({ ok: false, message: "sku/name 必填" }, { status: 400 });
 
   const before = id ? await env.DB.prepare(`SELECT * FROM items WHERE id=?`).bind(id).first<any>() : null;
+  let newId: number | null = null;
 
   if (id) {
     await env.DB.prepare(
@@ -64,11 +65,24 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       unit || "个",
       Number(warning_qty || 0)
     ).run();
-    const newId = (ins as any)?.meta?.last_row_id;
+    const last = (ins as any)?.meta?.last_row_id;
+    newId = (typeof last === "number") ? last : (last ? Number(last) : null);
   }
 
-  const entityId = id || (typeof newId !== 'undefined' ? newId : null);
-  await logAudit(env.DB, request, user, id ? 'ITEM_UPDATE' : 'ITEM_CREATE', 'items', entityId, { before, after: { sku, name, brand: brand || null, model: model || null, category: category || null, unit: unit || '个', warning_qty: Number(warning_qty || 0) } });
+  const entityId = id ? Number(id) : newId;
+  const after = entityId
+    ? await env.DB.prepare(`SELECT * FROM items WHERE id=?`).bind(entityId).first<any>()
+    : { sku, name, brand: brand || null, model: model || null, category: category || null, unit: unit || "个", warning_qty: Number(warning_qty || 0) };
+
+  await logAudit(
+    env.DB,
+    request,
+    user,
+    id ? "ITEM_UPDATE" : "ITEM_CREATE",
+    "items",
+    entityId,
+    { before, after }
+  );
 
   return Response.json({ ok: true });
 

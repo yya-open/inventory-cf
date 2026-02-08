@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { toSqlRange } from "../_date";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -26,8 +27,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (action) { wh.push("a.action=?"); binds.push(action); }
     if (entity) { wh.push("a.entity=?"); binds.push(entity); }
     if (user) { wh.push("a.username=?"); binds.push(user); }
-    if (date_from) { wh.push("a.created_at >= ?"); binds.push(date_from); }
-    if (date_to) { wh.push("a.created_at <= ?"); binds.push(date_to); }
+    const fromSql = toSqlRange(date_from, false);
+    const toSql = toSqlRange(date_to, true);
+    if (fromSql) { wh.push("a.created_at >= ?"); binds.push(fromSql); }
+    if (toSql) { wh.push("a.created_at <= ?"); binds.push(toSql); }
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
 

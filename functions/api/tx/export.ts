@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { toSqlRange } from "../_date";
 
 /**
  * GET /api/tx/export
@@ -28,13 +29,15 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       wh.push(`t.item_id=?`);
       bindsBase.push(Number(item_id));
     }
-    if (date_from) {
+    const fromSql = toSqlRange(date_from, false);
+    const toSql = toSqlRange(date_to, true);
+    if (fromSql) {
       wh.push(`t.created_at >= ?`);
-      bindsBase.push(date_from);
+      bindsBase.push(fromSql);
     }
-    if (date_to) {
+    if (toSql) {
       wh.push(`t.created_at <= ?`);
-      bindsBase.push(date_to);
+      bindsBase.push(toSql);
     }
 
     // Keyset pagination to avoid OFFSET on large tables
