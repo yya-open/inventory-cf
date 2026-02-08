@@ -29,7 +29,7 @@
         </template>
       </el-table-column>
       <el-table-column prop="created_at" label="创建时间" min-width="170" />
-      <el-table-column label="操作" width="260" fixed="right">
+      <el-table-column label="操作" min-width="260">
         <template #default="{ row }">
           <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-button size="small" @click="openEdit(row)">权限/状态</el-button>

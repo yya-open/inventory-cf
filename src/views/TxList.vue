@@ -21,7 +21,7 @@
         value-format="YYYY-MM-DD"
       />
 
-      <el-button type="primary" :loading="loading" @click="onSearch">查询</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
       <el-button @click="reset">重置</el-button>
       <el-button type="success" plain @click="exportCsv" :disabled="rows.length===0">导出CSV</el-button>
@@ -132,7 +132,7 @@ const isAdmin = computed(() => auth.user?.role === "admin");
 
 function onSearch(){
   page.value = 1;
-  load(true);
+  load();
 }
 
 function reset() {
@@ -140,7 +140,7 @@ function reset() {
   item_id.value = undefined;
   dateRange.value = null;
   page.value = 1;
-  load(true);
+  load();
 }
 
 function signedDelta(r: any) {
@@ -249,10 +249,10 @@ function onPageChange(){
 
 function onPageSizeChange(){
   page.value = 1;
-  load(true);
+  load();
 }
 
-async function load(withTotal = false) {
+async function load() {
   try {
     loading.value = true;
     const params = new URLSearchParams();
@@ -263,11 +263,10 @@ async function load(withTotal = false) {
 
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
-    params.set("with_total", withTotal ? "1" : "0");
 
     const j = await apiGet<any>(`/api/tx?${params.toString()}`);
     rows.value = j.data;
-    if (j.total !== null && j.total !== undefined) total.value = Number(j.total || 0);
+    total.value = Number(j.total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

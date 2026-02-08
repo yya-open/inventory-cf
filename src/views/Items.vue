@@ -2,8 +2,8 @@
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-button type="primary" :loading="loading" @click="onSearch">查询</el-button>
-      <el-button :disabled="loading" @click="onReset">重置</el-button>
+      <el-button type="primary" @click="onSearch">查询</el-button>
+      <el-button @click="onReset">重置</el-button>
       <el-button type="success" @click="openCreate">新增配件</el-button>
       <el-button @click="$router.push('/import/items')">Excel 导入</el-button>
     </div>
@@ -16,12 +16,12 @@
       <el-table-column prop="category" label="分类" width="120" />
       <el-table-column prop="unit" label="单位" width="80" />
       <el-table-column prop="warning_qty" label="预警值" width="90" />
-      <el-table-column label="操作" width="280" fixed="right">
+      <el-table-column label="操作" width="260">
         <template #default="{row}">
           <el-button size="small" @click="openEdit(row)">编辑</el-button>
           <el-button size="small" type="info" plain @click="goTx(row.id)">明细</el-button>
         
-          <el-button v-if="isAdmin" size="small" type="danger" plain :loading="deletingId===row.id" @click="onDelete(row)">删除</el-button>
+          <el-button v-if="isAdmin" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
 </template>
       </el-table-column>
     </el-table>
@@ -86,7 +86,6 @@ const isAdmin = computed(() => auth.user?.role === "admin");
 const keyword = ref("");
 const rows = ref<any[]>([]);
 const loading = ref(false);
-const deletingId = ref<number | null>(null);
 
 const page = ref(1);
 const pageSize = ref(50);
@@ -152,14 +151,11 @@ async function onDelete(row: any) {
   }
 
   try {
-    deletingId.value = Number(row.id);
     await apiDelete<any>("/api/items", { id: row.id });
     ElMessage.success("删除成功");
-    await load(true);
+    await load();
   } catch (e: any) {
     ElMessage.error(e?.message || "删除失败");
-  } finally {
-    deletingId.value = null;
   }
 }
 
@@ -177,26 +173,20 @@ function onReset(){
 }
 
 function onPageChange(){
-  load(false);
+  load();
 }
 
 function onPageSizeChange(){
   page.value = 1;
-  load(true);
+  load();
 }
 
-async function load(withTotal = false) {
+async function load() {
   try {
     loading.value = true;
-    const params = new URLSearchParams();
-    if (keyword.value) params.set("keyword", keyword.value);
-    params.set("page", String(page.value));
-    params.set("page_size", String(pageSize.value));
-    params.set("with_total", withTotal ? "1" : "0");
-
-    const j:any = await apiGet(`/api/items?${params.toString()}`);
-    rows.value = j.data || [];
-    if (j.total !== null && j.total !== undefined) total.value = Number(j.total || 0);
+    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?keyword=${encodeURIComponent(keyword.value)}`);
+    rows.value = j.data;
+    total.value = Array.isArray(j.data) ? j.data.length : 0;
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
