@@ -63,7 +63,11 @@
           {{ (page - 1) * pageSize + $index + 1 }}
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="时间" min-width="170" />
+      <el-table-column label="时间" min-width="170">
+        <template #default="{ row }">
+          {{ formatTime(row.created_at) }}
+        </template>
+      </el-table-column>
       <el-table-column prop="username" label="用户" width="130" />
       <el-table-column label="动作" min-width="160">
         <template #default="{ row }">
@@ -203,6 +207,25 @@ function entityLabel(e: string) {
   return ENTITY_LABEL[e] || e;
 }
 
+
+
+function formatTime(s?: string) {
+  if (!s) return "-";
+  // D1/SQLite 常用 datetime('now') 产出: "YYYY-MM-DD HH:mm:ss"（无时区，按 UTC 处理更符合 Cloudflare 实际）
+  // 这里将其按 UTC 解析后转换为浏览器本地时区显示（中国/新加坡会自动 +8）
+  let d: Date;
+  try {
+    if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+      d = new Date(s.replace(" ", "T") + "Z");
+    } else {
+      d = new Date(s);
+    }
+  } catch {
+    return s;
+  }
+  if (isNaN(d.getTime())) return s;
+  return d.toLocaleString(undefined, { hour12: false });
+}
 const rows = ref<any[]>([]);
 const loading = ref(false);
 

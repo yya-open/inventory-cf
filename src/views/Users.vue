@@ -27,6 +27,11 @@
     </div>
 
     <el-table :data="rows" border v-loading="loading">
+      <el-table-column label="#" width="70">
+        <template #default="{ $index }">
+          {{ (page - 1) * pageSize + $index + 1 }}
+        </template>
+      </el-table-column>
       <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="role" label="角色" width="140">
