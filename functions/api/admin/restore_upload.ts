@@ -44,6 +44,18 @@ function pick(obj: any, cols: string[]) {
   return cols.map((c) => (obj?.[c] === undefined ? null : obj[c]));
 }
 
+async function fileToTextAuto(file: File) {
+  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  const magicGzip = head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
+
+  let s: ReadableStream<Uint8Array> = file.stream();
+  if (magicGzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
+    s = s.pipeThrough(new DecompressionStream("gzip"));
+  }
+  return await new Response(s).text();
+}
+
+
 // POST /api/admin/restore_upload
 // multipart/form-data: file=<backup.json>, mode=merge|replace, confirm=...
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
@@ -66,7 +78,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "缺少 file" }, { status: 400 });
     }
 
-    const text = await file.text();
+    const text = await fileToTextAuto(file);
     const backup = JSON.parse(text || "{}");
     const tables = backup?.tables || {};
     if (!tables || typeof tables !== "object") {

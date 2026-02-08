@@ -136,6 +136,12 @@ const ACTION_LABEL: Record<string, string> = {
   USER_RESET_PASSWORD: "重置密码",
   TX_CLEAR: "清空出入库明细",
   AUDIT_DELETE: "删除审计日志",
+  ADMIN_BACKUP: "导出备份",
+  ADMIN_RESTORE_UPLOAD: "恢复备份（直导）",
+  ADMIN_RESTORE_JOB_CREATE: "恢复备份-创建任务",
+  ADMIN_RESTORE_JOB_SCAN_DONE: "恢复备份-扫描完成",
+  ADMIN_RESTORE_JOB_DONE: "恢复备份-完成",
+  ADMIN_RESTORE_JOB_CANCEL: "恢复备份-取消/暂停",
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -146,6 +152,8 @@ const ENTITY_LABEL: Record<string, string> = {
   audit_log: "审计日志",
   stock: "库存",
   warehouse: "仓库",
+  backup: "备份",
+  restore_job: "恢复任务",
 };
 
 function actionLabel(a: string) {
