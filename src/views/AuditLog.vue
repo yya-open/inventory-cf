@@ -169,6 +169,8 @@ const ACTION_LABEL: Record<string, string> = {
   USER_UPDATE: "修改用户",
   USER_DELETE: "删除用户",
   USER_RESET_PASSWORD: "重置密码",
+  STOCKTAKE_CREATE: "创建盘点单",
+  STOCKTAKE_IMPORT: "导入盘点结果",
   TX_CLEAR: "清空出入库明细",
   AUDIT_DELETE: "删除审计日志",
   ADMIN_BACKUP: "导出备份",
