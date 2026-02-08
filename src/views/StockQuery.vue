@@ -6,8 +6,8 @@
       </el-select>
 
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="onReset">重置</el-button>
+      <el-button type="primary" :loading="loading" @click="onSearch">查询</el-button>
+      <el-button :disabled="loading" @click="onReset">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>
       <el-button type="warning" plain @click="$router.push('/warnings')">查看预警</el-button>
     </div>
@@ -103,13 +103,13 @@ async function loadWarehouses() {
 
 function onSearch(){
   page.value = 1;
-  load();
+  load(true);
 }
 
 function onReset(){
   keyword.value = "";
   page.value = 1;
-  load();
+  load(true);
 }
 
 function onPageChange(){
@@ -118,18 +118,18 @@ function onPageChange(){
 
 function onPageSizeChange(){
   page.value = 1;
-  load();
+  load(true);
 }
 
-async function load() {
+async function load(withTotal = false) {
   try {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
       `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=${warehouse_id.value}` +
-      `&page=${page.value}&page_size=${pageSize.value}`
+      `&page=${page.value}&page_size=${pageSize.value}&with_total=${withTotal ? "1" : "0"}`
     );
     rows.value = j.data || [];
-    total.value = Number((j as any).total || 0);
+    if ((j as any).total !== null && (j as any).total !== undefined) total.value = Number((j as any).total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
