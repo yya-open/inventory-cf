@@ -82,7 +82,6 @@
           </div>
         </template>
       </el-table-column>
-      <el-table-column prop="entity_id" label="实体ID" min-width="140" />
       <el-table-column label="IP" width="180">
         <template #default="{ row }">
           <span class="ip">{{ row.ip || '-' }}</span>
