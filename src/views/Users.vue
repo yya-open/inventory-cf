@@ -8,8 +8,26 @@
       <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
+    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
+      <el-input v-model="keyword" clearable style="width:240px" placeholder="搜索：账号/ID" @keyup.enter="reload" />
+      <el-select v-model="sortBy" style="width:170px" @change="reload">
+        <el-option label="ID" value="id" />
+        <el-option label="账号" value="username" />
+        <el-option label="角色" value="role" />
+        <el-option label="状态" value="is_active" />
+        <el-option label="创建时间" value="created_at" />
+      </el-select>
+      <el-select v-model="sortDir" style="width:120px" @change="reload">
+        <el-option label="升序" value="asc" />
+        <el-option label="降序" value="desc" />
+      </el-select>
+      <el-button type="primary" plain @click="reload">查询</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+      <el-tag v-if="total" type="info" style="margin-left:auto">共 {{ total }} 条</el-tag>
+    </div>
+
     <el-table :data="rows" border v-loading="loading">
-      <el-table-column type="index" label="ID" width="70" :index="(i)=>i+1" />
+      <el-table-column prop="id" label="ID" width="70" />
       <el-table-column prop="username" label="账号" width="160" />
       <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">
@@ -39,6 +57,19 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :page-size="pageSize"
+        :current-page="page"
+        :page-sizes="[20,50,100,200]"
+        @current-change="(p:number)=>{ page=p; load(); }"
+        @size-change="(s:number)=>{ pageSize=s; page=1; load(); }"
+      />
+    </div>
 
     <!-- Create -->
     <el-dialog v-model="showCreate" title="新增用户" width="460px">
@@ -114,6 +145,13 @@ const rows = ref<Row[]>([]);
 const loading = ref(false);
 const saving = ref(false);
 
+const keyword = ref("");
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
+const sortBy = ref("id");
+const sortDir = ref<"asc"|"desc">("asc");
+
 const auth = useAuth();
 
 const showCreate = ref(false);
@@ -134,13 +172,32 @@ function roleText(r: string) {
 async function load() {
   loading.value = true;
   try {
-    const r = await apiGet<{ ok:boolean; data: Row[] }>("/api/users");
-    rows.value = r.data;
+    const qs = new URLSearchParams();
+    qs.set("page", String(page.value));
+    qs.set("page_size", String(pageSize.value));
+    qs.set("sort_by", String(sortBy.value || "id"));
+    qs.set("sort_dir", String(sortDir.value || "asc"));
+    if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
+    const r = await apiGet<{ ok:boolean; data: Row[]; total:number }>("/api/users?" + qs.toString());
+    rows.value = r.data || [];
+    total.value = Number((r as any).total || 0);
   } catch (e:any) {
     ElMessage.error(e.message || "加载失败");
   } finally {
     loading.value = false;
   }
+}
+
+function reload() {
+  page.value = 1;
+  load();
+}
+
+function resetSearch() {
+  keyword.value = "";
+  sortBy.value = "id";
+  sortDir.value = "asc";
+  reload();
 }
 
 function openCreate() {

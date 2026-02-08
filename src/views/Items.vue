@@ -2,6 +2,20 @@
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+      <el-select v-model="sortBy" style="width: 170px" @change="onSearch">
+        <el-option label="ID" value="id" />
+        <el-option label="SKU" value="sku" />
+        <el-option label="名称" value="name" />
+        <el-option label="品牌" value="brand" />
+        <el-option label="型号" value="model" />
+        <el-option label="分类" value="category" />
+        <el-option label="预警值" value="warning_qty" />
+        <el-option label="创建时间" value="created_at" />
+      </el-select>
+      <el-select v-model="sortDir" style="width: 120px" @change="onSearch">
+        <el-option label="降序" value="desc" />
+        <el-option label="升序" value="asc" />
+      </el-select>
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="onReset">重置</el-button>
       <el-button type="success" @click="openCreate">新增配件</el-button>
@@ -84,6 +98,8 @@ const router = useRouter();
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
 const keyword = ref("");
+const sortBy = ref<string>("id");
+const sortDir = ref<string>("desc");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
@@ -168,6 +184,8 @@ function onSearch(){
 
 function onReset(){
   keyword.value = "";
+  sortBy.value = "id";
+  sortDir.value = "desc";
   page.value = 1;
   load();
 }

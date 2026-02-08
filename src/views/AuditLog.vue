@@ -6,6 +6,7 @@
         <div class="tools">
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="reset">重置</el-button>
+          <el-button type="info" plain @click="openRetention">保留策略</el-button>
           <el-button type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
             删除选中 ({{ selectedIds.length }})
           </el-button>
@@ -33,6 +34,18 @@
             start-placeholder="开始"
             end-placeholder="结束"
           />
+        </el-form-item>
+        <el-form-item>
+          <el-select v-model="sortBy" placeholder="排序字段" style="width: 140px" @change="onSearch">
+            <el-option label="ID" value="id" />
+            <el-option label="时间" value="created_at" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-select v-model="sortDir" placeholder="方向" style="width: 120px" @change="onSearch">
+            <el-option label="倒序" value="desc" />
+            <el-option label="正序" value="asc" />
+          </el-select>
         </el-form-item>
       </el-form>
     </template>
@@ -110,6 +123,28 @@
         <el-button @click="showPayload=false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="showRetention" title="审计保留策略" width="520px">
+      <div style="color:#606266; margin-bottom:10px">
+        当前策略：保留近 <b>{{ retentionDays }}</b> 天；上次清理：{{ retentionLast || "-" }}
+      </div>
+      <el-form label-width="110px">
+        <el-form-item label="保留天数">
+          <el-input-number v-model="retentionDaysEdit" :min="1" :max="3650" controls-position="right" />
+        </el-form-item>
+        <el-form-item label="立即清理">
+          <el-switch v-model="runCleanup" active-text="是" inactive-text="否" />
+        </el-form-item>
+        <el-alert v-if="runCleanup" type="warning" show-icon :closable="false">
+          将删除早于保留天数的审计日志。确认后不可恢复。
+        </el-alert>
+      </el-form>
+      <template #footer>
+        <el-button @click="showRetention=false">取消</el-button>
+        <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存</el-button>
+      </template>
+    </el-dialog>
+
   </el-card>
 </template>
 
@@ -170,6 +205,8 @@ const rows = ref<any[]>([]);
 const loading = ref(false);
 
 const keyword = ref("");
+const sortBy = ref<string>("id");
+const sortDir = ref<string>("desc");
 const action = ref("");
 const entity = ref("");
 const user = ref("");
@@ -189,6 +226,60 @@ const displayPayload = computed(() => {
   return prettyPayload.value || rawPayload.value || "";
 });
 const payloadToCopy = computed(() => displayPayload.value || "");
+
+// retention policy
+const showRetention = ref(false);
+const retentionDays = ref(180);
+const retentionLast = ref<string | null>(null);
+const retentionDaysEdit = ref(180);
+const runCleanup = ref(false);
+const retentionSaving = ref(false);
+
+async function loadRetention() {
+  try {
+    const r = await apiGet<{ ok: boolean; data: { retention_days: number; last_cleanup_at: string | null } }>(
+      "/api/admin/audit/retention"
+    );
+    retentionDays.value = Number((r as any).data?.retention_days || 180);
+    retentionLast.value = (r as any).data?.last_cleanup_at || null;
+    retentionDaysEdit.value = retentionDays.value;
+  } catch {
+    // ignore (non-admins etc.)
+  }
+}
+
+async function openRetention() {
+  runCleanup.value = false;
+  await loadRetention();
+  showRetention.value = true;
+}
+
+async function saveRetention() {
+  try {
+    retentionSaving.value = true;
+    const payload: any = { retention_days: Number(retentionDaysEdit.value || 180) };
+    if (runCleanup.value) {
+      const { value } = await ElMessageBox.prompt(
+        "将删除早于保留天数的审计日志，输入“清理”确认：",
+        "确认立即清理",
+        { confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "请输入：清理", inputValue: "" }
+      );
+      payload.run_cleanup = true;
+      payload.confirm = value;
+    }
+    const r = await apiPost<any>("/api/admin/audit/retention", payload);
+    ElMessage.success(runCleanup.value ? "已保存并清理" : "已保存");
+    retentionDays.value = Number((r as any).data?.retention_days || payload.retention_days || 180);
+    retentionLast.value = (r as any).data?.last_cleanup_at || retentionLast.value || null;
+    runCleanup.value = false;
+    showRetention.value = false;
+  } catch (e: any) {
+    if (e === "cancel" || e?.message === "cancel") return;
+    ElMessage.error(e?.message || "保存失败");
+  } finally {
+    retentionSaving.value = false;
+  }
+}
 
 
 const selectedIds = ref<number[]>([]);
@@ -219,6 +310,8 @@ function reset(){
   entity.value = "";
   user.value = "";
   range.value = null;
+  sortBy.value = "id";
+  sortDir.value = "desc";
   page.value = 1;
   load();
 }
@@ -286,6 +379,8 @@ async function load(){
     }
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
+    if (sortBy.value) params.set("sort_by", sortBy.value);
+    if (sortDir.value) params.set("sort_dir", sortDir.value);
 
     const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
     rows.value = (j.data || []).map((r:any, idx:number)=>({ ...r }));

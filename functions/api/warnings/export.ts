@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse, json } from "../../_auth";
+import { buildKeywordWhere } from "../_search";
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
@@ -47,9 +48,16 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     }
 
     if (keyword) {
-      whereParts.push("(i.name LIKE ? OR i.sku LIKE ? OR i.brand LIKE ? OR i.model LIKE ?)");
-      const like = `%${keyword}%`;
-      binds.push(like, like, like, like);
+      const kw = buildKeywordWhere(keyword, {
+        numericId: "i.id",
+        exact: ["i.sku"],
+        prefix: ["i.sku", "i.name"],
+        contains: ["i.name", "i.brand", "i.model"],
+      });
+      if (kw.sql) {
+        whereParts.push(kw.sql);
+        binds.push(...kw.binds);
+      }
     }
 
     const orderBy = getSort(sort);

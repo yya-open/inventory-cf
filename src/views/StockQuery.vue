@@ -6,6 +6,15 @@
       </el-select>
 
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+      <el-select v-model="sort" style="width: 160px" placeholder="排序" @change="onSearch">
+        <el-option label="预警优先" value="warning_first" />
+        <el-option label="库存升序" value="qty_asc" />
+        <el-option label="库存降序" value="qty_desc" />
+        <el-option label="SKU 升序" value="sku_asc" />
+        <el-option label="名称 升序" value="name_asc" />
+        <el-option label="ID 升序" value="id_asc" />
+        <el-option label="ID 倒序" value="id_desc" />
+      </el-select>
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="onReset">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>
@@ -69,6 +78,7 @@ const warehouses = ref<any[]>([]);
 const warehouse_id = ref<number>(1);
 
 const keyword = ref("");
+const sort = ref<string>("warning_first");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
@@ -108,6 +118,7 @@ function onSearch(){
 
 function onReset(){
   keyword.value = "";
+  sort.value = "warning_first";
   page.value = 1;
   load();
 }
@@ -126,7 +137,7 @@ async function load() {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
       `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=${warehouse_id.value}` +
-      `&page=${page.value}&page_size=${pageSize.value}`
+      `&sort=${encodeURIComponent(sort.value)}&page=${page.value}&page_size=${pageSize.value}`
     );
     rows.value = j.data || [];
     total.value = Number((j as any).total || 0);

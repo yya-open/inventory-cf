@@ -33,8 +33,8 @@
       <el-button type="success" plain :loading="exportingXlsx" @click="exportXlsx">导出 Excel</el-button>
 
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
-        <el-tag v-if="rows.length" type="danger">
-          {{ filters.only_alert ? "预警" : "列表" }}：{{ rows.length }} 条
+        <el-tag v-if="total" type="danger">
+          {{ filters.only_alert ? "预警" : "列表" }}：{{ total }} 条
         </el-tag>
         <el-button size="small" type="info" plain @click="$router.push('/stock')">去库存查询</el-button>
       </div>
@@ -119,6 +119,19 @@
       </el-table-column>
     </el-table>
 
+    <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
+      <el-pagination
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :total="total"
+        :page-size="pageSize"
+        :current-page="page"
+        :page-sizes="[20, 50, 100, 200]"
+        @current-change="(p:number)=>{ page=p; load(); }"
+        @size-change="(s:number)=>{ pageSize=s; page=1; load(); }"
+      />
+    </div>
+
     <el-empty v-if="!loading && rows.length===0" description="暂无数据" />
   </el-card>
 </template>
@@ -137,6 +150,9 @@ const { token } = useAuth();
 const tableRef = ref<any>(null);
 const rows = ref<any[]>([]);
 const loading = ref(false);
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
 const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
 
@@ -227,9 +243,11 @@ async function load() {
     qs.set("warehouse_id", String(filters.warehouse_id || 1));
     qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
+    qs.set("page", String(page.value));
+    qs.set("page_size", String(pageSize.value));
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
-    const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/warnings?` + qs.toString());
+    const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(`/api/warnings?` + qs.toString());
     rows.value = (j.data || []).map((r: any) => ({
       ...r,
       qty: Number(r.qty ?? 0),
@@ -237,6 +255,7 @@ async function load() {
       gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
       last_tx_at: r.last_tx_at ?? "",
     }));
+    total.value = Number((j as any).total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

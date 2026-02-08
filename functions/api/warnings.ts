@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse, json } from "../_auth";
+import { buildKeywordWhere } from "./_search";
 
 function getSort(sqlKey: string) {
   // Allowed sort keys to prevent SQL injection
@@ -29,6 +30,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const only_alert = (url.searchParams.get("only_alert") ?? "1") !== "0";
     const sort = (url.searchParams.get("sort") || "gap_desc").trim();
 
+    const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+    const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
+    const offset = (page - 1) * pageSize;
+
     const whereParts: string[] = ["i.enabled=1"];
     // Note: we need warehouse_id twice (stock join + last_tx subquery)
     const binds: any[] = [warehouse_id];
@@ -43,14 +48,21 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     }
 
     if (keyword) {
-      whereParts.push("(i.name LIKE ? OR i.sku LIKE ? OR i.brand LIKE ? OR i.model LIKE ?)");
-      const like = `%${keyword}%`;
-      binds.push(like, like, like, like);
+      const kw = buildKeywordWhere(keyword, {
+        numericId: "i.id",
+        exact: ["i.sku"],
+        prefix: ["i.sku", "i.name"],
+        contains: ["i.name", "i.brand", "i.model"],
+      });
+      if (kw.sql) {
+        whereParts.push(kw.sql);
+        binds.push(...kw.binds);
+      }
     }
 
     const orderBy = getSort(sort);
 
-    const sql = `
+    const baseSql = `
       SELECT
         i.id as item_id,
         i.sku, i.name, i.brand, i.model, i.category, i.unit,
@@ -65,12 +77,17 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
       WHERE ${whereParts.join(" AND ")}
-      ORDER BY ${orderBy}
     `;
+
+    const countSql = `SELECT COUNT(*) as c FROM ( ${baseSql} ) x`;
+
     // bind order: last_tx warehouse_id, stock join warehouse_id, then filters
     const bindAll = [warehouse_id, ...binds];
-    const { results } = await env.DB.prepare(sql).bind(...bindAll).all();
-    return Response.json({ ok: true, data: results });
+    const totalRow = await env.DB.prepare(countSql).bind(...bindAll).first<any>();
+
+    const sql = `${baseSql} ORDER BY ${orderBy} LIMIT ? OFFSET ?`;
+    const { results } = await env.DB.prepare(sql).bind(...bindAll, pageSize, offset).all();
+    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }

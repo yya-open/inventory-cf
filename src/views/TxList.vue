@@ -21,6 +21,20 @@
         value-format="YYYY-MM-DD"
       />
 
+      <el-input v-model="keyword" clearable placeholder="关键词：单号/SKU/名称/备注" style="width: 220px" />
+
+      <el-select v-model="sortBy" placeholder="排序字段" style="width: 140px" @change="onSearch">
+        <el-option label="时间" value="created_at" />
+        <el-option label="单号" value="tx_no" />
+        <el-option label="数量" value="qty" />
+        <el-option label="SKU" value="sku" />
+      </el-select>
+      <el-select v-model="sortDir" placeholder="方向" style="width: 110px" @change="onSearch">
+        <el-option label="倒序" value="desc" />
+        <el-option label="正序" value="asc" />
+      </el-select>
+
+
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="doExport" :disabled="rows.length===0">导出Excel</el-button>
       <el-button @click="reset">重置</el-button>
@@ -127,6 +141,10 @@ const type = ref<string>("");
 const item_id = ref<number | undefined>(undefined);
 const dateRange = ref<[string, string] | null>(null);
 
+const keyword = ref("");
+const sortBy = ref<string>("created_at");
+const sortDir = ref<string>("desc");
+
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
 
@@ -139,6 +157,9 @@ function reset() {
   type.value = "";
   item_id.value = undefined;
   dateRange.value = null;
+  keyword.value = "";
+  sortBy.value = "created_at";
+  sortDir.value = "desc";
   page.value = 1;
   load();
 }
@@ -174,6 +195,9 @@ async function doExport() {
       if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
       params.set("page", String(p));
       params.set("page_size", "5000");
+      if (keyword.value) params.set("keyword", keyword.value);
+      if (sortBy.value) params.set("sort_by", sortBy.value);
+      if (sortDir.value) params.set("sort_dir", sortDir.value);
       const j = await apiGet<any>(`/api/tx?${params.toString()}`);
       const arr = j.data || [];
       t = Number(j.total || 0);
@@ -263,6 +287,10 @@ async function load() {
 
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
+
+    if (keyword.value) params.set("keyword", keyword.value);
+    if (sortBy.value) params.set("sort_by", sortBy.value);
+    if (sortDir.value) params.set("sort_dir", sortDir.value);
 
     const j = await apiGet<any>(`/api/tx?${params.toString()}`);
     rows.value = j.data;

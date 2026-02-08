@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { toSqlRange } from "../_date";
+import { buildKeywordWhere } from "../_search";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -21,8 +22,16 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const binds: any[] = [];
 
     if (keyword) {
-      wh.push("(a.username LIKE ? OR a.action LIKE ? OR a.entity LIKE ? OR a.entity_id LIKE ?)");
-      binds.push(`%${keyword}%`, `%${keyword}%`, `%${keyword}%`, `%${keyword}%`);
+      const kw = buildKeywordWhere(keyword, {
+        numericId: "a.id",
+        exact: ["a.entity_id"],
+        prefix: ["a.username", "a.action", "a.entity", "a.entity_id"],
+        contains: ["a.username", "a.action", "a.entity", "a.entity_id"],
+      });
+      if (kw.sql) {
+        wh.push(kw.sql);
+        binds.push(...kw.binds);
+      }
     }
     if (action) { wh.push("a.action=?"); binds.push(action); }
     if (entity) { wh.push("a.entity=?"); binds.push(entity); }
@@ -37,6 +46,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM audit_log a ${where}`)
       .bind(...binds)
       .first<any>();
+
+    const sortByRaw = (url.searchParams.get("sort_by") || "id").trim();
+    const sortDirRaw = (url.searchParams.get("sort_dir") || "desc").trim().toLowerCase();
+    const sortDir = sortDirRaw === "asc" ? "ASC" : "DESC";
+    const sortMap: Record<string, string> = { id: "a.id", created_at: "a.created_at" };
+    const sortCol = sortMap[sortByRaw] || "a.id";
+    const orderBy = `${sortCol} ${sortDir}`;
 
     // Enrich entity display for stock_tx: show item name by joining via tx_no.
     // (audit_log.entity_id stores tx_no when entity='stock_tx')
@@ -66,7 +82,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        LEFT JOIN users u
          ON a.entity = 'users' AND u.id = CAST(a.entity_id AS INTEGER)
        ${where}
-       ORDER BY a.id DESC
+       ORDER BY ${orderBy}
        LIMIT ? OFFSET ?`
     ).bind(...binds, pageSize, offset).all();
 

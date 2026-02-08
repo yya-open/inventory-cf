@@ -4,7 +4,7 @@ CREATE TABLE IF NOT EXISTS stocktake (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   st_no TEXT NOT NULL UNIQUE,
   warehouse_id INTEGER NOT NULL,
-  status TEXT NOT NULL CHECK(status IN ('DRAFT','APPLIED')) DEFAULT 'DRAFT',
+  status TEXT NOT NULL CHECK(status IN ('DRAFT','APPLYING','APPLIED','ROLLING')) DEFAULT 'DRAFT',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   created_by TEXT,
   applied_at TEXT,

@@ -1,16 +1,48 @@
 import { json, requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { hashPassword } from "../_password";
+import { buildKeywordWhere } from "./_search";
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "admin");
+    const url = new URL(request.url);
+    const keyword = (url.searchParams.get("keyword") || "").trim();
+
+    const page = Math.max(1, Number(url.searchParams.get("page") || 1));
+    const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
+    const offset = (page - 1) * pageSize;
+
+    const sortByRaw = (url.searchParams.get("sort_by") || "id").trim();
+    const sortDirRaw = (url.searchParams.get("sort_dir") || "asc").trim().toLowerCase();
+    const sortDir = sortDirRaw === "desc" ? "DESC" : "ASC";
+    const sortMap: Record<string, string> = {
+      id: "id",
+      username: "username",
+      role: "role",
+      is_active: "is_active",
+      created_at: "created_at",
+    };
+    const sortCol = sortMap[sortByRaw] || "id";
+    const orderBy = `${sortCol} ${sortDir}, id ASC`;
+
+    const kw = buildKeywordWhere(keyword, {
+      numericId: "id",
+      exact: ["username"],
+      prefix: ["username"],
+      contains: [],
+    });
+    const where = kw.sql ? `WHERE ${kw.sql}` : "";
+
+    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM users ${where}`).bind(...kw.binds).first<any>();
     const { results } = await env.DB
-      .prepare("SELECT id, username, role, is_active, must_change_password, created_at FROM users ORDER BY id ASC")
+      .prepare(`SELECT id, username, role, is_active, must_change_password, created_at FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+      .bind(...kw.binds, pageSize, offset)
       .all();
-    return json(true, results);
+
+    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw });
   } catch (e: any) {
     return errorResponse(e);
   }

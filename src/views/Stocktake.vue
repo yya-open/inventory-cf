@@ -20,6 +20,16 @@
             <div class="panel-title">盘点单列表</div>
             <div class="panel-tools">
               <el-input v-model="listKeyword" size="small" clearable placeholder="搜索 ID / 单号 / 状态" style="width: 190px;" />
+              <el-select v-model="listSortBy" size="small" style="width: 120px" @change="onListSortChange">
+                <el-option label="ID" value="id" />
+                <el-option label="创建时间" value="created_at" />
+                <el-option label="状态" value="status" />
+                <el-option label="单号" value="st_no" />
+              </el-select>
+              <el-select v-model="listSortDir" size="small" style="width: 95px" @change="onListSortChange">
+                <el-option label="升序" value="asc" />
+                <el-option label="降序" value="desc" />
+              </el-select>
               <el-button size="small" @click="loadList">刷新</el-button>
               <el-button size="small" @click="toggleList">{{ listCollapsed ? "展开" : "收起" }}</el-button>
             </div>
@@ -27,7 +37,7 @@
 
           <el-table
             ref="listTableRef"
-            :data="sortedList"
+            :data="list"
             :height="listTableHeight"
             border
             highlight-current-row
@@ -36,7 +46,7 @@
           >
 	            <!-- 显示序号（避免删除导致 ID 断号带来的困惑），真实 id 仍保留在 row.id 供接口使用 -->
 	            <el-table-column label="序号" width="70">
-	              <template #default="scope">{{ scope.$index + 1 }}</template>
+	              <template #default="scope">{{ (listPage-1)*listPageSize + scope.$index + 1 }}</template>
 	            </el-table-column>
 	            <el-table-column label="盘点单号" min-width="190">
 	              <template #default="{ row }">
@@ -218,6 +228,9 @@ const toggleList = () => {
 
 const lineKeyword = ref("");
 const listKeyword = ref("");
+const listSortBy = ref<string>("id");
+const listSortDir = ref<string>("asc");
+
 const creating = ref(false);
 const applying = ref(false);
 const rolling = ref(false);
@@ -235,19 +248,6 @@ const filteredLines = computed(()=>{
 });
 
 
-const filteredList = computed(()=>{
-  const k = listKeyword.value.trim().toLowerCase();
-  if (!k) return list.value;
-  return list.value.filter((x:any)=>{
-    return String(x.id||"").includes(k)
-      || String(x.st_no||"").toLowerCase().includes(k)
-      || String(x.status||"").toLowerCase().includes(k);
-  });
-});
-
-const sortedList = computed(()=>{
-  return (filteredList.value || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
-});
 
 function rowClassName({ row }: any){
   return Number(row?.id) === Number(selectedId.value) ? "row-selected" : "";
@@ -255,7 +255,7 @@ function rowClassName({ row }: any){
 
 function scrollToSelected(){
   if (!selectedId.value) return;
-  const idx = sortedList.value.findIndex((x:any)=>Number(x.id)===Number(selectedId.value));
+  const idx = list.value.findIndex((x:any)=>Number(x.id)===Number(selectedId.value));
   if (idx < 0) return;
   const el = listTableRef.value?.$el as HTMLElement | undefined;
   const body = el?.querySelector?.(".el-table__body-wrapper") as HTMLElement | null;
@@ -264,7 +264,7 @@ function scrollToSelected(){
   tr?.scrollIntoView({ block: "center" });
 }
 
-watch(sortedList, async () => {
+watch(list, async () => {
   await nextTick();
   scrollToSelected();
 });
@@ -323,7 +323,17 @@ async function loadWarehouses(){
 watch(warehouseId, async ()=>{
   selectedId.value = null;
   detail.value = null;
+  listPage.value = 1;
   await loadList();
+});
+
+let _kwTimer: any = null;
+watch(listKeyword, () => {
+  if (_kwTimer) clearTimeout(_kwTimer);
+  _kwTimer = setTimeout(() => {
+    listPage.value = 1;
+    loadList();
+  }, 300);
 });
 
 function onListPageChange(){
@@ -335,15 +345,23 @@ function onListPageSizeChange(){
   loadList();
 }
 
+function onListSortChange(){
+  listPage.value = 1;
+  loadList();
+}
+
 async function loadList(){
   try{
     const params = new URLSearchParams();
     params.set('warehouse_id', String(warehouseId.value));
     params.set('page', String(listPage.value));
     params.set('page_size', String(listPageSize.value));
+    if (listKeyword.value.trim()) params.set('keyword', listKeyword.value.trim());
+    if (listSortBy.value) params.set('sort_by', listSortBy.value);
+    if (listSortDir.value) params.set('sort_dir', listSortDir.value);
     const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`);
     listTotal.value = Number(r.total || 0);
-    list.value = (r.data || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
+    list.value = r.data || [];
   }catch(e:any){
     ElMessage.error(e.message || "加载盘点单失败");
   }
