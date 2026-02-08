@@ -76,3 +76,26 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     return errorResponse(e);
   }
 };
+
+
+export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+  try {
+    const user = await requireAuth(env, request, "admin");
+    const body = await request.json<any>().catch(() => ({}));
+    const id = Number(body?.id);
+    if (!id) return Response.json({ ok: false, message: "id 无效" }, { status: 400 });
+
+    const before = await env.DB.prepare(`SELECT * FROM items WHERE id=?`).bind(id).first<any>();
+    if (!before) return Response.json({ ok: false, message: "配件不存在" }, { status: 404 });
+
+    // 软删除：列表只显示 enabled=1，因此这里置 0，历史数据保留
+    await env.DB.prepare(`UPDATE items SET enabled=0 WHERE id=?`).bind(id).run();
+
+    await logAudit(env.DB, request, user, "ITEM_DELETE", "items", id, { before });
+
+    return Response.json({ ok: true });
+  } catch (e: any) {
+    return errorResponse(e);
+  }
+};
+

@@ -16,11 +16,13 @@
       <el-table-column prop="category" label="分类" width="120" />
       <el-table-column prop="unit" label="单位" width="80" />
       <el-table-column prop="warning_qty" label="预警值" width="90" />
-      <el-table-column label="操作" width="200">
+      <el-table-column label="操作" width="260">
         <template #default="{row}">
           <el-button size="small" @click="openEdit(row)">编辑</el-button>
           <el-button size="small" type="info" plain @click="goTx(row.id)">明细</el-button>
-        </template>
+        
+          <el-button v-if="isAdmin" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+</template>
       </el-table-column>
     </el-table>
 
@@ -73,12 +75,14 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
-import { ElMessage } from "element-plus";
-import { apiGet, apiPost } from "../api/client";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { apiGet, apiPost, apiDelete } from "../api/client";
 import { useRouter } from "vue-router";
+import { useAuth } from "../store/auth";
 
 const router = useRouter();
-
+const auth = useAuth();
+const isAdmin = computed(() => auth.user?.role === "admin");
 const keyword = ref("");
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -134,6 +138,28 @@ function openEdit(row: any) {
 function goTx(itemId: number) {
   router.push({ path: "/tx", query: { item_id: String(itemId) } });
 }
+
+async function onDelete(row: any) {
+  try {
+    await ElMessageBox.confirm(
+      `确认删除配件：${row?.name || row?.sku || row?.id}？\n删除后该配件将不再出现在列表中（历史出入库明细不受影响）。`,
+      "删除确认",
+      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    await apiDelete<any>("/api/items", { id: row.id });
+    ElMessage.success("删除成功");
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.message || "删除失败");
+  }
+}
+
+
 
 function onSearch(){
   page.value = 1;

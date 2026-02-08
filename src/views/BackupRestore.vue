@@ -168,10 +168,8 @@
             </el-alert>
 
             <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
-              <el-divider content-position="left">本次恢复明细</el-divider>
-              <div style="color:#666; font-size:12px; margin-bottom:8px">
-                涉及表：{{ affectedTablesText }}
-              </div>
+              <el-button type="primary" plain size="small" @click="detailDlg=true">查看本次恢复明细</el-button>
+            </div>
               <el-table :data="restoreDetailRows" size="small" border style="width:100%">
                 <el-table-column prop="table" label="表" width="160" />
                 <el-table-column prop="total" label="备份行数" width="120" />
@@ -189,7 +187,36 @@
               恢复失败：{{ jobLastError || '未知错误' }}
             </el-alert>
           </div>
-        </el-card>
+        
+    <el-dialog v-model="detailDlg" title="本次恢复明细" width="860px" :append-to-body="true">
+      <div style="color:#666; font-size:12px; margin-bottom:10px">
+        涉及表：{{ affectedTablesText }}
+      </div>
+      <el-table :data="restoreDetailRows" size="small" border style="width:100%">
+        <el-table-column label="表" min-width="220">
+          <template #default="{row}">
+            <div style="display:flex; flex-direction:column; line-height:1.2">
+              <span style="font-weight:600">{{ row.table_cn }}</span>
+              <span style="color:#999; font-size:12px">{{ row.table }}</span>
+            </div>
+          </template>
+        </el-table-column>
+        <el-table-column prop="total" label="备份行数" width="110" />
+        <el-table-column prop="processed" label="已处理" width="90" />
+        <el-table-column prop="written" label="写入变更" width="100" />
+        <el-table-column prop="skipped" label="未写入(可能重复)" width="140" />
+      </el-table>
+
+      <el-alert type="info" show-icon :closable="false" style="margin-top:12px">
+        说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
+      </el-alert>
+
+      <template #footer>
+        <el-button @click="detailDlg=false">关闭</el-button>
+      </template>
+    </el-dialog>
+
+</el-card>
       </el-col>
     </el-row>
   </el-card>
@@ -218,6 +245,9 @@ const bk = ref({
 
 const downloading = ref(false);
 
+
+const detailDlg = ref(false);
+const detailDlgAutoOpened = ref(false);
 function buildBackupQuery(extra?: Record<string, string>) {
   const q = new URLSearchParams();
   if (bk.value.include_tx) q.set("include_tx", "1");
@@ -369,6 +399,24 @@ const progressStatus = computed(() => {
   return undefined as any;
 });
 
+
+const TABLE_LABEL: Record<string, string> = {
+  warehouses: "仓库",
+  items: "配件",
+  categories: "分类",
+  stock_tx: "出入库明细",
+  stocktake: "盘点单",
+  stocktake_line: "盘点明细",
+  audit_log: "审计日志",
+  auth_login_throttle: "登录限流",
+  users: "用户",
+};
+
+function tableCn(t: string) {
+  return TABLE_LABEL[t] || t;
+}
+
+
 const restoreDetailRows = computed(() => {
   const pt = jobPerTable.value || {};
   const order: string[] = Array.isArray(pt.__order__) ? pt.__order__ : [];
@@ -382,6 +430,7 @@ const restoreDetailRows = computed(() => {
       const w = Number(inserted[t] || 0);
       return {
         table: t,
+        table_cn: tableCn(t),
         total,
         processed: p,
         written: w,
@@ -394,12 +443,22 @@ const restoreDetailRows = computed(() => {
 const affectedTablesText = computed(() => {
   const names = restoreDetailRows.value
     .filter((r) => r.processed > 0)
-    .map((r) => r.table);
+    .map((r) => r.table_cn);
   return names.length ? names.join("、") : "（无）";
+});
+
+
+
+watch([jobStatus, restoreDetailRows], () => {
+  if (jobStatus.value === "DONE" && restoreDetailRows.value.length && !detailDlgAutoOpened.value) {
+    detailDlg.value = true;
+    detailDlgAutoOpened.value = true;
+  }
 });
 
 async function createJob() {
   if (!pickedFile.value) return;
+  detailDlgAutoOpened.value = false;
 
   const expected = mode.value === "replace" ? "清空并恢复" : "恢复";
   try {
