@@ -11,7 +11,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   const page = Math.max(1, Number(url.searchParams.get("page") || 1));
   const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
   const offset = (page - 1) * pageSize;
-  const withTotal = (url.searchParams.get("with_total") ?? "1") === "1";
 
   const wh: string[] = [];
   const binds: any[] = [];
@@ -33,10 +32,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     LIMIT ? OFFSET ?
   `;
 
-  const totalRow = withTotal ? await env.DB.prepare(`SELECT COUNT(*) as c FROM stock_tx t ${where}`).bind(...binds).first<any>();
+  const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM stock_tx t ${where}`).bind(...binds).first<any>();
 
   const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
-  return Response.json({ ok: true, data: results, total: withTotal ? Number((totalRow as any)?.c || 0) : null, page, pageSize });
+  return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
 
   } catch (e: any) {
     return errorResponse(e);

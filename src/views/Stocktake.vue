@@ -288,7 +288,7 @@ async function deleteStocktake(row:any){
       selectedId.value = null;
       detail.value = null;
     }
-    await loadList(true);
+    await loadList();
   }catch(e:any){
     ElMessage.error(e.message || "删除失败");
   }
@@ -320,27 +320,26 @@ async function loadWarehouses(){
 watch(warehouseId, async ()=>{
   selectedId.value = null;
   detail.value = null;
-  await loadList(true);
+  await loadList();
 });
 
 function onListPageChange(){
-  loadList(false);
+  loadList();
 }
 
 function onListPageSizeChange(){
   listPage.value = 1;
-  loadList(true);
+  loadList();
 }
 
-async function loadList(withTotal = false){
+async function loadList(){
   try{
     const params = new URLSearchParams();
     params.set('warehouse_id', String(warehouseId.value));
     params.set('page', String(listPage.value));
     params.set('page_size', String(listPageSize.value));
-    params.set('with_total', withTotal ? '1' : '0');
     const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`);
-    if (r.total !== null && r.total !== undefined) listTotal.value = Number(r.total || 0);
+    listTotal.value = Number(r.total || 0);
     list.value = (r.data || []).slice().sort((a:any,b:any)=>Number(a.id)-Number(b.id));
   }catch(e:any){
     ElMessage.error(e.message || "加载盘点单失败");
@@ -375,7 +374,7 @@ async function createStocktake(){
   try{
     const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
     ElMessage.success("盘点单已创建");
-    await loadList(true);
+    await loadList();
 	    selectedId.value = Number(r.id);
 	    await loadDetail(Number(r.id));
 	    await nextTick();
@@ -499,7 +498,7 @@ async function rollbackStocktake(){
   try{
     const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id });
     ElMessage.success(`撤销成功：恢复 ${r.reversed} 条差异库存`);
-    await loadList(true);
+    await loadList();
     await refreshDetail();
   }catch(e:any){
     ElMessage.error(e.message || "撤销失败");
@@ -520,6 +519,6 @@ async function rollbackStocktakeByRow(row:any){
 
 onMounted(async ()=>{
   await loadWarehouses();
-  await loadList(true);
+  await loadList();
 });
 </script>

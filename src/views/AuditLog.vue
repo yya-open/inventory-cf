@@ -4,9 +4,8 @@
       <div class="audit-header">
         <div class="title">审计日志</div>
         <div class="tools">
-          <el-button type="primary" :loading="loading" @click="onSearch">查询</el-button>
-          <el-button :disabled="loading" @click="reset">重置</el-button>
-          <el-button :loading="exporting" @click="exportCsv">导出CSV</el-button>
+          <el-button type="primary" @click="onSearch">查询</el-button>
+          <el-button @click="reset">重置</el-button>
           <el-button type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
             删除选中 ({{ selectedIds.length }})
           </el-button>
@@ -169,7 +168,6 @@ function entityLabel(e: string) {
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
-const exporting = ref(false);
 
 const keyword = ref("");
 const action = ref("");
@@ -210,7 +208,7 @@ function tagType(action: string) {
 
 function onSearch(){
   page.value = 1;
-  load(true);
+  load();
 }
 function onPageChange(){ load(); }
 function onPageSizeChange(){ page.value = 1; load(); }
@@ -222,7 +220,7 @@ function reset(){
   user.value = "";
   range.value = null;
   page.value = 1;
-  load(true);
+  load();
 }
 
 function tryPrettyJson(text: string){
@@ -271,7 +269,7 @@ async function copyPayload(){
   }
 }
 
-async function load(withTotal = false){
+async function load(){
   loading.value = true;
   try{
     const params = new URLSearchParams();
@@ -283,16 +281,15 @@ async function load(withTotal = false){
       // ElementPlus gives Date objects
       const s = new Date(range.value[0]);
       const e = new Date(range.value[1]);
-      params.set("date_from", s.toISOString().slice(0,10) + " 00:00:00");
-      params.set("date_to", e.toISOString().slice(0,10) + " 23:59:59");
+      params.set("date_from", s.toISOString().slice(0,10));
+      params.set("date_to", e.toISOString().slice(0,10));
     }
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
-    params.set("with_total", withTotal ? "1" : "0");
 
     const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
     rows.value = (j.data || []).map((r:any, idx:number)=>({ ...r }));
-    if (j.total !== null && j.total !== undefined) total.value = Number(j.total || 0);
+    total.value = Number(j.total || 0);
   }catch(e:any){
     ElMessage.error(e.message || "加载失败");
   }finally{
@@ -326,32 +323,6 @@ async function deleteSelected(){
   }catch(e:any){
     if (e === "cancel" || e === "close") return;
     ElMessage.error(e.message || "删除失败");
-  }
-}
-
-
-async function exportCsv(){
-  try{
-    exporting.value = true;
-    const params = new URLSearchParams();
-    if (keyword.value) params.set("keyword", keyword.value);
-    if (action.value) params.set("action", action.value);
-    if (entity.value) params.set("entity", entity.value);
-    if (user.value) params.set("user", user.value);
-    if (range.value?.length === 2){
-      const s = new Date(range.value[0]);
-      const e = new Date(range.value[1]);
-      params.set("date_from", s.toISOString().slice(0,10) + " 00:00:00");
-      params.set("date_to", e.toISOString().slice(0,10) + " 23:59:59");
-    }
-    // 最大导出 1w（可通过 limit 调整）
-    params.set("limit", "10000");
-    const filename = `审计日志_${new Date().toISOString().slice(0,19).replace(/[:T]/g,'-')}.csv`;
-    await apiDownload(`/api/audit/export?${params.toString()}`, filename);
-  }catch(e:any){
-    ElMessage.error(e?.message || "导出失败");
-  }finally{
-    exporting.value = false;
   }
 }
 
