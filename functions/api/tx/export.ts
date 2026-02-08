@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { logAudit } from "../_audit";
 import { toSqlRange } from "../_date";
 
 /**
@@ -6,9 +7,9 @@ import { toSqlRange } from "../_date";
  * Export stock_tx as CSV (UTF-8 with BOM) generated on the backend.
  * Designed for large exports: reads rows page-by-page and streams CSV.
  */
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    const actor = await requireAuth(env, request, "viewer");
     const url = new URL(request.url);
     const type = (url.searchParams.get("type") || "").trim();
     const item_id = url.searchParams.get("item_id");
@@ -40,6 +41,17 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       bindsBase.push(toSql);
     }
 
+    // Best-effort audit (do not block export stream)
+    waitUntil(
+      logAudit(env.DB, request, actor, "TX_EXPORT", "stock_tx", null, {
+        type: type || null,
+        item_id: item_id ? Number(item_id) : null,
+        date_from: date_from || null,
+        date_to: date_to || null,
+        max: maxRows,
+      }).catch(() => {})
+    );
+
     // Keyset pagination to avoid OFFSET on large tables
     let lastId = Number.MAX_SAFE_INTEGER;
     wh.push(`t.id < ?`);
@@ -67,19 +79,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const d = String(now.getUTCDate()).padStart(2, "0");
     const filename = `stock_tx_${y}${m}${d}.csv`;
 
-    const header = [
-      "时间",
-      "单号",
-      "类型",
-      "SKU",
-      "名称",
-      "仓库",
-      "数量",
-      "变动",
-      "来源",
-      "去向",
-      "备注",
-    ];
+    const header = ["时间", "单号", "类型", "SKU", "名称", "仓库", "数量", "变动", "来源", "去向", "备注"];
 
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();

@@ -1,8 +1,11 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { logAudit } from "../_audit";
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+// POST /api/audit/delete
+// Admin-only. Deletes audit_log rows by id(s).
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    await requireAuth(env, request, "admin");
+    const actor = await requireAuth(env, request, "admin");
     const body: any = await request.json().catch(() => ({}));
 
     const idsRaw = body?.ids ?? (body?.id !== undefined ? [body.id] : []);
@@ -19,8 +22,17 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const placeholders = ids.map(() => "?").join(",");
     const r = await env.DB.prepare(`DELETE FROM audit_log WHERE id IN (${placeholders})`).bind(...ids).run();
+    const deleted = Number((r as any)?.meta?.changes ?? (r as any)?.changes ?? 0);
 
-    return Response.json({ ok: true, deleted: Number(r.changes || 0) });
+    // Best-effort audit; do not block the delete request
+    waitUntil(
+      logAudit(env.DB, request, actor, "AUDIT_DELETE", "audit_log", null, {
+        ids,
+        deleted,
+      }).catch(() => {})
+    );
+
+    return Response.json({ ok: true, data: { deleted } });
   } catch (e: any) {
     return errorResponse(e);
   }
