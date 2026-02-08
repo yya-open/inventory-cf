@@ -167,20 +167,11 @@
               恢复完成 ✅
             </el-alert>
 
-            <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
-              <el-button type="primary" plain size="small" @click="detailDlg=true">查看本次恢复明细</el-button>
-            </div>
-              <el-table :data="restoreDetailRows" size="small" border style="width:100%">
-                <el-table-column prop="table" label="表" width="160" />
-                <el-table-column prop="total" label="备份行数" width="120" />
-                <el-table-column prop="processed" label="已处理" width="100" />
-                <el-table-column prop="written" label="写入变更" width="110" />
-                <el-table-column prop="skipped" label="未写入(可能重复)" />
-              </el-table>
-              <el-alert type="info" show-icon :closable="false" style="margin-top:10px">
-                说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
-              </el-alert>
-            </div>
+
+	            <!-- 恢复完成后仅通过弹窗查看明细，避免页面内容过长且保持风格一致 -->
+	            <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
+	              <el-button type="primary" plain size="small" @click="detailDlg=true">查看本次恢复明细</el-button>
+	            </div>
 
 
             <el-alert v-if="jobStatus==='FAILED'" type="error" show-icon :closable="false">
