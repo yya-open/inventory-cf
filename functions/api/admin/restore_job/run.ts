@@ -3,7 +3,7 @@ import { logAudit } from "../../_audit";
 import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, sniffGzipFromStream } from "./_util";
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
-type RestoreMode = "merge" | "replace";
+type RestoreMode = "merge" | "merge_upsert" | "replace";
 
 function parseJsonSafe(s: string, fallback: any) {
   try { return JSON.parse(s || ""); } catch { return fallback; }
@@ -86,8 +86,31 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     }
 
     // Stage 2: restore incrementally
-    const mode = (job.mode as RestoreMode) || "merge";
-    const verb = mode === "merge" ? "INSERT OR IGNORE" : "INSERT OR REPLACE";
+    const mode = ((job.mode as RestoreMode) || "merge");
+
+    // SQL builder per mode.
+    const buildInsertSql = (table: string, cols: string[]) => {
+      const placeholders = cols.map(() => "?").join(",");
+
+      if (mode === "merge") {
+        return `INSERT OR IGNORE INTO ${table} (${cols.join(",")}) VALUES (${placeholders})`;
+      }
+
+      if (mode === "merge_upsert") {
+        // Merge but overwrite existing rows when hitting PK/UNIQUE conflicts.
+        // Use UPSERT (ON CONFLICT DO UPDATE) to avoid DELETE+INSERT behavior of REPLACE (which can break FKs).
+        const upCols = cols.filter((c) => c !== "id");
+        if (!upCols.length) {
+          // Fallback: if only id exists, do nothing on conflict.
+          return `INSERT INTO ${table} (${cols.join(",")}) VALUES (${placeholders}) ON CONFLICT DO NOTHING`;
+        }
+        const setClause = upCols.map((c) => `${c}=excluded.${c}`).join(",");
+        return `INSERT INTO ${table} (${cols.join(",")}) VALUES (${placeholders}) ON CONFLICT DO UPDATE SET ${setClause}`;
+      }
+
+      // replace
+      return `INSERT OR REPLACE INTO ${table} (${cols.join(",")}) VALUES (${placeholders})`;
+    };
 
     // Replace-mode: do delete once
     if (mode === "replace" && Number(job.replaced_done || 0) === 0) {
@@ -161,8 +184,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           rowIndexInTable = -1;
 
           cols = TABLE_COLUMNS[table];
-          const placeholders = cols.map(() => "?").join(",");
-          sql = `${verb} INTO ${table} (${cols.join(",")}) VALUES (${placeholders})`;
+          sql = buildInsertSql(table, cols);
           batchTable = table;
         }
 

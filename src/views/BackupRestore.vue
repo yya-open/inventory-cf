@@ -124,12 +124,15 @@
             </div>
 
             <el-radio-group v-model="mode" :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')">
-              <el-radio label="merge">合并导入（推荐）</el-radio>
+              <el-radio label="merge">合并导入（不覆盖）</el-radio>
+              <el-radio label="merge_upsert">合并覆盖（更新重复记录）</el-radio>
               <el-radio label="replace">清空并恢复（危险）</el-radio>
             </el-radio-group>
 
             <el-alert type="warning" show-icon :closable="false">
               合并导入：尽量不覆盖现有数据（INSERT OR IGNORE）。
+              <br />
+              合并覆盖：遇到重复主键/唯一键时更新已有记录（UPSERT，不会先删再插，较安全）。
               <br />
               清空并恢复：会先清空库再写入（不可恢复）。
             </el-alert>
@@ -362,7 +365,7 @@ watch(fileList, (list) => {
   }
 });
 
-const mode = ref<"merge"|"replace">("merge");
+const mode = ref<"merge"|"merge_upsert"|"replace">("merge");
 
 const creatingJob = ref(false);
 const jobId = ref<string>("");
@@ -451,12 +454,14 @@ async function createJob() {
   if (!pickedFile.value) return;
   detailDlgAutoOpened.value = false;
 
-  const expected = mode.value === "replace" ? "清空并恢复" : "恢复";
+  const expected = mode.value === "replace" ? "清空并恢复" : (mode.value === "merge_upsert" ? "覆盖导入" : "恢复");
   try {
     const { value: confirmText } = await ElMessageBox.prompt(
       mode.value === "replace"
         ? "将先清空数据库再恢复。请输入：清空并恢复"
-        : "将导入备份数据（尽量不覆盖现有）。请输入：恢复",
+        : (mode.value === "merge_upsert"
+            ? "将导入备份数据并更新重复记录（覆盖同主键/唯一键）。请输入：覆盖导入"
+            : "将导入备份数据（尽量不覆盖现有）。请输入：恢复"),
       "二次确认",
       {
         confirmButtonText: "创建任务",

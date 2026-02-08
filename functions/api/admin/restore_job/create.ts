@@ -1,9 +1,14 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
-import { requireConfirm } from "../../../_confirm";
 import { logAudit } from "../../_audit";
 import { nowIso } from "./_util";
 
-type RestoreMode = "merge" | "replace";
+type RestoreMode = "merge" | "merge_upsert" | "replace";
+
+function expectedConfirmText(mode: RestoreMode) {
+  if (mode === "replace") return "清空并恢复";
+  if (mode === "merge_upsert") return "覆盖导入";
+  return "恢复";
+}
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any }> = async ({ env, request, waitUntil }) => {
   try {
@@ -15,9 +20,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     }
 
     const form = await request.formData();
-    const mode = (String(form.get("mode") || "merge") as RestoreMode) || "merge";
-    const confirm = String(form.get("confirm") || "");
-    requireConfirm({ mode, confirm } as any, mode === "replace" ? "清空并恢复" : "恢复", "二次确认不通过");
+    const modeRaw = String(form.get("mode") || "merge").trim();
+    const mode: RestoreMode = (modeRaw === "merge" || modeRaw === "replace" || modeRaw === "merge_upsert") ? (modeRaw as RestoreMode) : "merge";
+    const confirm = String(form.get("confirm") || "").trim();
+
+    // Server-side confirmation (multipart cannot use JSON-based confirm helper).
+    const expected = expectedConfirmText(mode);
+    if (confirm !== expected) {
+      return Response.json({ ok: false, message: "二次确认不通过", expected }, { status: 400 });
+    }
 
     const file = form.get("file");
     if (!(file instanceof File)) {
