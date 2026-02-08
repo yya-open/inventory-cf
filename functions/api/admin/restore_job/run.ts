@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
-import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, isLikelyGzipFilename } from "./_util";
+import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, sniffGzipFromStream } from "./_util";
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 type RestoreMode = "merge" | "replace";
@@ -46,7 +46,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       return Response.json({ ok: false, message: "R2 文件不存在或已被删除" }, { status: 500 });
     }
 
-    const gzip = isLikelyGzipFilename(job.filename || "");
 
     // Stage 1: scan and count totals (one full pass without DB writes)
     if (job.stage === "SCAN") {
@@ -60,7 +59,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const scanObj = await env.BACKUP_BUCKET.get(job.file_key);
       if (!scanObj?.body) throw new Error("R2 文件读取失败（SCAN）");
 
-      for await (const { table } of iterBackupRowsFromStream(scanObj.body, gzip)) {
+      const sniff1 = await sniffGzipFromStream(scanObj.body);
+      for await (const { table } of iterBackupRowsFromStream(sniff1.stream, sniff1.gzip)) {
         if (!TABLE_COLUMNS[table]) continue;
         if (!counts[table]) {
           counts[table] = 0;
@@ -136,7 +136,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         batch = [];
       };
 
-      for await (const { table, rowText } of iterBackupRowsFromStream(runObj.body, gzip)) {
+      const sniff2 = await sniffGzipFromStream(runObj.body);
+      for await (const { table, rowText } of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
         if (!TABLE_COLUMNS[table]) continue;
 
         if (table !== curTable) {

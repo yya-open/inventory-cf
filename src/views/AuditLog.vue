@@ -141,7 +141,9 @@ const ACTION_LABEL: Record<string, string> = {
   ADMIN_RESTORE_JOB_CREATE: "恢复备份-创建任务",
   ADMIN_RESTORE_JOB_SCAN_DONE: "恢复备份-扫描完成",
   ADMIN_RESTORE_JOB_DONE: "恢复备份-完成",
-  ADMIN_RESTORE_JOB_CANCEL: "恢复备份-取消/暂停",
+  ADMIN_RESTORE_JOB_FAILED: "恢复备份-失败",
+  ADMIN_RESTORE_JOB_PAUSED: "恢复备份-暂停",
+  ADMIN_RESTORE_JOB_CANCELED: "恢复备份-取消",
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -152,6 +154,7 @@ const ENTITY_LABEL: Record<string, string> = {
   audit_log: "审计日志",
   stock: "库存",
   warehouse: "仓库",
+  warehouses: "仓库",
   backup: "备份",
   restore_job: "恢复任务",
 };

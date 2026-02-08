@@ -4,6 +4,33 @@ import { logAudit } from "../_audit";
 
 type RestoreMode = "merge" | "replace";
 
+
+function isGzipMagicBytes(bytes?: Uint8Array | null) {
+  return !!bytes && bytes.length >= 2 && bytes[0] === 0x1f && bytes[1] === 0x8b;
+}
+
+async function sniffGzipFromFile(file: File) {
+  try {
+    const ab = await file.slice(0, 2).arrayBuffer();
+    return isGzipMagicBytes(new Uint8Array(ab));
+  } catch {
+    const n = String((file as any)?.name || "").toLowerCase();
+    return n.endsWith(".gz") || n.endsWith(".gzip");
+  }
+}
+
+async function readBackupText(file: File) {
+  const isGz = await sniffGzipFromFile(file);
+  if (isGz) {
+    if (typeof (globalThis as any).DecompressionStream === "undefined") {
+      throw new Error("当前环境不支持 gzip 解压，请上传 .json 备份");
+    }
+    const ds = file.stream().pipeThrough(new DecompressionStream("gzip"));
+    return await new Response(ds).text();
+  }
+  return await file.text();
+}
+
 const TABLE_COLUMNS: Record<string, string[]> = {
   warehouses: ["id","name","created_at"],
   items: ["id","sku","name","brand","model","category","unit","warning_qty","enabled","created_at"],
@@ -44,18 +71,6 @@ function pick(obj: any, cols: string[]) {
   return cols.map((c) => (obj?.[c] === undefined ? null : obj[c]));
 }
 
-async function fileToTextAuto(file: File) {
-  const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
-  const magicGzip = head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
-
-  let s: ReadableStream<Uint8Array> = file.stream();
-  if (magicGzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
-    s = s.pipeThrough(new DecompressionStream("gzip"));
-  }
-  return await new Response(s).text();
-}
-
-
 // POST /api/admin/restore_upload
 // multipart/form-data: file=<backup.json>, mode=merge|replace, confirm=...
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
@@ -78,7 +93,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "缺少 file" }, { status: 400 });
     }
 
-    const text = await fileToTextAuto(file);
+    const text = await readBackupText(file);
     const backup = JSON.parse(text || "{}");
     const tables = backup?.tables || {};
     if (!tables || typeof tables !== "object") {
