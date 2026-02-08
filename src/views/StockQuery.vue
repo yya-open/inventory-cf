@@ -11,10 +11,7 @@
         <el-option label="库存升序" value="qty_asc" />
         <el-option label="库存降序" value="qty_desc" />
         <el-option label="SKU 升序" value="sku_asc" />
-        <el-option label="名称 升序" value="name_asc" />
-        <el-option label="ID 升序" value="id_asc" />
-        <el-option label="ID 倒序" value="id_desc" />
-      </el-select>
+        <el-option label="名称 升序" value="name_asc" />      </el-select>
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="onReset">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>

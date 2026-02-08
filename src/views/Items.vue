@@ -2,9 +2,7 @@
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-select v-model="sortBy" style="width: 170px" @change="onSearch">
-        <el-option label="ID" value="id" />
-        <el-option label="SKU" value="sku" />
+      <el-select v-model="sortBy" style="width: 170px" @change="onSearch">        <el-option label="SKU" value="sku" />
         <el-option label="名称" value="name" />
         <el-option label="品牌" value="brand" />
         <el-option label="型号" value="model" />
@@ -98,8 +96,8 @@ const router = useRouter();
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
 const keyword = ref("");
-const sortBy = ref<string>("id");
-const sortDir = ref<string>("desc");
+const sortBy = ref<string>("sku");
+const sortDir = ref<string>("asc");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
@@ -184,8 +182,8 @@ function onSearch(){
 
 function onReset(){
   keyword.value = "";
-  sortBy.value = "id";
-  sortDir.value = "desc";
+  sortBy.value = "sku";
+  sortDir.value = "asc";
   page.value = 1;
   load();
 }

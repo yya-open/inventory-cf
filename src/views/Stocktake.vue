@@ -20,9 +20,7 @@
             <div class="panel-title">盘点单列表</div>
             <div class="panel-tools">
               <el-input v-model="listKeyword" size="small" clearable placeholder="搜索 ID / 单号 / 状态" style="width: 190px;" />
-              <el-select v-model="listSortBy" size="small" style="width: 120px" @change="onListSortChange">
-                <el-option label="ID" value="id" />
-                <el-option label="创建时间" value="created_at" />
+              <el-select v-model="listSortBy" size="small" style="width: 120px" @change="onListSortChange">                <el-option label="创建时间" value="created_at" />
                 <el-option label="状态" value="status" />
                 <el-option label="单号" value="st_no" />
               </el-select>
@@ -228,8 +226,8 @@ const toggleList = () => {
 
 const lineKeyword = ref("");
 const listKeyword = ref("");
-const listSortBy = ref<string>("id");
-const listSortDir = ref<string>("asc");
+const listSortBy = ref<string>("created_at");
+const listSortDir = ref<string>("desc");
 
 const creating = ref(false);
 const applying = ref(false);

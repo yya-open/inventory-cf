@@ -9,10 +9,8 @@
     </div>
 
     <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
-      <el-input v-model="keyword" clearable style="width:240px" placeholder="搜索：账号/ID" @keyup.enter="reload" />
-      <el-select v-model="sortBy" style="width:170px" @change="reload">
-        <el-option label="ID" value="id" />
-        <el-option label="账号" value="username" />
+      <el-input v-model="keyword" clearable style="width:240px" placeholder="搜索：账号" @keyup.enter="reload" />
+      <el-select v-model="sortBy" style="width:170px" @change="reload">        <el-option label="账号" value="username" />
         <el-option label="角色" value="role" />
         <el-option label="状态" value="is_active" />
         <el-option label="创建时间" value="created_at" />
@@ -153,8 +151,8 @@ const keyword = ref("");
 const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
-const sortBy = ref("id");
-const sortDir = ref<"asc"|"desc">("asc");
+const sortBy = ref("created_at");
+const sortDir = ref<"asc"|"desc">("desc");
 
 const auth = useAuth();
 
@@ -179,8 +177,8 @@ async function load() {
     const qs = new URLSearchParams();
     qs.set("page", String(page.value));
     qs.set("page_size", String(pageSize.value));
-    qs.set("sort_by", String(sortBy.value || "id"));
-    qs.set("sort_dir", String(sortDir.value || "asc"));
+    qs.set("sort_by", String(sortBy.value || "created_at"));
+    qs.set("sort_dir", String(sortDir.value || "desc"));
     if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
     const r = await apiGet<{ ok:boolean; data: Row[]; total:number }>("/api/users?" + qs.toString());
     rows.value = r.data || [];
@@ -199,8 +197,8 @@ function reload() {
 
 function resetSearch() {
   keyword.value = "";
-  sortBy.value = "id";
-  sortDir.value = "asc";
+  sortBy.value = "created_at";
+  sortDir.value = "desc";
   reload();
 }
 

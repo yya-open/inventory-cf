@@ -36,9 +36,7 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-select v-model="sortBy" placeholder="排序字段" style="width: 140px" @change="onSearch">
-            <el-option label="ID" value="id" />
-            <el-option label="时间" value="created_at" />
+          <el-select v-model="sortBy" placeholder="排序字段" style="width: 140px" @change="onSearch">            <el-option label="时间" value="created_at" />
           </el-select>
         </el-form-item>
         <el-form-item>
@@ -229,7 +227,7 @@ const rows = ref<any[]>([]);
 const loading = ref(false);
 
 const keyword = ref("");
-const sortBy = ref<string>("id");
+const sortBy = ref<string>("created_at");
 const sortDir = ref<string>("desc");
 const action = ref("");
 const entity = ref("");
@@ -334,7 +332,7 @@ function reset(){
   entity.value = "";
   user.value = "";
   range.value = null;
-  sortBy.value = "id";
+  sortBy.value = "created_at";
   sortDir.value = "desc";
   page.value = 1;
   load();
