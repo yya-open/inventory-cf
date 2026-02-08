@@ -66,7 +66,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "缺少 file" }, { status: 400 });
     }
 
-    const text = await file.text();
+    // Read JSON (supports plain .json and real gzip .json.gz). We sniff magic bytes to avoid
+    // trying to decompress a plain JSON file that happens to have a .gz extension.
+    let text = "";
+    try {
+      const head = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+      const isGz = head.length >= 2 && head[0] === 0x1f && head[1] === 0x8b;
+      if (isGz && typeof (globalThis as any).DecompressionStream !== "undefined") {
+        const stream = file.stream().pipeThrough(new DecompressionStream("gzip"));
+        text = await new Response(stream).text();
+      } else {
+        text = await file.text();
+      }
+    } catch {
+      text = await file.text();
+    }
     const backup = JSON.parse(text || "{}");
     const tables = backup?.tables || {};
     if (!tables || typeof tables !== "object") {

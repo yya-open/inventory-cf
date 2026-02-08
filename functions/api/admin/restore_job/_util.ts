@@ -38,12 +38,62 @@ export function isLikelyGzipFilename(name: string) {
   return n.endsWith(".gz") || n.endsWith(".gzip");
 }
 
+
+function isGzipMagic(u8: Uint8Array | null | undefined) {
+  return !!u8 && u8.length >= 2 && u8[0] === 0x1f && u8[1] === 0x8b;
+}
+
+// For ReadableStream bodies (R2): peek first chunk to decide if gzip, and return a replayable stream.
+async function sniffStreamForGzip(stream: ReadableStream<Uint8Array>): Promise<{ stream: ReadableStream<Uint8Array>; gzip: boolean }> {
+  const reader = stream.getReader();
+  const first = await reader.read();
+  const gzip = isGzipMagic(first.value);
+
+  const replay = new ReadableStream<Uint8Array>({
+    start(controller) {
+      if (first.value && first.value.length) controller.enqueue(first.value);
+      const pump = async () => {
+        try {
+          while (true) {
+            const { value, done } = await reader.read();
+            if (done) break;
+            if (value && value.length) controller.enqueue(value);
+          }
+          controller.close();
+        } catch (e) {
+          controller.error(e);
+        } finally {
+          reader.releaseLock();
+        }
+      };
+      pump();
+    },
+  });
+
+  return { stream: replay, gzip };
+}
 export async function* textChunksFromFile(file: File, forceGzip?: boolean) {
+  // Decide gzip by BOTH filename hint and magic bytes.
+  // This makes restore robust even if a browser saved a decoded JSON file with a .gz filename (due to Content-Encoding).
+  let wantGzip = forceGzip ?? isLikelyGzipFilename(file.name || "");
+
+  let magic: Uint8Array | null = null;
+  try {
+    magic = new Uint8Array(await file.slice(0, 2).arrayBuffer());
+  } catch {
+    magic = null;
+  }
+  const isGzip = isGzipMagic(magic);
+
+  // If magic says gzip, we should decompress even if filename doesn't.
+  // If magic says NOT gzip, we must NOT decompress even if filename ends with .gz.
+  const shouldDecompress = isGzip;
+
   let s: ReadableStream<Uint8Array> = file.stream();
-  const wantGzip = forceGzip ?? isLikelyGzipFilename(file.name || "");
-  if (wantGzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
+  if (shouldDecompress && typeof (globalThis as any).DecompressionStream !== "undefined") {
     s = s.pipeThrough(new DecompressionStream("gzip"));
   }
+
   const decoder = new TextDecoderStream();
   const reader = s.pipeThrough(decoder).getReader();
   try {
@@ -238,11 +288,16 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
 }
 
 
-export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
-  let s: ReadableStream<Uint8Array> = stream;
-  if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
+export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzipHint?: boolean) {
+  // Decide gzip by peeking magic bytes (robust against wrong filename hints).
+  const { stream: replay, gzip } = await sniffStreamForGzip(stream);
+  const shouldDecompress = gzipHint === false ? false : gzip; // if explicitly false, never decompress
+
+  let s: ReadableStream<Uint8Array> = replay;
+  if (shouldDecompress && typeof (globalThis as any).DecompressionStream !== "undefined") {
     s = s.pipeThrough(new DecompressionStream("gzip"));
   }
+
   const decoder = new TextDecoderStream();
   const reader = s.pipeThrough(decoder).getReader();
   try {

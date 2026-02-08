@@ -192,7 +192,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (download) headers["content-disposition"] = `attachment; filename="${fname}"`;
 
     if (gzip) {
-      headers["content-encoding"] = "gzip";
+      // IMPORTANT: do NOT set Content-Encoding here, otherwise browsers may transparently decompress the download
+      // and still save it with a .gz filename, causing restore to fail.
+      headers["content-type"] = "application/gzip";
       const gzStream = stream.pipeThrough(new CompressionStream("gzip"));
       return new Response(gzStream, { headers });
     }
