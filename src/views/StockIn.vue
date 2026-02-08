@@ -55,6 +55,7 @@ const unit_price = ref<number>(0);
 const source = ref("");
 const remark = ref("");
 const submitting = ref(false);
+const pendingRid = ref<string>("");
 
 async function loadWarehouses() {
   try {
@@ -83,15 +84,19 @@ async function loadItems() {
 async function submit() {
   try {
     submitting.value = true;
-    await apiPost(`/api/stock-in`, {
+    const rid = pendingRid.value || crypto.randomUUID();
+    pendingRid.value = rid;
+    const r: any = await apiPost(`/api/stock-in`, {
       item_id: item_id.value,
       warehouse_id: warehouse_id.value,
       qty: qty.value,
       unit_price: unit_price.value,
       source: source.value,
       remark: remark.value,
+      client_request_id: rid,
     });
-    ElMessage.success("入库成功");
+    ElMessage.success(r?.duplicate ? "入库已处理（重复请求已忽略）" : "入库成功");
+    pendingRid.value = "";
     qty.value = 1;
     unit_price.value = 0;
     source.value = "";

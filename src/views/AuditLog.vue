@@ -297,14 +297,31 @@ async function load(){
   }
 }
 
+async function hardConfirm(expected: string, title: string) {
+  const { value } = await ElMessageBox.prompt(
+    `请输入「${expected}」确认操作（区分大小写）`,
+    title,
+    {
+      type: "warning",
+      confirmButtonText: "确认",
+      cancelButtonText: "取消",
+      inputPlaceholder: expected,
+      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+    }
+  );
+  return String(value || "").trim();
+}
+
 async function deleteOne(id: number){
   try{
-    await apiPost(`/api/audit/delete`, { id });
+    await hardConfirm("删除", "二次确认");
+    await apiPost(`/api/audit/delete`, { id, confirm: "删除" });
     ElMessage.success("已删除");
     // if delete makes current page empty, go back one page.
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
+    if (e === "cancel" || e === "close") return;
     ElMessage.error(e.message || "删除失败");
   }
 }
@@ -314,7 +331,8 @@ async function deleteSelected(){
   if (!ids.length) return;
   try{
     await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条审计日志？`, "删除确认", { type: "warning" });
-    await apiPost(`/api/audit/delete`, { ids });
+    await hardConfirm("删除", "二次确认");
+    await apiPost(`/api/audit/delete`, { ids, confirm: "删除" });
     ElMessage.success("已删除");
     selectedIds.value = [];
     // adjust page if needed

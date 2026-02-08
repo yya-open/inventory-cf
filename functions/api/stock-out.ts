@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
+import { normalizeClientRequestId, toRidRefNo, isUniqueConstraintError } from "../_idempotency";
 
 function txNo() {
   const d = new Date();
@@ -13,13 +14,22 @@ function txNo() {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
-    const { item_id, warehouse_id = 1, qty, target, remark } = await request.json();
+    const { item_id, warehouse_id = 1, qty, target, remark, client_request_id } = await request.json();
 
     const q = Number(qty);
     const wid = Number(warehouse_id);
 
     if (!item_id || !q || q <= 0) {
       return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
+    }
+
+    const rid = normalizeClientRequestId(client_request_id);
+    const refNo = rid ? toRidRefNo(rid) : null;
+
+    // If the same request was already processed, return the existing tx_no.
+    if (refNo) {
+      const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
+      if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
     }
 
     const no = txNo();
@@ -46,14 +56,23 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         -q,
         "MANUAL_OUT",
         null,
-        no,
+        (refNo || no),
         target ?? null,
         remark ?? null,
         user.username
       ),
     ];
 
-    const rs = await env.DB.batch(stmts);
+    let rs: any[];
+    try {
+      rs = await env.DB.batch(stmts) as any;
+    } catch (e: any) {
+      if (refNo && isUniqueConstraintError(e)) {
+        const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
+        if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
+      }
+      throw e;
+    }
     const inserted = (rs[1] as any)?.meta?.changes || 0;
 
     if (inserted === 0) {

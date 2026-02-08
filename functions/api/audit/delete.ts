@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 
 // POST /api/audit/delete
@@ -12,6 +13,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const ids = Array.isArray(idsRaw)
       ? idsRaw.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n) && n > 0)
       : [];
+
+    // Server-side hard confirm to prevent accidental destructive actions
+    requireConfirm(body, "删除", "二次确认不通过");
 
     if (!ids.length) {
       return Response.json({ ok: false, message: "缺少 id" }, { status: 400 });

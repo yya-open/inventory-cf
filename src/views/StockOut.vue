@@ -56,6 +56,7 @@ const qty = ref(1);
 const target = ref("");
 const remark = ref("");
 const submitting = ref(false);
+const pendingRid = ref<string>("");
 
 const available = ref(0);
 const warning = ref(0);
@@ -100,14 +101,18 @@ async function loadQty() {
 async function submit() {
   try {
     submitting.value = true;
-    await apiPost(`/api/stock-out`, {
+    const rid = pendingRid.value || crypto.randomUUID();
+    pendingRid.value = rid;
+    const r: any = await apiPost(`/api/stock-out`, {
       item_id: item_id.value,
       warehouse_id: warehouse_id.value,
       qty: qty.value,
       target: target.value,
       remark: remark.value,
+      client_request_id: rid,
     });
-    ElMessage.success("出库成功");
+    ElMessage.success(r?.duplicate ? "出库已处理（重复请求已忽略）" : "出库成功");
+    pendingRid.value = "";
     qty.value = 1;
     target.value = "";
     remark.value = "";

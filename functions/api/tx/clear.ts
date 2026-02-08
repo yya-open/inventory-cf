@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../../_auth";
+import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { toSqlRange } from "../_date";
 
@@ -9,6 +10,7 @@ type ClearBody = {
   item_id?: number;
   date_from?: string;
   date_to?: string;
+  confirm?: string;
 };
 
 // POST /api/tx/clear
@@ -20,6 +22,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const body = (await request.json().catch(() => ({}))) as ClearBody;
     const mode = body.mode || "filtered";
+
+    // Server-side hard confirm to prevent accidental destructive actions
+    const expected = mode === "all" ? "清空全部" : "清空";
+    requireConfirm(body, expected, "二次确认不通过");
 
     const wh: string[] = [];
     const binds: any[] = [];

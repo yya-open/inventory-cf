@@ -305,8 +305,27 @@ async function clearTx() {
 
     if (!action) return;
 
+    // Hard confirm (server-side also checks)
+    const expected = action === "all" ? "清空全部" : "清空";
+    let confirmText = "";
+    try {
+      const { value } = await ElMessageBox.prompt(
+        `请输入「${expected}」确认操作（区分大小写）`,
+        "二次确认",
+        {
+          confirmButtonText: "确认",
+          cancelButtonText: "取消",
+          inputPlaceholder: expected,
+          inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+        }
+      );
+      confirmText = value;
+    } catch (e) {
+      return;
+    }
+
     loading.value = true;
-    const body: any = { mode: action };
+    const body: any = { mode: action, confirm: confirmText };
     if (action === "filtered") {
       if (type.value) body.type = type.value;
       if (item_id.value) body.item_id = item_id.value;
