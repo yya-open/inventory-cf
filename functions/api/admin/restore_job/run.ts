@@ -109,6 +109,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     const cursorTableIndex = cursorTable ? order.indexOf(cursorTable) : -1;
 
     let processedThisRun = 0;
+    const processedByTable: Record<string, number> = {};
+    const insertedByTable: Record<string, number> = {};
     let lastTable = cursorTable;
     let lastNextRow = cursorRow;
 
@@ -127,13 +129,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       let cols: string[] | null = null;
       let sql = "";
       let batch: D1PreparedStatement[] = [];
+      let batchTable = "";
+      let batchRows = 0;
       let inserted = 0;
 
       const flush = async () => {
         if (!batch.length) return;
         const res = await env.DB.batch(batch);
-        for (const rr of res) inserted += Number((rr as any)?.meta?.changes ?? 0);
+        let changes = 0;
+        for (const rr of res) changes += Number((rr as any)?.meta?.changes ?? 0);
+        inserted += changes;
+
+        if (batchTable) {
+          insertedByTable[batchTable] = (insertedByTable[batchTable] || 0) + changes;
+          processedByTable[batchTable] = (processedByTable[batchTable] || 0) + batchRows;
+        }
+
         batch = [];
+        batchTable = "";
+        batchRows = 0;
       };
 
       const sniff2 = await sniffGzipFromStream(runObj.body);
@@ -149,6 +163,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           cols = TABLE_COLUMNS[table];
           const placeholders = cols.map(() => "?").join(",");
           sql = `${verb} INTO ${table} (${cols.join(",")}) VALUES (${placeholders})`;
+          batchTable = table;
         }
 
         rowIndexInTable += 1;
@@ -169,7 +184,9 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         }
 
         const objRow = JSON.parse(rowText);
+        if (!batchTable) batchTable = table;
         batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
+        batchRows += 1;
 
         processedThisRun += 1;
         lastTable = table;
@@ -192,10 +209,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
       const nextCursor = { table: lastTable || "", row: lastNextRow || 0 };
 
+      // Merge per-table progress (safe to extend JSON structure without schema changes)
+      const processedMap: Record<string, number> = (perTable.__processed__ && typeof perTable.__processed__ === "object") ? perTable.__processed__ : {};
+      const insertedMap: Record<string, number> = (perTable.__inserted__ && typeof perTable.__inserted__ === "object") ? perTable.__inserted__ : {};
+      for (const [t, n] of Object.entries(processedByTable)) processedMap[t] = (processedMap[t] || 0) + Number(n || 0);
+      for (const [t, n] of Object.entries(insertedByTable)) insertedMap[t] = (insertedMap[t] || 0) + Number(n || 0);
+      perTable.__processed__ = processedMap;
+      perTable.__inserted__ = insertedMap;
+
       await env.DB.prepare(
-        `UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, updated_at=datetime('now') WHERE id=?`
+        `UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=datetime('now') WHERE id=?`
       )
-        .bind(processedRowsNew, nextCursor.table || null, JSON.stringify(nextCursor), jobId)
+        .bind(processedRowsNew, nextCursor.table || null, JSON.stringify(nextCursor), JSON.stringify(perTable), jobId)
         .run();
 
       if (done) {

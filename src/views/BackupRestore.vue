@@ -101,10 +101,12 @@
               这里使用 v-model:file-list + change 事件双保险，确保选中文件后按钮可用。
             -->
             <el-upload
+              ref="uploadRef"
               v-model:file-list="fileList"
               :auto-upload="false"
               :show-file-list="false"
               :limit="1"
+              :on-exceed="onExceed"
               accept=".json,.gz"
               :before-upload="beforeUpload"
               :on-change="onPick"
@@ -116,6 +118,10 @@
             <el-alert v-if="pickedInfo" type="success" show-icon :closable="false">
               已选择：{{ pickedInfo }}
             </el-alert>
+
+            <div v-if="pickedInfo" style="margin-top:-4px">
+              <el-button size="small" text type="primary" @click="clearPicked">重新选择</el-button>
+            </div>
 
             <el-radio-group v-model="mode" :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')">
               <el-radio label="merge">合并导入（推荐）</el-radio>
@@ -160,6 +166,24 @@
             <el-alert v-if="jobStatus==='DONE'" type="success" show-icon :closable="false">
               恢复完成 ✅
             </el-alert>
+
+            <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
+              <el-divider content-position="left">本次恢复明细</el-divider>
+              <div style="color:#666; font-size:12px; margin-bottom:8px">
+                涉及表：{{ affectedTablesText }}
+              </div>
+              <el-table :data="restoreDetailRows" size="small" border style="width:100%">
+                <el-table-column prop="table" label="表" width="160" />
+                <el-table-column prop="total" label="备份行数" width="120" />
+                <el-table-column prop="processed" label="已处理" width="100" />
+                <el-table-column prop="written" label="写入变更" width="110" />
+                <el-table-column prop="skipped" label="未写入(可能重复)" />
+              </el-table>
+              <el-alert type="info" show-icon :closable="false" style="margin-top:10px">
+                说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
+              </el-alert>
+            </div>
+
 
             <el-alert v-if="jobStatus==='FAILED'" type="error" show-icon :closable="false">
               恢复失败：{{ jobLastError || '未知错误' }}
@@ -269,6 +293,25 @@ const fileList = ref<any[]>([]);
 const pickedFile = ref<File | null>(null);
 const pickedInfo = ref<string>("");
 
+// Upload 实例：用于 limit=1 时自动替换/清空，确保重复选择能触发更新
+const uploadRef = ref<any>(null);
+
+function clearPicked() {
+  pickedFile.value = null;
+  pickedInfo.value = "";
+  fileList.value = [];
+  try { uploadRef.value?.clearFiles?.(); } catch {}
+}
+
+function onExceed(files: File[]) {
+  // 当再次选择文件时，limit=1 会触发 exceed：这里自动替换旧文件并刷新显示
+  clearPicked();
+  if (files && files[0]) {
+    // 用原生 File 直接更新
+    onPick(files[0]);
+  }
+}
+
 function beforeUpload() {
   // 阻止组件自动上传，我们只在“创建恢复任务”时提交表单
   return false;
@@ -280,8 +323,8 @@ async function onPick(uploadFile: any) {
   if (!file || typeof file.name !== "string") return;
   pickedFile.value = file;
 
-  // 同步 fileList（limit=1）
-  fileList.value = [{ name: file.name }];
+  // 同步 fileList（用于 v-model:file-list 兜底；包含 raw，便于后续 watch/替换）
+  fileList.value = [{ name: file.name, raw: file }];
 
   const mb = (file.size / 1024 / 1024).toFixed(2);
   pickedInfo.value = `${file.name}（${mb} MB）`;
@@ -308,6 +351,8 @@ const jobTotal = ref<number>(0);
 const jobProcessed = ref<number>(0);
 const jobCurrentTable = ref<string>("");
 const jobLastError = ref<string>("");
+const jobMode = ref<string>("");
+const jobPerTable = ref<any>({});
 
 const running = ref(false);
 const pausing = ref(false);
@@ -322,6 +367,35 @@ const progressStatus = computed(() => {
   if (jobStatus.value === "FAILED") return "exception";
   if (jobStatus.value === "DONE") return "success";
   return undefined as any;
+});
+
+const restoreDetailRows = computed(() => {
+  const pt = jobPerTable.value || {};
+  const order: string[] = Array.isArray(pt.__order__) ? pt.__order__ : [];
+  const processed = (pt.__processed__ && typeof pt.__processed__ === "object") ? pt.__processed__ : {};
+  const inserted = (pt.__inserted__ && typeof pt.__inserted__ === "object") ? pt.__inserted__ : {};
+
+  return order
+    .map((t) => {
+      const total = Number(pt[t] || 0);
+      const p = Number(processed[t] || 0);
+      const w = Number(inserted[t] || 0);
+      return {
+        table: t,
+        total,
+        processed: p,
+        written: w,
+        skipped: Math.max(0, p - w),
+      };
+    })
+    .filter((r) => r.total || r.processed || r.written);
+});
+
+const affectedTablesText = computed(() => {
+  const names = restoreDetailRows.value
+    .filter((r) => r.processed > 0)
+    .map((r) => r.table);
+  return names.length ? names.join("、") : "（无）";
 });
 
 async function createJob() {
@@ -372,6 +446,8 @@ async function refreshStatus() {
     const d = r.data;
     jobStatus.value = d.status || "";
     jobStage.value = d.stage || "";
+    jobMode.value = d.mode || "";
+    jobPerTable.value = d.per_table || {};
     jobTotal.value = Number(d.total_rows || 0);
     jobProcessed.value = Number(d.processed_rows || 0);
     jobCurrentTable.value = d.current_table || "";
