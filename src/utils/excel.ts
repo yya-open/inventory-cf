@@ -36,6 +36,7 @@ export function readFirstSheet(file: File) {
 export function exportTemplateItems() {
   const rows = [
     { "SKU": "SSD-1T-NVME", "名称": "NVMe SSD 1TB", "品牌": "Samsung", "型号": "980", "分类": "硬盘", "单位": "块", "预警值": 1 },
+    { "SKU": "CPU-001", "名称": "CPU i5", "品牌": "Intel", "型号": "12400F", "分类": "CPU", "单位": "颗", "预警值": 1 },
   ];
   exportToXlsx("配件导入模板.xlsx", "items", rows);
 }

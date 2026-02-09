@@ -169,9 +169,24 @@ async function loadWarehouses() {
 }
 
 function downloadTemplate() {
+  // 模板默认带示例，方便用户照填
   const header =
-    mode.value === "IN" ? ["sku", "qty", "unit_price", "source", "remark"] : ["sku", "qty", "target", "remark"];
-  const ws = XLSX.utils.aoa_to_sheet([header]);
+    mode.value === "IN"
+      ? ["sku", "qty", "unit_price", "source", "remark"]
+      : ["sku", "qty", "target", "remark"];
+
+  const exampleRows =
+    mode.value === "IN"
+      ? [
+          ["CPU-001", 10, 299.9, "京东", "示例：批量入库"],
+          ["SSD-1T-NVME", 5, 499.0, "供应商A", "示例：可填写单价/来源/备注"],
+        ]
+      : [
+          ["CPU-001", 1, "张三", "示例：批量出库"],
+          ["SSD-1T-NVME", 2, "李四", "示例：领用人必填（也可用表头默认）"],
+        ];
+
+  const ws = XLSX.utils.aoa_to_sheet([header, ...exampleRows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "template");
   XLSX.writeFile(wb, `batch_${mode.value.toLowerCase()}_template.xlsx`);

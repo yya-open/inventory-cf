@@ -408,8 +408,10 @@ async function createStocktake(){
 function downloadCountTemplate(){
   if (!detail.value) return;
   const header = ["sku","counted_qty"];
+  // 模板默认带一行示例（sku 留空，导入时会被自动忽略），并列出本次盘点涉及的 SKU
+  const exampleRow = ["", 10];
   const rows = detail.value.lines.map((l:any)=>[l.sku,""]);
-  const ws = XLSX.utils.aoa_to_sheet([header, ...rows]);
+  const ws = XLSX.utils.aoa_to_sheet([header, exampleRow, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "count");
   XLSX.writeFile(wb, `stocktake_${detail.value.stocktake.st_no}.xlsx`);
