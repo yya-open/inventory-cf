@@ -30,7 +30,13 @@
         <el-button type="primary" :loading="submitting" @click="submit">提交</el-button>
       </div>
 
-      <el-table :data="rows" border height="520">
+      <el-table
+        :data="rows"
+        border
+        height="520"
+        :row-class-name="rowClass"
+        :cell-class-name="cellClass"
+      >
         <el-table-column type="index" width="55" />
         <el-table-column label="SKU" min-width="160">
           <template #default="{ row }">
@@ -74,6 +80,17 @@
         </el-table-column>
       </el-table>
 
+      <div v-if="invalidCount" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+        <el-alert
+          type="warning"
+          :closable="false"
+          show-icon
+          style="flex:1; min-width:320px;"
+          :title="`当前有 ${invalidCount} 行缺少必填字段，已标红（可直接在表格里补全或删除该行）。`"
+        />
+        <el-button size="small" @click="keepValidOnly">只保留有效行</el-button>
+      </div>
+
       <div style="margin-top:12px; color:#999; font-size:12px;">
         Excel 模板列：<b>sku</b>, <b>qty</b>；入库可选：unit_price/source/remark；出库必填：<b>target</b>（可在表头填默认领用人）
       </div>
@@ -82,7 +99,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
@@ -97,6 +114,37 @@ const headerTarget = ref("");
 const headerRemark = ref("");
 const rows = ref<Row[]>([]);
 const submitting = ref(false);
+
+function getRowIssues(r: Row) {
+  const skuMissing = !String(r.sku || "").trim();
+  const qtyNum = Number(r.qty);
+  const qtyMissing = !qtyNum || qtyNum <= 0;
+  const headerT = String(headerTarget.value || "").trim();
+  const targetMissing =
+    mode.value === "OUT" ? !String((r.target ?? "") || headerT).trim() : false;
+  return { skuMissing, qtyMissing, targetMissing, any: skuMissing || qtyMissing || targetMissing };
+}
+
+const invalidCount = computed(() => rows.value.filter((r) => getRowIssues(r).any).length);
+
+function keepValidOnly() {
+  const before = rows.value.length;
+  rows.value = rows.value.filter((r) => !getRowIssues(r).any);
+  ElMessage.success(`已保留有效行：${rows.value.length} / ${before}`);
+}
+
+function rowClass({ row }: { row: Row }) {
+  return getRowIssues(row).any ? "row-error" : "";
+}
+
+function cellClass({ row, column }: any) {
+  const label = String(column?.label || "");
+  const issues = getRowIssues(row);
+  if (label === "SKU" && issues.skuMissing) return "cell-error";
+  if (label === "数量" && issues.qtyMissing) return "cell-error";
+  if (label.startsWith("领用人") && issues.targetMissing) return "cell-error";
+  return "";
+}
 
 function addRow() {
   rows.value.push({ sku: "", qty: 1 });
@@ -139,10 +187,20 @@ function beforeUpload(file: File) {
     const parsed: Row[] = [];
     for (const r of json) {
       const sku = String(r.sku ?? r.SKU ?? r["Sku"] ?? "").trim();
-      const qty = Number(r.qty ?? r.QTY ?? r["数量"] ?? 0);
-      if (!sku || !qty || qty <= 0) continue;
+      const qtyRaw = r.qty ?? r.QTY ?? r["数量"] ?? "";
+      const qty = Number(qtyRaw);
 
-      const row: Row = { sku, qty };
+      // 如果整行都是空的，就跳过
+      const anyFilled =
+        !!sku ||
+        (String(qtyRaw ?? "").trim() !== "" && !Number.isNaN(qty)) ||
+        String(r.unit_price ?? r.price ?? r["单价"] ?? "").trim() !== "" ||
+        String(r.source ?? r["来源"] ?? "").trim() !== "" ||
+        String(r.target ?? r["去向"] ?? "").trim() !== "" ||
+        String(r.remark ?? r["备注"] ?? "").trim() !== "";
+      if (!anyFilled) continue;
+
+      const row: Row = { sku, qty: Number.isNaN(qty) ? 0 : qty };
 
       if (mode.value === "IN") {
         const p = Number(r.unit_price ?? r.price ?? r["单价"] ?? "");
@@ -160,7 +218,12 @@ function beforeUpload(file: File) {
       parsed.push(row);
     }
     rows.value = rows.value.concat(parsed);
-    ElMessage.success(`导入 ${parsed.length} 行`);
+    const importedInvalid = parsed.filter((r) => getRowIssues(r).any).length;
+    if (importedInvalid) {
+      ElMessage.warning(`导入 ${parsed.length} 行，其中 ${importedInvalid} 行缺少必填字段已标红，请补全或删除`);
+    } else {
+      ElMessage.success(`导入 ${parsed.length} 行`);
+    }
   };
   reader.readAsArrayBuffer(file);
   return false;
@@ -222,3 +285,18 @@ onMounted(async () => {
   addRow();
 });
 </script>
+
+<style scoped>
+.row-error {
+  background: rgba(245, 108, 108, 0.06);
+}
+.cell-error {
+  background: rgba(245, 108, 108, 0.08) !important;
+}
+.cell-error :deep(.el-input__wrapper),
+.cell-error :deep(.el-textarea__inner),
+.cell-error :deep(.el-input-number),
+.cell-error :deep(.el-select__wrapper) {
+  box-shadow: 0 0 0 1px var(--el-color-danger) inset !important;
+}
+</style>
