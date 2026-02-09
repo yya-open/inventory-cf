@@ -425,27 +425,92 @@ function beforeUpload(file: File){
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
       const wb = XLSX.read(data, { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
-      const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" });
-      // IMPORTANT: blank cells should NOT become 0.
-      // Excel import treats blank counted_qty as "ignore this row" (do not overwrite existing counted_qty).
-      const parseCount = (v: any): number | null => {
-        if (v === null || v === undefined) return null;
-        const s = String(v).trim();
-        if (!s) return null;
-        const n = Number(s);
-        if (Number.isNaN(n)) return null;
-        return n;
+      const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" }) as any[][];
+
+      const headerRow = (aoa?.[0] || []).map((x) => String(x ?? "").trim());
+      const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+      const headerNorm = headerRow.map(norm);
+
+      const findCol = (aliases: string[]) => {
+        const aliasNorm = aliases.map(norm);
+        const idx = headerNorm.findIndex((h) => aliasNorm.includes(h));
+        return idx >= 0 ? idx : null;
       };
 
-      const lines = json
-        .map((r:any)=>({
-          sku: String(r.sku ?? r.SKU ?? "").trim(),
-          counted_qty: parseCount(r.counted_qty ?? r.qty ?? r["盘点数量"] ?? r["数量"] ?? "")
-        }))
-        .filter((x:any)=>x.sku && x.counted_qty !== null);
+      const colSku = findCol(["sku", "SKU", "配件", "物料", "物料编码"]);
+      const colCount = findCol(["counted_qty", "盘点数量", "数量", "qty"]);
+
+      const missing: string[] = [];
+      if (colSku === null) missing.push("sku");
+      if (colCount === null) missing.push("counted_qty");
+      if (missing.length) {
+        ElMessageBox.alert(
+          `表头缺少必需列：${missing.join("、")}。
+
+请使用模板表头：sku, counted_qty（也支持：盘点数量/数量）`,
+          "导入失败",
+          { type: "error" }
+        );
+        return;
+      }
+
+      const errors: Array<{ row: number; col: string; msg: string; val?: any }> = [];
+      const lines: Array<{ sku: string; counted_qty: number }> = [];
+
+      for (let i = 1; i < aoa.length; i++) {
+        const r = aoa[i] || [];
+        const sku = String(r[colSku!] ?? "").trim();
+        const raw = r[colCount!];
+        const rawStr = String(raw ?? "").trim();
+
+        const anyFilled = !!sku || rawStr !== "";
+        if (!anyFilled) continue;
+
+        if (!sku && rawStr !== "") {
+          errors.push({ row: i + 1, col: "sku", msg: "SKU/配件为空", val: sku });
+          continue;
+        }
+
+        // Blank counted_qty means "ignore this row" (do not overwrite)
+        if (!rawStr) continue;
+
+        const n = Number(rawStr);
+        if (Number.isNaN(n)) {
+          errors.push({ row: i + 1, col: "counted_qty", msg: "盘点数量格式不对（应为数字）", val: rawStr });
+          continue;
+        }
+
+        lines.push({ sku, counted_qty: n });
+      }
+
+      if (!lines.length) {
+        if (errors.length) {
+          const preview = errors
+            .slice(0, 12)
+            .map((x) => `第${x.row}行【${x.col}】${x.msg}${x.val !== undefined ? `（当前：${String(x.val)}）` : ""}`)
+            .join("<br/>");
+          ElMessageBox.alert(
+            `<div style="line-height:1.8">没有可导入的有效行。发现 <b>${errors.length}</b> 处问题：<br/>${preview}${
+              errors.length > 12 ? "<br/>…（仅展示前 12 条）" : ""
+            }</div>`,
+            "导入提示",
+            { type: "warning", dangerouslyUseHTMLString: true }
+          );
+        } else {
+          ElMessage.warning("没有读取到有效数据（请确认第一行是表头，且至少有一行盘点数量）");
+        }
+        return;
+      }
+
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
       ElMessage.success(`导入完成：更新 ${r.updated} 行`);
       if (r.unknown?.length) ElMessage.warning(`有 ${r.unknown.length} 个 SKU 未识别（已跳过）`);
+
+      if (errors.length) {
+        const preview = errors.slice(0, 8).map((x) => `第${x.row}行【${x.col}】${x.msg}`).join("；");
+        ElMessage.warning(errors.length > 8 ? `${preview}…（共${errors.length}处，已跳过）` : `${preview}（已跳过）`);
+      }
+
       await refreshDetail();
     }catch(err:any){
       ElMessage.error(err.message || "导入失败");

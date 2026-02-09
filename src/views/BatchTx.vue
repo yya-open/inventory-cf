@@ -100,7 +100,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 
@@ -195,49 +195,140 @@ function downloadTemplate() {
 function beforeUpload(file: File) {
   const reader = new FileReader();
   reader.onload = (e) => {
-    const data = new Uint8Array(e.target?.result as ArrayBuffer);
-    const wb = XLSX.read(data, { type: "array" });
-    const sheet = wb.Sheets[wb.SheetNames[0]];
-    const json = XLSX.utils.sheet_to_json<any>(sheet, { defval: "" });
-    const parsed: Row[] = [];
-    for (const r of json) {
-      const sku = String(r.sku ?? r.SKU ?? r["Sku"] ?? "").trim();
-      const qtyRaw = r.qty ?? r.QTY ?? r["数量"] ?? "";
-      const qty = Number(qtyRaw);
+    try {
+      const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const wb = XLSX.read(data, { type: "array" });
+      const sheet = wb.Sheets[wb.SheetNames[0]];
+      const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" }) as any[][];
 
-      // 如果整行都是空的，就跳过
-      const anyFilled =
-        !!sku ||
-        (String(qtyRaw ?? "").trim() !== "" && !Number.isNaN(qty)) ||
-        String(r.unit_price ?? r.price ?? r["单价"] ?? "").trim() !== "" ||
-        String(r.source ?? r["来源"] ?? "").trim() !== "" ||
-        String(r.target ?? r["去向"] ?? "").trim() !== "" ||
-        String(r.remark ?? r["备注"] ?? "").trim() !== "";
-      if (!anyFilled) continue;
+      const headerRow = (aoa?.[0] || []).map((x) => String(x ?? "").trim());
+      const norm = (v: any) => String(v ?? "").trim().toLowerCase();
+      const headerNorm = headerRow.map(norm);
 
-      const row: Row = { sku, qty: Number.isNaN(qty) ? 0 : qty };
+      const findCol = (aliases: string[]) => {
+        const aliasNorm = aliases.map(norm);
+        const idx = headerNorm.findIndex((h) => aliasNorm.includes(h));
+        return idx >= 0 ? idx : null;
+      };
 
-      if (mode.value === "IN") {
-        const p = Number(r.unit_price ?? r.price ?? r["单价"] ?? "");
-        if (!Number.isNaN(p)) row.unit_price = p;
-        const src = String(r.source ?? r["来源"] ?? "").trim();
-        if (src) row.source = src;
-      } else {
-        const tgt = String(r.target ?? r["去向"] ?? "").trim();
-        if (tgt) row.target = tgt;
+      // Required columns
+      const colSku = findCol(["sku", "SKU", "Sku", "配件", "物料", "物料编码"]);
+      const colQty = findCol(["qty", "QTY", "数量"]);
+      const colTarget = findCol(["target", "领用人", "去向", "领用"]);
+      const colUnitPrice = findCol(["unit_price", "price", "单价"]);
+      const colSource = findCol(["source", "来源"]);
+      const colRemark = findCol(["remark", "备注"]);
+
+      const missing: string[] = [];
+      if (colSku === null) missing.push("sku");
+      if (colQty === null) missing.push("qty");
+      if (mode.value === "OUT" && colTarget === null) missing.push("target");
+
+      if (missing.length) {
+        ElMessageBox.alert(
+          `表头缺少必需列：${missing.join("、")}。
+
+请使用模板第一行表头：
+` +
+            (mode.value === "IN"
+              ? "sku, qty, unit_price(可选), source(可选), remark(可选)"
+              : "sku, qty, target(必填), remark(可选)") +
+            `
+
+（大小写不敏感，也支持中文列名：数量/单价/来源/备注/领用人）`,
+          "导入失败",
+          { type: "error" }
+        );
+        return;
       }
 
-      const rm = String(r.remark ?? r["备注"] ?? "").trim();
-      if (rm) row.remark = rm;
+      const parsed: Row[] = [];
+      const errors: Array<{ row: number; col: string; msg: string; val?: any }> = [];
 
-      parsed.push(row);
-    }
-    rows.value = rows.value.concat(parsed);
-    const importedInvalid = parsed.filter((r) => getRowIssues(r).any).length;
-    if (importedInvalid) {
-      ElMessage.warning(`导入 ${parsed.length} 行，其中 ${importedInvalid} 行缺少必填字段已标红，请补全或删除`);
-    } else {
-      ElMessage.success(`导入 ${parsed.length} 行`);
+      const toNumber = (v: any) => {
+        const s = String(v ?? "").trim();
+        if (!s) return null;
+        const n = Number(s);
+        return Number.isNaN(n) ? NaN : n;
+      };
+
+      for (let i = 1; i < aoa.length; i++) {
+        const r = aoa[i] || [];
+        const sku = String(r[colSku!] ?? "").trim();
+        const qtyRaw = r[colQty!];
+        const qtyN = toNumber(qtyRaw);
+
+        const unitPriceN = colUnitPrice !== null ? toNumber(r[colUnitPrice]) : null;
+        const source = colSource !== null ? String(r[colSource] ?? "").trim() : "";
+        const target = colTarget !== null ? String(r[colTarget] ?? "").trim() : "";
+        const remark = colRemark !== null ? String(r[colRemark] ?? "").trim() : "";
+
+        const anyFilled =
+          !!sku ||
+          String(qtyRaw ?? "").trim() !== "" ||
+          (colUnitPrice !== null && String(r[colUnitPrice] ?? "").trim() !== "") ||
+          (colSource !== null && source) ||
+          (colTarget !== null && target) ||
+          (colRemark !== null && remark);
+
+        if (!anyFilled) continue;
+
+        const rowObj: Row = { sku, qty: 0 };
+
+        // sku
+        if (!sku) errors.push({ row: i + 1, col: "SKU", msg: "必填" });
+
+        // qty
+        if (qtyN === null) {
+          errors.push({ row: i + 1, col: "数量", msg: "必填", val: qtyRaw });
+        } else if (Number.isNaN(qtyN)) {
+          errors.push({ row: i + 1, col: "数量", msg: "格式不对（应为数字）", val: qtyRaw });
+        } else if (qtyN <= 0) {
+          errors.push({ row: i + 1, col: "数量", msg: "必须 > 0", val: qtyRaw });
+        } else {
+          rowObj.qty = qtyN;
+        }
+
+        if (mode.value === "IN") {
+          if (unitPriceN !== null && !Number.isNaN(unitPriceN)) rowObj.unit_price = unitPriceN;
+          if (source) rowObj.source = source;
+        } else {
+          // OUT: target required (can fallback to headerTarget)
+          const headerT = String(headerTarget.value || "").trim();
+          const finalTarget = String(target || headerT).trim();
+          if (!finalTarget) errors.push({ row: i + 1, col: "领用人", msg: "必填（可填表头默认领用人）" });
+          else rowObj.target = finalTarget;
+        }
+
+        if (remark) rowObj.remark = remark;
+
+        parsed.push(rowObj);
+      }
+
+      if (!parsed.length) {
+        ElMessage.warning("没有读取到有效数据（请确认第一行是表头，且后续有数据行）");
+        return;
+      }
+
+      rows.value = rows.value.concat(parsed);
+
+      if (errors.length) {
+        const preview = errors
+          .slice(0, 12)
+          .map((x) => `第${x.row}行【${x.col}】${x.msg}${x.val !== undefined ? `（当前：${String(x.val)}）` : ""}`)
+          .join("<br/>");
+        ElMessageBox.alert(
+          `<div style="line-height:1.8">导入 ${parsed.length} 行，发现 <b>${errors.length}</b> 处问题：<br/>${preview}${
+            errors.length > 12 ? "<br/>…（仅展示前 12 条）" : ""
+          }<br/><br/>已保留数据并在表格中标红，你可以直接补全/修正后再提交。</div>`,
+          "导入提示",
+          { type: "warning", dangerouslyUseHTMLString: true }
+        );
+      } else {
+        ElMessage.success(`导入 ${parsed.length} 行`);
+      }
+    } catch (err: any) {
+      ElMessage.error(err?.message || "读取失败");
     }
   };
   reader.readAsArrayBuffer(file);
