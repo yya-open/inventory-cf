@@ -23,7 +23,7 @@
 
       <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
         <el-input v-if="mode==='IN'" v-model="headerSource" placeholder="来源（可选）" style="width:220px" />
-        <el-input v-if="mode==='OUT'" v-model="headerTarget" placeholder="去向（可选）" style="width:220px" />
+        <el-input v-if="mode==='OUT'" v-model="headerTarget" placeholder="领用人/去向（必填，可被每行覆盖）" style="width:260px" />
         <el-input v-model="headerRemark" placeholder="备注（可选）" style="width:320px" />
         <el-button @click="addRow">新增一行</el-button>
         <el-button type="danger" plain @click="clearRows">清空</el-button>
@@ -55,9 +55,9 @@
           </template>
         </el-table-column>
 
-        <el-table-column v-if="mode==='OUT'" label="去向(覆盖)" min-width="160">
+        <el-table-column v-if="mode==='OUT'" label="领用人(覆盖)" min-width="160">
           <template #default="{ row }">
-            <el-input v-model="row.target" placeholder="可不填" />
+            <el-input v-model="row.target" placeholder="不填则使用上方领用人" />
           </template>
         </el-table-column>
 
@@ -75,7 +75,7 @@
       </el-table>
 
       <div style="margin-top:12px; color:#999; font-size:12px;">
-        Excel 模板列：<b>sku</b>, <b>qty</b>, 入库可选：unit_price/source/remark；出库可选：target/remark
+        Excel 模板列：<b>sku</b>, <b>qty</b>；入库可选：unit_price/source/remark；出库必填：<b>target</b>（可在表头填默认领用人）
       </div>
     </el-card>
   </div>
@@ -169,6 +169,27 @@ function beforeUpload(file: File) {
 async function submit() {
   if (!rows.value.length) return ElMessage.warning("请先添加或导入明细");
 
+  // Strict client-side validation
+  const invalid: Array<{ idx: number; reason: string }> = [];
+  const headerT = String(headerTarget.value || "").trim();
+  rows.value.forEach((r, i) => {
+    const sku = String(r.sku || "").trim();
+    const qty = Number(r.qty);
+    if (!sku) invalid.push({ idx: i + 1, reason: "配件(SKU)必填" });
+    if (!qty || qty <= 0) invalid.push({ idx: i + 1, reason: "数量必填且>0" });
+    if (mode.value === "OUT") {
+      const t = String((r.target ?? "") || headerT).trim();
+      if (!t) invalid.push({ idx: i + 1, reason: "领用人必填（可填表头默认领用人）" });
+    }
+  });
+  if (mode.value === "OUT" && !headerT && rows.value.some((r) => !String(r.target || "").trim())) {
+    // This branch keeps error messaging clearer when all rely on header
+  }
+  if (invalid.length) {
+    const preview = invalid.slice(0, 6).map((x) => `第${x.idx}行：${x.reason}`).join("；");
+    return ElMessage.error(invalid.length > 6 ? `${preview}…（共${invalid.length}处）` : preview);
+  }
+
   submitting.value = true;
   try {
     const payload: any = {
@@ -177,7 +198,7 @@ async function submit() {
       lines: rows.value,
     };
     if (mode.value === "IN") payload.source = headerSource.value || null;
-    if (mode.value === "OUT") payload.target = headerTarget.value || null;
+    if (mode.value === "OUT") payload.target = headerT || null;
 
     const url = mode.value === "IN" ? "/api/batch/stock-in" : "/api/batch/stock-out";
     const r: any = await apiPost(url, payload);

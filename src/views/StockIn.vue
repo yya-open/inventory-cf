@@ -1,36 +1,36 @@
 <template>
   <el-card>
-    <el-form label-width="90px" style="max-width: 560px">
+    <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
       <el-form-item label="仓库">
-        <el-select v-model="warehouse_id" placeholder="选择仓库" style="width: 100%">
+        <el-select v-model="form.warehouse_id" placeholder="选择仓库" style="width: 100%">
           <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="配件">
-        <el-select v-model="item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
+      <el-form-item label="配件" prop="item_id">
+        <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="数量">
-        <el-input-number v-model="qty" :min="1" />
+      <el-form-item label="数量" prop="qty">
+        <el-input-number v-model="form.qty" :min="1" />
       </el-form-item>
 
       <el-form-item label="单价">
-        <el-input-number v-model="unit_price" :min="0" :step="1" />
+        <el-input-number v-model="form.unit_price" :min="0" :step="1" />
       </el-form-item>
 
       <el-form-item label="来源">
-        <el-input v-model="source" placeholder="供应商/采购渠道" />
+        <el-input v-model="form.source" placeholder="供应商/采购渠道" />
       </el-form-item>
 
       <el-form-item label="备注">
-        <el-input v-model="remark" type="textarea" />
+        <el-input v-model="form.remark" type="textarea" />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!item_id" @click="submit" :loading="submitting">入库</el-button>
+        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">入库</el-button>
         <el-button @click="$router.push('/stock')">返回库存</el-button>
       </el-form-item>
     </el-form>
@@ -38,24 +38,49 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { useRoute } from "vue-router";
+import type { FormInstance, FormRules } from "element-plus";
 
 const route = useRoute();
 
 const warehouses = ref<any[]>([]);
-const warehouse_id = ref<number>(1);
 
 const items = ref<any[]>([]);
-const item_id = ref<number | undefined>(undefined);
-const qty = ref(1);
-const unit_price = ref<number>(0);
-const source = ref("");
-const remark = ref("");
+
+const formRef = ref<FormInstance>();
+const form = ref({
+  warehouse_id: 1 as number,
+  item_id: undefined as number | undefined,
+  qty: 1 as number,
+  unit_price: 0 as number,
+  source: "" as string,
+  remark: "" as string,
+});
+
+const rules: FormRules = {
+  item_id: [{ required: true, message: "请选择配件", trigger: "change" }],
+  qty: [
+    {
+      required: true,
+      trigger: "change",
+      validator: (_rule, value, cb) => {
+        const q = Number(value);
+        if (!q || q <= 0) return cb(new Error("请输入数量"));
+        cb();
+      },
+    },
+  ],
+};
 const submitting = ref(false);
 const pendingRid = ref<string>("");
+
+const canSubmit = computed(() => {
+  const q = Number(form.value.qty);
+  return !!form.value.item_id && q > 0 && !submitting.value;
+});
 
 async function loadWarehouses() {
   try {
@@ -64,9 +89,9 @@ async function loadWarehouses() {
 
     const qWarehouse = Number(route.query.warehouse_id);
     if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
-      warehouse_id.value = qWarehouse;
+      form.value.warehouse_id = qWarehouse;
     } else if (warehouses.value?.length) {
-      warehouse_id.value = warehouses.value[0].id;
+      form.value.warehouse_id = warehouses.value[0].id;
     }
   } catch (e: any) {
     ElMessage.error(e?.message || "加载仓库失败");
@@ -78,29 +103,32 @@ async function loadItems() {
   items.value = j.data;
 
   const qid = Number(route.query.item_id);
-  if (qid) item_id.value = qid;
+  if (qid) form.value.item_id = qid;
 }
 
 async function submit() {
   try {
+    const ok = await formRef.value?.validate().catch(() => false);
+    if (!ok) return;
     submitting.value = true;
     const rid = pendingRid.value || crypto.randomUUID();
     pendingRid.value = rid;
     const r: any = await apiPost(`/api/stock-in`, {
-      item_id: item_id.value,
-      warehouse_id: warehouse_id.value,
-      qty: qty.value,
-      unit_price: unit_price.value,
-      source: source.value,
-      remark: remark.value,
+      item_id: form.value.item_id,
+      warehouse_id: form.value.warehouse_id,
+      qty: form.value.qty,
+      unit_price: form.value.unit_price,
+      source: form.value.source,
+      remark: form.value.remark,
       client_request_id: rid,
     });
     ElMessage.success(r?.duplicate ? "入库已处理（重复请求已忽略）" : "入库成功");
     pendingRid.value = "";
-    qty.value = 1;
-    unit_price.value = 0;
-    source.value = "";
-    remark.value = "";
+    form.value.qty = 1;
+    form.value.unit_price = 0;
+    form.value.source = "";
+    form.value.remark = "";
+    formRef.value?.clearValidate();
   } catch (e: any) {
     ElMessage.error(e?.message || "入库失败");
   } finally {

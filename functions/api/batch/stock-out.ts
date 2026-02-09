@@ -33,15 +33,31 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (!lines.length) return Response.json({ ok: false, message: "没有明细行" }, { status: 400 });
 
+    // Strict validation (do not silently drop invalid rows)
+    const invalid: Array<{ row: number; reason: string }> = [];
+    const headerT = String(header_target ?? "").trim();
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      const sku = String(l.sku ?? "").trim();
+      const qty = Number(l.qty);
+      const tgt = String((l.target ?? "") || headerT).trim();
+      if (!sku) invalid.push({ row: i + 1, reason: "sku 不能为空" });
+      if (!qty || qty <= 0) invalid.push({ row: i + 1, reason: "qty 必须 > 0" });
+      if (!tgt) invalid.push({ row: i + 1, reason: "target 不能为空（领用人必填）" });
+    }
+    if (invalid.length) {
+      return Response.json({ ok: false, message: "明细校验失败", invalid }, { status: 400 });
+    }
+
     // normalize & aggregate by sku
     const agg = new Map<string, { sku: string; qty: number; target?: string; remark?: string }>();
     for (const l of lines) {
       const sku = String(l.sku ?? "").trim();
       const qty = Number(l.qty);
-      if (!sku || !qty || qty <= 0) continue;
+      // already validated
       const cur = agg.get(sku) ?? { sku, qty: 0 };
       cur.qty += qty;
-      cur.target = (l.target ?? header_target ?? cur.target) ?? undefined;
+      cur.target = String((l.target ?? "") || headerT).trim();
       cur.remark = (l.remark ?? header_remark ?? cur.remark) ?? undefined;
       agg.set(sku, cur);
     }
@@ -101,7 +117,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
            SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
            WHERE (SELECT changes()) > 0`
-        ).bind(no, item_id, warehouse_id, l.qty, -l.qty, "BATCH_OUT", null, batch_no, l.target ?? null, l.remark ?? null, user.username)
+        ).bind(no, item_id, warehouse_id, l.qty, -l.qty, "BATCH_OUT", null, batch_no, l.target!, l.remark ?? null, user.username)
       );
     }
 

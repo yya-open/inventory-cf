@@ -19,7 +19,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const q = Number(qty);
     const wid = Number(warehouse_id);
 
-    if (!item_id || !q || q <= 0) {
+    const tgt = String(target ?? "").trim();
+
+    if (!item_id || !q || q <= 0 || !tgt) {
       return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
     }
 
@@ -57,7 +59,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         "MANUAL_OUT",
         null,
         (refNo || no),
-        target ?? null,
+        tgt,
         remark ?? null,
         user.username
       ),
@@ -84,7 +86,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       item_id,
       warehouse_id: wid,
       qty: q,
-      target: target ?? null,
+      target: tgt,
       remark: remark ?? null,
     }).catch(() => {}));
     return Response.json({ ok: true, tx_no: no });

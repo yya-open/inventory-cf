@@ -36,12 +36,25 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const batch_no = batchNo();
 
+    // Strict validation (do not silently drop invalid rows)
+    const invalid: Array<{ row: number; reason: string }> = [];
+    for (let i = 0; i < lines.length; i++) {
+      const l = lines[i];
+      const sku = String(l.sku ?? "").trim();
+      const qty = Number(l.qty);
+      if (!sku) invalid.push({ row: i + 1, reason: "sku 不能为空" });
+      if (!qty || qty <= 0) invalid.push({ row: i + 1, reason: "qty 必须 > 0" });
+    }
+    if (invalid.length) {
+      return Response.json({ ok: false, message: "明细校验失败", invalid }, { status: 400 });
+    }
+
     // normalize & aggregate by sku
     const agg = new Map<string, { sku: string; qty: number; unit_price?: number; source?: string; remark?: string }>();
     for (const l of lines) {
       const sku = String(l.sku ?? "").trim();
       const qty = Number(l.qty);
-      if (!sku || !qty || qty <= 0) continue;
+      // already validated
       const key = sku;
       const cur = agg.get(key) ?? { sku, qty: 0 };
       cur.qty += qty;
