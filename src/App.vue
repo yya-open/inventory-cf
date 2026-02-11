@@ -2,20 +2,18 @@
   <el-container style="height: 100vh">
     <el-aside width="220px" style="border-right: 1px solid #eee">
       <div style="padding: 14px; font-weight: 700">出入库管理</div>
-      <el-menu router :default-active="$route.path">
+      <el-menu router :default-active="activeMenu">
         <el-menu-item index="/stock">库存查询</el-menu-item>
         <el-menu-item index="/tx">出入库明细</el-menu-item>
         <el-menu-item index="/warnings">预警中心</el-menu-item>
         <el-menu-item index="/dashboard">报表与看板</el-menu-item>
 
-        <el-menu-item index="/pc/assets">电脑台账（仓库2）</el-menu-item>
-        <el-menu-item index="/pc/tx">电脑出入库明细</el-menu-item>
+        <!-- 仓库2（电脑仓）独立入口：子功能在页面内 Tab 切换，避免与仓库1混在一起 -->
+        <el-menu-item index="/pc">电脑仓（仓库2）</el-menu-item>
 
         <el-menu-item v-if="can('operator')" index="/in">入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/out">出库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/in">电脑入库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/out">电脑出库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/recycle">电脑回收/归还</el-menu-item>
+        <!-- /pc/in /pc/out /pc/recycle /pc/tx 等入口已合并到 /pc 页面内 -->
         <el-menu-item v-if="can('operator')" index="/batch">批量出入库</el-menu-item>
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
@@ -76,7 +74,16 @@ const route = useRoute();
 const router = useRouter();
 const auth = useAuth();
 
+const activeMenu = computed(() => {
+  if (route.path === "/pc" || route.path.startsWith("/pc/")) return "/pc";
+  return route.path;
+});
+
 const title = computed(() => {
+  if (route.path === "/pc" || route.path.startsWith("/pc/")) {
+    const sub = (route.meta as any)?.title as string | undefined;
+    return sub && sub !== "电脑仓（仓库2）" ? `电脑仓（仓库2） · ${sub}` : "电脑仓（仓库2）";
+  }
   const map: Record<string, string> = {
     "/stock": "库存查询",
     "/in": "入库",
@@ -85,10 +92,7 @@ const title = computed(() => {
     "/warnings": "预警中心",
     "/dashboard": "报表与看板",
 
-    "/pc/assets": "电脑台账（仓库2）",
-    "/pc/tx": "电脑出入库明细",
-    "/pc/in": "电脑入库",
-    "/pc/out": "电脑出库",
+    "/pc": "电脑仓（仓库2）",
 
     "/items": "配件管理",
     "/import/items": "Excel 导入配件",

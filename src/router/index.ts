@@ -18,6 +18,7 @@ import PcIn from "../views/PcIn.vue";
 import PcTx from "../views/PcTx.vue";
 import PcRecycle from "../views/PcRecycle.vue";
 import PcAssets from "../views/PcAssets.vue";
+import PcWarehouse from "../views/PcWarehouse.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { ElMessage } from "element-plus";
 
@@ -33,12 +34,20 @@ const router = createRouter({
 
     { path: "/dashboard", component: Dashboard, meta: { role: "viewer" } },
 
-    { path: "/pc/assets", component: PcAssets, meta: { role: "viewer" } },
-    { path: "/pc/tx", component: PcTx, meta: { role: "viewer" } },
-
-    { path: "/pc/in", component: PcIn, meta: { role: "operator" } },
-    { path: "/pc/out", component: PcOut, meta: { role: "operator" } },
-    { path: "/pc/recycle", component: PcRecycle, meta: { role: "operator" } },
+    // 仓库2（电脑仓）使用一个入口 /pc，并在页面内 Tab 切换子功能
+    {
+      path: "/pc",
+      component: PcWarehouse,
+      redirect: "/pc/assets",
+      meta: { role: "viewer", title: "电脑仓（仓库2）" },
+      children: [
+        { path: "assets", component: PcAssets, meta: { role: "viewer", title: "电脑台账" } },
+        { path: "tx", component: PcTx, meta: { role: "viewer", title: "出入库明细" } },
+        { path: "in", component: PcIn, meta: { role: "operator", title: "电脑入库" } },
+        { path: "out", component: PcOut, meta: { role: "operator", title: "电脑出库" } },
+        { path: "recycle", component: PcRecycle, meta: { role: "operator", title: "回收/归还" } },
+      ],
+    },
 
     { path: "/batch", component: BatchTx, meta: { role: "operator" } },
     { path: "/stocktake", component: Stocktake, meta: { role: "admin" } },
