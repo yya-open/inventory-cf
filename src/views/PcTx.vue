@@ -47,6 +47,7 @@
           <el-tag v-if="row.type==='IN'" type="success">入库</el-tag>
           <el-tag v-else-if="row.type==='OUT'" type="danger">出库</el-tag>
           <el-tag v-else-if="row.type==='RETURN'" type="warning">归还</el-tag>
+          <el-tag v-else-if="row.type==='SCRAP'" type="danger">报废</el-tag>
           <el-tag v-else type="info">回收</el-tag>
         </template>
       </el-table-column>

@@ -27,35 +27,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const no = pcInNo();
 
     if (exist?.id) {
-      const assetId = Number(exist.id);
-      await env.DB.batch([
-        env.DB.prepare(
-          `UPDATE pc_assets
-           SET brand=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?,
-               status='IN_STOCK', updated_at=datetime('now')
-           WHERE id=?`
-        ).bind(brand, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, assetId),
-
-        env.DB.prepare(
-          `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-        ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username),
-      ]);
-
-      waitUntil(logAudit(env.DB, request, user, "PC_IN", "pc_in", no, {
-        asset_id: assetId,
-        brand,
-        serial_no,
-        model,
-        manufacture_date,
-        warranty_end,
-        disk_capacity,
-        memory_size,
-        remark,
-      }).catch(() => {}));
-
-      return Response.json({ ok: true, in_no: no, asset_id: assetId, updated: true });
+      return Response.json(
+        { ok: false, message: "该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）" },
+        { status: 400 }
+      );
     } else {
+
       const ins = await env.DB.batch([
         env.DB.prepare(
           `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status)

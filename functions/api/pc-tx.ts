@@ -118,6 +118,28 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         r.created_by
       FROM pc_recycle r
 
+UNION ALL
+SELECT
+  'SCRAP' AS type,
+  s.id AS id,
+  s.scrap_no AS tx_no,
+  s.asset_id,
+  NULL AS employee_no,
+  NULL AS department,
+  NULL AS employee_name,
+  NULL AS is_employed,
+  s.brand, s.serial_no, s.model,
+  NULL AS config_date,
+  s.manufacture_date,
+  s.warranty_end,
+  s.disk_capacity,
+  s.memory_size,
+  COALESCE(s.reason, s.remark) AS remark,
+  s.scrap_date AS recycle_date,
+  s.created_at,
+  s.created_by
+FROM pc_scrap s
+
     `;
 
     const countSql = `SELECT COUNT(*) as c FROM ( ${unionSql} ) x ${where}`;

@@ -10,7 +10,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     await ensurePcSchema(env.DB);
 
     const url = new URL(request.url);
-    const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED
+    const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED/SCRAPPED
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const ageYears = Math.max(0, Number(url.searchParams.get("age_years") || 0)); // 出厂超过 N 年
 
@@ -48,7 +48,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       const m = String(cutoff.getMonth() + 1).padStart(2, "0");
       const d = String(cutoff.getDate()).padStart(2, "0");
       const cutoffStr = `${y}-${m}-${d}`;
-      wh.push("a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
+      wh.push("a.status<>'SCRAPPED' AND a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
       binds.push(cutoffStr);
     }
 

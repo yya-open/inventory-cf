@@ -65,7 +65,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
@@ -169,9 +169,16 @@ async function onImportFile(uploadFile: any) {
     const res: any = await apiPost("/api/pc-in-batch", { items });
     const failed = Number(res?.failed || 0);
     if (failed > 0) {
-      ElMessage.warning(`导入完成：成功 ${res.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
-      console.warn("pc-in-batch errors", res?.errors);
+      ElMessage.warning(`导入完成：成功 ${res.success} 条，失败 ${failed} 条`);
+      const errors: any[] = Array.isArray(res?.errors) ? res.errors : [];
+      if (errors.length) {
+        const lines = errors.slice(0, 20).map((e: any) => `第 ${e.row} 行：${e.message || "错误"}`);
+        const more = errors.length > 20 ? `\n... 还有 ${errors.length - 20} 条错误` : "";
+        await ElMessageBox.alert(lines.join("\n") + more, "导入失败明细", { type: "warning", confirmButtonText: "我知道了" });
+      }
+      console.warn("pc-in-batch errors", errors);
     } else {
+
       ElMessage.success(`导入完成：成功 ${res.success} 条`);
     }
 

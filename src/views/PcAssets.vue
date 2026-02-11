@@ -5,6 +5,7 @@
         <el-option label="在库" value="IN_STOCK" />
         <el-option label="已领用" value="ASSIGNED" />
         <el-option label="已回收" value="RECYCLED" />
+        <el-option label="已报废" value="SCRAPPED" />
       </el-select>
 
       <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" style="width: 280px" @keyup.enter="onSearch" />

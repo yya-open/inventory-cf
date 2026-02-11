@@ -128,7 +128,7 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   disk_capacity TEXT,
   memory_size TEXT,
   remark TEXT,
-  status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED')) DEFAULT 'IN_STOCK',
+  status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
   created_at TEXT NOT NULL DEFAULT (datetime('now')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now'))
 );
@@ -182,3 +182,26 @@ CREATE TABLE IF NOT EXISTS pc_out (
 CREATE INDEX IF NOT EXISTS idx_pc_out_created_at ON pc_out(created_at);
 CREATE INDEX IF NOT EXISTS idx_pc_out_serial ON pc_out(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_out_employee ON pc_out(employee_no);
+
+
+-- 报废单明细（电脑仓）
+CREATE TABLE IF NOT EXISTS pc_scrap (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  scrap_no TEXT NOT NULL,
+  asset_id INTEGER NOT NULL,
+  brand TEXT NOT NULL,
+  serial_no TEXT NOT NULL,
+  model TEXT NOT NULL,
+  manufacture_date TEXT,
+  warranty_end TEXT,
+  disk_capacity TEXT,
+  memory_size TEXT,
+  remark TEXT,
+  scrap_date TEXT NOT NULL,
+  reason TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_by TEXT,
+  FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+);
+CREATE INDEX IF NOT EXISTS idx_pc_scrap_no ON pc_scrap(scrap_no);
+CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asset_id);

@@ -19,7 +19,7 @@ export async function ensurePcSchema(db: D1Database) {
       disk_capacity TEXT,
       memory_size TEXT,
       remark TEXT,
-      status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED')) DEFAULT 'IN_STOCK',
+      status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
       created_at TEXT NOT NULL DEFAULT (datetime('now')),
       updated_at TEXT NOT NULL DEFAULT (datetime('now'))
     )
@@ -27,6 +27,70 @@ export async function ensurePcSchema(db: D1Database) {
 
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)").run();
+
+
+// If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).
+// D1/SQLite doesn't support ALTER CHECK directly, so we rebuild the table when needed.
+try {
+  const meta = await db.prepare("SELECT sql FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
+  const sql: string = (meta as any)?.sql || "";
+  if (sql && !sql.includes("'SCRAPPED'")) {
+    // rebuild pc_assets to include SCRAPPED status
+    await db.batch([
+      db.prepare(`
+        CREATE TABLE IF NOT EXISTS pc_assets_v2 (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          brand TEXT NOT NULL,
+          serial_no TEXT NOT NULL UNIQUE,
+          model TEXT NOT NULL,
+          manufacture_date TEXT,
+          warranty_end TEXT,
+          disk_capacity TEXT,
+          memory_size TEXT,
+          remark TEXT,
+          status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
+          created_at TEXT NOT NULL DEFAULT (datetime('now')),
+          updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        )
+      `),
+      db.prepare(`
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at
+        FROM pc_assets
+      `),
+      db.prepare("DROP TABLE pc_assets"),
+      db.prepare("ALTER TABLE pc_assets_v2 RENAME TO pc_assets"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
+    ]);
+  }
+} catch {
+  // ignore schema healing errors
+}
+
+// Scrap records (报废单明细)
+await db.prepare(`
+  CREATE TABLE IF NOT EXISTS pc_scrap (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    scrap_no TEXT NOT NULL,
+    asset_id INTEGER NOT NULL,
+    brand TEXT NOT NULL,
+    serial_no TEXT NOT NULL,
+    model TEXT NOT NULL,
+    manufacture_date TEXT,
+    warranty_end TEXT,
+    disk_capacity TEXT,
+    memory_size TEXT,
+    remark TEXT,
+    scrap_date TEXT NOT NULL,
+    reason TEXT,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    created_by TEXT,
+    FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+  )
+`).run();
+await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_no ON pc_scrap(scrap_no)").run();
+await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asset_id)").run();
 
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS pc_in (
@@ -144,6 +208,14 @@ export function optional(v: any, maxLen = 200) {
 
 export function pcInNo() {
   return `PCIN-${crypto.randomUUID()}`;
+}
+
+export function pcScrapNo() {
+  return `PCSCRAP-${crypto.randomUUID()}`;
+}
+
+function pcScrapNo() {
+  return `PCSCRAP-${crypto.randomUUID()}`;
 }
 
 export function pcOutNo() {

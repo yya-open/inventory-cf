@@ -27,12 +27,20 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     let success = 0;
     const errors: { row: number; message: string }[] = [];
 
+    const seenSerial = new Set<string>();
+
     for (let i = 0; i < items.length; i++) {
       try {
         const it: any = items[i] || {};
         const brand = must(it?.brand, "品牌", 120);
         const serial_no = must(it?.serial_no, "序列号", 120);
         const model = must(it?.model, "型号", 160);
+
+const snKey = String(serial_no || "").trim();
+if (seenSerial.has(snKey)) {
+  throw new Error(`序列号重复：${snKey}`);
+}
+seenSerial.add(snKey);
 
         // 出厂时间：必填（用于 5 年预警等规则）
         const manufacture_date = must(it?.manufacture_date, "出厂时间", 40);
@@ -45,26 +53,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const no = pcInNo();
 
         if (exist?.id) {
-          const assetId = Number(exist.id);
-          await env.DB.batch([
-            env.DB.prepare(
-              `UPDATE pc_assets
-               SET brand=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?,
-                   status='IN_STOCK',
-                   updated_at=datetime('now')
-               WHERE id=?`
-            ).bind(brand, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, assetId),
+  throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
+} else {
 
-            env.DB.prepare(
-              `INSERT INTO pc_in (
-                in_no, asset_id,
-                brand, serial_no, model,
-                manufacture_date, warranty_end, disk_capacity, memory_size,
-                remark, created_by
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
-            ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || ""),
-          ]);
-        } else {
           const rs: any = await env.DB.batch([
             env.DB.prepare(
               `INSERT INTO pc_assets (
