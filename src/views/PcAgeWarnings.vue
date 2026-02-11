@@ -109,6 +109,9 @@ const keyword = ref<string>("");
 const exporting = ref(false);
 const exportingAll = ref(false);
 
+const selectedIds = ref<number[]>([]);
+const scrapLoading = ref(false);
+
 function onSearch() {
   page.value = 1;
   load();

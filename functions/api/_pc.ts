@@ -214,6 +214,7 @@ export function pcScrapNo() {
   return `PCSCRAP-${crypto.randomUUID()}`;
 }
 
+
 export function pcOutNo() {
   return `PCOUT-${crypto.randomUUID()}`;
 }
