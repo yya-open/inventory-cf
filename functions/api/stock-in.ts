@@ -9,7 +9,8 @@ function txNo() {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
-    const { item_id, warehouse_id = 1, qty, unit_price, source, remark, client_request_id } = await request.json();
+    const { item_id, qty, unit_price, source, remark, client_request_id } = await request.json();
+    const warehouse_id = 1;
 
     const q = Number(qty);
     if (!item_id || !q || q <= 0) return Response.json({ ok: false, message: "参数错误" }, { status: 400 });

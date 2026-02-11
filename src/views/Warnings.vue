@@ -1,11 +1,7 @@
 <template>
   <el-card>
     <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px">
-      <el-select v-model="filters.warehouse_id" style="width:180px" placeholder="选择仓库" @change="load">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
-
-      <el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="load">
+<el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="load">
         <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
       </el-select>
 
@@ -156,11 +152,9 @@ const total = ref(0);
 const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
 
-const warehouses = ref<{ id: number; name: string }[]>([]);
 const categories = ref<string[]>([]);
 
-const filters = reactive<{ warehouse_id: number; category: string; keyword: string; only_alert: boolean; sort: string }>({
-  warehouse_id: 1,
+const filters = reactive<{ category: string; keyword: string; only_alert: boolean; sort: string }>({
   category: "",
   keyword: "",
   only_alert: true,
@@ -174,16 +168,16 @@ const bulkDelta = ref<number>(5);
 const bulkMode = ref<"set" | "add" | "qty_plus">("set");
 const bulkSaving = ref(false);
 
-const warehouseName = computed(() => {
-  const w = warehouses.value.find((x) => x.id === Number(filters.warehouse_id));
-  return w?.name || `仓库#${filters.warehouse_id}`;
+const warehouseName = computed(()=> "主仓");
+
+  return w?.name || `仓库#${1}`;
 });
 
 function goIn(item_id: number) {
-  router.push({ path: "/in", query: { item_id: String(item_id), warehouse_id: String(filters.warehouse_id) } });
+  router.push({ path: "/in", query: { item_id: String(item_id) } });
 }
 function goTx(item_id: number) {
-  router.push({ path: "/tx", query: { item_id: String(item_id), warehouse_id: String(filters.warehouse_id) } });
+  router.push({ path: "/tx", query: { item_id: String(item_id) } });
 }
 
 function onSelectionChange(list: any[]) {
@@ -203,9 +197,7 @@ async function applyBulkWarning() {
     if (bulkMode.value === "set") {
       payload.warning_qty = Number(bulkWarningQty.value || 0);
     } else {
-      payload.delta = Number(bulkDelta.value || 0);
-      payload.warehouse_id = Number(filters.warehouse_id || 1);
-    }
+      payload.delta = Number(bulkDelta.value || 0);    }
     await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
     ElMessage.success("已更新预警值");
     clearSelection();
@@ -218,15 +210,6 @@ async function applyBulkWarning() {
 }
 
 async function loadMeta() {
-  try {
-    const w = await apiGet<{ ok: boolean; data: any[] }>(`/api/warehouses`);
-    warehouses.value = (w.data || []).map((x: any) => ({ id: Number(x.id), name: String(x.name) }));
-    if (!warehouses.value.find((x) => x.id === filters.warehouse_id) && warehouses.value.length) {
-      filters.warehouse_id = warehouses.value[0].id;
-    }
-  } catch {
-    // 不阻塞页面
-  }
 
   try {
     const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`);
@@ -239,9 +222,7 @@ async function loadMeta() {
 async function load() {
   try {
     loading.value = true;
-    const qs = new URLSearchParams();
-    qs.set("warehouse_id", String(filters.warehouse_id || 1));
-    qs.set("only_alert", filters.only_alert ? "1" : "0");
+    const qs = new URLSearchParams();    qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
     qs.set("page", String(page.value));
     qs.set("page_size", String(pageSize.value));
@@ -292,9 +273,7 @@ function reset() {
 async function exportCsv() {
   try {
     exportingCsv.value = true;
-    const qs = new URLSearchParams();
-    qs.set("warehouse_id", String(filters.warehouse_id || 1));
-    qs.set("only_alert", filters.only_alert ? "1" : "0");
+    const qs = new URLSearchParams();    qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());

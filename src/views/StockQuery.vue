@@ -1,11 +1,7 @@
 <template>
   <el-card>
     <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
-      <el-select v-model="warehouse_id" style="width: 180px" placeholder="选择仓库" @change="onSearch">
-        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-      </el-select>
-
-      <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+<el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
       <el-select v-model="sort" style="width: 160px" placeholder="排序" @change="onSearch">
         <el-option label="预警优先" value="warning_first" />
         <el-option label="库存升序" value="qty_asc" />
@@ -63,16 +59,13 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
-import { useRouter, useRoute } from "vue-router";
+import { useRouter } from "vue-router";
 
 const router = useRouter();
-const route = useRoute();
 
-const warehouses = ref<any[]>([]);
-const warehouse_id = ref<number>(1);
+const WAREHOUSE_ID = 1;
 
 const keyword = ref("");
 const sort = ref<string>("warning_first");
@@ -84,29 +77,15 @@ const pageSize = ref(50);
 const total = ref(0);
 
 function goIn(item_id: number) {
-  router.push({ path: "/in", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
+  router.push({ path: "/in", query: { item_id: String(item_id) } });
 }
 function goOut(item_id: number) {
-  router.push({ path: "/out", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
+  router.push({ path: "/out", query: { item_id: String(item_id) } });
 }
 function goTx(item_id: number) {
-  router.push({ path: "/tx", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
+  router.push({ path: "/tx", query: { item_id: String(item_id) } });
 }
 
-async function loadWarehouses() {
-  try {
-    const r: any = await apiGet("/api/warehouses");
-    warehouses.value = r.data || [];
-    const qWarehouse = Number(route.query.warehouse_id);
-    if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
-      warehouse_id.value = qWarehouse;
-    } else if (warehouses.value?.length) {
-      warehouse_id.value = warehouses.value[0].id;
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载仓库失败");
-  }
-}
 
 function onSearch(){
   page.value = 1;
@@ -133,7 +112,7 @@ async function load() {
   try {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
-      `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=${warehouse_id.value}` +
+      `/api/stock?keyword=${encodeURIComponent(keyword.value)}` +
       `&sort=${encodeURIComponent(sort.value)}&page=${page.value}&page_size=${pageSize.value}`
     );
     rows.value = j.data || [];
@@ -154,11 +133,10 @@ function doExport() {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");
-  XLSX.writeFile(wb, `stock_${warehouse_id.value}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `stock_${WAREHOUSE_ID}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 onMounted(async () => {
-  await loadWarehouses();
-  await load();
+    await load();
 });
 </script>

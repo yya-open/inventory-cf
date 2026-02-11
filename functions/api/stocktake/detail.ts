@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const st = await env.DB.prepare(
       `SELECT s.*, w.name AS warehouse_name
        FROM stocktake s LEFT JOIN warehouses w ON w.id=s.warehouse_id
-       WHERE s.id=?`
+       WHERE s.id=? AND s.warehouse_id=1`
     ).bind(id).first();
 
     if (!st) return Response.json({ ok:false, message:"盘点单不存在" }, { status:404 });

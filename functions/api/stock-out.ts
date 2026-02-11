@@ -14,10 +14,10 @@ function txNo() {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
-    const { item_id, warehouse_id = 1, qty, target, remark, client_request_id } = await request.json();
+    const { item_id, qty, target, remark, client_request_id } = await request.json();
+    const wid = 1;
 
     const q = Number(qty);
-    const wid = Number(warehouse_id);
 
     const tgt = String(target ?? "").trim();
 

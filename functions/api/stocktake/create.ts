@@ -14,8 +14,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requireAuth(env, request, "admin");
 
-    const { warehouse_id = 1 } = await request.json();
-    const wid = Number(warehouse_id);
+    await request.json().catch(() => ({}));
+    const wid = 1; // fixed to 配件仓
 
     const no = stNo();
 

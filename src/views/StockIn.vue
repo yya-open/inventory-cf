@@ -1,13 +1,7 @@
 <template>
   <el-card>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-      <el-form-item label="仓库">
-        <el-select v-model="form.warehouse_id" placeholder="选择仓库" style="width: 100%">
-          <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-        </el-select>
-      </el-form-item>
-
-      <el-form-item label="配件" prop="item_id">
+<el-form-item label="配件" prop="item_id">
         <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
         </el-select>
@@ -46,8 +40,6 @@ import type { FormInstance, FormRules } from "element-plus";
 
 const route = useRoute();
 
-const warehouses = ref<any[]>([]);
-
 const items = ref<any[]>([]);
 
 const formRef = ref<FormInstance>();
@@ -82,21 +74,6 @@ const canSubmit = computed(() => {
   return !!form.value.item_id && q > 0 && !submitting.value;
 });
 
-async function loadWarehouses() {
-  try {
-    const r: any = await apiGet("/api/warehouses");
-    warehouses.value = r.data || [];
-
-    const qWarehouse = Number(route.query.warehouse_id);
-    if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
-      form.value.warehouse_id = qWarehouse;
-    } else if (warehouses.value?.length) {
-      form.value.warehouse_id = warehouses.value[0].id;
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载仓库失败");
-  }
-}
 
 async function loadItems() {
   const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
@@ -114,9 +91,7 @@ async function submit() {
     const rid = pendingRid.value || crypto.randomUUID();
     pendingRid.value = rid;
     const r: any = await apiPost(`/api/stock-in`, {
-      item_id: form.value.item_id,
-      warehouse_id: form.value.warehouse_id,
-      qty: form.value.qty,
+      item_id: form.value.item_id,      qty: form.value.qty,
       unit_price: form.value.unit_price,
       source: form.value.source,
       remark: form.value.remark,
@@ -137,7 +112,6 @@ async function submit() {
 }
 
 onMounted(async () => {
-  await loadWarehouses();
   await loadItems();
 });
 </script>

@@ -27,7 +27,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requireAuth(env, request, "operator");
 
     const body = await request.json();
-    const warehouse_id = Number(body.warehouse_id ?? 1);
+    const warehouse_id = 1; // fixed to 配件仓
     const header_source = body.source ?? null;
     const header_remark = body.remark ?? null;
     const lines: Line[] = Array.isArray(body.lines) ? body.lines : [];

@@ -5,10 +5,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="font-weight:700">批量出入库</div>
           <div style="display:flex; gap:10px; align-items:center;">
-            <el-select v-model="warehouseId" style="width:180px" placeholder="选择仓库">
-              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-            </el-select>
-            <el-button @click="downloadTemplate">下载模板</el-button>
+<el-button @click="downloadTemplate">下载模板</el-button>
             <el-upload :show-file-list="false" accept=".xlsx,.xls" :before-upload="beforeUpload">
               <el-button type="primary">导入 Excel</el-button>
             </el-upload>
@@ -102,13 +99,12 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
-import { apiGet, apiPost } from "../api/client";
+import { apiPost } from "../api/client";
 
 type Row = { sku: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
 
 const mode = ref<"IN" | "OUT">("IN");
-const warehouses = ref<any[]>([]);
-const warehouseId = ref<number>(1);
+const WAREHOUSE_ID = 1;
 const headerSource = ref("");
 const headerTarget = ref("");
 const headerRemark = ref("");
@@ -153,20 +149,6 @@ function clearRows() {
   rows.value = [];
 }
 
-async function loadWarehouses() {
-  try {
-    const r: any = await apiGet("/api/warehouses");
-    if (r?.ok) {
-      warehouses.value = r.data;
-      if (warehouses.value?.length && !warehouses.value.find((w: any) => w.id === warehouseId.value)) {
-        warehouseId.value = warehouses.value[0].id;
-      }
-    }
-  } catch (e) {
-    const err: any = e;
-    ElMessage.error(err?.message || "加载仓库失败");
-  }
-}
 
 function downloadTemplate() {
   // 模板默认带示例，方便用户照填
@@ -361,9 +343,7 @@ async function submit() {
 
   submitting.value = true;
   try {
-    const payload: any = {
-      warehouse_id: warehouseId.value,
-      remark: headerRemark.value || null,
+    const payload: any = {      remark: headerRemark.value || null,
       lines: rows.value,
     };
     if (mode.value === "IN") payload.source = headerSource.value || null;
@@ -387,7 +367,6 @@ async function submit() {
 }
 
 onMounted(async () => {
-  await loadWarehouses();
   addRow();
 });
 </script>

@@ -29,7 +29,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return json(false, null, "未绑定 D1 数据库(DB)");
 
     const url = new URL(request.url);
-    const warehouse_id = Number(url.searchParams.get("warehouse_id") || 1);
+    const warehouse_id = 1;
     const category = (url.searchParams.get("category") || "").trim();
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const only_alert = (url.searchParams.get("only_alert") ?? "1") !== "0";
