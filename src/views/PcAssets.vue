@@ -12,12 +12,6 @@
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="reset">重置</el-button>
 
-      <el-button v-if="canOperator" type="success" plain @click="$router.push('/pc/in')">电脑入库</el-button>
-      <el-button v-if="canOperator" type="warning" plain @click="$router.push('/pc/out')">电脑出库</el-button>
-      <el-button v-if="canOperator" type="info" plain @click="$router.push('/pc/recycle')">电脑回收/归还</el-button>
-      <el-button type="info" plain @click="$router.push('/pc/tx')">出入库明细</el-button>
-      <el-button type="warning" plain @click="$router.push('/pc/age-warnings')">出厂超5年预警</el-button>
-    
       <div style="flex:1"></div>
 
       <el-button size="small" @click="exportExcel">导出Excel</el-button>

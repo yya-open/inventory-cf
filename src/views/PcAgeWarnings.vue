@@ -1,7 +1,7 @@
 <template>
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-      <el-tag type="warning">出厂时间超过 {{ ageYears }} 年预警</el-tag>
+      <el-tag type="warning">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
 
       <el-select v-model="status" placeholder="状态" clearable style="width:160px" @change="onSearch">
         <el-option label="在库" value="IN_STOCK" />
@@ -176,7 +176,7 @@ async function exportExcel(all: boolean) {
         备注: r.remark || "",
       }));
       exportToXlsx({
-        filename: `电脑仓_出厂超${ageYears}年预警_当前页.xlsx`,
+        filename: `电脑仓_报废预警_当前页.xlsx`,
         headers: [
           { key: "ID", title: "ID" },
           { key: "品牌", title: "品牌" },
@@ -252,7 +252,7 @@ async function exportExcel(all: boolean) {
     }));
 
     exportToXlsx({
-      filename: `电脑仓_出厂超${ageYears}年预警_全部.xlsx`,
+      filename: `电脑仓_报废预警_全部.xlsx`,
       headers: [
         { key: "ID", title: "ID" },
         { key: "品牌", title: "品牌" },
