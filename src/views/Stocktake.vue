@@ -5,7 +5,10 @@
         <div class="page-header">
           <div class="title">库存盘点</div>
           <div class="actions">
-<el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
+            <el-select v-model="warehouseId" class="wh-select" placeholder="选择仓库">
+              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            </el-select>
+            <el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
           </div>
         </div>
       </template>
@@ -196,7 +199,7 @@ import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 
 const warehouses = ref<any[]>([]);
-const warehouseId = ref(1); // 配件仓固定主仓
+const warehouseId = ref(1);
 
 const list = ref<any[]>([]);
 const listPage = ref(1);
@@ -304,7 +307,23 @@ function markDirty(row:any){
   dirty.value.add(row.id);
 }
 
+async function loadWarehouses(){
+  try{
+    const r:any = await apiGet("/api/warehouses");
+    warehouses.value = r.data || [];
+    if (warehouses.value?.length) warehouseId.value = warehouses.value[0].id;
+  }catch(e:any){
+    ElMessage.error(e.message || "加载仓库失败");
+  }
+}
 
+
+watch(warehouseId, async ()=>{
+  selectedId.value = null;
+  detail.value = null;
+  listPage.value = 1;
+  await loadList();
+});
 
 let _kwTimer: any = null;
 watch(listKeyword, () => {
@@ -332,7 +351,7 @@ function onListSortChange(){
 async function loadList(){
   try{
     const params = new URLSearchParams();
-    params.set('warehouse_id', '1'); // 配件仓固定主仓
+    params.set('warehouse_id', String(warehouseId.value));
     params.set('page', String(listPage.value));
     params.set('page_size', String(listPageSize.value));
     if (listKeyword.value.trim()) params.set('keyword', listKeyword.value.trim());
@@ -372,7 +391,7 @@ async function refreshDetail(){
 async function createStocktake(){
   creating.value = true;
   try{
-    const r:any = await apiPost("/api/stocktake/create", { warehouse_id: 1 });
+    const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
     ElMessage.success("盘点单已创建");
     await loadList();
 	    selectedId.value = Number(r.id);
@@ -592,6 +611,8 @@ async function rollbackStocktakeByRow(row:any){
   await rollbackStocktake();
 }
 
-onMounted(async ()=>{  await loadList();
+onMounted(async ()=>{
+  await loadWarehouses();
+  await loadList();
 });
 </script>

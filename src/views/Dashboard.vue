@@ -5,7 +5,10 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div style="font-weight:700">报表与看板</div>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-<el-select v-model="days" style="width:160px" @change="refresh">
+            <el-select v-model="warehouseId" style="width:180px" placeholder="选择仓库" @change="refresh">
+              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+            </el-select>
+            <el-select v-model="days" style="width:160px" @change="refresh">
               <el-option :value="7" label="近 7 天" />
               <el-option :value="14" label="近 14 天" />
               <el-option :value="30" label="近 30 天" />
@@ -74,7 +77,7 @@ import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 
 const warehouses = ref<any[]>([]);
-const warehouseId = ref(1); // 配件仓固定主仓
+const warehouseId = ref(1);
 const days = ref(30);
 const data = ref<any|null>(null);
 const loading = ref(false);
@@ -98,10 +101,20 @@ const categoryTable = computed(() => {
   return activeType.value === "OUT" ? (data.value.category_out || []) : (data.value.category_in || []);
 });
 
+async function loadWarehouses(){
+  try{
+    const r:any = await apiGet("/api/warehouses");
+    warehouses.value = r.data || [];
+    if (warehouses.value?.length) warehouseId.value = warehouses.value[0].id;
+  }catch(e:any){
+    ElMessage.error(e.message || "加载仓库失败");
+  }
+}
+
 async function refresh(){
   loading.value = true;
   try{
-    const r:any = await apiGet(`/api/reports/summary?warehouse_id=1&days=${days.value}`);
+    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}`);
     data.value = r;
   }catch(e:any){
     ElMessage.error(e.message || "加载报表失败");
@@ -132,6 +145,8 @@ function barWidth(qty:number){
   return `${pct}%`;
 }
 
-onMounted(async ()=>{  await refresh();
+onMounted(async ()=>{
+  await loadWarehouses();
+  await refresh();
 });
 </script>

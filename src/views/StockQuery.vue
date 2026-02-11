@@ -1,7 +1,11 @@
 <template>
   <el-card>
     <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
-<el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+      <el-select v-model="warehouse_id" style="width: 180px" placeholder="选择仓库" @change="onSearch">
+        <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
+      </el-select>
+
+      <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
       <el-select v-model="sort" style="width: 160px" placeholder="排序" @change="onSearch">
         <el-option label="预警优先" value="warning_first" />
         <el-option label="库存升序" value="qty_asc" />
@@ -62,9 +66,11 @@ import { ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 
 const router = useRouter();
+const route = useRoute();
+
 const warehouses = ref<any[]>([]);
 const warehouse_id = ref<number>(1);
 
@@ -78,13 +84,28 @@ const pageSize = ref(50);
 const total = ref(0);
 
 function goIn(item_id: number) {
-  router.push({ path: "/in", query: { item_id: String(item_id) } });
+  router.push({ path: "/in", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
 }
 function goOut(item_id: number) {
-  router.push({ path: "/out", query: { item_id: String(item_id) } });
+  router.push({ path: "/out", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
 }
 function goTx(item_id: number) {
-  router.push({ path: "/tx", query: { item_id: String(item_id) } });
+  router.push({ path: "/tx", query: { item_id: String(item_id), warehouse_id: String(warehouse_id.value) } });
+}
+
+async function loadWarehouses() {
+  try {
+    const r: any = await apiGet("/api/warehouses");
+    warehouses.value = r.data || [];
+    const qWarehouse = Number(route.query.warehouse_id);
+    if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
+      warehouse_id.value = qWarehouse;
+    } else if (warehouses.value?.length) {
+      warehouse_id.value = warehouses.value[0].id;
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || "加载仓库失败");
+  }
 }
 
 function onSearch(){
@@ -133,12 +154,11 @@ function doExport() {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");
-  XLSX.writeFile(wb, `stock_主仓_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `stock_${warehouse_id.value}_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 onMounted(async () => {
-  // 配件仓固定主仓(id=1)
-  warehouse_id.value = 1;
+  await loadWarehouses();
   await load();
 });
 </script>
