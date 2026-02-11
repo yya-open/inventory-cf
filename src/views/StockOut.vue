@@ -1,7 +1,6 @@
 <template>
   <el-card>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-
       <el-form-item label="配件" prop="item_id">
         <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%" @change="loadQty">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
@@ -40,19 +39,23 @@ import { ElMessage } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { useRoute } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
 const route = useRoute();
+const warehouseId = useFixedWarehouseId();
 
 const items = ref<any[]>([]);
 
 const formRef = ref<FormInstance>();
 const form = ref({
-  warehouse_id: 1 as number,
   item_id: undefined as number | undefined,
   qty: 1 as number,
   target: "" as string,
   remark: "" as string,
 });
+
+const available = ref(0);
+const warning = ref(0);
 
 const rules: FormRules = {
   item_id: [{ required: true, message: "请选择配件", trigger: "change" }],
@@ -67,48 +70,41 @@ const rules: FormRules = {
       },
     },
   ],
-  target: [
-    {
-      required: true,
-      trigger: "blur",
-      validator: (_rule, value, cb) => {
-        if (!String(value ?? "").trim()) return cb(new Error("请输入领用人"));
-        cb();
-      },
-    },
-  ],
+  target: [{ required: true, message: "请输入领用人", trigger: "blur" }],
 };
+
 const submitting = ref(false);
 const pendingRid = ref<string>("");
 
-const available = ref(0);
-const warning = ref(0);
-
 const canSubmit = computed(() => {
   const q = Number(form.value.qty);
-  return !!form.value.item_id && q > 0 && q <= available.value && !!String(form.value.target || "").trim() && !submitting.value;
+  return !!form.value.item_id && q > 0 && q <= available.value && !!form.value.target.trim() && !submitting.value;
 });
-
 
 async function loadItems() {
   const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
   items.value = j.data;
 
   const qid = Number(route.query.item_id);
-  if (qid) {
-    form.value.item_id = qid;
-    await loadQty();
-  }
+  if (qid) form.value.item_id = qid;
 }
 
 async function loadQty() {
-  if (!form.value.item_id) { available.value = 0; warning.value = 0; return; }
-  const j = await apiGet<{ ok: boolean; data: any[] }>(
-    `/api/stock?keyword=&warehouse_id=1`
-  );
-  const row = j.data.find((x: any) => x.item_id === form.value.item_id);
-  available.value = row ? Number(row.qty) : 0;
-  warning.value = row ? Number(row.warning_qty) : 0;
+  if (!form.value.item_id) {
+    available.value = 0;
+    warning.value = 0;
+    return;
+  }
+  try {
+    const j: any = await apiGet(
+      `/api/stock/one?item_id=${form.value.item_id}&warehouse_id=${warehouseId.value}`
+    );
+    available.value = Number(j?.data?.qty || 0);
+    warning.value = Number(j?.data?.warning_qty || 0);
+  } catch {
+    available.value = 0;
+    warning.value = 0;
+  }
 }
 
 async function submit() {
@@ -118,14 +114,16 @@ async function submit() {
     submitting.value = true;
     const rid = pendingRid.value || crypto.randomUUID();
     pendingRid.value = rid;
+
     const r: any = await apiPost(`/api/stock-out`, {
       item_id: form.value.item_id,
-      warehouse_id: form.value.warehouse_id,
+      warehouse_id: warehouseId.value,
       qty: form.value.qty,
-      target: String(form.value.target || "").trim(),
+      target: form.value.target,
       remark: form.value.remark,
       client_request_id: rid,
     });
+
     ElMessage.success(r?.duplicate ? "出库已处理（重复请求已忽略）" : "出库成功");
     pendingRid.value = "";
     form.value.qty = 1;
@@ -142,5 +140,6 @@ async function submit() {
 
 onMounted(async () => {
   await loadItems();
+  await loadQty();
 });
 </script>

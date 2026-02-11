@@ -1,7 +1,6 @@
 <template>
   <el-card>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-
       <el-form-item label="配件" prop="item_id">
         <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
@@ -38,15 +37,15 @@ import { ElMessage } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { useRoute } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
 const route = useRoute();
-
+const warehouseId = useFixedWarehouseId();
 
 const items = ref<any[]>([]);
 
 const formRef = ref<FormInstance>();
 const form = ref({
-  warehouse_id: 1 as number,
   item_id: undefined as number | undefined,
   qty: 1 as number,
   unit_price: 0 as number,
@@ -76,7 +75,6 @@ const canSubmit = computed(() => {
   return !!form.value.item_id && q > 0 && !submitting.value;
 });
 
-
 async function loadItems() {
   const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
   items.value = j.data;
@@ -92,15 +90,17 @@ async function submit() {
     submitting.value = true;
     const rid = pendingRid.value || crypto.randomUUID();
     pendingRid.value = rid;
+
     const r: any = await apiPost(`/api/stock-in`, {
       item_id: form.value.item_id,
-      warehouse_id: form.value.warehouse_id,
+      warehouse_id: warehouseId.value,
       qty: form.value.qty,
       unit_price: form.value.unit_price,
       source: form.value.source,
       remark: form.value.remark,
       client_request_id: rid,
     });
+
     ElMessage.success(r?.duplicate ? "入库已处理（重复请求已忽略）" : "入库成功");
     pendingRid.value = "";
     form.value.qty = 1;

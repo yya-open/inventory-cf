@@ -99,12 +99,13 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
-import { apiGet, apiPost } from "../api/client";
+import { apiPost } from "../api/client";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
 type Row = { sku: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
 
 const mode = ref<"IN" | "OUT">("IN");
-const warehouseId = 1;
+const warehouseId = useFixedWarehouseId();
 const headerSource = ref("");
 const headerTarget = ref("");
 const headerRemark = ref("");
@@ -344,7 +345,7 @@ async function submit() {
   submitting.value = true;
   try {
     const payload: any = {
-      warehouse_id: warehouseId,
+      warehouse_id: warehouseId.value,
       remark: headerRemark.value || null,
       lines: rows.value,
     };

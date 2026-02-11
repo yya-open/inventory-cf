@@ -9,6 +9,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const type = (url.searchParams.get("type") || "").trim();
     const item_id = url.searchParams.get("item_id");
+    const warehouse_id_raw = url.searchParams.get("warehouse_id");
+    const warehouse_id = warehouse_id_raw ? Number(warehouse_id_raw) : null;
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
@@ -20,10 +22,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const wh: string[] = [];
     const binds: any[] = [];
 
-    // Force parts warehouse (仓库1)
-    wh.push(`t.warehouse_id=?`);
-    binds.push(1);
-
     if (type) {
       wh.push(`t.type=?`);
       binds.push(type);
@@ -31,6 +29,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (item_id) {
       wh.push(`t.item_id=?`);
       binds.push(Number(item_id));
+    }
+    if (warehouse_id && Number.isFinite(warehouse_id)) {
+      wh.push(`t.warehouse_id=?`);
+      binds.push(warehouse_id);
     }
 
     // Keyword strategy: exact -> prefix -> limited contains

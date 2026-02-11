@@ -1,14 +1,16 @@
 <template>
   <el-card>
     <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
-
       <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+
       <el-select v-model="sort" style="width: 160px" placeholder="排序" @change="onSearch">
         <el-option label="预警优先" value="warning_first" />
         <el-option label="库存升序" value="qty_asc" />
         <el-option label="库存降序" value="qty_desc" />
         <el-option label="SKU 升序" value="sku_asc" />
-        <el-option label="名称 升序" value="name_asc" />      </el-select>
+        <el-option label="名称 升序" value="name_asc" />
+      </el-select>
+
       <el-button type="primary" @click="onSearch">查询</el-button>
       <el-button @click="onReset">重置</el-button>
       <el-button @click="doExport">导出Excel</el-button>
@@ -64,11 +66,12 @@ import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
 import { useRouter, useRoute } from "vue-router";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
 const router = useRouter();
 const route = useRoute();
 
-const warehouse_id = 1;
+const warehouseId = useFixedWarehouseId();
 
 const keyword = ref("");
 const sort = ref<string>("warning_first");
@@ -89,24 +92,23 @@ function goTx(item_id: number) {
   router.push({ path: "/tx", query: { item_id: String(item_id) } });
 }
 
-
-function onSearch(){
+function onSearch() {
   page.value = 1;
   load();
 }
 
-function onReset(){
+function onReset() {
   keyword.value = "";
   sort.value = "warning_first";
   page.value = 1;
   load();
 }
 
-function onPageChange(){
+function onPageChange() {
   load();
 }
 
-function onPageSizeChange(){
+function onPageSizeChange() {
   page.value = 1;
   load();
 }
@@ -115,8 +117,8 @@ async function load() {
   try {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
-      `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=1` +
-      `&sort=${encodeURIComponent(sort.value)}&page=${page.value}&page_size=${pageSize.value}`
+      `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=${warehouseId.value}` +
+        `&sort=${encodeURIComponent(sort.value)}&page=${page.value}&page_size=${pageSize.value}`
     );
     rows.value = j.data || [];
     total.value = Number((j as any).total || 0);
@@ -128,18 +130,20 @@ async function load() {
 }
 
 function doExport() {
-  const header = ["SKU","名称","品牌","型号","分类","库存","预警值"];
-  const aoa: any[] = [header];
+  const header = ["SKU", "名称", "品牌", "型号", "分类", "库存", "预警值"];
+  const aoa: any[][] = [header];
   for (const r of rows.value) {
     aoa.push([r.sku, r.name, r.brand || "", r.model || "", r.category || "", Number(r.qty), Number(r.warning_qty)]);
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");
-  XLSX.writeFile(wb, `stock_1_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `stock_${warehouseId.value}_${new Date().toISOString().slice(0, 10)}.xlsx`);
 }
 
 onMounted(async () => {
+  // 支持旧链接：保留 item_id 等 query 不变；warehouse_id 不再从 query 读取
+  void route;
   await load();
 });
 </script>

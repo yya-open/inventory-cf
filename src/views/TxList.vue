@@ -105,6 +105,7 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { useFixedWarehouseId } from "../utils/warehouse";
 import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
@@ -287,6 +288,7 @@ async function load() {
 
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
+      params.set("warehouse_id", String(warehouseId.value || 1));
 
     if (keyword.value) params.set("keyword", keyword.value);
     if (sortBy.value) params.set("sort_by", sortBy.value);

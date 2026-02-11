@@ -72,8 +72,9 @@
 import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
-const warehouseId = 1;
+const warehouseId = useFixedWarehouseId();
 const days = ref(30);
 const data = ref<any|null>(null);
 const loading = ref(false);
@@ -101,7 +102,7 @@ const categoryTable = computed(() => {
 async function refresh(){
   loading.value = true;
   try{
-    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId}&days=${days.value}`);
+    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}`);
     data.value = r;
   }catch(e:any){
     ElMessage.error(e.message || "加载报表失败");

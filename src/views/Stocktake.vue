@@ -194,8 +194,9 @@ import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
+import { useFixedWarehouseId } from "../utils/warehouse";
 
-const warehouseId = 1;
+const warehouseId = ref(1);
 
 const list = ref<any[]>([]);
 const listPage = ref(1);
@@ -305,6 +306,12 @@ function markDirty(row:any){
 
 
 
+watch(warehouseId, async ()=>{
+  selectedId.value = null;
+  detail.value = null;
+  listPage.value = 1;
+  await loadList();
+});
 
 let _kwTimer: any = null;
 watch(listKeyword, () => {
@@ -332,7 +339,7 @@ function onListSortChange(){
 async function loadList(){
   try{
     const params = new URLSearchParams();
-    params.set('warehouse_id', String(warehouseId));
+    params.set('warehouse_id', String(warehouseId.value));
     params.set('page', String(listPage.value));
     params.set('page_size', String(listPageSize.value));
     if (listKeyword.value.trim()) params.set('keyword', listKeyword.value.trim());
@@ -372,7 +379,7 @@ async function refreshDetail(){
 async function createStocktake(){
   creating.value = true;
   try{
-    const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId });
+    const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
     ElMessage.success("盘点单已创建");
     await loadList();
 	    selectedId.value = Number(r.id);

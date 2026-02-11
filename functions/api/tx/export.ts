@@ -13,6 +13,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     const type = (url.searchParams.get("type") || "").trim();
     const item_id = url.searchParams.get("item_id");
+    const warehouse_id_raw = url.searchParams.get("warehouse_id");
+    const warehouse_id = warehouse_id_raw ? Number(warehouse_id_raw) : null;
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
 
@@ -30,6 +32,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       wh.push(`t.item_id=?`);
       bindsBase.push(Number(item_id));
     }
+    if (warehouse_id && Number.isFinite(warehouse_id)) {
+      wh.push(`t.warehouse_id=?`);
+      bindsBase.push(warehouse_id);
+    }
     const fromSql = toSqlRange(date_from, false);
     const toSql = toSqlRange(date_to, true);
     if (fromSql) {
@@ -46,6 +52,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       logAudit(env.DB, request, actor, "TX_EXPORT", "stock_tx", null, {
         type: type || null,
         item_id: item_id ? Number(item_id) : null,
+        warehouse_id: warehouse_id ? Number(warehouse_id) : null,
         date_from: date_from || null,
         date_to: date_to || null,
         max: maxRows,

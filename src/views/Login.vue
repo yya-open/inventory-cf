@@ -59,6 +59,7 @@ async function doLogin() {
       return;
     }
     ElMessage.success("登录成功");
+    // 登录后默认进入“配件仓”
     const redirect = (route.query.redirect as string) || "/stock";
     router.replace(redirect);
   } catch (e: any) {

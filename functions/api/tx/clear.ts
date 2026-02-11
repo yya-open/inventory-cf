@@ -8,6 +8,7 @@ type ClearBody = {
   mode?: "filtered" | "all";
   type?: string;
   item_id?: number;
+  warehouse_id?: number;
   date_from?: string;
   date_to?: string;
   confirm?: string;
@@ -51,6 +52,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
+    // Optional warehouse filter (when provided, limits deletion to that warehouse)
+    if (body.warehouse_id && Number.isFinite(Number(body.warehouse_id))) {
+      wh.push("warehouse_id=?");
+      binds.push(Number(body.warehouse_id));
+    }
+
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
     const sql = `DELETE FROM stock_tx ${where}`;
     const r = await env.DB.prepare(sql).bind(...binds).run();
@@ -62,7 +69,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       filters:
         mode === "all"
           ? null
-          : { type: body.type, item_id: body.item_id, date_from: body.date_from, date_to: body.date_to },
+          : { type: body.type, item_id: body.item_id, warehouse_id: body.warehouse_id, date_from: body.date_from, date_to: body.date_to },
       deleted,
     });
     return Response.json({ ok: true, data: { deleted } });

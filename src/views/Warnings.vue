@@ -1,7 +1,6 @@
 <template>
   <el-card>
     <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px">
-
       <el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="load">
         <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
       </el-select>
@@ -137,11 +136,13 @@
 import { ref, reactive, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
 import * as XLSX from "xlsx";
 
 const router = useRouter();
+const warehouseId = useFixedWarehouseId();
 const { token } = useAuth();
 
 const tableRef = ref<any>(null);
@@ -169,7 +170,10 @@ const bulkDelta = ref<number>(5);
 const bulkMode = ref<"set" | "add" | "qty_plus">("set");
 const bulkSaving = ref(false);
 
-const warehouseName = computed(() => "主仓");
+const warehouseName = computed(() => {
+  const id = Number(warehouseId.value || 1);
+  return id === 2 ? "电脑仓" : "配件仓";
+});
 
 function goIn(item_id: number) {
   router.push({ path: "/in", query: { item_id: String(item_id) } });
@@ -196,6 +200,7 @@ async function applyBulkWarning() {
       payload.warning_qty = Number(bulkWarningQty.value || 0);
     } else {
       payload.delta = Number(bulkDelta.value || 0);
+      payload.warehouse_id = Number(warehouseId.value || 1);
     }
     await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
     ElMessage.success("已更新预警值");
@@ -209,6 +214,7 @@ async function applyBulkWarning() {
 }
 
 async function loadMeta() {
+
   try {
     const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`);
     categories.value = c.data || [];
@@ -221,6 +227,7 @@ async function load() {
   try {
     loading.value = true;
     const qs = new URLSearchParams();
+    qs.set("warehouse_id", String(warehouseId.value || 1));
     qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
     qs.set("page", String(page.value));
@@ -273,6 +280,7 @@ async function exportCsv() {
   try {
     exportingCsv.value = true;
     const qs = new URLSearchParams();
+    qs.set("warehouse_id", String(warehouseId.value || 1));
     qs.set("only_alert", filters.only_alert ? "1" : "0");
     qs.set("sort", filters.sort || "gap_desc");
     if (filters.category) qs.set("category", filters.category);

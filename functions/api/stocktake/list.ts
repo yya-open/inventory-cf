@@ -6,6 +6,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     await requireAuth(env, request, "viewer");
 
     const url = new URL(request.url);
+    const warehouse_id = url.searchParams.get("warehouse_id");
     const status = (url.searchParams.get("status") || "").trim();
     const keyword = (url.searchParams.get("keyword") || "").trim();
 
@@ -16,10 +17,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const wh: string[] = ["1=1"];
     const binds: any[] = [];
 
-    // Force parts warehouse (仓库1)
-    wh.push("s.warehouse_id=?");
-    binds.push(1);
-
+    if (warehouse_id) {
+      wh.push("s.warehouse_id=?");
+      binds.push(Number(warehouse_id));
+    }
     if (status) {
       wh.push("s.status=?");
       binds.push(String(status));
