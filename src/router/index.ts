@@ -38,7 +38,8 @@ const router = createRouter({
     { path: "/tx", component: TxList, meta: { role: "viewer" } },
     { path: "/warnings", component: Warnings, meta: { role: "viewer" } },
 
-    { path: "/dashboard", component: Dashboard, meta: { role: "viewer" } },
+    // 报表与看板：收纳到系统模块下（保留旧路径兼容跳转）
+    { path: "/dashboard", redirect: "/system/dashboard" },
 
     // 系统模块：进入后左侧切换为系统菜单（二级菜单）
     {
@@ -48,6 +49,7 @@ const router = createRouter({
       meta: { role: "admin", title: "系统" },
       children: [
         { path: "home", component: SystemHome, meta: { role: "admin", title: "系统" } },
+        { path: "dashboard", component: Dashboard, meta: { role: "admin", title: "报表与看板" } },
         { path: "import", component: ImportItems, meta: { role: "admin", title: "Excel 导入配件" } },
         { path: "backup", component: BackupRestore, meta: { role: "admin", title: "备份/恢复" } },
         { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },

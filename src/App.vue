@@ -10,6 +10,7 @@
       <!-- 系统菜单（二级菜单） -->
       <el-menu v-if="isSystem" router :default-active="activeMenu">
         <el-menu-item index="/system/home">系统首页</el-menu-item>
+        <el-menu-item index="/system/dashboard">报表与看板</el-menu-item>
         <el-menu-item index="/system/import">Excel 导入配件</el-menu-item>
         <el-menu-item index="/system/backup">备份/恢复</el-menu-item>
         <el-menu-item index="/system/audit">审计日志</el-menu-item>
@@ -21,7 +22,6 @@
         <el-menu-item index="/stock">库存查询</el-menu-item>
         <el-menu-item index="/tx">出入库明细</el-menu-item>
         <el-menu-item index="/warnings">预警中心</el-menu-item>
-        <el-menu-item index="/dashboard">报表与看板</el-menu-item>
 
         <el-menu-item v-if="can('operator')" index="/in">入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/out">出库</el-menu-item>
@@ -150,7 +150,6 @@ const title = computed(() => {
     "/out": "出库",
     "/tx": "出入库明细",
     "/warnings": "预警中心",
-    "/dashboard": "报表与看板",
     "/items": "配件管理",
     "/import/items": "Excel 导入配件",
     "/backup": "备份/恢复",
