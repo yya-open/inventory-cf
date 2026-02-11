@@ -9,6 +9,7 @@ import Stocktake from "../views/Stocktake.vue";
 import Dashboard from "../views/Dashboard.vue";
 import Items from "../views/Items.vue";
 import Login from "../views/Login.vue";
+import WarehouseSelect from "../views/WarehouseSelect.vue";
 import Users from "../views/Users.vue";
 import AuditLog from "../views/AuditLog.vue";
 import BackupRestore from "../views/BackupRestore.vue";
@@ -20,13 +21,15 @@ import PcRecycle from "../views/PcRecycle.vue";
 import PcAssets from "../views/PcAssets.vue";
 import PcWarehouse from "../views/PcWarehouse.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
+import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "element-plus";
 
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/stock" },
+    { path: "/", redirect: "/warehouses" },
     { path: "/login", component: Login, meta: { public: true } },
+    { path: "/warehouses", component: WarehouseSelect, meta: { role: "viewer" } },
 
     { path: "/stock", component: StockQuery, meta: { role: "viewer" } },
     { path: "/tx", component: TxList, meta: { role: "viewer" } },
@@ -79,6 +82,18 @@ router.beforeEach(async (to) => {
     }
   }
 
+
+// 仓库选择：登录后必须先选择进入“配件仓/电脑仓”
+const wh = useWarehouse();
+if (to.path !== "/warehouses") {
+  // 若还没选仓库，强制跳转到选择页
+  if (!wh.active) {
+    return { path: "/warehouses", query: { redirect: to.fullPath } };
+  }
+  // 根据路由自动对齐仓库（避免刷新/直链导致菜单错位）
+  if (to.path.startsWith("/pc") && wh.active !== "pc") setWarehouse("pc");
+  if (!to.path.startsWith("/pc") && wh.active !== "parts") setWarehouse("parts");
+}
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
     ElMessage.warning("权限不足");
