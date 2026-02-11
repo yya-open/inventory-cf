@@ -20,6 +20,8 @@ import PcTx from "../views/PcTx.vue";
 import PcRecycle from "../views/PcRecycle.vue";
 import PcAssets from "../views/PcAssets.vue";
 import PcWarehouse from "../views/PcWarehouse.vue";
+import SystemHome from "../views/SystemHome.vue";
+import SystemLayout from "../views/SystemLayout.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "element-plus";
@@ -27,7 +29,8 @@ import { ElMessage } from "element-plus";
 const router = createRouter({
   history: createWebHistory(),
   routes: [
-    { path: "/", redirect: "/warehouses" },
+    // 登录后默认进入“配件仓”首页
+    { path: "/", redirect: "/stock" },
     { path: "/login", component: Login, meta: { public: true } },
     { path: "/warehouses", component: WarehouseSelect, meta: { role: "viewer" } },
 
@@ -36,6 +39,21 @@ const router = createRouter({
     { path: "/warnings", component: Warnings, meta: { role: "viewer" } },
 
     { path: "/dashboard", component: Dashboard, meta: { role: "viewer" } },
+
+    // 系统模块：进入后左侧切换为系统菜单（二级菜单）
+    {
+      path: "/system",
+      component: SystemLayout,
+      redirect: "/system/home",
+      meta: { role: "admin", title: "系统" },
+      children: [
+        { path: "home", component: SystemHome, meta: { role: "admin", title: "系统" } },
+        { path: "import", component: ImportItems, meta: { role: "admin", title: "Excel 导入配件" } },
+        { path: "backup", component: BackupRestore, meta: { role: "admin", title: "备份/恢复" } },
+        { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },
+        { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
+      ],
+    },
 
     // 仓库2（电脑仓）使用一个入口 /pc，并在页面内 Tab 切换子功能
     {
@@ -58,12 +76,13 @@ const router = createRouter({
     { path: "/in", component: StockIn, meta: { role: "operator" } },
     { path: "/out", component: StockOut, meta: { role: "operator" } },
 
-    { path: "/backup", component: BackupRestore, meta: { role: "admin" } },
+    // 兼容旧链接：系统功能旧路径全部跳转到 /system/*
+    { path: "/backup", redirect: "/system/backup" },
+    { path: "/import/items", redirect: "/system/import" },
+    { path: "/audit", redirect: "/system/audit" },
+    { path: "/users", redirect: "/system/users" },
 
     { path: "/items", component: Items, meta: { role: "admin" } },
-    { path: "/import/items", component: ImportItems, meta: { role: "admin" } },
-    { path: "/audit", component: AuditLog, meta: { role: "admin" } },
-    { path: "/users", component: Users, meta: { role: "admin" } },
   ],
 });
 
@@ -82,18 +101,15 @@ router.beforeEach(async (to) => {
     }
   }
 
-
-// 仓库选择：登录后必须先选择进入“配件仓/电脑仓”
-const wh = useWarehouse();
-if (to.path !== "/warehouses") {
-  // 若还没选仓库，强制跳转到选择页
+  // 仓库选择：登录后默认进入“配件仓”；用户可在顶部按钮切换到电脑仓
+  const wh = useWarehouse();
   if (!wh.active) {
-    return { path: "/warehouses", query: { redirect: to.fullPath } };
+    setWarehouse("parts");
   }
   // 根据路由自动对齐仓库（避免刷新/直链导致菜单错位）
   if (to.path.startsWith("/pc") && wh.active !== "pc") setWarehouse("pc");
-  if (!to.path.startsWith("/pc") && wh.active !== "parts") setWarehouse("parts");
-}
+  // 进入系统模块时不强制切换仓库；离开系统模块才按路径对齐
+  if (!to.path.startsWith("/pc") && !to.path.startsWith("/system") && wh.active !== "parts") setWarehouse("parts");
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
     ElMessage.warning("权限不足");

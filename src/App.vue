@@ -7,8 +7,17 @@
     <el-aside width="220px" style="border-right: 1px solid #eee">
       <div style="padding: 14px; font-weight: 700">出入库管理</div>
 
+      <!-- 系统菜单（二级菜单） -->
+      <el-menu v-if="isSystem" router :default-active="activeMenu">
+        <el-menu-item index="/system/home">系统首页</el-menu-item>
+        <el-menu-item index="/system/import">Excel 导入配件</el-menu-item>
+        <el-menu-item index="/system/backup">备份/恢复</el-menu-item>
+        <el-menu-item index="/system/audit">审计日志</el-menu-item>
+        <el-menu-item index="/system/users">用户管理</el-menu-item>
+      </el-menu>
+
       <!-- 配件仓菜单 -->
-      <el-menu v-if="warehouse.active === 'parts'" router :default-active="activeMenu">
+      <el-menu v-else-if="warehouse.active === 'parts'" router :default-active="activeMenu">
         <el-menu-item index="/stock">库存查询</el-menu-item>
         <el-menu-item index="/tx">出入库明细</el-menu-item>
         <el-menu-item index="/warnings">预警中心</el-menu-item>
@@ -19,10 +28,7 @@
         <el-menu-item v-if="can('operator')" index="/batch">批量出入库</el-menu-item>
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/backup">备份/恢复</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/audit">审计日志</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/users">用户管理</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
       </el-menu>
 
@@ -33,10 +39,11 @@
         <el-menu-item v-if="can('operator')" index="/pc/in">电脑入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/out">电脑出库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/recycle">电脑回收/归还</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
       </el-menu>
 
       <div style="padding: 12px; color: #999; font-size: 12px">
-        当前仓库：{{ warehouse.active === "pc" ? "电脑仓" : "配件仓" }}
+        当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? "电脑仓" : "配件仓") }}
       </div>
     </el-aside>
 
@@ -48,11 +55,14 @@
           <div style="font-weight: 700">{{ title }}</div>
 
           <el-button-group>
-            <el-button size="small" :type="warehouse.active==='parts' ? 'primary' : 'default'" @click="switchTo('parts')">
+            <el-button size="small" :type="currentArea==='parts' ? 'primary' : 'default'" @click="switchTo('parts')">
               配件仓
             </el-button>
-            <el-button size="small" :type="warehouse.active==='pc' ? 'primary' : 'default'" @click="switchTo('pc')">
+            <el-button size="small" :type="currentArea==='pc' ? 'primary' : 'default'" @click="switchTo('pc')">
               电脑仓
+            </el-button>
+            <el-button size="small" :type="currentArea==='system' ? 'primary' : 'default'" v-if="can('admin')" @click="switchToSystem">
+              系统
             </el-button>
           </el-button-group>
         </div>
@@ -101,11 +111,24 @@ const router = useRouter();
 const auth = useAuth();
 const warehouse = useWarehouse();
 
+const isSystem = computed(() => route.path.startsWith("/system"));
+
+const currentArea = computed(() => {
+  if (isSystem.value) return "system";
+  return warehouse.active === "pc" ? "pc" : "parts";
+});
+
 const simpleLayout = computed(() => route.path === "/login" || route.path === "/warehouses");
 
 const activeMenu = computed(() => route.path);
 
 const title = computed(() => {
+  // 系统模块：优先用路由 meta.title
+  if (isSystem.value) {
+    const t = (route.meta as any)?.title as string | undefined;
+    return t || "系统";
+  }
+
   // 电脑仓：优先用路由 meta.title
   if (warehouse.active === "pc") {
     const t = (route.meta as any)?.title as string | undefined;
@@ -144,9 +167,15 @@ function roleText(r: string) {
 }
 
 function switchTo(k: WarehouseKey) {
-  if (!k || warehouse.active === k) return;
+  if (!k) return;
+  // 在系统页面也允许跳回仓库，即使当前 activeWarehouse 与目标一致
+  if (!isSystem.value && warehouse.active === k) return;
   setWarehouse(k);
   router.push(k === "pc" ? "/pc/assets" : "/stock");
+}
+
+function switchToSystem() {
+  router.push("/system/home");
 }
 
 function doLogout() {
