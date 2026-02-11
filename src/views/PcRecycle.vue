@@ -1,6 +1,6 @@
 <template>
   <el-card>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="110px" style="max-width: 760px">
+    <el-form ref="formRef" class="pc-recycle-form" :model="form" :rules="rules" label-width="110px" style="max-width: 760px">
       <el-alert
         title="电脑回收/归还（仓库2：电脑仓）"
         type="info"
@@ -182,3 +182,9 @@ onMounted(async () => {
   await loadAssets();
 });
 </script>
+
+<style scoped>
+.pc-recycle-form :deep(.el-form-item__label) {
+  white-space: nowrap;
+}
+</style>
