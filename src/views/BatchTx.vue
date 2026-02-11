@@ -5,10 +5,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="font-weight:700">批量出入库</div>
           <div style="display:flex; gap:10px; align-items:center;">
-            <el-select v-model="warehouseId" style="width:180px" placeholder="选择仓库">
-              <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-            </el-select>
-            <el-button @click="downloadTemplate">下载模板</el-button>
+<el-button @click="downloadTemplate">下载模板</el-button>
             <el-upload :show-file-list="false" accept=".xlsx,.xls" :before-upload="beforeUpload">
               <el-button type="primary">导入 Excel</el-button>
             </el-upload>
@@ -108,7 +105,7 @@ type Row = { sku: string; qty: number; unit_price?: number; source?: string; tar
 
 const mode = ref<"IN" | "OUT">("IN");
 const warehouses = ref<any[]>([]);
-const warehouseId = ref<number>(1);
+const warehouseId = ref<number>(1); // 配件仓固定主仓
 const headerSource = ref("");
 const headerTarget = ref("");
 const headerRemark = ref("");
@@ -151,21 +148,6 @@ function addRow() {
 }
 function clearRows() {
   rows.value = [];
-}
-
-async function loadWarehouses() {
-  try {
-    const r: any = await apiGet("/api/warehouses");
-    if (r?.ok) {
-      warehouses.value = r.data;
-      if (warehouses.value?.length && !warehouses.value.find((w: any) => w.id === warehouseId.value)) {
-        warehouseId.value = warehouses.value[0].id;
-      }
-    }
-  } catch (e) {
-    const err: any = e;
-    ElMessage.error(err?.message || "加载仓库失败");
-  }
 }
 
 function downloadTemplate() {
@@ -386,9 +368,7 @@ async function submit() {
   }
 }
 
-onMounted(async () => {
-  await loadWarehouses();
-  addRow();
+onMounted(async () => {  addRow();
 });
 </script>
 

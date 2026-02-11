@@ -30,6 +30,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const wh: string[] = [];
     const binds: any[] = [];
 
+    // 配件仓固定主仓(id=1)
+    wh.push("warehouse_id=?");
+    binds.push(1);
+
     if (mode !== "all") {
       if (body.type) {
         wh.push("type=?");

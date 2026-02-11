@@ -8,7 +8,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const body = await request.json<any>();
     const item_ids: number[] = Array.isArray(body?.item_ids) ? body.item_ids.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n)) : [];
     const mode = String(body?.mode || "set");
-    const warehouse_id = Number(body?.warehouse_id || 1);
+    const warehouse_id = 1; // 配件仓固定主仓
     const warning_qty = Number(body?.warning_qty);
     const delta = Number(body?.delta);
 

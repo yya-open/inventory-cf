@@ -2,10 +2,7 @@
   <el-card>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
       <el-form-item label="仓库">
-        <el-select v-model="form.warehouse_id" placeholder="选择仓库" style="width: 100%">
-          <el-option v-for="w in warehouses" :key="w.id" :label="w.name" :value="w.id" />
-        </el-select>
-      </el-form-item>
+</el-form-item>
 
       <el-form-item label="配件" prop="item_id">
         <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
@@ -82,22 +79,6 @@ const canSubmit = computed(() => {
   return !!form.value.item_id && q > 0 && !submitting.value;
 });
 
-async function loadWarehouses() {
-  try {
-    const r: any = await apiGet("/api/warehouses");
-    warehouses.value = r.data || [];
-
-    const qWarehouse = Number(route.query.warehouse_id);
-    if (qWarehouse && warehouses.value.find((w: any) => Number(w.id) === qWarehouse)) {
-      form.value.warehouse_id = qWarehouse;
-    } else if (warehouses.value?.length) {
-      form.value.warehouse_id = warehouses.value[0].id;
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载仓库失败");
-  }
-}
-
 async function loadItems() {
   const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
   items.value = j.data;
@@ -137,7 +118,7 @@ async function submit() {
 }
 
 onMounted(async () => {
-  await loadWarehouses();
+  form.value.warehouse_id = 1; // 配件仓固定主仓
   await loadItems();
 });
 </script>

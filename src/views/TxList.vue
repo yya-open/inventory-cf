@@ -189,6 +189,7 @@ async function doExport() {
     let t = 0;
     while (p <= maxPages) {
       const params = new URLSearchParams();
+      params.set("warehouse_id", "1"); // 配件仓固定主仓
       if (type.value) params.set("type", type.value);
       if (item_id.value) params.set("item_id", String(item_id.value));
       if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
@@ -280,6 +281,7 @@ async function load() {
   try {
     loading.value = true;
     const params = new URLSearchParams();
+    params.set("warehouse_id", "1"); // 配件仓固定主仓
     if (type.value) params.set("type", type.value);
     if (item_id.value) params.set("item_id", String(item_id.value));
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
@@ -305,6 +307,7 @@ async function load() {
 async function clearTx() {
   try {
     const params = new URLSearchParams();
+    params.set("warehouse_id", "1"); // 配件仓固定主仓
     if (type.value) params.set("type", type.value);
     if (item_id.value) params.set("item_id", String(item_id.value));
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
@@ -353,7 +356,7 @@ async function clearTx() {
     }
 
     loading.value = true;
-    const body: any = { mode: action, confirm: confirmText };
+    const body: any = { mode: action, confirm: confirmText, warehouse_id: 1 }; // 配件仓固定主仓
     if (action === "filtered") {
       if (type.value) body.type = type.value;
       if (item_id.value) body.item_id = item_id.value;
