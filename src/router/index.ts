@@ -13,6 +13,11 @@ import Users from "../views/Users.vue";
 import AuditLog from "../views/AuditLog.vue";
 import BackupRestore from "../views/BackupRestore.vue";
 import ImportItems from "../views/ImportItems.vue";
+import PcOut from "../views/PcOut.vue";
+import PcIn from "../views/PcIn.vue";
+import PcTx from "../views/PcTx.vue";
+import PcRecycle from "../views/PcRecycle.vue";
+import PcAssets from "../views/PcAssets.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { ElMessage } from "element-plus";
 
@@ -27,6 +32,13 @@ const router = createRouter({
     { path: "/warnings", component: Warnings, meta: { role: "viewer" } },
 
     { path: "/dashboard", component: Dashboard, meta: { role: "viewer" } },
+
+    { path: "/pc/assets", component: PcAssets, meta: { role: "viewer" } },
+    { path: "/pc/tx", component: PcTx, meta: { role: "viewer" } },
+
+    { path: "/pc/in", component: PcIn, meta: { role: "operator" } },
+    { path: "/pc/out", component: PcOut, meta: { role: "operator" } },
+    { path: "/pc/recycle", component: PcRecycle, meta: { role: "operator" } },
 
     { path: "/batch", component: BatchTx, meta: { role: "operator" } },
     { path: "/stocktake", component: Stocktake, meta: { role: "admin" } },
