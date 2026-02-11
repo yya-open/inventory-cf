@@ -15,7 +15,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const serial_no = must(body?.serial_no, "序列号", 120);
     const model = must(body?.model, "型号", 160);
 
-    const manufacture_date = optional(body?.manufacture_date, 40);
+    // 出厂时间：必填（用于 5 年预警等规则）
+    const manufacture_date = must(body?.manufacture_date, "出厂时间", 40);
     const warranty_end = optional(body?.warranty_end, 40);
     const disk_capacity = optional(body?.disk_capacity, 40);
     const memory_size = optional(body?.memory_size, 40);

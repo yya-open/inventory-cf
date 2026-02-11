@@ -35,7 +35,7 @@
         <el-input v-model="form.model" placeholder="例如：ThinkPad T14 Gen 4" />
       </el-form-item>
 
-      <el-form-item label="出厂时间">
+      <el-form-item label="出厂时间" prop="manufacture_date">
         <el-date-picker v-model="form.manufacture_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
       </el-form-item>
 
@@ -87,12 +87,19 @@ const rules: FormRules = {
   brand: [{ required: true, message: "请输入品牌", trigger: "blur" }],
   serial_no: [{ required: true, message: "请输入序列号", trigger: "blur" }],
   model: [{ required: true, message: "请输入型号", trigger: "blur" }],
+  manufacture_date: [{ required: true, message: "请选择出厂时间", trigger: "change" }],
 };
 
 const submitting = ref(false);
 
 const canSubmit = computed(() => {
-  return !!form.value.brand.trim() && !!form.value.serial_no.trim() && !!form.value.model.trim() && !submitting.value;
+  return (
+    !!form.value.brand.trim() &&
+    !!form.value.serial_no.trim() &&
+    !!form.value.model.trim() &&
+    !!String(form.value.manufacture_date || "").trim() &&
+    !submitting.value
+  );
 });
 
 
@@ -145,6 +152,17 @@ async function onImportFile(uploadFile: any) {
 
     if (!items.length) {
       ElMessage.warning("Excel里没有可导入的数据");
+      return;
+    }
+
+    // 出厂时间必填：优先在前端拦截，提示缺失行号
+    const missing = items
+      .map((it, idx) => ({ idx, v: String(it.manufacture_date || "").trim() }))
+      .filter((x) => !x.v)
+      .slice(0, 15)
+      .map((x) => x.idx + 2); // +2：表头行 + 1-based
+    if (missing.length) {
+      ElMessage.warning(`出厂时间必填，缺失行号：${missing.join(", ")}${missing.length >= 15 ? " …" : ""}`);
       return;
     }
 

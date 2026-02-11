@@ -12,6 +12,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED
     const keyword = (url.searchParams.get("keyword") || "").trim();
+    const ageYears = Math.max(0, Number(url.searchParams.get("age_years") || 0)); // 出厂超过 N 年
 
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
@@ -36,6 +37,19 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         wh.push(kw.sql);
         binds.push(...kw.binds);
       }
+    }
+
+    if (ageYears > 0) {
+      // manufacture_date 存储为 YYYY-MM-DD 文本，按字典序比较即可
+      const now = new Date();
+      const cutoff = new Date(now.getTime());
+      cutoff.setFullYear(cutoff.getFullYear() - ageYears);
+      const y = cutoff.getFullYear();
+      const m = String(cutoff.getMonth() + 1).padStart(2, "0");
+      const d = String(cutoff.getDate()).padStart(2, "0");
+      const cutoffStr = `${y}-${m}-${d}`;
+      wh.push("a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
+      binds.push(cutoffStr);
     }
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";

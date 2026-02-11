@@ -20,6 +20,7 @@ import PcTx from "../views/PcTx.vue";
 import PcRecycle from "../views/PcRecycle.vue";
 import PcAssets from "../views/PcAssets.vue";
 import PcWarehouse from "../views/PcWarehouse.vue";
+import PcAgeWarnings from "../views/PcAgeWarnings.vue";
 import SystemHome from "../views/SystemHome.vue";
 import SystemLayout from "../views/SystemLayout.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
@@ -65,6 +66,7 @@ const router = createRouter({
       meta: { role: "viewer", title: "电脑仓（仓库2）" },
       children: [
         { path: "assets", component: PcAssets, meta: { role: "viewer", title: "电脑台账" } },
+        { path: "age-warnings", component: PcAgeWarnings, meta: { role: "viewer", title: "出厂超5年预警" } },
         { path: "tx", component: PcTx, meta: { role: "viewer", title: "出入库明细" } },
         { path: "in", component: PcIn, meta: { role: "operator", title: "电脑入库" } },
         { path: "out", component: PcOut, meta: { role: "operator", title: "电脑出库" } },

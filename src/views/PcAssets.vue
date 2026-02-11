@@ -16,6 +16,7 @@
       <el-button v-if="canOperator" type="warning" plain @click="$router.push('/pc/out')">电脑出库</el-button>
       <el-button v-if="canOperator" type="info" plain @click="$router.push('/pc/recycle')">电脑回收/归还</el-button>
       <el-button type="info" plain @click="$router.push('/pc/tx')">出入库明细</el-button>
+      <el-button type="warning" plain @click="$router.push('/pc/age-warnings')">出厂超5年预警</el-button>
     
       <div style="flex:1"></div>
 
@@ -248,6 +249,17 @@ async function onImportAssetsFile(uploadFile: any) {
 
     if (!items.length) {
       ElMessage.warning("Excel里没有可导入的数据");
+      return;
+    }
+
+    // 出厂时间必填：优先在前端拦截，提示缺失行号
+    const missing = items
+      .map((it, idx) => ({ idx, v: String(it.manufacture_date || "").trim() }))
+      .filter((x) => !x.v)
+      .slice(0, 15)
+      .map((x) => x.idx + 2);
+    if (missing.length) {
+      ElMessage.warning(`出厂时间必填，缺失行号：${missing.join(", ")}${missing.length >= 15 ? " …" : ""}`);
       return;
     }
 
