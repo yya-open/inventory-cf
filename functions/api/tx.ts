@@ -20,7 +20,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const wh: string[] = [];
     const binds: any[] = [];
 
-    // Fixed to 配件仓 (warehouse_id=1)
+    // Force parts warehouse (仓库1)
     wh.push(`t.warehouse_id=?`);
     binds.push(1);
 

@@ -14,7 +14,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
     if (!lines.length) return Response.json({ ok: false, message: "没有导入明细" }, { status: 400 });
 
-    const st = (await env.DB.prepare(`SELECT id, status, st_no, warehouse_id FROM stocktake WHERE id=? AND warehouse_id=1`).bind(id).first()) as any;
+    const st = (await env.DB.prepare(`SELECT id, status, st_no, warehouse_id FROM stocktake WHERE id=?`).bind(id).first()) as any;
     if (!st) return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
     if (String(st.status) !== "DRAFT") return Response.json({ ok: false, message: "盘点单已应用，不能再导入" }, { status: 400 });
 

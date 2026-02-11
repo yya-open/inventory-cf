@@ -24,7 +24,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!st_id) return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
 
     try {
-      const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+      const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
       if (!st) {
         return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
       }
@@ -36,9 +36,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
       // 状态推进：APPLIED -> ROLLING；若已是 ROLLING 视为继续撤销
       if (status === "APPLIED") {
-        const up = await env.DB.prepare(`UPDATE stocktake SET status='ROLLING' WHERE id=? AND warehouse_id=1 AND status='APPLIED'`).bind(st_id).run();
+        const up = await env.DB.prepare(`UPDATE stocktake SET status='ROLLING' WHERE id=? AND status='APPLIED'`).bind(st_id).run();
         if ((up as any)?.meta?.changes !== 1) {
-          const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+          const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
           if (String(cur?.status) !== "ROLLING") {
             return Response.json({ ok: false, message: "盘点单状态已变化，请刷新后重试" }, { status: 409 });
           }
@@ -108,13 +108,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
       // Finalize status: ROLLING -> DRAFT
       const done = await env.DB.prepare(
-        `UPDATE stocktake SET status='DRAFT', applied_at=NULL WHERE id=? AND warehouse_id=1 AND status='ROLLING'`
+        `UPDATE stocktake SET status='DRAFT', applied_at=NULL WHERE id=? AND status='ROLLING'`
       )
         .bind(st_id)
         .run();
 
       if ((done as any)?.meta?.changes !== 1) {
-        const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+        const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
         if (String(cur?.status) !== "DRAFT") {
           throw new Error("盘点单状态已变化（可能被其他人应用/撤销），本次操作未完成");
         }

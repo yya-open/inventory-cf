@@ -5,7 +5,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div style="font-weight:700">报表与看板</div>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-<el-select v-model="days" style="width:160px" @change="refresh">
+            <el-select v-model="days" style="width:160px" @change="refresh">
               <el-option :value="7" label="近 7 天" />
               <el-option :value="14" label="近 14 天" />
               <el-option :value="30" label="近 30 天" />
@@ -73,7 +73,7 @@ import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 
-const WAREHOUSE_ID = 1;
+const warehouseId = 1;
 const days = ref(30);
 const data = ref<any|null>(null);
 const loading = ref(false);
@@ -101,7 +101,7 @@ const categoryTable = computed(() => {
 async function refresh(){
   loading.value = true;
   try{
-    const r:any = await apiGet(`/api/reports/summary?days=${days.value}`);
+    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId}&days=${days.value}`);
     data.value = r;
   }catch(e:any){
     ElMessage.error(e.message || "加载报表失败");

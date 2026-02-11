@@ -5,7 +5,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between;">
           <div style="font-weight:700">批量出入库</div>
           <div style="display:flex; gap:10px; align-items:center;">
-<el-button @click="downloadTemplate">下载模板</el-button>
+            <el-button @click="downloadTemplate">下载模板</el-button>
             <el-upload :show-file-list="false" accept=".xlsx,.xls" :before-upload="beforeUpload">
               <el-button type="primary">导入 Excel</el-button>
             </el-upload>
@@ -99,12 +99,12 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
-import { apiPost } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 
 type Row = { sku: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
 
 const mode = ref<"IN" | "OUT">("IN");
-const WAREHOUSE_ID = 1;
+const warehouseId = 1;
 const headerSource = ref("");
 const headerTarget = ref("");
 const headerRemark = ref("");
@@ -343,7 +343,9 @@ async function submit() {
 
   submitting.value = true;
   try {
-    const payload: any = {      remark: headerRemark.value || null,
+    const payload: any = {
+      warehouse_id: warehouseId,
+      remark: headerRemark.value || null,
       lines: rows.value,
     };
     if (mode.value === "IN") payload.source = headerSource.value || null;

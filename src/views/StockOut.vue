@@ -1,7 +1,8 @@
 <template>
   <el-card>
     <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-<el-form-item label="配件" prop="item_id">
+
+      <el-form-item label="配件" prop="item_id">
         <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%" @change="loadQty">
           <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
         </el-select>
@@ -103,7 +104,7 @@ async function loadItems() {
 async function loadQty() {
   if (!form.value.item_id) { available.value = 0; warning.value = 0; return; }
   const j = await apiGet<{ ok: boolean; data: any[] }>(
-    `/api/stock?keyword=`
+    `/api/stock?keyword=&warehouse_id=1`
   );
   const row = j.data.find((x: any) => x.item_id === form.value.item_id);
   available.value = row ? Number(row.qty) : 0;
@@ -118,7 +119,9 @@ async function submit() {
     const rid = pendingRid.value || crypto.randomUUID();
     pendingRid.value = rid;
     const r: any = await apiPost(`/api/stock-out`, {
-      item_id: form.value.item_id,      qty: form.value.qty,
+      item_id: form.value.item_id,
+      warehouse_id: form.value.warehouse_id,
+      qty: form.value.qty,
       target: String(form.value.target || "").trim(),
       remark: form.value.remark,
       client_request_id: rid,

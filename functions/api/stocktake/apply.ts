@@ -22,7 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "缺少盘点单 id" }, { status: 400 });
     }
 
-    const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+    const st = (await env.DB.prepare(`SELECT * FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
     if (!st) {
       return Response.json({ ok: false, message: "盘点单不存在" }, { status: 404 });
     }
@@ -38,14 +38,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     // 状态推进：DRAFT -> APPLYING；若已是 APPLYING 视为继续应用
     if (status === "DRAFT") {
       const up = await env.DB.prepare(
-        `UPDATE stocktake SET status='APPLYING' WHERE id=? AND warehouse_id=1 AND status='DRAFT'`
+        `UPDATE stocktake SET status='APPLYING' WHERE id=? AND status='DRAFT'`
       )
         .bind(st_id)
         .run();
 
       if ((up as any)?.meta?.changes !== 1) {
         // 可能被并发修改
-        const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+        const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
         if (String(cur?.status) === "APPLIED") {
           return Response.json({ ok: false, message: "盘点单已应用" }, { status: 409 });
         }
@@ -136,7 +136,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if ((done as any)?.meta?.changes !== 1) {
       // 如果并发或重复请求导致 changes=0，则检查是否已 APPLIED
-      const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=? AND warehouse_id=1`).bind(st_id).first()) as any;
+      const cur = (await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first()) as any;
       if (String(cur?.status) !== "APPLIED") {
         return Response.json({ ok: false, message: "盘点单状态异常，未能完成应用" }, { status: 409 });
       }

@@ -5,7 +5,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const user = await requireAuth(env, request, "viewer");
 
     const url = new URL(request.url);
-    const warehouse_id = 1;
+    const warehouse_id = Number(url.searchParams.get("warehouse_id") ?? 1);
     const days = Number(url.searchParams.get("days") ?? 30);
     const d = new Date();
     const to = url.searchParams.get("to") ?? d.toISOString().slice(0,10);

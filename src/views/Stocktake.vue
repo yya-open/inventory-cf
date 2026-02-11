@@ -5,7 +5,7 @@
         <div class="page-header">
           <div class="title">库存盘点</div>
           <div class="actions">
-<el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
+            <el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
           </div>
         </div>
       </template>
@@ -195,7 +195,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 
-const WAREHOUSE_ID = 1;
+const warehouseId = 1;
 
 const list = ref<any[]>([]);
 const listPage = ref(1);
@@ -305,7 +305,6 @@ function markDirty(row:any){
 
 
 
-});
 
 let _kwTimer: any = null;
 watch(listKeyword, () => {
@@ -332,7 +331,9 @@ function onListSortChange(){
 
 async function loadList(){
   try{
-    const params = new URLSearchParams();    params.set('page', String(listPage.value));
+    const params = new URLSearchParams();
+    params.set('warehouse_id', String(warehouseId));
+    params.set('page', String(listPage.value));
     params.set('page_size', String(listPageSize.value));
     if (listKeyword.value.trim()) params.set('keyword', listKeyword.value.trim());
     if (listSortBy.value) params.set('sort_by', listSortBy.value);
@@ -371,7 +372,7 @@ async function refreshDetail(){
 async function createStocktake(){
   creating.value = true;
   try{
-    const r:any = await apiPost("/api/stocktake/create", { });
+    const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId });
     ElMessage.success("盘点单已创建");
     await loadList();
 	    selectedId.value = Number(r.id);

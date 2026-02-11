@@ -1,7 +1,8 @@
 <template>
   <el-card>
     <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
-<el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
+
+      <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
       <el-select v-model="sort" style="width: 160px" placeholder="排序" @change="onSearch">
         <el-option label="预警优先" value="warning_first" />
         <el-option label="库存升序" value="qty_asc" />
@@ -59,13 +60,15 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
+import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
-import { useRouter } from "vue-router";
+import { useRouter, useRoute } from "vue-router";
 
 const router = useRouter();
+const route = useRoute();
 
-const WAREHOUSE_ID = 1;
+const warehouse_id = 1;
 
 const keyword = ref("");
 const sort = ref<string>("warning_first");
@@ -112,7 +115,7 @@ async function load() {
   try {
     loading.value = true;
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
-      `/api/stock?keyword=${encodeURIComponent(keyword.value)}` +
+      `/api/stock?keyword=${encodeURIComponent(keyword.value)}&warehouse_id=1` +
       `&sort=${encodeURIComponent(sort.value)}&page=${page.value}&page_size=${pageSize.value}`
     );
     rows.value = j.data || [];
@@ -126,17 +129,17 @@ async function load() {
 
 function doExport() {
   const header = ["SKU","名称","品牌","型号","分类","库存","预警值"];
-  const aoa: any[][] = [header];
+  const aoa: any[] = [header];
   for (const r of rows.value) {
     aoa.push([r.sku, r.name, r.brand || "", r.model || "", r.category || "", Number(r.qty), Number(r.warning_qty)]);
   }
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");
-  XLSX.writeFile(wb, `stock_${WAREHOUSE_ID}_${new Date().toISOString().slice(0,10)}.xlsx`);
+  XLSX.writeFile(wb, `stock_1_${new Date().toISOString().slice(0,10)}.xlsx`);
 }
 
 onMounted(async () => {
-    await load();
+  await load();
 });
 </script>
