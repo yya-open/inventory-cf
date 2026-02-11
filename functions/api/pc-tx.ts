@@ -123,10 +123,17 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const countSql = `SELECT COUNT(*) as c FROM ( ${unionSql} ) x ${where}`;
     const totalRow = await env.DB.prepare(countSql).bind(...binds).first<any>();
 
-    const sql = `
+    
+    // Sorting:
+    // - For OUT list, sort by config_date desc (fallback to created_at), then created_at desc
+    // - Others: created_at desc
+    const orderBy = (type === "OUT")
+      ? "ORDER BY (CASE WHEN x.config_date IS NULL OR x.config_date='' THEN x.created_at ELSE x.config_date END) DESC, x.created_at DESC, x.id DESC"
+      : "ORDER BY x.created_at DESC, x.id DESC";
+const sql = `
       SELECT * FROM ( ${unionSql} ) x
       ${where}
-      ORDER BY x.created_at DESC, x.id DESC
+      ${orderBy}
       LIMIT ? OFFSET ?
     `;
 

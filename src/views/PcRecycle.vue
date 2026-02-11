@@ -9,6 +9,20 @@
         style="margin-bottom: 12px"
       />
 
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
+        <el-button size="small" @click="downloadRecycleTemplate">下载导入模板</el-button>
+
+        <el-upload
+          :show-file-list="false"
+          :auto-upload="false"
+          accept=".xlsx,.xls"
+          :on-change="onImportRecycleFile"
+        >
+          <el-button size="small" type="primary">Excel导入（批量回收/归还）</el-button>
+        </el-upload>
+      </div>
+
+
       <el-form-item label="选择电脑" prop="asset_id">
         <el-select
           v-model="form.asset_id"
@@ -84,6 +98,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "element-plus";
+import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 
