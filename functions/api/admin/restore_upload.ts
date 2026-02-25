@@ -1,7 +1,7 @@
 import { json, requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
-import { ensurePcSchema } from "../../_pc";
+import { ensurePcSchema } from "../_pc";
 
 type RestoreMode = "merge" | "replace";
 
