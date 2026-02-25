@@ -220,18 +220,35 @@
           错误：{{ restoreValidate.counts?.error || 0 }}，警告：{{ restoreValidate.counts?.warn || 0 }}，提示：{{ restoreValidate.counts?.info || 0 }}
         </el-alert>
 
-        <el-table v-if="restoreValidateIssues.length" :data="restoreValidateIssues" size="small" border style="width:100%">
-          <el-table-column label="级别" width="80">
-            <template #default="{row}">
-              <el-tag size="small" :type="row.severity==='error' ? 'danger' : (row.severity==='warn' ? 'warning' : 'info')">
-                {{ row.severity==='error' ? '错误' : (row.severity==='warn' ? '警告' : '提示') }}
-              </el-tag>
-            </template>
-          </el-table-column>
-          <el-table-column prop="table" label="表" width="170" />
-          <el-table-column prop="column" label="字段" width="160" />
-          <el-table-column prop="message" label="说明" min-width="420" />
-        </el-table>
+        <div v-if="restoreValidateIssues.length" style="display:flex; flex-direction:column; gap:12px">
+          <div v-for="g in restoreValidateIssueGroups" :key="g.key" style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+              <div style="font-weight:600">{{ g.label }}</div>
+              <div style="color:#666; font-size:12px">
+                共 {{ g.rows.length }} 项 ｜ 错误 {{ g.countError }} ｜ 警告 {{ g.countWarn }} ｜ 提示 {{ g.countInfo }}
+              </div>
+            </div>
+            <el-table :data="g.rows" size="small" border style="width:100%">
+              <el-table-column label="级别" width="80">
+                <template #default="{row}">
+                  <el-tag size="small" :type="row.severity==='error' ? 'danger' : (row.severity==='warn' ? 'warning' : 'info')">
+                    {{ row.severity==='error' ? '错误' : (row.severity==='warn' ? '警告' : '提示') }}
+                  </el-tag>
+                </template>
+              </el-table-column>
+              <el-table-column label="表" min-width="190">
+                <template #default="{row}">
+                  <div style="display:flex; flex-direction:column; line-height:1.2">
+                    <span style="font-weight:600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
+                    <span style="color:#999; font-size:12px">{{ row.table || '-' }}</span>
+                  </div>
+                </template>
+              </el-table-column>
+              <el-table-column prop="column" label="字段" width="160" />
+              <el-table-column prop="message" label="说明" min-width="360" />
+            </el-table>
+          </div>
+        </div>
 
         <el-alert v-else type="success" :closable="false" show-icon>未发现表/字段差异问题。</el-alert>
       </div>
@@ -244,20 +261,30 @@
       <div style="color:#666; font-size:12px; margin-bottom:10px">
         涉及表：{{ affectedTablesText }}
       </div>
-      <el-table :data="restoreDetailRows" size="small" border style="width:100%">
-        <el-table-column label="表" min-width="220">
-          <template #default="{row}">
-            <div style="display:flex; flex-direction:column; line-height:1.2">
-              <span style="font-weight:600">{{ row.table_cn }}</span>
-              <span style="color:#999; font-size:12px">{{ row.table }}</span>
+      <div style="display:flex; flex-direction:column; gap:12px">
+        <div v-for="g in restoreDetailGroups" :key="g.key" style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff">
+          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+            <div style="font-weight:600">{{ g.label }}</div>
+            <div style="color:#666; font-size:12px">
+              表数 {{ g.rows.length }} ｜ 已处理 {{ g.sumProcessed }} ｜ 写入变更 {{ g.sumWritten }}
             </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="total" label="备份行数" width="110" />
-        <el-table-column prop="processed" label="已处理" width="90" />
-        <el-table-column prop="written" label="写入变更" width="100" />
-        <el-table-column prop="skipped" label="未写入(可能重复)" width="140" />
-      </el-table>
+          </div>
+          <el-table :data="g.rows" size="small" border style="width:100%">
+            <el-table-column label="表" min-width="220">
+              <template #default="{row}">
+                <div style="display:flex; flex-direction:column; line-height:1.2">
+                  <span style="font-weight:600">{{ row.table_cn }}</span>
+                  <span style="color:#999; font-size:12px">{{ row.table }}</span>
+                </div>
+              </template>
+            </el-table-column>
+            <el-table-column prop="total" label="备份行数" width="110" />
+            <el-table-column prop="processed" label="已处理" width="90" />
+            <el-table-column prop="written" label="写入变更" width="100" />
+            <el-table-column prop="skipped" label="未写入(可能重复)" width="140" />
+          </el-table>
+        </div>
+      </div>
 
       <el-alert type="info" show-icon :closable="false" style="margin-top:12px">
         说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
@@ -482,7 +509,17 @@ function tableCn(t: string) {
 }
 
 
+function tableGroupKey(t: string) {
+  if (["warehouses","items","categories","stock","stock_tx","stocktake","stocktake_line"].includes(t)) return "parts";
+  if (t.startsWith("pc_")) return "pc";
+  return "system";
+}
+function tableGroupLabel(key: string) {
+  return key === "parts" ? "配件仓" : (key === "pc" ? "电脑仓" : "系统表");
+}
+
 const restoreDetailRows = computed(() => {
+
   const pt = jobPerTable.value || {};
   const order: string[] = Array.isArray(pt.__order__) ? pt.__order__ : [];
   const processed = (pt.__processed__ && typeof pt.__processed__ === "object") ? pt.__processed__ : {};
@@ -505,6 +542,28 @@ const restoreDetailRows = computed(() => {
     .filter((r) => r.total || r.processed || r.written);
 });
 
+const restoreDetailGroups = computed(() => {
+  const grouped = new Map<string, any[]>();
+  for (const row of restoreDetailRows.value) {
+    const key = tableGroupKey(row.table);
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(row);
+  }
+  const order = ["parts", "pc", "system"];
+  return order
+    .filter((k) => grouped.has(k))
+    .map((k) => {
+      const rows = grouped.get(k)!;
+      return {
+        key: k,
+        label: tableGroupLabel(k),
+        rows,
+        sumProcessed: rows.reduce((n, r) => n + Number(r.processed || 0), 0),
+        sumWritten: rows.reduce((n, r) => n + Number(r.written || 0), 0),
+      };
+    });
+});
+
 const affectedTablesText = computed(() => {
   const names = restoreDetailRows.value
     .filter((r) => r.processed > 0)
@@ -514,6 +573,27 @@ const affectedTablesText = computed(() => {
 
 const restoreValidateIssues = computed(() => Array.isArray(restoreValidate.value?.issues) ? restoreValidate.value.issues : []);
 const restoreValidatePreview = computed(() => restoreValidateIssues.value.slice(0, 6));
+const restoreValidateIssueGroups = computed(() => {
+  const grouped = new Map<string, any[]>();
+  for (const row of restoreValidateIssues.value) {
+    const t = String(row?.table || "");
+    const key = t ? tableGroupKey(t) : "system";
+    if (!grouped.has(key)) grouped.set(key, []);
+    grouped.get(key)!.push(row);
+  }
+  const order = ["parts", "pc", "system"];
+  return order.filter((k) => grouped.has(k)).map((k) => {
+    const rows = grouped.get(k)!;
+    return {
+      key: k,
+      label: tableGroupLabel(k),
+      rows,
+      countError: rows.filter((r) => r?.severity === "error").length,
+      countWarn: rows.filter((r) => r?.severity === "warn").length,
+      countInfo: rows.filter((r) => r?.severity === "info").length,
+    };
+  });
+});
 
 
 
