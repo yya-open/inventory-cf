@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { sqlBjDate } from "../_time";
 
 function ymdInShanghai(offsetDays = 0) {
   const now = new Date();
@@ -17,7 +18,6 @@ function ymdInShanghai(offsetDays = 0) {
   return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, "0")}-${String(dt.getUTCDate()).padStart(2, "0")}`;
 }
 
-const bjDate = (expr: string) => `date(datetime(${expr}, '+8 hours'))`;
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -33,15 +33,15 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (mode === "pc") {
       const sum = await env.DB.prepare(
         `SELECT
-           (SELECT COUNT(*) FROM pc_in WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) AS in_qty,
-           (SELECT COUNT(*) FROM pc_out WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) AS out_qty,
-           (SELECT COUNT(*) FROM pc_recycle WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) AS recycle_qty,
-           (SELECT COUNT(*) FROM pc_scrap WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) AS scrap_qty,
+           (SELECT COUNT(*) FROM pc_in WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) AS in_qty,
+           (SELECT COUNT(*) FROM pc_out WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) AS out_qty,
+           (SELECT COUNT(*) FROM pc_recycle WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) AS recycle_qty,
+           (SELECT COUNT(*) FROM pc_scrap WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) AS scrap_qty,
            (
-             (SELECT COUNT(*) FROM pc_in WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) +
-             (SELECT COUNT(*) FROM pc_out WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) +
-             (SELECT COUNT(*) FROM pc_recycle WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?)) +
-             (SELECT COUNT(*) FROM pc_scrap WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?))
+             (SELECT COUNT(*) FROM pc_in WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) +
+             (SELECT COUNT(*) FROM pc_out WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) +
+             (SELECT COUNT(*) FROM pc_recycle WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)) +
+             (SELECT COUNT(*) FROM pc_scrap WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?))
            ) AS tx_count`
       )
       .bind(from, to, from, to, from, to, from, to, from, to, from, to, from, to, from, to)
@@ -52,21 +52,21 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
                 COALESCE(NULLIF(brand,''),'') || CASE WHEN brand IS NOT NULL AND brand<>'' THEN ' · ' ELSE '' END || COALESCE(NULLIF(serial_no,''),'(无SN)') AS name,
                 COUNT(*) AS qty
          FROM ${table}
-         WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
+         WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
          GROUP BY COALESCE(NULLIF(model,''),'(未填型号)'), COALESCE(NULLIF(brand,''),''), COALESCE(NULLIF(serial_no,''),'(无SN)')
          ORDER BY qty DESC, MAX(created_at) DESC
          LIMIT 10`
       );
       const qDailyPc = (table: string, whereExtra = "") => env.DB.prepare(
-        `SELECT ${bjDate("created_at")} AS day, COUNT(*) AS qty
+        `SELECT ${sqlBjDate("created_at")} AS day, COUNT(*) AS qty
          FROM ${table}
-         WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
+         WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
          GROUP BY day ORDER BY day ASC`
       );
       const qCatPc = (table: string, catExpr: string, whereExtra = "") => env.DB.prepare(
         `SELECT ${catExpr} AS category, COUNT(*) AS qty
          FROM ${table}
-         WHERE ${bjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
+         WHERE ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?) ${whereExtra}
          GROUP BY category ORDER BY qty DESC LIMIT 20`
       );
 
@@ -118,8 +118,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       });
     }
 
-    const dcol = (expr: string) => `date(datetime(${expr}, '+8 hours'))`;
-
+    
     const sum = await env.DB.prepare(
       `SELECT
          SUM(CASE WHEN type='IN' THEN qty ELSE 0 END) AS in_qty,
@@ -127,13 +126,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
          SUM(CASE WHEN type='ADJUST' THEN qty ELSE 0 END) AS adjust_qty,
          COUNT(*) AS tx_count
        FROM stock_tx
-       WHERE warehouse_id=? AND ${dcol("created_at")} BETWEEN date(?) AND date(?)`
+       WHERE warehouse_id=? AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)`
     ).bind(warehouse_id, from, to).first() as any;
 
     const { results: topOut } = await env.DB.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='OUT' AND ${dcol("t.created_at")} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?)
        GROUP BY t.item_id
        ORDER BY qty DESC
        LIMIT 10`
@@ -142,24 +141,24 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const { results: topIn } = await env.DB.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='IN' AND ${dcol("t.created_at")} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?)
        GROUP BY t.item_id
        ORDER BY qty DESC
        LIMIT 10`
     ).bind(warehouse_id, from, to).all();
 
     const { results: dailyOut } = await env.DB.prepare(
-      `SELECT ${dcol("created_at")} AS day, SUM(qty) AS qty
+      `SELECT ${sqlBjDate("created_at")} AS day, SUM(qty) AS qty
        FROM stock_tx
-       WHERE warehouse_id=? AND type='OUT' AND ${dcol("created_at")} BETWEEN date(?) AND date(?)
+       WHERE warehouse_id=? AND type='OUT' AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)
        GROUP BY day
        ORDER BY day ASC`
     ).bind(warehouse_id, from, to).all();
 
     const { results: dailyIn } = await env.DB.prepare(
-      `SELECT ${dcol("created_at")} AS day, SUM(qty) AS qty
+      `SELECT ${sqlBjDate("created_at")} AS day, SUM(qty) AS qty
        FROM stock_tx
-       WHERE warehouse_id=? AND type='IN' AND ${dcol("created_at")} BETWEEN date(?) AND date(?)
+       WHERE warehouse_id=? AND type='IN' AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)
        GROUP BY day
        ORDER BY day ASC`
     ).bind(warehouse_id, from, to).all();
@@ -167,7 +166,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const { results: catOut } = await env.DB.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='OUT' AND ${dcol("t.created_at")} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?)
        GROUP BY category
        ORDER BY qty DESC
        LIMIT 20`
@@ -176,7 +175,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const { results: catIn } = await env.DB.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='IN' AND ${dcol("t.created_at")} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?)
        GROUP BY category
        ORDER BY qty DESC
        LIMIT 20`

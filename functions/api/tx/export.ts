@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { logAudit } from "../_audit";
 import { toSqlRange } from "../_date";
+import { beijingDateStampCompact, sqlBjDateTime } from "../_time";
 
 /**
  * GET /api/tx/export
@@ -65,7 +66,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const where = `WHERE ${wh.join(" AND ")}`;
     const sql = `
-      SELECT t.id, t.created_at, t.tx_no, t.type, t.qty, t.delta_qty, t.source, t.target, t.remark,
+      SELECT t.id, t.created_at, ${sqlBjDateTime('t.created_at')} AS created_at_bj, t.tx_no, t.type, t.qty, t.delta_qty, t.source, t.target, t.remark,
              i.sku, i.name, w.name as warehouse_name
       FROM stock_tx t
       JOIN items i ON i.id=t.item_id
@@ -80,11 +81,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       return `"${s.replace(/"/g, '""')}"`;
     };
 
-    const now = new Date();
-    const y = now.getUTCFullYear();
-    const m = String(now.getUTCMonth() + 1).padStart(2, "0");
-    const d = String(now.getUTCDate()).padStart(2, "0");
-    const filename = `stock_tx_${y}${m}${d}.csv`;
+    const filename = `stock_tx_${beijingDateStampCompact()}.csv`;
 
     const header = ["时间", "单号", "类型", "SKU", "名称", "仓库", "数量", "变动", "来源", "去向", "备注"];
 
@@ -107,7 +104,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
           for (const r of rows) {
             const delta = typeof r.delta_qty === "number" ? r.delta_qty : 0;
             const line = [
-              r.created_at,
+              r.created_at_bj || r.created_at,
               r.tx_no,
               r.type,
               r.sku,

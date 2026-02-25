@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse, json } from "../../_auth";
 import { buildKeywordWhere } from "../_search";
+import { beijingDateStampCompact, sqlBjDateTime } from "../_time";
 
 function csvEscape(v: any) {
   const s = (v ?? "").toString();
@@ -72,14 +73,20 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
           SELECT MAX(tx.created_at)
           FROM stock_tx tx
           WHERE tx.warehouse_id = ? AND tx.item_id = i.id
-        ) as last_tx_at
+        ) as last_tx_at,
+        (
+          SELECT ${sqlBjDateTime('tx.created_at')}
+          FROM stock_tx tx
+          WHERE tx.warehouse_id = ? AND tx.item_id = i.id
+          ORDER BY tx.id DESC LIMIT 1
+        ) as last_tx_at_bj
       FROM items i
       LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
       WHERE ${whereParts.join(" AND ")}
       ORDER BY ${orderBy}
     `;
-    // bind order: last_tx warehouse_id, stock join warehouse_id, then filters
-    const bindAll = [warehouse_id, ...binds];
+    // bind order: last_tx(max) warehouse_id, last_tx_bj(latest row) warehouse_id, stock join warehouse_id, then filters
+    const bindAll = [warehouse_id, warehouse_id, ...binds];
     const { results } = await env.DB.prepare(sql).bind(...bindAll).all();
 
     // fetch warehouse name
@@ -101,16 +108,12 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
           csvEscape(r.qty),
           csvEscape(r.warning_qty),
           csvEscape(r.gap),
-          csvEscape(r.last_tx_at),
+          csvEscape(r.last_tx_at_bj || r.last_tx_at),
         ].join(",")
       );
     }
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const filename = `warnings_${y}${m}${d}.csv`;
+    const filename = `warnings_${beijingDateStampCompact()}.csv`;
 
     // Add UTF-8 BOM for Excel compatibility
     const csvText = "\ufeff" + lines.join("\n");

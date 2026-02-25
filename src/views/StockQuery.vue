@@ -65,6 +65,7 @@ import { ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import * as XLSX from "xlsx";
+import { beijingTodayYmd } from "../utils/datetime";
 import { useRouter, useRoute } from "vue-router";
 import { useFixedWarehouseId } from "../utils/warehouse";
 
@@ -138,7 +139,7 @@ function doExport() {
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");
-  XLSX.writeFile(wb, `stock_${warehouseId.value}_${new Date().toISOString().slice(0, 10)}.xlsx`);
+  XLSX.writeFile(wb, `stock_${warehouseId.value}_${beijingTodayYmd()}.xlsx`);
 }
 
 onMounted(async () => {

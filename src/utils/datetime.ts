@@ -55,3 +55,8 @@ export function addDaysYmd(ymd: string, delta: number): string {
 export function formatBeijingNowDateTime(): string {
   return formatBeijingDateTime(new Date().toISOString());
 }
+
+
+export function beijingTodayCompact(): string {
+  return beijingTodayYmd().replace(/-/g, "");
+}

@@ -140,6 +140,7 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
 import * as XLSX from "xlsx";
+import { formatBeijingDateTime, beijingTodayCompact } from "../utils/datetime";
 
 const router = useRouter();
 const warehouseId = useFixedWarehouseId();
@@ -254,15 +255,7 @@ function formatTime(v: any) {
   if (!v) return "-";
   try {
     // most likely ISO string from DB
-    const d = new Date(v);
-    if (isNaN(d.getTime())) return String(v);
-    const yyyy = d.getFullYear();
-    const mm = String(d.getMonth() + 1).padStart(2, "0");
-    const dd = String(d.getDate()).padStart(2, "0");
-    const hh = String(d.getHours()).padStart(2, "0");
-    const mi = String(d.getMinutes()).padStart(2, "0");
-    const ss = String(d.getSeconds()).padStart(2, "0");
-    return `${yyyy}-${mm}-${dd} ${hh}:${mi}:${ss}`;
+    return formatBeijingDateTime(v);
   } catch {
     return String(v);
   }
@@ -338,11 +331,7 @@ function exportXlsx() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "预警中心");
 
-    const now = new Date();
-    const y = now.getFullYear();
-    const m = String(now.getMonth() + 1).padStart(2, "0");
-    const d = String(now.getDate()).padStart(2, "0");
-    const filename = `warnings_${y}${m}${d}.xlsx`;
+    const filename = `warnings_${beijingTodayCompact()}.xlsx`;
 
     XLSX.writeFile(wb, filename);
     ElMessage.success("已导出 Excel");

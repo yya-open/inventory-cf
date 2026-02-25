@@ -281,7 +281,7 @@ async function exportExcel() {
         { key: "created_at", title: "创建时间" },
         { key: "updated_at", title: "更新时间" },
       ],
-      rows: all,
+      rows: all.map((r:any)=>({ ...r, created_at: formatBeijingDateTime(r.created_at), updated_at: formatBeijingDateTime(r.updated_at) })),
     });
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
