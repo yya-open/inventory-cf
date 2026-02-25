@@ -58,7 +58,7 @@
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
                 <template v-if="row.status==='DRAFT'">
-                  <el-button type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
+                  <el-button v-if="isAdmin" type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
                 </template>
                 <template v-else-if="row.status==='APPLIED'">
                   <el-button type="warning" link @click.stop="rollbackStocktakeByRow(row)">撤销</el-button>
@@ -126,7 +126,7 @@
                   @click="rollbackStocktake"
                   :loading="rolling"
                 >{{ detail.stocktake.status==='ROLLING' ? '继续撤销' : '撤销盘点' }}</el-button>
-                <el-button type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
+                <el-button v-if="isAdmin" type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
               </div>
             </div>
 
@@ -195,8 +195,10 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
+import { can } from "../store/auth";
 
 const warehouseId = ref(1);
+const isAdmin = computed(() => can("admin"));
 
 const list = ref<any[]>([]);
 const listPage = ref(1);

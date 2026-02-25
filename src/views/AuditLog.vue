@@ -7,7 +7,7 @@
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="reset">重置</el-button>
           <el-button type="info" plain @click="openRetention">保留策略</el-button>
-          <el-button type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
+          <el-button v-if="isAdmin" type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
             删除选中 ({{ selectedIds.length }})
           </el-button>
         </div>
@@ -69,7 +69,7 @@
       style="width:100%"
       @selection-change="onSelect"
     >
-      <el-table-column type="selection" width="48" />
+      <el-table-column v-if="isAdmin" type="selection" width="48" />
       <el-table-column label="#" width="80">
         <template #default="{ $index }">
           {{ (page - 1) * pageSize + $index + 1 }}
@@ -102,7 +102,7 @@
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openPayload(row)">查看</el-button>
-          <el-popconfirm title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
+          <el-popconfirm v-if="isAdmin" title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
             <template #reference>
               <el-button link type="danger">删除</el-button>
             </template>
@@ -166,6 +166,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
+import { can } from "../store/auth";
 import { ElMessage, ElMessageBox } from "element-plus";
 
 
@@ -351,6 +352,7 @@ async function saveRetention() {
 
 
 const selectedIds = ref<number[]>([]);
+const isAdmin = computed(() => can("admin"));
 
 function onSelect(list: any[]) {
   selectedIds.value = (list || []).map(r => Number(r.id)).filter(n => Number.isFinite(n));

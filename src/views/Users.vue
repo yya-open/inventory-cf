@@ -54,7 +54,7 @@
           <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-button size="small" @click="openEdit(row)">权限/状态</el-button>
           <el-button size="small" type="warning" plain @click="openReset(row)">重置密码</el-button>
-          <el-button size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
+          <el-button v-if="auth.user?.role==='admin'" size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
         </div>
         </template>
       </el-table-column>
