@@ -16,7 +16,7 @@
 
 ---
 
-## 本地运行1
+## 本地运行
 ```bash
 pnpm i
 pnpm dev

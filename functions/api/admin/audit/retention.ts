@@ -5,7 +5,7 @@ type Env = { DB: D1Database; JWT_SECRET: string };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, "audit.retention.manage");
+    await requireAuth(env, request, "admin");
     const st = await getAuditRetention(env.DB);
     return json(true, st);
   } catch (e: any) {
@@ -15,7 +15,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, "audit.retention.manage");
+    await requireAuth(env, request, "admin");
     const body = await request.json<any>().catch(() => ({}));
     const retention_days = Number(body?.retention_days);
     if (!retention_days || !Number.isFinite(retention_days)) {

@@ -1,5 +1,4 @@
-import { json, errorResponse } from "../../_auth";
-import { requirePermission } from "../_permissions";
+import { json, requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchema } from "../_pc";
@@ -79,7 +78,7 @@ function pick(obj: any, cols: string[]) {
 // 本实现使用 batch + 分块写入，尽量保证一致性。
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requirePermission(env, request, "restore.run");
+    const actor = await requireAuth(env, request, "admin");
     await ensurePcSchema(env.DB);
     const body = (await request.json().catch(() => ({}))) as RestoreBody;
     const mode = body.mode || "merge";

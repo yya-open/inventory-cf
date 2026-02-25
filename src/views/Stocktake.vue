@@ -60,7 +60,7 @@
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
                 <template v-if="row.status==='DRAFT'">
-                  <el-button v-if="canDeleteStocktake" type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
+                  <el-button v-if="isAdmin" type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
                 </template>
                 <template v-else-if="row.status==='APPLIED'">
                   <el-button type="warning" link @click.stop="rollbackStocktakeByRow(row)">撤销</el-button>
@@ -120,15 +120,15 @@
                   <el-button :disabled="detail.stocktake.status!=='DRAFT'">导入盘点结果</el-button>
                 </el-upload>
                 <el-button type="primary" @click="saveLines" :loading="saving" :disabled="detail.stocktake.status!=='DRAFT'">保存</el-button>
-                <el-button v-if="canApplyStocktake" type="success" @click="applyStocktake" :loading="applying" :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)">{{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}</el-button>
+                <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)">{{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}</el-button>
                 <el-button
-                  v-if="canRollbackStocktake && ['APPLIED','ROLLING'].includes(detail.stocktake.status)"
+                  v-if="['APPLIED','ROLLING'].includes(detail.stocktake.status)"
                   type="warning"
                   plain
                   @click="rollbackStocktake"
                   :loading="rolling"
                 >{{ detail.stocktake.status==='ROLLING' ? '继续撤销' : '撤销盘点' }}</el-button>
-                <el-button v-if="canDeleteStocktake" type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
+                <el-button v-if="isAdmin" type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
               </div>
             </div>
 
@@ -201,12 +201,9 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
-import { canPerm } from "../utils/permissions";
 
 const warehouseId = ref(1);
-const canDeleteStocktake = computed(() => canPerm("stocktake.delete"));
-const canApplyStocktake = computed(() => canPerm("stocktake.apply"));
-const canRollbackStocktake = computed(() => canPerm("stocktake.rollback"));
+const isAdmin = computed(() => can("admin"));
 
 const list = ref<any[]>([]);
 const listPage = ref(1);

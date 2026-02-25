@@ -111,8 +111,6 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
-import { canPerm } from "../utils/permissions";
-import { chooseClearMode, promptDangerConfirm } from "../utils/danger";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
 
 
@@ -153,8 +151,7 @@ const sortBy = ref<string>("created_at");
 const sortDir = ref<string>("desc");
 
 const auth = useAuth();
-const canClearTx = computed(() => canPerm("tx.clear"));
-const isAdmin = canClearTx;
+const isAdmin = computed(() => auth.user?.role === "admin");
 
 function onSearch(){
   page.value = 1;
@@ -323,12 +320,24 @@ async function clearTx() {
 
     const hasFilter = [...params.keys()].length > 0;
 
-    const action = await chooseClearMode({
-      title: "清空出入库明细",
-      hasFilter,
-      filteredText: "将清空【当前筛选条件】下的出入库明细记录。",
-      allText: "当前没有筛选条件，将清空【全部】出入库明细记录。",
-    });
+    const action = await ElMessageBox.confirm(
+      hasFilter
+        ? "将清空【当前筛选条件】下的出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。"
+        : "当前没有筛选条件，将清空【全部】出入库明细记录。\n\n此操作不可恢复，请谨慎！",
+      "清空出入库明细",
+      {
+        type: "warning",
+        confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部",
+        cancelButtonText: hasFilter ? "清空全部" : "取消",
+        distinguishCancelAndClose: true,
+      }
+    ).then(
+      () => (hasFilter ? "filtered" : "all"),
+      (reason) => {
+        if (reason === "cancel" && hasFilter) return "all";
+        return null;
+      }
+    );
 
     if (!action) return;
 
@@ -336,7 +345,17 @@ async function clearTx() {
     const expected = action === "all" ? "清空全部" : "清空";
     let confirmText = "";
     try {
-      confirmText = await promptDangerConfirm(expected, "二次确认");
+      const { value } = await ElMessageBox.prompt(
+        `请输入「${expected}」确认操作（区分大小写）`,
+        "二次确认",
+        {
+          confirmButtonText: "确认",
+          cancelButtonText: "取消",
+          inputPlaceholder: expected,
+          inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+        }
+      );
+      confirmText = value;
     } catch (e) {
       return;
     }
