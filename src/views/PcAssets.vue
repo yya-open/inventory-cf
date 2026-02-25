@@ -32,7 +32,9 @@
 </div>
 
     <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="id" label="ID" width="80" />
+      <el-table-column label="ID" width="80">
+        <template #default="{$index}">{{ serialNo($index) }}</template>
+      </el-table-column>
       <el-table-column label="电脑" min-width="260">
         <template #default="{row}">
           <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
@@ -69,6 +71,14 @@
       <el-table-column prop="last_recycle_date" label="回收日期" width="130" />
 
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
+
+
+      <el-table-column v-if="canOperator" label="操作" width="170" fixed="right">
+        <template #default="{row}">
+          <el-button link type="primary" @click="openEdit(row)">修改</el-button>
+          <el-button link type="danger" @click="removeAsset(row)">删除</el-button>
+        </template>
+      </el-table-column>
     </el-table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px">
@@ -83,13 +93,32 @@
         @size-change="onPageSizeChange"
       />
     </div>
+  
+    <el-dialog v-model="editVisible" title="修改电脑台账" width="680px" destroy-on-close>
+      <el-form :model="editForm" label-width="90px">
+        <el-row :gutter="12">
+          <el-col :span="12"><el-form-item label="品牌"><el-input v-model="editForm.brand" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="型号"><el-input v-model="editForm.model" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="序列号"><el-input v-model="editForm.serial_no" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="出厂时间"><el-input v-model="editForm.manufacture_date" placeholder="YYYY-MM-DD" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="保修到期"><el-input v-model="editForm.warranty_end" placeholder="YYYY-MM-DD" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="硬盘容量"><el-input v-model="editForm.disk_capacity" /></el-form-item></el-col>
+          <el-col :span="12"><el-form-item label="内存大小"><el-input v-model="editForm.memory_size" /></el-form-item></el-col>
+          <el-col :span="24"><el-form-item label="备注"><el-input v-model="editForm.remark" type="textarea" :rows="3" /></el-form-item></el-col>
+        </el-row>
+      </el-form>
+      <template #footer>
+        <el-button @click="editVisible=false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "element-plus";
-import { apiGet, apiPost } from "../api/client";
+import { ElMessage, ElMessageBox } from "element-plus";
+import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { can } from "../store/auth";
 
@@ -144,6 +173,70 @@ function onPageSizeChange() {
   load();
 }
 
+
+
+const editVisible = ref(false);
+const saving = ref(false);
+const editForm = ref<any>({
+  id: 0, brand: "", model: "", serial_no: "", manufacture_date: "", warranty_end: "", disk_capacity: "", memory_size: "", remark: ""
+});
+
+function serialNo(index: number) {
+  return (page.value - 1) * pageSize.value + index + 1;
+}
+
+function openEdit(row: any) {
+  editForm.value = {
+    id: row.id,
+    brand: row.brand || "",
+    model: row.model || "",
+    serial_no: row.serial_no || "",
+    manufacture_date: row.manufacture_date || "",
+    warranty_end: row.warranty_end || "",
+    disk_capacity: row.disk_capacity || "",
+    memory_size: row.memory_size || "",
+    remark: row.remark || "",
+  };
+  editVisible.value = true;
+}
+
+async function saveEdit() {
+  const f = editForm.value || {};
+  if (!String(f.brand || "").trim()) return ElMessage.warning("品牌必填");
+  if (!String(f.model || "").trim()) return ElMessage.warning("型号必填");
+  if (!String(f.serial_no || "").trim()) return ElMessage.warning("序列号必填");
+  try {
+    saving.value = true;
+    await apiPut('/api/pc-assets', f);
+    ElMessage.success('修改成功');
+    editVisible.value = false;
+    await load();
+  } catch (e: any) {
+    ElMessage.error(e?.message || '修改失败');
+  } finally {
+    saving.value = false;
+  }
+}
+
+async function removeAsset(row: any) {
+  try {
+    await ElMessageBox.confirm(`确认删除电脑台账：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    });
+    loading.value = true;
+    await apiDelete('/api/pc-assets', { id: row.id });
+    ElMessage.success('删除成功');
+    if (rows.value.length === 1 && page.value > 1) page.value -= 1;
+    await load();
+  } catch (e: any) {
+    if (e === 'cancel' || e === 'close') return;
+    ElMessage.error(e?.message || '删除失败');
+  } finally {
+    loading.value = false;
+  }
+}
 
 
 async function fetchAll() {
