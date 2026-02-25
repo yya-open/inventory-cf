@@ -166,14 +166,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
-import { can } from "../store/auth";
 import { canPerm } from "../utils/permissions";
+import { AUDIT_ACTION_LABELS_FROM_DANGER } from "../utils/securityCatalog";
 import { promptDangerConfirm } from "../utils/danger";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatBeijingDateTime } from "../utils/datetime";
 
 
-const ACTION_LABEL: Record<string, string> = {
+const ACTION_LABEL_BASE: Record<string, string> = {
   STOCK_IN: "入库",
   STOCK_OUT: "出库",
   BATCH_IN: "批量入库",
@@ -214,7 +214,7 @@ const ACTION_LABEL: Record<string, string> = {
   pc_tx_clear: "清空电脑出入库明细",
 };
 
-const ENTITY_LABEL: Record<string, string> = {
+const ENTITY_LABEL_BASE: Record<string, string> = {
   stock_tx: "出入库流水",
   stocktake: "盘点单",
   items: "配件",
@@ -233,6 +233,21 @@ const ENTITY_LABEL: Record<string, string> = {
   pc_tx: "电脑出入库明细",
   pc_tx_detail: "电脑出入库明细",
 };
+
+const DANGER_ENTITY_LABEL: Record<string, string> = {
+  stock_tx: "出入库流水",
+  items: "配件",
+  stocktake: "盘点单",
+  pc_assets: "电脑台账",
+  pc_tx: "电脑出入库明细",
+  audit_log: "审计日志",
+  backup: "备份",
+  restore_job: "恢复任务",
+  users: "用户",
+};
+
+const ACTION_LABEL: Record<string, string> = { ...AUDIT_ACTION_LABELS_FROM_DANGER, ...ACTION_LABEL_BASE };
+const ENTITY_LABEL: Record<string, string> = { ...DANGER_ENTITY_LABEL, ...ENTITY_LABEL_BASE };
 
 function actionLabel(a: string) {
   return ACTION_LABEL[a] || a;
