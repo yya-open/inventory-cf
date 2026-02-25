@@ -18,7 +18,14 @@
           <el-input v-model="keyword" placeholder="搜索：用户/动作/实体/ID" clearable style="width: 240px" />
         </el-form-item>
         <el-form-item>
-          <el-input v-model="action" placeholder="动作（如 STOCK_OUT）" clearable style="width: 170px" />
+          <el-select v-model="action" placeholder="动作" clearable filterable style="width: 190px" @change="onSearch">
+            <el-option
+              v-for="opt in actionFilterOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-input v-model="entity" placeholder="实体（如 stock_tx）" clearable style="width: 150px" />
@@ -182,6 +189,13 @@ const ACTION_LABEL: Record<string, string> = {
   ADMIN_RESTORE_JOB_FAILED: "恢复备份-失败",
   ADMIN_RESTORE_JOB_PAUSED: "恢复备份-暂停",
   ADMIN_RESTORE_JOB_CANCELED: "恢复备份-取消",
+  PC_IN: "电脑入库",
+  PC_OUT: "电脑出库",
+  PC_RETURN: "电脑归还",
+  PC_RECYCLE: "电脑回收",
+  PC_SCRAP: "电脑报废",
+  pc_asset_update: "修改电脑台账",
+  pc_asset_delete: "删除电脑台账",
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -195,6 +209,11 @@ const ENTITY_LABEL: Record<string, string> = {
   warehouses: "仓库",
   backup: "备份",
   restore_job: "恢复任务",
+  pc_assets: "电脑台账",
+  pc_in: "电脑入库记录",
+  pc_out: "电脑出库记录",
+  pc_recycle: "电脑回收/归还记录",
+  pc_scrap: "电脑报废记录",
 };
 
 function actionLabel(a: string) {
@@ -242,6 +261,13 @@ const showPayload = ref(false);
 const rawPayload = ref("");
 const prettyPayload = ref("");
 const prettyMode = ref(true);
+
+const actionFilterOptions = computed(() => {
+  const keys = Object.keys(ACTION_LABEL);
+  return keys
+    .sort((a, b) => (ACTION_LABEL[a] || a).localeCompare(ACTION_LABEL[b] || b, "zh-CN"))
+    .map((k) => ({ value: k, label: `${ACTION_LABEL[k] || k} (${k})` }));
+});
 
 const displayPayload = computed(() => {
   if (!prettyMode.value) return rawPayload.value || "";

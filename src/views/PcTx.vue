@@ -40,7 +40,9 @@
 </div>
 
     <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="created_at" label="时间" width="170" />
+      <el-table-column label="时间" width="170">
+        <template #default="{row}">{{ formatBjTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column prop="tx_no" label="单号" width="210" />
       <el-table-column prop="type" label="类型" width="110">
         <template #default="{row}">
@@ -122,6 +124,32 @@ function reset() {
   load();
 }
 
+function formatBjTime(s?: string) {
+  if (!s) return "-";
+  let d: Date;
+  try {
+    if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
+      // 后端/D1 常见为 UTC 时间字符串（无时区），按 UTC 解析后转北京时间显示
+      d = new Date(s.replace(" ", "T") + "Z");
+    } else {
+      d = new Date(s);
+    }
+  } catch {
+    return s;
+  }
+  if (isNaN(d.getTime())) return s;
+  return new Intl.DateTimeFormat("zh-CN", {
+    timeZone: "Asia/Shanghai",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit",
+    hour12: false,
+  }).format(d).replace(/\//g, "-");
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -178,7 +206,10 @@ async function fetchAll() {
 async function exportExcel() {
   try {
     loading.value = true;
-    const all = await fetchAll();
+    const all = (await fetchAll()).map((r: any) => ({
+      ...r,
+      created_at: formatBjTime(r.created_at),
+    }));
     exportToXlsx({
       filename: "电脑出入库明细_仓库2.xlsx",
       sheetName: "明细",
