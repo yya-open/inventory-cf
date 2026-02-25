@@ -1,5 +1,4 @@
-import { errorResponse } from "../../_auth";
-import { requirePermission } from "../_permissions";
+import { requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 
@@ -7,7 +6,7 @@ import { logAudit } from "../_audit";
 // Admin-only. Deletes audit_log rows by id(s).
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requirePermission(env, request, "audit.delete");
+    const actor = await requireAuth(env, request, "admin");
     const body: any = await request.json().catch(() => ({}));
 
     const idsRaw = body?.ids ?? (body?.id !== undefined ? [body.id] : []);

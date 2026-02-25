@@ -33,7 +33,7 @@
           <el-button size="small" @click="openEdit(row)">编辑</el-button>
           <el-button size="small" type="info" plain @click="goTx(row.id)">明细</el-button>
         
-          <el-button v-if="canDeleteItem" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
+          <el-button v-if="isAdmin" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
 </template>
       </el-table-column>
     </el-table>
@@ -90,10 +90,11 @@ import { ref, reactive, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiDelete } from "../api/client";
 import { useRouter } from "vue-router";
-import { canPerm } from "../utils/permissions";
+import { useAuth } from "../store/auth";
 
 const router = useRouter();
-const canDeleteItem = computed(() => canPerm("item.delete"));
+const auth = useAuth();
+const isAdmin = computed(() => auth.user?.role === "admin");
 const keyword = ref("");
 const sortBy = ref<string>("sku");
 const sortDir = ref<string>("asc");

@@ -1,5 +1,4 @@
-import { errorResponse } from "../../_auth";
-import { requirePermission } from "../_permissions";
+import { requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchema } from "../_pc";
@@ -18,7 +17,7 @@ function normTable(t: string) {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const actor = await requirePermission(env, request, "pcTx.delete");
+    const actor = await requireAuth(env, request, "admin");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
     await ensurePcSchema(env.DB);
 

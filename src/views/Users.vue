@@ -56,7 +56,7 @@
           <div style="display:flex; gap:8px; flex-wrap:wrap">
           <el-button size="small" @click="openEdit(row)">权限/状态</el-button>
           <el-button size="small" type="warning" plain @click="openReset(row)">重置密码</el-button>
-          <el-button v-if="canManageUsers" size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
+          <el-button v-if="auth.user?.role==='admin'" size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
         </div>
         </template>
       </el-table-column>
@@ -140,7 +140,6 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
-import { canPerm } from "../utils/permissions";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
@@ -159,7 +158,6 @@ const sortBy = ref("created_at");
 const sortDir = ref<"asc"|"desc">("desc");
 
 const auth = useAuth();
-const canManageUsers = computed(() => canPerm("user.manage"));
 
 const showCreate = ref(false);
 const showEdit = ref(false);

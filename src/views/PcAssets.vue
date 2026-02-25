@@ -76,7 +76,7 @@
       <el-table-column v-if="canOperator" label="操作" width="170" fixed="right">
         <template #default="{row}">
           <el-button link type="primary" @click="openEdit(row)">修改</el-button>
-          <el-button v-if="canDeletePcAsset" link type="danger" @click="removeAsset(row)">删除</el-button>
+          <el-button v-if="isAdmin" link type="danger" @click="removeAsset(row)">删除</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -121,7 +121,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { can } from "../store/auth";
-import { canPerm } from "../utils/permissions";
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -134,7 +133,7 @@ const status = ref<string>("");
 const keyword = ref<string>("");
 
 const canOperator = computed(() => can("operator"));
-const canDeletePcAsset = computed(() => canPerm("pcAsset.delete"));
+const isAdmin = computed(() => can("admin"));
 
 function onSearch() {
   page.value = 1;

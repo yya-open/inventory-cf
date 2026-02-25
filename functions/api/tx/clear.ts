@@ -1,5 +1,4 @@
-import { errorResponse } from "../../_auth";
-import { requirePermission } from "../_permissions";
+import { requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { toSqlRange } from "../_date";
@@ -20,7 +19,7 @@ type ClearBody = {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     // requireAuth returns the authenticated user; we need it for audit logging
-    const actor = await requirePermission(env, request, "tx.clear");
+    const actor = await requireAuth(env, request, "admin");
 
     const body = (await request.json().catch(() => ({}))) as ClearBody;
     const mode = body.mode || "filtered";

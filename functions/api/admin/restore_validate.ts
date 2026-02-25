@@ -1,5 +1,4 @@
-import { errorResponse, json } from '../../_auth';
-import { requirePermission } from '../_permissions';
+import { errorResponse, json, requireAuth } from '../../_auth';
 import { ensurePcSchema } from '../_pc';
 
 type Severity = 'error' | 'warn' | 'info';

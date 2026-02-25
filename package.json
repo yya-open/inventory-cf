@@ -18,8 +18,5 @@
     "@vitejs/plugin-vue": "^5.0.4",
     "typescript": "^5.5.4",
     "vite": "^5.4.8"
-  },
-  "engines": {
-    "node": "20.x"
   }
 }

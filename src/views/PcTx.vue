@@ -37,13 +37,13 @@
         <el-button size="small" type="primary">Excel导入（按类型写入记录）</el-button>
       </el-upload>
 
-      <el-button v-if="canDeletePcTx" size="small" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
-      <el-button v-if="canClearPcTx" size="small" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
+      <el-button v-if="isAdmin" size="small" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
+      <el-button v-if="isAdmin" size="small" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
 
 </div>
 
     <el-table :data="rows" border v-loading="loading" row-key="__rowKey" @selection-change="onSelectionChange">
-      <el-table-column v-if="canDeletePcTx" type="selection" width="46" />
+      <el-table-column v-if="isAdmin" type="selection" width="46" />
       <el-table-column label="时间" width="170">
         <template #default="{row}">{{ formatBjTime(row.created_at, row) }}</template>
       </el-table-column>
@@ -100,15 +100,12 @@ import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
-import { can } from "../store/auth";
-import { canPerm } from "../utils/permissions";
-import { promptDangerConfirm, chooseClearMode } from "../utils/danger";
+import { can, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 
 const canOperator = computed(() => can("operator"));
-const canDeletePcTx = computed(() => canPerm("pcTx.delete"));
-const canClearPcTx = computed(() => canPerm("pcTx.clear"));
-const isAdmin = computed(() => canDeletePcTx.value || canClearPcTx.value);
+const auth = useAuth();
+const isAdmin = computed(() => auth.user?.role === "admin");
 
 const rows = ref<any[]>([]);
 const selectedRows = ref<any[]>([]);
@@ -389,11 +386,14 @@ function buildDeleteEntries(list: any[]) {
 }
 
 async function deleteSelected() {
-  if (!canDeletePcTx.value) return;
+  if (!isAdmin.value) return;
   const entries = buildDeleteEntries(selectedRows.value);
   if (!entries.length) return ElMessage.warning("请先勾选要删除的记录");
   try {
-    await promptDangerConfirm("删除", `删除确认（将删除选中的 ${entries.length} 条记录）`);
+    await ElMessageBox.prompt(`请输入「删除」确认操作（将删除选中的 ${entries.length} 条记录）`, "删除确认", {
+      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "删除",
+      inputValidator: (v: string) => (String(v || "").trim() === "删除" ? true : "需要输入「删除」"),
+    });
     loading.value = true;
     const r:any = await apiPost("/api/pc-tx/delete", { entries, confirm: "删除" });
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
@@ -406,18 +406,20 @@ async function deleteSelected() {
 }
 
 async function clearPcTx() {
-  if (!canClearPcTx.value) return;
+  if (!isAdmin.value) return;
   try {
     const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1]);
-    const action = await chooseClearMode({
-      title: "清空电脑出入库明细",
-      hasFilter,
-      filteredText: "将清空【当前筛选条件】下的电脑出入库明细记录。",
-      allText: "当前没有筛选条件，将清空【全部】电脑出入库明细记录。",
-    });
+    const action = await ElMessageBox.confirm(
+      hasFilter ? "将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。" : "当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！",
+      "清空电脑出入库明细",
+      { type: "warning", confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部", cancelButtonText: hasFilter ? "清空全部" : "取消", distinguishCancelAndClose: true }
+    ).then(() => (hasFilter ? "filtered" : "all"), (reason) => { if (reason === "cancel" && hasFilter) return "all"; return null; });
     if (!action) return;
     const expected = action === "all" ? "清空全部" : "清空";
-    await promptDangerConfirm(expected, "二次确认");
+    await ElMessageBox.prompt(`请输入「${expected}」确认操作（区分大小写）`, "二次确认", {
+      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: expected,
+      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+    });
     loading.value = true;
     const all = await fetchAll();
     const entries = buildDeleteEntries(all);

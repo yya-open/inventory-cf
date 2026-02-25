@@ -3,7 +3,7 @@ import { logAudit } from "../../_audit";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requirePermission(env, request, "restore.cancel");
+    const actor = await requireAuth(env, request, "admin");
     const { id } = await request.json<any>();
     const jobId = String(id || "").trim();
     if (!jobId) return Response.json({ ok: false, message: "缺少 id" }, { status: 400 });
