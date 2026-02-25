@@ -28,7 +28,14 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-input v-model="entity" placeholder="实体（如 stock_tx）" clearable style="width: 150px" />
+          <el-select v-model="entity" placeholder="实体" clearable filterable style="width: 190px" @change="onSearch">
+            <el-option
+              v-for="opt in entityFilterOptions"
+              :key="opt.value"
+              :label="opt.label"
+              :value="opt.value"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item>
           <el-input v-model="user" placeholder="用户（如 admin）" clearable style="width: 150px" />
@@ -267,6 +274,13 @@ const actionFilterOptions = computed(() => {
   return keys
     .sort((a, b) => (ACTION_LABEL[a] || a).localeCompare(ACTION_LABEL[b] || b, "zh-CN"))
     .map((k) => ({ value: k, label: `${ACTION_LABEL[k] || k} (${k})` }));
+});
+
+const entityFilterOptions = computed(() => {
+  const keys = Object.keys(ENTITY_LABEL);
+  return keys
+    .sort((a, b) => (ENTITY_LABEL[a] || a).localeCompare(ENTITY_LABEL[b] || b, "zh-CN"))
+    .map((k) => ({ value: k, label: `${ENTITY_LABEL[k] || k} (${k})` }));
 });
 
 const displayPayload = computed(() => {

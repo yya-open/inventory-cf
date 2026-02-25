@@ -129,6 +129,7 @@ function typeTagType(t: string) {
 }
 
 const route = useRoute();
+const warehouseId = useFixedWarehouseId();
 
 const items = ref<any[]>([]);
 const rows = ref<any[]>([]);
@@ -196,6 +197,7 @@ async function doExport() {
       if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
       params.set("page", String(p));
       params.set("page_size", "5000");
+      params.set("warehouse_id", String(warehouseId.value || 1));
       if (keyword.value) params.set("keyword", keyword.value);
       if (sortBy.value) params.set("sort_by", sortBy.value);
       if (sortDir.value) params.set("sort_dir", sortDir.value);
@@ -311,6 +313,7 @@ async function clearTx() {
     if (item_id.value) params.set("item_id", String(item_id.value));
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+    params.set("warehouse_id", String(warehouseId.value || 1));
 
     const hasFilter = [...params.keys()].length > 0;
 
