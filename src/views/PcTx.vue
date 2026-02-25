@@ -37,9 +37,13 @@
         <el-button size="small" type="primary">Excel导入（按类型写入记录）</el-button>
       </el-upload>
 
+      <el-button v-if="isAdmin" size="small" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
+      <el-button v-if="isAdmin" size="small" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
+
 </div>
 
-    <el-table :data="rows" border v-loading="loading">
+    <el-table :data="rows" border v-loading="loading" row-key="__rowKey" @selection-change="onSelectionChange">
+      <el-table-column v-if="isAdmin" type="selection" width="46" />
       <el-table-column label="时间" width="170">
         <template #default="{row}">{{ formatBjTime(row.created_at) }}</template>
       </el-table-column>
@@ -93,14 +97,17 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage, ElMessageBox } from "element-plus";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
-import { can } from "../store/auth";
+import { can, useAuth } from "../store/auth";
 
 const canOperator = computed(() => can("operator"));
+const auth = useAuth();
+const isAdmin = computed(() => auth.user?.role === "admin");
 
 const rows = ref<any[]>([]);
+const selectedRows = ref<any[]>([]);
 const loading = ref(false);
 
 const page = ref(1);
@@ -162,7 +169,7 @@ async function load() {
     params.set("page_size", String(pageSize.value));
 
     const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
-    rows.value = r.data || [];
+    rows.value = (r.data || []).map((it:any) => ({ ...it, __rowKey: `${String(it.type||"").toUpperCase()}_${it.id}` }));
     total.value = Number(r.total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
@@ -186,14 +193,14 @@ async function fetchAll() {
   let p = 1;
   let totalLocal = 0;
   do {
-    const r: any = await apiGet("/api/pc-tx", {
-      type: type.value || "",
-      keyword: keyword.value || "",
-      date_from: dateFrom.value || "",
-      date_to: dateTo.value || "",
-      page: p,
-      page_size: 200,
-    });
+    const params = new URLSearchParams();
+    if (type.value) params.set("type", type.value);
+    if (keyword.value) params.set("keyword", keyword.value);
+    if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
+    if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+    params.set("page", String(p));
+    params.set("page_size", "200");
+    const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
     const rows = r?.data || [];
     totalLocal = Number(r?.total || 0);
     all.push(...rows);
@@ -385,6 +392,70 @@ async function onImportTxFile(uploadFile: any) {
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
   }
+}
+
+
+function onSelectionChange(list: any[]) {
+  selectedRows.value = list || [];
+}
+
+function buildDeleteEntries(list: any[]) {
+  return (list || []).map((r:any) => ({ id: Number(r.id), type: String(r.type || "").toUpperCase() }))
+    .filter((e:any) => Number.isFinite(e.id) && e.id > 0 && e.type);
+}
+
+async function deleteSelected() {
+  if (!isAdmin.value) return;
+  const entries = buildDeleteEntries(selectedRows.value);
+  if (!entries.length) return ElMessage.warning("请先勾选要删除的记录");
+  try {
+    await ElMessageBox.prompt(`请输入「删除」确认操作（将删除选中的 ${entries.length} 条记录）`, "删除确认", {
+      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "删除",
+      inputValidator: (v: string) => (String(v || "").trim() === "删除" ? true : "需要输入「删除」"),
+    });
+    loading.value = true;
+    const r:any = await apiPost("/api/pc-tx/delete", { entries, confirm: "删除" });
+    ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
+    selectedRows.value = [];
+    await load();
+  } catch (e:any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "删除失败");
+  } finally { loading.value = false; }
+}
+
+async function clearPcTx() {
+  if (!isAdmin.value) return;
+  try {
+    const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1]);
+    const action = await ElMessageBox.confirm(
+      hasFilter ? "将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。" : "当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！",
+      "清空电脑出入库明细",
+      { type: "warning", confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部", cancelButtonText: hasFilter ? "清空全部" : "取消", distinguishCancelAndClose: true }
+    ).then(() => (hasFilter ? "filtered" : "all"), (reason) => { if (reason === "cancel" && hasFilter) return "all"; return null; });
+    if (!action) return;
+    const expected = action === "all" ? "清空全部" : "清空";
+    await ElMessageBox.prompt(`请输入「${expected}」确认操作（区分大小写）`, "二次确认", {
+      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: expected,
+      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+    });
+    loading.value = true;
+    const all = await fetchAll();
+    const entries = buildDeleteEntries(all);
+    if (!entries.length) { ElMessage.warning("没有可清空的记录"); return; }
+    let deleted = 0;
+    for (let i = 0; i < entries.length; i += 200) {
+      const chunk = entries.slice(i, i + 200);
+      const r:any = await apiPost("/api/pc-tx/delete", { entries: chunk, confirm: "删除" });
+      deleted += Number(r?.data?.deleted || 0);
+    }
+    ElMessage.success(`已清空 ${deleted} 条记录`);
+    selectedRows.value = [];
+    await load();
+  } catch (e:any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "清空失败");
+  } finally { loading.value = false; }
 }
 
 onMounted(load);
