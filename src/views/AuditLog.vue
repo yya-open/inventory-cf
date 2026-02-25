@@ -203,6 +203,10 @@ const ACTION_LABEL: Record<string, string> = {
   PC_SCRAP: "电脑报废",
   pc_asset_update: "修改电脑台账",
   pc_asset_delete: "删除电脑台账",
+  PC_TX_DELETE: "删除电脑出入库明细",
+  PC_TX_CLEAR: "清空电脑出入库明细",
+  pc_tx_delete: "删除电脑出入库明细",
+  pc_tx_clear: "清空电脑出入库明细",
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -221,6 +225,8 @@ const ENTITY_LABEL: Record<string, string> = {
   pc_out: "电脑出库记录",
   pc_recycle: "电脑回收/归还记录",
   pc_scrap: "电脑报废记录",
+  pc_tx: "电脑出入库明细",
+  pc_tx_detail: "电脑出入库明细",
 };
 
 function actionLabel(a: string) {
