@@ -1,4 +1,5 @@
-import { json, requireAuth, errorResponse } from "../../_auth";
+import { json, errorResponse } from "../../_auth";
+import { requirePermission } from "../_permissions";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchema } from "../_pc";
@@ -91,7 +92,7 @@ function pick(obj: any, cols: string[]) {
 // multipart/form-data: file=<backup.json>, mode=merge|replace, confirm=...
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, "admin");
+    const actor = await requirePermission(env, request, "restore.run");
     await ensurePcSchema(env.DB);
 
     const ct = request.headers.get("content-type") || "";
