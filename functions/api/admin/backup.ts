@@ -93,9 +93,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       "stocktake_line",
       "audit_log",
       "auth_login_throttle",
+      "pc_assets",
+      "pc_in",
+      "pc_out",
+      "pc_recycle",
+      "pc_scrap",
     ]);
 
-    let tables: string[] = ["warehouses", "items", "stock", "users"];
+    let tables: string[] = ["warehouses", "items", "stock", "users", "pc_assets", "pc_in", "pc_out", "pc_recycle", "pc_scrap"];
     if (include_tx) tables.push("stock_tx");
     if (include_stocktake) tables.push("stocktake", "stocktake_line");
     if (include_audit) tables.push("audit_log");

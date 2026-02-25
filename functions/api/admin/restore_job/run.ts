@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
+import { ensurePcSchema } from "../../../_pc";
 import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, sniffGzipFromStream } from "./_util";
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
@@ -12,6 +13,7 @@ function parseJsonSafe(s: string, fallback: any) {
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
+    await ensurePcSchema(env.DB);
     const body = await request.json<any>().catch(() => ({}));
     const jobId = String(body.id || "").trim();
     const maxRows = Math.min(Math.max(Number(body.max_rows || 2000), 100), 20000);

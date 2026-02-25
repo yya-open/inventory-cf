@@ -1,6 +1,7 @@
 import { json, requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
+import { ensurePcSchema } from "../../_pc";
 
 type RestoreBody = {
   mode?: "merge" | "replace";
@@ -22,11 +23,21 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   audit_log: ["id","user_id","username","action","entity","entity_id","payload_json","ip","ua","created_at"],
   stocktake: ["id","st_no","warehouse_id","status","created_at","created_by","applied_at"],
   stocktake_line: ["id","stocktake_id","item_id","system_qty","counted_qty","diff_qty","updated_at"],
+  pc_assets: ["id","brand","serial_no","model","manufacture_date","warranty_end","disk_capacity","memory_size","remark","status","created_at","updated_at"],
+  pc_in: ["id","in_no","asset_id","brand","serial_no","model","manufacture_date","warranty_end","disk_capacity","memory_size","remark","created_at","created_by"],
+  pc_out: ["id","out_no","asset_id","employee_no","department","employee_name","is_employed","brand","serial_no","model","config_date","manufacture_date","warranty_end","disk_capacity","memory_size","remark","recycle_date","created_at","created_by"],
+  pc_recycle: ["id","recycle_no","action","asset_id","employee_no","department","employee_name","is_employed","brand","serial_no","model","recycle_date","remark","created_at","created_by"],
+  pc_scrap: ["id","scrap_no","asset_id","brand","serial_no","model","manufacture_date","warranty_end","disk_capacity","memory_size","remark","scrap_date","reason","created_at","created_by"],
 };
 
 const DELETE_ORDER = [
   "stocktake_line",
   "stocktake",
+  "pc_scrap",
+  "pc_recycle",
+  "pc_out",
+  "pc_in",
+  "pc_assets",
   "stock_tx",
   "stock",
   "items",
@@ -41,6 +52,11 @@ const INSERT_ORDER = [
   "items",
   "users",
   "stock",
+  "pc_assets",
+  "pc_in",
+  "pc_out",
+  "pc_recycle",
+  "pc_scrap",
   "stock_tx",
   "stocktake",
   "stocktake_line",
@@ -63,6 +79,7 @@ function pick(obj: any, cols: string[]) {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
+    await ensurePcSchema(env.DB);
     const body = (await request.json().catch(() => ({}))) as RestoreBody;
     const mode = body.mode || "merge";
 

@@ -190,6 +190,7 @@ const ACTION_LABEL: Record<string, string> = {
   TX_CLEAR: "清空出入库明细",
   AUDIT_DELETE: "删除审计日志",
   ADMIN_BACKUP: "导出备份",
+  ADMIN_RESTORE: "恢复备份（JSON）",
   ADMIN_RESTORE_UPLOAD: "恢复备份（直导）",
   ADMIN_RESTORE_JOB_CREATE: "恢复备份-创建任务",
   ADMIN_RESTORE_JOB_SCAN_DONE: "恢复备份-扫描完成",

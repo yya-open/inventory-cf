@@ -404,6 +404,11 @@ const TABLE_LABEL: Record<string, string> = {
   audit_log: "审计日志",
   auth_login_throttle: "登录限流",
   users: "用户",
+  pc_assets: "电脑台账",
+  pc_in: "电脑入库记录",
+  pc_out: "电脑出库记录",
+  pc_recycle: "电脑回收/归还记录",
+  pc_scrap: "电脑报废记录",
 };
 
 function tableCn(t: string) {
