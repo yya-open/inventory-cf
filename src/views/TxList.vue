@@ -52,7 +52,9 @@
     </div>
 
     <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="created_at" label="时间" width="170" />
+      <el-table-column label="时间" width="170">
+        <template #default="{row}">{{ formatBeijingDateTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column prop="tx_no" label="单号" width="190" />
       <el-table-column prop="type" label="类型" width="120">
         <template #default="{row}">
@@ -109,6 +111,7 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import * as XLSX from "xlsx";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
+import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
 
 
 const TYPE_LABEL: Record<string, string> = {
@@ -211,7 +214,7 @@ async function doExport() {
     }
 
     const data = all.map((r:any) => ({
-      "时间": r.created_at,
+      "时间": formatBeijingDateTime(r.created_at),
       "单号": r.tx_no,
       "类型": r.type,
       "SKU": r.sku,
@@ -232,7 +235,7 @@ async function doExport() {
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
     a.href = url;
-    a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.xlsx`;
+    a.download = `stock_tx_${beijingTodayYmd()}.xlsx`;
     a.click();
     URL.revokeObjectURL(url);
     ElMessage.success(`已导出 ${data.length} 条`);
@@ -248,7 +251,7 @@ function exportCsv() {
   const lines = [headers.map(toCsvCell).join(",")];
   for (const r of rows.value) {
     lines.push([
-      r.created_at, r.tx_no, r.type, r.sku, r.name, r.warehouse_name, r.qty,
+      formatBeijingDateTime(r.created_at), r.tx_no, r.type, r.sku, r.name, r.warehouse_name, r.qty,
       signedDelta(r),
       r.source || "", r.target || "", r.remark || ""
     ].map(toCsvCell).join(","));
@@ -257,7 +260,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `stock_tx_${new Date().toISOString().slice(0,10)}.csv`;
+  a.download = `stock_tx_${beijingTodayYmd()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

@@ -306,6 +306,7 @@ import { ref, computed, watch } from "vue";
 import { ElMessageBox } from "element-plus";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
+import { formatBeijingNowDateTime } from "../utils/datetime";
 
 const bk = ref({
   include_tx: false,
@@ -616,7 +617,7 @@ async function validateRestoreFile(opts?: { silent?: boolean }) {
     form.set("file", pickedFile.value);
     const r = await apiPostForm<any>("/api/admin/restore_validate", form);
     restoreValidate.value = r.data;
-    restoreValidateAt.value = new Date().toLocaleString("zh-CN", { hour12: false });
+    restoreValidateAt.value = formatBeijingNowDateTime();
     if (!opts?.silent) {
       if (r.data?.valid) msgSuccess("恢复前校验通过");
       else msgWarn("恢复前校验未通过，请先处理错误项");

@@ -5,6 +5,7 @@
         <div style="display:flex; justify-content:space-between; align-items:center;">
           <div style="font-weight:700">报表与看板</div>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+            <el-segmented v-model="reportMode" :options="reportModeOptions" size="small" />
             <el-select v-model="days" style="width:160px" @change="refresh">
               <el-option :value="7" label="近 7 天" />
               <el-option :value="14" label="近 14 天" />
@@ -16,10 +17,25 @@
         </div>
       </template>
 
-      <div v-if="data" style="display:grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:12px;">
+      <div
+        v-if="data"
+        :style="{
+          display: 'grid',
+          gridTemplateColumns: reportMode === 'pc' ? 'repeat(5, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))',
+          gap: '12px',
+          marginBottom: '12px'
+        }"
+      >
         <el-card shadow="never"><div style="color:#999;font-size:12px;">入库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.in_qty }}</div></el-card>
         <el-card shadow="never"><div style="color:#999;font-size:12px;">出库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.out_qty }}</div></el-card>
-        <el-card shadow="never"><div style="color:#999;font-size:12px;">调整数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.adjust_qty }}</div></el-card>
+        <el-card shadow="never">
+          <div style="color:#999;font-size:12px;">{{ reportMode==='pc' ? '回收/归还数量' : '调整数量' }}</div>
+          <div style="font-size:26px;font-weight:700;">{{ reportMode==='pc' ? (data.summary.recycle_qty ?? 0) : (data.summary.adjust_qty ?? 0) }}</div>
+        </el-card>
+        <el-card v-if="reportMode==='pc'" shadow="never">
+          <div style="color:#999;font-size:12px;">报废数量</div>
+          <div style="font-size:26px;font-weight:700;">{{ data.summary.scrap_qty ?? 0 }}</div>
+        </el-card>
         <el-card shadow="never"><div style="color:#999;font-size:12px;">明细笔数</div><div style="font-size:26px;font-weight:700;">{{ data.summary.tx_count }}</div></el-card>
       </div>
 
@@ -48,13 +64,13 @@
         <el-card shadow="never">
           <template #header><b>{{ activeTypeLabel }} Top 10</b></template>
           <el-table :data="topTable" size="small" border height="360">
-            <el-table-column prop="sku" label="SKU" width="120"/>
+            <el-table-column prop="sku" :label="reportMode==='pc' ? '型号' : 'SKU'" width="140"/>
             <el-table-column prop="name" label="名称" min-width="140"/>
             <el-table-column prop="qty" label="数量" width="80"/>
           </el-table>
 
           <div style="margin-top:10px;">
-            <b>按分类{{ activeTypeLabel }}</b>
+            <b>{{ categoryTitle }}</b>
             <el-table :data="categoryTable" size="small" border height="240" style="margin-top:8px;">
               <el-table-column prop="category" label="分类" min-width="140"/>
               <el-table-column prop="qty" label="数量" width="90"/>
@@ -69,40 +85,70 @@
 </template>
 
 <script setup lang="ts">
-import { ref, computed, onMounted } from "vue";
+import { ref, computed, onMounted, watch } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
+import { addDaysYmd } from "../utils/datetime";
 
 const warehouseId = useFixedWarehouseId();
 const days = ref(30);
+const reportMode = ref<"parts"|"pc">("parts");
+const reportModeOptions = [
+  { label: "配件仓", value: "parts" },
+  { label: "电脑仓", value: "pc" },
+];
 const data = ref<any|null>(null);
 const loading = ref(false);
 
-// 出库 / 入库切换
-const activeType = ref<"OUT" | "IN">("OUT");
-const typeOptions = [
-  { label: "出库", value: "OUT" },
-  { label: "入库", value: "IN" },
-];
+const activeType = ref<string>("OUT");
+const typeOptions = computed(() => {
+  if (reportMode.value === "pc") {
+    return [
+      { label: "出库", value: "OUT" },
+      { label: "入库", value: "IN" },
+      { label: "归还", value: "RETURN" },
+      { label: "回收", value: "RECYCLE" },
+      { label: "报废", value: "SCRAP" },
+    ];
+  }
+  return [
+    { label: "出库", value: "OUT" },
+    { label: "入库", value: "IN" },
+  ];
+});
 
-const activeTypeLabel = computed(() => (activeType.value === "OUT" ? "出库" : "入库"));
+const activeTypeLabel = computed(() => ({ OUT:'出库', IN:'入库', RETURN:'归还', RECYCLE:'回收', SCRAP:'报废' } as Record<string,string>)[activeType.value] || activeType.value);
+
+function pickByType(prefix: string, t: string) {
+  const key = `${prefix}_${String(t || '').toLowerCase()}`;
+  return data.value?.[key] || [];
+}
 
 const topTable = computed(() => {
   if (!data.value) return [];
-  return activeType.value === "OUT" ? (data.value.top_out || []) : (data.value.top_in || []);
+  return pickByType('top', activeType.value);
 });
 
 const categoryTable = computed(() => {
   if (!data.value) return [];
-  return activeType.value === "OUT" ? (data.value.category_out || []) : (data.value.category_in || []);
+  return pickByType('category', activeType.value);
 });
 
+const categoryTitle = computed(() => {
+  if (reportMode.value !== 'pc') return `按分类${activeTypeLabel.value}`;
+  if (activeType.value === 'OUT') return '按部门出库';
+  if (activeType.value === 'IN') return '按品牌入库';
+  if (activeType.value === 'RETURN') return '按部门归还';
+  if (activeType.value === 'RECYCLE') return '按部门回收';
+  if (activeType.value === 'SCRAP') return '按报废原因';
+  return '分类';
+});
 
 async function refresh(){
   loading.value = true;
   try{
-    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}`);
+    const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}&mode=${reportMode.value}`);
     data.value = r;
   }catch(e:any){
     ElMessage.error(e.message || "加载报表失败");
@@ -113,25 +159,32 @@ async function refresh(){
 
 const seriesFilled = computed(()=>{
   if (!data.value) return [];
-  // fill missing days with 0
-  const raw = activeType.value === "OUT" ? (data.value.daily_out || []) : (data.value.daily_in || []);
+  const raw = pickByType('daily', activeType.value);
   const map = new Map<string, number>();
   for (const r of raw) map.set(r.day, Number(r.qty));
   const out: any[] = [];
-  const to = new Date(data.value.range.to);
-  const from = new Date(data.value.range.from);
-  for (let d = new Date(from); d <= to; d.setDate(d.getDate()+1)){
-    const day = d.toISOString().slice(0,10);
-    out.push({ day, qty: map.get(day) ?? 0 });
+  const to = String(data.value.range.to || "");
+  const from = String(data.value.range.from || "");
+  if (!from || !to) return raw;
+  let cur = from;
+  while (cur <= to) {
+    out.push({ day: cur, qty: map.get(cur) ?? 0 });
+    cur = addDaysYmd(cur, 1);
   }
   return out;
 });
 
 function barWidth(qty:number){
-  const max = Math.max(...seriesFilled.value.map(x=>x.qty), 1);
+  const max = Math.max(...seriesFilled.value.map((x:any)=>x.qty), 1);
   const pct = Math.round((qty / max) * 100);
   return `${pct}%`;
 }
+
+watch(reportMode, () => {
+  const allowed = typeOptions.value.map((x:any) => x.value);
+  if (!allowed.includes(activeType.value)) activeType.value = 'OUT';
+  refresh();
+});
 
 onMounted(async ()=>{
   await refresh();

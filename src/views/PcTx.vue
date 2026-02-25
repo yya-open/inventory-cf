@@ -132,29 +132,7 @@ function reset() {
 }
 
 function formatBjTime(s?: string) {
-  if (!s) return "-";
-  let d: Date;
-  try {
-    if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
-      // 后端/D1 常见为 UTC 时间字符串（无时区），按 UTC 解析后转北京时间显示
-      d = new Date(s.replace(" ", "T") + "Z");
-    } else {
-      d = new Date(s);
-    }
-  } catch {
-    return s;
-  }
-  if (isNaN(d.getTime())) return s;
-  return new Intl.DateTimeFormat("zh-CN", {
-    timeZone: "Asia/Shanghai",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit",
-    hour12: false,
-  }).format(d).replace(/\//g, "-");
+  return s ? formatBeijingDateTime(s) : "-";
 }
 
 async function load() {

@@ -48,7 +48,9 @@
           <el-tag :type="row.must_change_password? 'warning':'success'">{{ row.must_change_password ? "是" : "否" }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column prop="created_at" label="创建时间" min-width="170" />
+      <el-table-column label="创建时间" min-width="170">
+        <template #default="{ row }">{{ formatBeijingDateTime(row.created_at) }}</template>
+      </el-table-column>
       <el-table-column label="操作" min-width="260">
         <template #default="{ row }">
           <div style="display:flex; gap:8px; flex-wrap:wrap">
@@ -138,6 +140,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
+import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 

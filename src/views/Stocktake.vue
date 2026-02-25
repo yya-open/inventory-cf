@@ -54,7 +54,9 @@
                 <el-tag :type="row.status==='DRAFT' ? 'info' : ((row.status==='APPLYING' || row.status==='ROLLING') ? 'warning' : 'success')" size="small">{{ row.status }}</el-tag>
               </template>
             </el-table-column>
-            <el-table-column prop="created_at" label="创建时间" min-width="160" />
+            <el-table-column label="创建时间" min-width="170">
+              <template #default="{ row }">{{ formatBeijingDateTime(row.created_at) }}</template>
+            </el-table-column>
             <el-table-column label="操作" width="90" fixed="right">
               <template #default="{ row }">
                 <template v-if="row.status==='DRAFT'">
@@ -103,7 +105,7 @@
                   <el-tag :type="detail.stocktake.status==='DRAFT' ? 'info' : ((detail.stocktake.status==='APPLYING' || detail.stocktake.status==='ROLLING') ? 'warning' : 'success')" size="small">
                     {{ detail.stocktake.status }}
                   </el-tag>
-                  <span class="muted">创建：{{ detail.stocktake.created_at }}</span>
+                  <span class="muted">创建：{{ formatBeijingDateTime(detail.stocktake.created_at) }}</span>
                 </div>
               </div>
 
@@ -153,7 +155,9 @@
                 </template>
               </el-table-column>
               <el-table-column prop="diff_qty" label="差异" width="90" />
-              <el-table-column prop="updated_at" label="更新时间" width="170" />
+              <el-table-column label="更新时间" width="170">
+                <template #default="{ row }">{{ formatBeijingDateTime(row.updated_at) }}</template>
+              </el-table-column>
             </el-table>
           </div>
         </div>
@@ -193,6 +197,7 @@
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
+import { formatBeijingDateTime } from "../utils/datetime";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";

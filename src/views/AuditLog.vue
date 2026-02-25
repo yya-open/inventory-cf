@@ -168,6 +168,7 @@ import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 import { ElMessage, ElMessageBox } from "element-plus";
+import { formatBeijingDateTime } from "../utils/datetime";
 
 
 const ACTION_LABEL: Record<string, string> = {
@@ -241,21 +242,7 @@ function entityLabel(e: string) {
 
 
 function formatTime(s?: string) {
-  if (!s) return "-";
-  // D1/SQLite 常用 datetime('now') 产出: "YYYY-MM-DD HH:mm:ss"（无时区，按 UTC 处理更符合 Cloudflare 实际）
-  // 这里将其按 UTC 解析后转换为浏览器本地时区显示（中国/新加坡会自动 +8）
-  let d: Date;
-  try {
-    if (/\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}/.test(s)) {
-      d = new Date(s.replace(" ", "T") + "Z");
-    } else {
-      d = new Date(s);
-    }
-  } catch {
-    return s;
-  }
-  if (isNaN(d.getTime())) return s;
-  return d.toLocaleString(undefined, { hour12: false });
+  return s ? formatBeijingDateTime(s) : "-";
 }
 const rows = ref<any[]>([]);
 const loading = ref(false);
