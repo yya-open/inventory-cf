@@ -119,9 +119,36 @@
               已选择：{{ pickedInfo }}
             </el-alert>
 
-            <div v-if="pickedInfo" style="margin-top:-4px">
+            <div v-if="pickedInfo" style="margin-top:-4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
               <el-button size="small" text type="primary" @click="clearPicked">重新选择</el-button>
+              <el-button size="small" text type="warning" :loading="validatingRestore" @click="validateRestoreFile">恢复前校验</el-button>
+              <span v-if="restoreValidateAt" style="color:#999; font-size:12px">最近校验：{{ restoreValidateAt }}</span>
             </div>
+
+            <el-alert
+              v-if="restoreValidate"
+              :type="restoreValidate.valid ? 'success' : 'error'"
+              show-icon
+              :closable="false"
+            >
+              <div>
+                <div>
+                  校验结果：{{ restoreValidate.valid ? '通过' : '未通过' }}
+                  <span style="color:#666">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
+                </div>
+                <div v-if="restoreValidatePreview.length" style="margin-top:6px; color:#666; line-height:1.6">
+                  <div v-for="(it,idx) in restoreValidatePreview" :key="idx">
+                    • [{{ it.severity==='error' ? '错误' : (it.severity==='warn' ? '警告' : '提示') }}] {{ it.message }}
+                  </div>
+                  <div v-if="(restoreValidate.issues?.length || 0) > restoreValidatePreview.length" style="color:#999">
+                    仅显示前 {{ restoreValidatePreview.length }} 条，点击“查看校验明细”查看全部
+                  </div>
+                </div>
+                <div style="margin-top:8px">
+                  <el-button size="small" plain @click="validateDlg=true">查看校验明细</el-button>
+                </div>
+              </div>
+            </el-alert>
 
             <el-radio-group v-model="mode" :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')">
               <el-radio label="merge">合并导入（不覆盖）</el-radio>
@@ -182,6 +209,37 @@
             </el-alert>
           </div>
         
+    <el-dialog v-model="validateDlg" title="恢复前校验结果" width="980px" :append-to-body="true">
+      <div style="display:flex; flex-direction:column; gap:10px">
+        <el-alert
+          v-if="restoreValidate"
+          :type="restoreValidate.valid ? 'success' : 'error'"
+          show-icon
+          :closable="false"
+        >
+          错误：{{ restoreValidate.counts?.error || 0 }}，警告：{{ restoreValidate.counts?.warn || 0 }}，提示：{{ restoreValidate.counts?.info || 0 }}
+        </el-alert>
+
+        <el-table v-if="restoreValidateIssues.length" :data="restoreValidateIssues" size="small" border style="width:100%">
+          <el-table-column label="级别" width="80">
+            <template #default="{row}">
+              <el-tag size="small" :type="row.severity==='error' ? 'danger' : (row.severity==='warn' ? 'warning' : 'info')">
+                {{ row.severity==='error' ? '错误' : (row.severity==='warn' ? '警告' : '提示') }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column prop="table" label="表" width="170" />
+          <el-table-column prop="column" label="字段" width="160" />
+          <el-table-column prop="message" label="说明" min-width="420" />
+        </el-table>
+
+        <el-alert v-else type="success" :closable="false" show-icon>未发现表/字段差异问题。</el-alert>
+      </div>
+      <template #footer>
+        <el-button @click="validateDlg=false">关闭</el-button>
+      </template>
+    </el-dialog>
+
     <el-dialog v-model="detailDlg" title="本次恢复明细" width="860px" :append-to-body="true">
       <div style="color:#666; font-size:12px; margin-bottom:10px">
         涉及表：{{ affectedTablesText }}
@@ -242,6 +300,10 @@ const downloading = ref(false);
 
 const detailDlg = ref(false);
 const detailDlgAutoOpened = ref(false);
+const validateDlg = ref(false);
+const validatingRestore = ref(false);
+const restoreValidate = ref<any>(null);
+const restoreValidateAt = ref<string>("");
 function buildBackupQuery(extra?: Record<string, string>) {
   const q = new URLSearchParams();
   if (bk.value.include_tx) q.set("include_tx", "1");
@@ -324,6 +386,8 @@ function clearPicked() {
   pickedFile.value = null;
   pickedInfo.value = "";
   fileList.value = [];
+  restoreValidate.value = null;
+  restoreValidateAt.value = "";
   try { uploadRef.value?.clearFiles?.(); } catch {}
 }
 
@@ -352,6 +416,8 @@ async function onPick(uploadFile: any) {
 
   const mb = (file.size / 1024 / 1024).toFixed(2);
   pickedInfo.value = `${file.name}（${mb} MB）`;
+  restoreValidate.value = null;
+  restoreValidateAt.value = "";
   msgSuccess("已选择备份文件");
 }
 
@@ -446,6 +512,10 @@ const affectedTablesText = computed(() => {
   return names.length ? names.join("、") : "（无）";
 });
 
+const restoreValidateIssues = computed(() => Array.isArray(restoreValidate.value?.issues) ? restoreValidate.value.issues : []);
+const restoreValidatePreview = computed(() => restoreValidateIssues.value.slice(0, 6));
+
+
 
 
 watch([jobStatus, restoreDetailRows], () => {
@@ -455,9 +525,44 @@ watch([jobStatus, restoreDetailRows], () => {
   }
 });
 
+async function validateRestoreFile(opts?: { silent?: boolean }) {
+  if (!pickedFile.value) {
+    if (!opts?.silent) msgWarn("请先选择备份文件");
+    return null;
+  }
+  validatingRestore.value = true;
+  try {
+    const form = new FormData();
+    form.set("file", pickedFile.value);
+    const r = await apiPostForm<any>("/api/admin/restore_validate", form);
+    restoreValidate.value = r.data;
+    restoreValidateAt.value = new Date().toLocaleString("zh-CN", { hour12: false });
+    if (!opts?.silent) {
+      if (r.data?.valid) msgSuccess("恢复前校验通过");
+      else msgWarn("恢复前校验未通过，请先处理错误项");
+    }
+    return r.data;
+  } catch (e:any) {
+    if (!opts?.silent) msgError(e?.message || "恢复前校验失败");
+    throw e;
+  } finally {
+    validatingRestore.value = false;
+  }
+}
+
 async function createJob() {
   if (!pickedFile.value) return;
   detailDlgAutoOpened.value = false;
+
+  let v = restoreValidate.value;
+  if (!v) {
+    v = await validateRestoreFile({ silent: true }).catch(() => null);
+  }
+  if (v && v.valid === false) {
+    validateDlg.value = true;
+    msgWarn("恢复前校验未通过，请先处理错误项");
+    return;
+  }
 
   const expected = mode.value === "replace" ? "清空并恢复" : (mode.value === "merge_upsert" ? "覆盖导入" : "恢复");
   try {
