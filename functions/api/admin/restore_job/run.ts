@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse, json } from "../../../_auth";
+import { errorResponse, json } from "../../../_auth";
+import { requirePermission } from "../../_permissions";
 import { logAudit } from "../../_audit";
 import { ensurePcSchema } from "../../_pc";
 import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, sniffGzipFromStream } from "./_util";
@@ -12,7 +13,7 @@ function parseJsonSafe(s: string, fallback: any) {
 
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, "admin");
+    const actor = await requirePermission(env, request, "restore.run");
     await ensurePcSchema(env.DB);
     const body = await request.json<any>().catch(() => ({}));
     const jobId = String(body.id || "").trim();
