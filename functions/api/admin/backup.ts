@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../../_auth";
+import { errorResponse } from "../../_auth";
+import { requirePermission } from "../_permissions";
 import { logAudit } from "../_audit";
 
 type BackupPayload = {
@@ -68,7 +69,7 @@ async function streamTableAsJsonArray(
 //  - audit_since=YYYY-MM-DD, audit_until=YYYY-MM-DD (filter audit_log by created_at)
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, "admin");
+    const actor = await requirePermission(env, request, "backup.run");
     const url = new URL(request.url);
 
     const include_tx = url.searchParams.get("include_tx") === "1";

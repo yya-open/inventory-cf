@@ -12,7 +12,7 @@ function expectedConfirmText(mode: RestoreMode) {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, "admin");
+    const actor = await requirePermission(env, request, "restore.run");
 
     const ct = request.headers.get("content-type") || "";
     if (!ct.includes("multipart/form-data")) {

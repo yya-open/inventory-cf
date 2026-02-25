@@ -7,7 +7,7 @@
           <el-button type="primary" @click="onSearch">查询</el-button>
           <el-button @click="reset">重置</el-button>
           <el-button type="info" plain @click="openRetention">保留策略</el-button>
-          <el-button v-if="isAdmin" type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
+          <el-button v-if="canDeleteAudit" type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
             删除选中 ({{ selectedIds.length }})
           </el-button>
         </div>
@@ -69,7 +69,7 @@
       style="width:100%"
       @selection-change="onSelect"
     >
-      <el-table-column v-if="isAdmin" type="selection" width="48" />
+      <el-table-column v-if="canDeleteAudit" type="selection" width="48" />
       <el-table-column label="#" width="80">
         <template #default="{ $index }">
           {{ (page - 1) * pageSize + $index + 1 }}
@@ -102,7 +102,7 @@
       <el-table-column label="操作" width="140" fixed="right">
         <template #default="{ row }">
           <el-button link type="primary" @click="openPayload(row)">查看</el-button>
-          <el-popconfirm v-if="isAdmin" title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
+          <el-popconfirm v-if="canDeleteAudit" title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
             <template #reference>
               <el-button link type="danger">删除</el-button>
             </template>
@@ -166,12 +166,14 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { apiGet, apiPost } from "../api/client";
-import { can } from "../store/auth";
+import { canPerm } from "../utils/permissions";
+import { AUDIT_ACTION_LABELS_FROM_DANGER } from "../utils/securityCatalog";
+import { promptDangerConfirm } from "../utils/danger";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatBeijingDateTime } from "../utils/datetime";
 
 
-const ACTION_LABEL: Record<string, string> = {
+const ACTION_LABEL_BASE: Record<string, string> = {
   STOCK_IN: "入库",
   STOCK_OUT: "出库",
   BATCH_IN: "批量入库",
@@ -212,7 +214,7 @@ const ACTION_LABEL: Record<string, string> = {
   pc_tx_clear: "清空电脑出入库明细",
 };
 
-const ENTITY_LABEL: Record<string, string> = {
+const ENTITY_LABEL_BASE: Record<string, string> = {
   stock_tx: "出入库流水",
   stocktake: "盘点单",
   items: "配件",
@@ -231,6 +233,21 @@ const ENTITY_LABEL: Record<string, string> = {
   pc_tx: "电脑出入库明细",
   pc_tx_detail: "电脑出入库明细",
 };
+
+const DANGER_ENTITY_LABEL: Record<string, string> = {
+  stock_tx: "出入库流水",
+  items: "配件",
+  stocktake: "盘点单",
+  pc_assets: "电脑台账",
+  pc_tx: "电脑出入库明细",
+  audit_log: "审计日志",
+  backup: "备份",
+  restore_job: "恢复任务",
+  users: "用户",
+};
+
+const ACTION_LABEL: Record<string, string> = { ...AUDIT_ACTION_LABELS_FROM_DANGER, ...ACTION_LABEL_BASE };
+const ENTITY_LABEL: Record<string, string> = { ...DANGER_ENTITY_LABEL, ...ENTITY_LABEL_BASE };
 
 function actionLabel(a: string) {
   return ACTION_LABEL[a] || a;
@@ -340,7 +357,9 @@ async function saveRetention() {
 
 
 const selectedIds = ref<number[]>([]);
-const isAdmin = computed(() => can("admin"));
+const isAdmin = computed(() => canPerm("audit.delete") || canPerm("audit.retention.manage"));
+const canDeleteAudit = computed(() => canPerm("audit.delete"));
+const canManageRetention = computed(() => canPerm("audit.retention.manage"));
 
 function onSelect(list: any[]) {
   selectedIds.value = (list || []).map(r => Number(r.id)).filter(n => Number.isFinite(n));
@@ -451,18 +470,7 @@ async function load(){
 }
 
 async function hardConfirm(expected: string, title: string) {
-  const { value } = await ElMessageBox.prompt(
-    `请输入「${expected}」确认操作（区分大小写）`,
-    title,
-    {
-      type: "warning",
-      confirmButtonText: "确认",
-      cancelButtonText: "取消",
-      inputPlaceholder: expected,
-      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
-    }
-  );
-  return String(value || "").trim();
+  return promptDangerConfirm(expected, title);
 }
 
 async function deleteOne(id: number){
