@@ -45,7 +45,7 @@
     <el-table :data="rows" border v-loading="loading" row-key="__rowKey" @selection-change="onSelectionChange">
       <el-table-column v-if="isAdmin" type="selection" width="46" />
       <el-table-column label="时间" width="170">
-        <template #default="{row}">{{ formatBjTime(row.created_at) }}</template>
+        <template #default="{row}">{{ formatBjTime(row.created_at, row) }}</template>
       </el-table-column>
       <el-table-column prop="tx_no" label="单号" width="210" />
       <el-table-column prop="type" label="类型" width="110">
@@ -101,6 +101,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { can, useAuth } from "../store/auth";
+import { formatBeijingDateTime } from "../utils/datetime";
 
 const canOperator = computed(() => can("operator"));
 const auth = useAuth();
@@ -131,8 +132,10 @@ function reset() {
   load();
 }
 
-function formatBjTime(s?: string) {
-  return s ? formatBeijingDateTime(s) : "-";
+function formatBjTime(s?: string, row?: any) {
+  const v = (row && (row.created_at_bj || row.time_bj)) || s;
+  if (!v) return "-";
+  try { return formatBeijingDateTime(v); } catch { return String(v); }
 }
 
 async function load() {
