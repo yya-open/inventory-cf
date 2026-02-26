@@ -37,8 +37,14 @@
       </el-table-column>
       <el-table-column label="电脑" min-width="260">
         <template #default="{row}">
-          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
-          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
+          <div
+            style="font-weight:600; cursor:pointer"
+            title="点击查看电脑信息"
+            @click="openInfo(row)"
+          >
+            {{ row.brand }} · {{ row.model }}
+          </div>
+          <div style="color:#999;font-size:12px; cursor:pointer" @click="openInfo(row)">SN：{{ row.serial_no }}</div>
         </template>
       </el-table-column>
 
@@ -110,6 +116,40 @@
       <template #footer>
         <el-button @click="editVisible=false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="infoVisible" title="电脑信息" width="720px" destroy-on-close>
+      <el-descriptions :column="2" border>
+        <el-descriptions-item label="品牌">{{ infoRow?.brand || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="型号">{{ infoRow?.model || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="序列号">{{ infoRow?.serial_no || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="状态">
+          <el-tag v-if="infoRow?.status==='IN_STOCK'" type="success">在库</el-tag>
+          <el-tag v-else-if="infoRow?.status==='ASSIGNED'" type="warning">已领用</el-tag>
+          <el-tag v-else-if="infoRow?.status==='RECYCLED'" type="info">已回收</el-tag>
+          <el-tag v-else type="danger">已报废</el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="出厂日期">{{ infoRow?.manufacture_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="保修到期">{{ infoRow?.warranty_end || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="硬盘容量">{{ infoRow?.disk_capacity || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="内存大小">{{ infoRow?.memory_size || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="配置日期">{{ infoRow?.last_config_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="回收日期">{{ infoRow?.last_recycle_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="当前领用人" :span="2">
+          <div v-if="infoRow?.status==='ASSIGNED'">
+            <div style="font-weight:600">{{ infoRow?.last_employee_name || '-' }}</div>
+            <div style="color:#999;font-size:12px">{{ infoRow?.last_employee_no || '-' }} · {{ infoRow?.last_department || '-' }}</div>
+          </div>
+          <span v-else>-</span>
+        </el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2">
+          <div style="white-space:pre-wrap">{{ infoRow?.remark || '-' }}</div>
+        </el-descriptions-item>
+      </el-descriptions>
+
+      <template #footer>
+        <el-button @click="infoVisible=false">关闭</el-button>
       </template>
     </el-dialog>
   </el-card>
@@ -199,6 +239,15 @@ function openEdit(row: any) {
     remark: row.remark || "",
   };
   editVisible.value = true;
+}
+
+const infoVisible = ref(false);
+const infoRow = ref<any>(null);
+
+function openInfo(row: any) {
+  // 列表数据已包含大部分字段；这里直接展示
+  infoRow.value = { ...row };
+  infoVisible.value = true;
 }
 
 async function saveEdit() {

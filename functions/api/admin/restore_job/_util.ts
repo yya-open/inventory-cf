@@ -114,7 +114,7 @@ export async function* textChunksFromFile(file: File, forceGzip?: boolean) {
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value) yield value.replace(/\u0000/g, "");
+      if (value) yield value;
     }
   } finally {
     reader.releaseLock();
@@ -313,7 +313,7 @@ export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, 
     while (true) {
       const { value, done } = await reader.read();
       if (done) break;
-      if (value) yield value.replace(/\u0000/g, "");
+      if (value) yield value;
     }
   } finally {
     reader.releaseLock();

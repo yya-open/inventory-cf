@@ -10,31 +10,6 @@ function parseJsonSafe(s: string, fallback: any) {
   try { return JSON.parse(s || ""); } catch { return fallback; }
 }
 
-function extractFirstJsonObject(text: string): string | null {
-  const s = (text || "").trim();
-  const start = s.indexOf("{");
-  if (start < 0) return null;
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  for (let i = start; i < s.length; i++) {
-    const ch = s[i];
-    if (inStr) {
-      if (esc) { esc = false; continue; }
-      if (ch === "\\") { esc = true; continue; }
-      if (ch === '"') { inStr = false; continue; }
-      continue;
-    }
-    if (ch === '"') { inStr = true; continue; }
-    if (ch === "{") depth++;
-    if (ch === "}") {
-      depth--;
-      if (depth === 0) return s.slice(start, i + 1);
-    }
-  }
-  return null;
-}
-
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
@@ -232,16 +207,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           }
         }
 
-        
-const cleanedRowText = (rowText || "").replace(/\u0000/g, "").trim();
-// D1/Workers streams occasionally contain stray bytes or concatenated fragments; extract the first complete JSON object.
-const extracted = extractFirstJsonObject(cleanedRowText) || cleanedRowText;
-let objRow: any;
-try {
-  objRow = JSON.parse(extracted);
-        } catch (e: any) {
-          throw new Error(`解析备份行失败：${String(e?.message || e)}；table=${table}；rowIndex=${rowIndexInTable}；sample=${extracted.slice(0, 200)}`);
-        }
+        const objRow = JSON.parse(rowText);
         if (!batchTable) batchTable = table;
         batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
         batchRows += 1;
