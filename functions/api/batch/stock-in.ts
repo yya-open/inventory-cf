@@ -74,13 +74,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const missing = skus.filter((s) => !skuToId.has(s));
     if (missing.length) return Response.json({ ok: false, message: "以下 SKU 不存在/被禁用", missing }, { status: 400 });
 
+    // Concurrency-safe & all-or-nothing batch in:
+    // - Insert stock_tx first for every line
+    // - Update stock only if the INSERT succeeded (WHERE changes() > 0)
+    // - A guard statement verifies all tx rows were inserted; otherwise it throws to rollback everything.
     const stmts: D1PreparedStatement[] = [];
     const txs: any[] = [];
+    const txNos: string[] = [];
 
     for (const [sku, l] of agg) {
       const item_id = skuToId.get(sku)!;
       const no = txNo();
       txs.push({ tx_no: no, sku, qty: l.qty });
+      txNos.push(no);
 
       stmts.push(
         env.DB.prepare(
@@ -89,18 +95,35 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ).bind(no, item_id, warehouse_id, l.qty, l.qty, "BATCH_IN", null, batch_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
       );
 
+      // Only apply stock change if the previous INSERT succeeded.
       stmts.push(
         env.DB.prepare(
           `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-           VALUES (?, ?, ?, datetime('now'))
+           SELECT ?, ?, ?, datetime('now')
+           WHERE (SELECT changes()) > 0
            ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now')`
         ).bind(item_id, warehouse_id, l.qty)
       );
     }
 
+    // Guard: if not all stock_tx rows exist, force a rollback using a JSON path error trick.
+    const phTx = txNos.map(() => "?").join(",");
+    stmts.push(
+      env.DB.prepare(
+        `SELECT CASE
+           WHEN (SELECT COUNT(*) FROM stock_tx WHERE tx_no IN (${phTx})) = ?
+           THEN 1
+           ELSE json_extract('{"a":1}', '$[')
+         END AS ok`
+      ).bind(...txNos, txNos.length)
+    );
+
     try {
       await env.DB.batch(stmts);
-      } catch (e) {
+    } catch (e: any) {
+      if (String(e?.message || "").includes("JSON path error")) {
+        return Response.json({ ok: false, message: "批量入库失败，已全部回滚（请重试）" }, { status: 409 });
+      }
       throw e;
     }
 
