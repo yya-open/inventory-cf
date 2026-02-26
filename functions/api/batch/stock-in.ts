@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
+import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
 
 function batchNo() {
   const d = new Date();
@@ -10,8 +11,8 @@ function batchNo() {
   return `BIN${y}${m}${day}-${rand}`;
 }
 
-function txNo() {
-  return `IN-${crypto.randomUUID()}`;
+function txNo(prefix: string) {
+  return `${prefix}-${crypto.randomUUID()}`;
 }
 
 type Line = {
@@ -22,14 +23,23 @@ type Line = {
   remark?: string;
 };
 
+type Body = {
+  warehouse_id?: number;
+  source?: string;
+  remark?: string;
+  client_request_id?: string; // optional idempotency key
+  lines?: Line[];
+};
+
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
 
-    const body = await request.json();
+    const body = (await request.json().catch(() => ({}))) as Body;
     const warehouse_id = Number(body.warehouse_id ?? 1);
     const header_source = body.source ?? null;
     const header_remark = body.remark ?? null;
+    const client_request_id = String(body.client_request_id ?? "").trim() || null;
     const lines: Line[] = Array.isArray(body.lines) ? body.lines : [];
 
     if (!lines.length) return Response.json({ ok: false, message: "没有明细行" }, { status: 400 });
@@ -54,14 +64,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     for (const l of lines) {
       const sku = String(l.sku ?? "").trim();
       const qty = Number(l.qty);
-      // already validated
-      const key = sku;
-      const cur = agg.get(key) ?? { sku, qty: 0 };
+      const cur = agg.get(sku) ?? { sku, qty: 0 };
       cur.qty += qty;
       cur.unit_price = l.unit_price ?? cur.unit_price;
       cur.source = (l.source ?? header_source ?? cur.source) ?? undefined;
       cur.remark = (l.remark ?? header_remark ?? cur.remark) ?? undefined;
-      agg.set(key, cur);
+      agg.set(sku, cur);
     }
     if (!agg.size) return Response.json({ ok: false, message: "有效行为空（检查 sku/qty）" }, { status: 400 });
 
@@ -74,28 +82,33 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const missing = skus.filter((s) => !skuToId.has(s));
     if (missing.length) return Response.json({ ok: false, message: "以下 SKU 不存在/被禁用", missing }, { status: 400 });
 
-    // Concurrency-safe & all-or-nothing batch in:
-    // - Insert stock_tx first for every line
-    // - Update stock only if the INSERT succeeded (WHERE changes() > 0)
-    // - A guard statement verifies all tx rows were inserted; otherwise it throws to rollback everything.
     const stmts: D1PreparedStatement[] = [];
     const txs: any[] = [];
     const txNos: string[] = [];
 
     for (const [sku, l] of agg) {
       const item_id = skuToId.get(sku)!;
-      const no = txNo();
+
+      // Idempotency:
+      // - if client_request_id is present, make tx_no + ref_no deterministic per sku
+      // - otherwise generate random tx_no and use batch_no for ref_no (not unique)
+      const ridPart = client_request_id ? safeToken(client_request_id) : null;
+      const skuPart = safeToken(sku);
+      const no = client_request_id ? `IN-${ridPart}-${skuPart}` : txNo("IN");
+      const ref_no = client_request_id ? `rid:${ridPart}:${skuPart}` : batch_no;
+
       txs.push({ tx_no: no, sku, qty: l.qty });
       txNos.push(no);
 
+      // 1) Insert tx row first, but IGNORE on duplicate ref_no (idempotency)
       stmts.push(
         env.DB.prepare(
-          `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, unit_price, source, remark, created_by)
+          `INSERT OR IGNORE INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, unit_price, source, remark, created_by)
            VALUES (?, 'IN', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`
-        ).bind(no, item_id, warehouse_id, l.qty, l.qty, "BATCH_IN", null, batch_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
+        ).bind(no, item_id, warehouse_id, l.qty, l.qty, "BATCH_IN", null, ref_no, l.unit_price ?? null, l.source ?? null, l.remark ?? null, user.username)
       );
 
-      // Only apply stock change if the previous INSERT succeeded.
+      // 2) Only update stock if INSERT actually happened (changes()>0)
       stmts.push(
         env.DB.prepare(
           `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
@@ -106,7 +119,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       );
     }
 
-    // Guard: if not all stock_tx rows exist, force a rollback using a JSON path error trick.
+    // Guard: ensure all tx rows exist for this request (idempotency safe because tx_no is deterministic when client_request_id provided)
     const phTx = txNos.map(() => "?").join(",");
     stmts.push(
       env.DB.prepare(
@@ -119,17 +132,23 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     );
 
     try {
-      await env.DB.batch(stmts);
+      await runBatchWithGuard(env.DB, stmts);
     } catch (e: any) {
-      if (String(e?.message || "").includes("JSON path error")) {
-        return Response.json({ ok: false, message: "批量入库失败，已全部回滚（请重试）" }, { status: 409 });
+      if (e instanceof GuardRollbackError) {
+        return Response.json({ ok: false, message: "批量入库写入异常，本次已全部回滚（请重试）" }, { status: 409 });
       }
       throw e;
     }
 
-    // Best-effort audit
-    waitUntil(logAudit(env.DB, request, user, "BATCH_IN", "stock_tx", batch_no, { warehouse_id, count: txs.length }).catch(() => {}));
-    return Response.json({ ok: true, batch_no, count: txs.length, txs });
+    // Best-effort audit (do not block main flow)
+    waitUntil(
+      logAudit(env.DB, request, user, "BATCH_IN", "stock_tx", client_request_id ?? batch_no, {
+        warehouse_id,
+        count: txs.length,
+        client_request_id,
+      }).catch(() => {})
+    );
+    return Response.json({ ok: true, batch_no, client_request_id, count: txs.length, txs });
   } catch (e: any) {
     return errorResponse(e);
   }

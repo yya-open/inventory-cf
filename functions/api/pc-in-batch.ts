@@ -1,7 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, pcInNo } from "./_pc";
-import { isUniqueConstraintError } from "../_idempotency";
 
 type Item = {
   brand: string;
@@ -50,46 +49,48 @@ seenSerial.add(snKey);
         const memory_size = optional(it?.memory_size, 40);
         const remark = optional(it?.remark, 2000);
 
+        const exist = await env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no).first<any>();
         const no = pcInNo();
 
-        // Concurrency-safe create per row:
-        // - rely on UNIQUE(serial_no)
-        // - insert pc_in only if asset insert succeeded
-        let res: any[];
-        try {
-          res = (await env.DB.batch([
+        if (exist?.id) {
+  throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
+} else {
+
+          const rs: any = await env.DB.batch([
             env.DB.prepare(
               `INSERT INTO pc_assets (
                 brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status
               ) VALUES (?,?,?,?,?,?,?,?, 'IN_STOCK')`
             ).bind(brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark),
 
-            env.DB.prepare(
+            env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no),
+          ]);
+
+          const assetId = Number(rs?.[1]?.results?.[0]?.id || rs?.[1]?.results?.id || 0);
+          if (!assetId) {
+            const q = await env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no).first<any>();
+            if (!q?.id) throw new Error("写入资产失败");
+            await env.DB.prepare(
               `INSERT INTO pc_in (
                 in_no, asset_id,
                 brand, serial_no, model,
                 manufacture_date, warranty_end, disk_capacity, memory_size,
                 remark, created_by
-              )
-              SELECT ?, last_insert_rowid(), ?, ?, ?, ?, ?, ?, ?, ?, ?
-              WHERE (SELECT changes()) > 0`
-            ).bind(no, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username),
-
-            env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no),
-          ])) as any;
-        } catch (e: any) {
-          if (isUniqueConstraintError(e)) {
-            throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+            ).bind(no, Number(q.id), brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
+          } else {
+            await env.DB.prepare(
+              `INSERT INTO pc_in (
+                in_no, asset_id,
+                brand, serial_no, model,
+                manufacture_date, warranty_end, disk_capacity, memory_size,
+                remark, created_by
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+            ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
           }
-          throw e;
         }
 
-        const inserted = (res?.[1] as any)?.meta?.changes || 0;
-        if (inserted !== 1) throw new Error("该序列号已存在，请勿重复入库（可能被并发导入）");
-
-        waitUntil(
-          logAudit(env.DB, request, user, "PC_IN", "pc_in", no, { serial_no, brand, model }).catch(() => {})
-        );
+        waitUntil(logAudit(env.DB, user, "pc_in_batch", `电脑批量入库：${serial_no}`, { serial_no, brand, model }));
         success++;
       } catch (e: any) {
         errors.push({ row: i + 2, message: e?.message || "导入失败" }); // +2: header row + 1-based

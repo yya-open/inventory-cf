@@ -62,46 +62,38 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const afterStatus = action === "RETURN" ? "IN_STOCK" : "RECYCLED";
         const no = pcRecycleNo();
 
-        const res: any[] = (await env.DB.batch([
-          env.DB.prepare(
-            `UPDATE pc_assets
-             SET status=?, updated_at=datetime('now')
-             WHERE id=? AND status='ASSIGNED'`
-          ).bind(afterStatus, asset.id),
-
+        await env.DB.batch([
           env.DB.prepare(
             `INSERT INTO pc_recycle (
               recycle_no, action, asset_id,
               employee_no, department, employee_name, is_employed,
               brand, serial_no, model,
               recycle_date, remark, created_by
-            )
-            SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
-            WHERE (SELECT changes()) > 0`
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
           ).bind(
             no,
             action,
             asset.id,
-            lastOut?.employee_no ?? null,
-            lastOut?.department ?? null,
-            lastOut?.employee_name ?? null,
-            lastOut?.is_employed ?? null,
+            lastOut?.employee_no || "",
+            lastOut?.department || "",
+            lastOut?.employee_name || "",
+            lastOut?.is_employed || "",
             asset.brand,
             asset.serial_no,
             asset.model,
             recycle_date,
             remark,
-            user.username
+            user?.id || ""
           ),
-        ])) as any;
 
-        const inserted = (res?.[1] as any)?.meta?.changes || 0;
-        if (inserted !== 1) throw new Error("该电脑当前不是“已领用”，无法回收/归还（可能被并发操作）");
+          env.DB.prepare(
+            `UPDATE pc_assets
+             SET status=?, updated_at=datetime('now')
+             WHERE id=?`
+          ).bind(afterStatus, asset.id),
+        ]);
 
-        const auditAction = action === "RETURN" ? "PC_RETURN" : "PC_RECYCLE";
-        waitUntil(
-          logAudit(env.DB, request, user, auditAction, "pc_recycle", no, { serial_no: asset.serial_no, action }).catch(() => {})
-        );
+        waitUntil(logAudit(env.DB, user, "pc_recycle_batch", `电脑批量回收/归还：${asset.serial_no}`, { serial_no: asset.serial_no, action }));
         success++;
       } catch (e: any) {
         errors.push({ row: i + 2, message: e?.message || "导入失败" });

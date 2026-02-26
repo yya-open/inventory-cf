@@ -6,9 +6,9 @@ import {
   optional,
   pcOutNo,
   getPcAssetByIdOrSerial,
+  isInStockStatus,
   toAssetStatusAfterOut,
 } from "./_pc";
-import { runBatchWithGuard } from "./_write";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
@@ -35,19 +35,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const asset = await getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no);
     if (!asset) return Response.json({ ok: false, message: "未找到该电脑资产（请先入库）" }, { status: 404 });
 
+    if (!isInStockStatus(asset.status)) {
+      return Response.json({ ok: false, message: "该电脑当前不在库，无法出库" }, { status: 400 });
+    }
+
     const no = pcOutNo();
     const afterStatus = toAssetStatusAfterOut(null);
 
-    // Concurrency-safe state transition:
-    // - UPDATE pc_assets only when status is IN_STOCK
-    // - INSERT pc_out only when the UPDATE succeeded (changes()>0)
-    const stmts: D1PreparedStatement[] = [
-      env.DB.prepare(
-        `UPDATE pc_assets
-         SET status=?, updated_at=datetime('now')
-         WHERE id=? AND status='IN_STOCK'`
-      ).bind(afterStatus, asset.id),
-
+    await env.DB.batch([
       env.DB.prepare(
         `INSERT INTO pc_out (
           out_no, asset_id,
@@ -55,9 +50,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           brand, serial_no, model,
           config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
           remark, created_by
-        )
-        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-        WHERE (SELECT changes()) > 0`
+        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         no,
         asset.id,
@@ -76,15 +69,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         remark,
         user.username
       ),
-    ];
 
-    const r = await runBatchWithGuard(env.DB, stmts, "该电脑当前不在库或已被并发出库，本次操作已回滚");
-    if (!r.ok) return r.response;
-
-    const inserted = ((r.results as any[])?.[1] as any)?.meta?.changes || 0;
-    if (inserted !== 1) {
-      return Response.json({ ok: false, message: "该电脑当前不在库，无法出库" }, { status: 409 });
-    }
+      env.DB.prepare(
+        `UPDATE pc_assets
+         SET status=?, updated_at=datetime('now')
+         WHERE id=?`
+      ).bind(afterStatus, asset.id),
+    ]);
 
     waitUntil(logAudit(env.DB, request, user, "PC_OUT", "pc_out", no, {
       asset_id: asset.id,

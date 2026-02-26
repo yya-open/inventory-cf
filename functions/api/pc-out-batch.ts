@@ -52,11 +52,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const afterStatus = toAssetStatusAfterOut();
         const no = pcOutNo();
 
-        const res: any[] = (await env.DB.batch([
+        await env.DB.batch([
           env.DB.prepare(
             `UPDATE pc_assets
              SET status=?, updated_at=datetime('now')
-             WHERE id=? AND status='IN_STOCK'`
+             WHERE id=?`
           ).bind(afterStatus, asset.id),
 
           env.DB.prepare(
@@ -67,9 +67,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
               config_date,
               manufacture_date, warranty_end, disk_capacity, memory_size,
               remark, created_by
-            )
-            SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?
-            WHERE (SELECT changes()) > 0`
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
           ).bind(
             no,
             asset.id,
@@ -86,16 +84,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
             asset.disk_capacity || "",
             asset.memory_size || "",
             remark,
-            user.username
+            user?.id || ""
           ),
-        ])) as any;
+        ]);
 
-        const inserted = (res?.[1] as any)?.meta?.changes || 0;
-        if (inserted !== 1) throw new Error("该电脑当前不是“在库”，无法出库（可能被并发操作）");
-
-        waitUntil(
-          logAudit(env.DB, request, user, "PC_OUT", "pc_out", no, { serial_no: asset.serial_no, employee_no }).catch(() => {})
-        );
+        waitUntil(logAudit(env.DB, user, "pc_out_batch", `电脑批量出库：${asset.serial_no}`, { serial_no: asset.serial_no, employee_no }));
         success++;
       } catch (e: any) {
         errors.push({ row: i + 2, message: e?.message || "导入失败" });
