@@ -3,7 +3,17 @@
  * We keep this idempotent so deployments won't break if migrations weren't run yet.
  */
 
+let __pcSchemaReady = false;
+let __pcSchemaInit: Promise<void> | null = null;
+
 export async function ensurePcSchema(db: D1Database) {
+  // PERF: schema creation / healing is idempotent but expensive if executed on every request.
+  // Cloudflare isolates keep module state between requests, so we cache initialization per isolate.
+  // Also dedupe concurrent calls with a shared promise.
+  if (__pcSchemaReady) return;
+  if (__pcSchemaInit) return __pcSchemaInit;
+
+  __pcSchemaInit = (async () => {
   // Ensure warehouse2 exists (for UI selection / consistency)
   await db.prepare("INSERT OR IGNORE INTO warehouses (id, name) VALUES (2, '电脑仓')").run();
 
@@ -174,6 +184,12 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_employee ON pc_recycle(employee_no)").run();
   // speed up latest-recycle lookup by asset_id
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_asset_id_id ON pc_recycle(asset_id, id DESC)").run();
+    __pcSchemaReady = true;
+  })().finally(() => {
+    __pcSchemaInit = null;
+  });
+
+  return __pcSchemaInit;
 }
 
 export type PcAsset = {

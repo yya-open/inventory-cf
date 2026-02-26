@@ -57,9 +57,36 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
 
-    // PERF: avoid N correlated subqueries per row.
-    // Use "latest row per asset" joins, backed by (asset_id, id DESC) indexes.
+    // PERF: Avoid scanning whole pc_out/pc_in/pc_recycle tables on every request.
+    // 1) First, select the page of asset ids.
+    // 2) Only compute latest out/in/recycle for those ids.
+    // Requires indexes: (asset_id, id DESC)
     const sql = `
+      WITH page_a AS (
+        SELECT a.id
+        FROM pc_assets a
+        ${where}
+        ORDER BY a.id ASC
+        LIMIT ? OFFSET ?
+      ),
+      latest_out AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_out
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      ),
+      latest_in AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_in
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      ),
+      latest_recycle AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_recycle
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      )
       SELECT
         a.*,
         o.employee_no   AS last_employee_no,
@@ -70,27 +97,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         o.created_at    AS last_out_at,
         i.created_at    AS last_in_at
       FROM pc_assets a
-      LEFT JOIN (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_out
-        GROUP BY asset_id
-      ) mo ON mo.asset_id = a.id
-      LEFT JOIN pc_out o ON o.id = mo.max_id
-      LEFT JOIN (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_recycle
-        GROUP BY asset_id
-      ) mr ON mr.asset_id = a.id
-      LEFT JOIN pc_recycle r ON r.id = mr.max_id
-      LEFT JOIN (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_in
-        GROUP BY asset_id
-      ) mi ON mi.asset_id = a.id
-      LEFT JOIN pc_in i ON i.id = mi.max_id
-      ${where}
+      JOIN page_a p ON p.id = a.id
+      LEFT JOIN latest_out lo ON lo.asset_id = a.id
+      LEFT JOIN pc_out o ON o.id = lo.max_id
+      LEFT JOIN latest_recycle lr ON lr.asset_id = a.id
+      LEFT JOIN pc_recycle r ON r.id = lr.max_id
+      LEFT JOIN latest_in li ON li.asset_id = a.id
+      LEFT JOIN pc_in i ON i.id = li.max_id
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
     `;
 
     const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
