@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from "./_pc";
+import { runBatchWithGuard } from "./_write";
 
 function assertAssigned(status: any) {
   return String(status) === "ASSIGNED";
@@ -32,6 +33,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const asset = await getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no);
     if (!asset) return Response.json({ ok: false, message: "未找到该电脑资产" }, { status: 404 });
 
+    // Friendly pre-check; final gating is done by conditional UPDATE in the batch.
     if (!assertAssigned(asset.status)) {
       return Response.json({ ok: false, message: "该电脑当前不是“已领用”，无法回收/归还" }, { status: 400 });
     }
@@ -51,14 +53,25 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const afterStatus = action === "RETURN" ? "IN_STOCK" : "RECYCLED";
     const no = pcRecycleNo();
 
-    await env.DB.batch([
+    // Concurrency-safe state transition:
+    // - UPDATE pc_assets only when status is ASSIGNED
+    // - INSERT pc_recycle only when the UPDATE succeeded (changes()>0)
+    const stmts: D1PreparedStatement[] = [
+      env.DB.prepare(
+        `UPDATE pc_assets
+         SET status=?, updated_at=datetime('now')
+         WHERE id=? AND status='ASSIGNED'`
+      ).bind(afterStatus, asset.id),
+
       env.DB.prepare(
         `INSERT INTO pc_recycle (
           recycle_no, action, asset_id,
           employee_no, department, employee_name, is_employed,
           brand, serial_no, model,
           recycle_date, remark, created_by
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        )
+        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
+        WHERE (SELECT changes()) > 0`
       ).bind(
         no,
         action,
@@ -72,14 +85,17 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         asset.model,
         recycle_date,
         remark,
-        user.username,
+        user.username
       ),
-      env.DB.prepare(
-        `UPDATE pc_assets
-         SET status=?, updated_at=datetime('now')
-         WHERE id=?`
-      ).bind(afterStatus, asset.id),
-    ]);
+    ];
+
+    const r = await runBatchWithGuard(env.DB, stmts, "该电脑状态已变化（可能被并发回收/归还），本次操作已回滚");
+    if (!r.ok) return r.response;
+
+    const inserted = ((r.results as any[])?.[1] as any)?.meta?.changes || 0;
+    if (inserted !== 1) {
+      return Response.json({ ok: false, message: "该电脑当前不是“已领用”，无法回收/归还" }, { status: 409 });
+    }
 
     const auditAction = action === "RETURN" ? "PC_RETURN" : "PC_RECYCLE";
     waitUntil(logAudit(env.DB, request, user, auditAction, "pc_recycle", no, {

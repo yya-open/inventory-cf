@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, optional, pcScrapNo } from "./_pc";
+import { runBatchWithGuard } from "./_write";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -67,25 +68,55 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const stmts: D1PreparedStatement[] = [];
     for (const a of rows) {
+      // Update only when status is allowed (not ASSIGNED / not SCRAPPED)
       stmts.push(
-        env.DB.prepare(`UPDATE pc_assets SET status='SCRAPPED', updated_at=datetime('now') WHERE id=?`).bind(a.id),
+        env.DB.prepare(
+          `UPDATE pc_assets
+           SET status='SCRAPPED', updated_at=datetime('now')
+           WHERE id=? AND status IN ('IN_STOCK','RECYCLED')`
+        ).bind(a.id),
+
+        // Insert only if the UPDATE succeeded
         env.DB.prepare(
           `INSERT INTO pc_scrap (
             scrap_no, asset_id,
             brand, serial_no, model,
             manufacture_date, warranty_end, disk_capacity, memory_size, remark,
             scrap_date, reason, created_by
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+          )
+          SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?
+          WHERE (SELECT changes()) > 0`
         ).bind(
-          scrap_no, a.id,
-          a.brand, a.serial_no, a.model,
-          a.manufacture_date || "", a.warranty_end || "", a.disk_capacity || "", a.memory_size || "", a.remark || "",
-          scrap_date, reason, user.username
+          scrap_no,
+          a.id,
+          a.brand,
+          a.serial_no,
+          a.model,
+          a.manufacture_date || "",
+          a.warranty_end || "",
+          a.disk_capacity || "",
+          a.memory_size || "",
+          a.remark || "",
+          scrap_date,
+          reason,
+          user.username
         )
       );
     }
 
-    await env.DB.batch(stmts);
+    // Guard: ensure all rows for this scrap_no were inserted; otherwise rollback everything.
+    stmts.push(
+      env.DB.prepare(
+        `SELECT CASE
+           WHEN (SELECT COUNT(*) FROM pc_scrap WHERE scrap_no=?) = ?
+           THEN 1
+           ELSE json_extract('{"a":1}', '$[')
+         END AS ok`
+      ).bind(scrap_no, rows.length)
+    );
+
+    const r = await runBatchWithGuard(env.DB, stmts, "报废失败：可能存在并发状态变化（已领用/已报废），本次操作已全部回滚");
+    if (!r.ok) return r.response;
 
     waitUntil(logAudit(env.DB, request, user, "PC_SCRAP", "pc_scrap", scrap_no, {
       scrap_no,
