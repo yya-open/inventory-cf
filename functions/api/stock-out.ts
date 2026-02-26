@@ -30,45 +30,23 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const rid = normalizeClientRequestId(client_request_id);
     const refNo = rid ? toRidRefNo(rid) : null;
 
-    // Single-statement atomic write (with guard rollback on unexpected partial effects)
-    // Pattern:
-    //  - INSERT OR IGNORE into stock_tx only when stock is sufficient (idempotent by ref_no)
-    //  - Decrease stock only when stock_tx row was actually inserted
-    //  - Guard: inserted rows count must equal stock-update rows count (else rollback)
-    let row: any;
+    // Use a D1 batch (transactional) and SQLite's changes() to gate side-effects.
+    // This avoids data-modifying CTEs, which may not be enabled in all D1 runtimes.
     try {
-      row = await env.DB
-        .prepare(
-          `WITH ins AS (
-             INSERT OR IGNORE INTO stock_tx (
-               tx_no, type, item_id, warehouse_id, qty, delta_qty,
-               ref_type, ref_id, ref_no, target, remark, created_by
-             )
-             SELECT
-               ?, 'OUT', ?, ?, ?, ?, 'MANUAL_OUT', NULL, ?, ?, ?, ?
-             WHERE EXISTS (
-               SELECT 1 FROM stock
-               WHERE item_id=? AND warehouse_id=? AND qty >= ?
-             )
-             RETURNING tx_no
-           ),
-           upd AS (
-             UPDATE stock
-             SET qty = qty - ?, updated_at=datetime('now')
-             WHERE item_id=? AND warehouse_id=? AND qty >= ?
-               AND EXISTS (SELECT 1 FROM ins)
-             RETURNING 1
+      await env.DB.batch([
+        // 1) Insert stock_tx only when stock is sufficient; idempotent by ref_no
+        env.DB.prepare(
+          `INSERT OR IGNORE INTO stock_tx (
+             tx_no, type, item_id, warehouse_id, qty, delta_qty,
+             ref_type, ref_id, ref_no, target, remark, created_by
            )
            SELECT
-             (SELECT tx_no FROM ins LIMIT 1) AS tx_no,
-             (SELECT COUNT(*) FROM ins) AS ins_n,
-             (SELECT COUNT(*) FROM upd) AS upd_n,
-             CASE
-               WHEN (SELECT COUNT(*) FROM ins) = (SELECT COUNT(*) FROM upd) THEN 1
-               ELSE json_extract('[]', '$[')
-             END AS guard_ok;`
-        )
-        .bind(
+             ?, 'OUT', ?, ?, ?, ?, 'MANUAL_OUT', NULL, ?, ?, ?, ?
+           WHERE EXISTS (
+             SELECT 1 FROM stock
+             WHERE item_id=? AND warehouse_id=? AND qty >= ?
+           );`
+        ).bind(
           no,
           item_id,
           wid,
@@ -80,21 +58,32 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           user.username,
           item_id,
           wid,
-          q,
-          q,
-          item_id,
-          wid,
           q
-        )
-        .first<any>();
+        ),
+        // 2) Decrease stock only when (1) inserted a row, and re-check stock is sufficient
+        env.DB.prepare(
+          `UPDATE stock
+           SET qty = qty - ?, updated_at=datetime('now')
+           WHERE item_id=? AND warehouse_id=? AND qty >= ?
+             AND (SELECT changes()) > 0;`
+        ).bind(q, item_id, wid, q),
+        // 3) Guard: if tx row exists, stock must have been updated exactly once; else updated 0 times.
+        env.DB.prepare(
+          `SELECT CASE
+             WHEN (SELECT changes()) = (CASE WHEN EXISTS (SELECT 1 FROM stock_tx WHERE tx_no=?) THEN 1 ELSE 0 END)
+               THEN 1
+             ELSE json_extract('[]', '$[')
+           END AS guard_ok;`
+        ).bind(no),
+      ]);
     } catch (e: any) {
       if (isGuardRollback(e)) throw new GuardRollbackError();
       throw e;
     }
 
-    const inserted = Number(row?.ins_n || 0);
-    if (inserted === 0) {
-      // Duplicate idempotent request
+    // If duplicate idempotent request, return existing tx_no
+    const insertedRow = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE tx_no=? LIMIT 1`).bind(no).first<any>();
+    if (!insertedRow?.tx_no) {
       if (refNo) {
         const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
         if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
