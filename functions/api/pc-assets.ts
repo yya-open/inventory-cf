@@ -11,6 +11,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     await ensurePcSchema(env.DB);
 
     const url = new URL(request.url);
+    const fast = (url.searchParams.get("fast") || "").trim() === "1"; // 跳过 COUNT(*)，优先首屏速度
     const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED/SCRAPPED
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const ageYears = Math.max(0, Number(url.searchParams.get("age_years") || 0)); // 出厂超过 N 年
@@ -55,7 +56,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
 
-    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+    // PERF: COUNT(*) 在数据量大时很慢（而且首屏并不需要准确 total）。
+    // fast=1 时跳过 total 统计，让列表先出来；前端可再异步请求 /api/pc-assets-count 获取 total。
+    let totalCount: number | null = null;
+    if (!fast) {
+      const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+      totalCount = Number(totalRow?.c || 0);
+    }
 
     // PERF: Avoid scanning whole pc_out/pc_in/pc_recycle tables on every request.
     // 1) First, select the page of asset ids.
@@ -109,7 +116,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
 
-    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
+    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }

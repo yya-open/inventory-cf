@@ -196,9 +196,28 @@ async function load() {
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
 
+    // PERF: 首屏先走 fast=1 跳过 COUNT(*)，让表格尽快出数据；
+    // total 再异步拉取 /api/pc-assets-count 补齐。
+    params.set("fast", "1");
+
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     rows.value = r.data || [];
-    total.value = Number(r.total || 0);
+
+    // 如果后端没返回 total（fast 模式），异步补齐 total，不阻塞首屏。
+    if (r.total === null || typeof r.total === "undefined") {
+      const params2 = new URLSearchParams();
+      if (status.value) params2.set("status", status.value);
+      if (keyword.value) params2.set("keyword", keyword.value);
+      apiGet(`/api/pc-assets-count?${params2.toString()}`)
+        .then((j: any) => {
+          total.value = Number(j.total || 0);
+        })
+        .catch(() => {
+          // ignore
+        });
+    } else {
+      total.value = Number(r.total || 0);
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

@@ -128,6 +128,7 @@ async function loadAssets(keyword = "") {
     params.set("status", "ASSIGNED");
     params.set("page", "1");
     params.set("page_size", "50");
+    params.set("fast", "1");
     if (keyword) params.set("keyword", keyword);
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     assetOptions.value = r.data || [];
