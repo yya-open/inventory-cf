@@ -57,60 +57,37 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
 
-    // include latest out info for quick view
+    // PERF: avoid N correlated subqueries per row.
+    // Use "latest row per asset" joins, backed by (asset_id, id DESC) indexes.
     const sql = `
       SELECT
         a.*,
-        (
-          SELECT o.employee_no
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_employee_no,
-        (
-          SELECT o.employee_name
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_employee_name,
-        (
-          SELECT o.department
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_department,
-        (
-          SELECT o.config_date
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_config_date,
-        (
-          SELECT r.recycle_date
-          FROM pc_recycle r
-          WHERE r.asset_id=a.id
-          ORDER BY r.id DESC
-          LIMIT 1
-        ) AS last_recycle_date,
-        (
-          SELECT o.created_at
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_out_at,
-        (
-          SELECT i.created_at
-          FROM pc_in i
-          WHERE i.asset_id=a.id
-          ORDER BY i.id DESC
-          LIMIT 1
-        ) AS last_in_at
+        o.employee_no   AS last_employee_no,
+        o.employee_name AS last_employee_name,
+        o.department    AS last_department,
+        o.config_date   AS last_config_date,
+        r.recycle_date  AS last_recycle_date,
+        o.created_at    AS last_out_at,
+        i.created_at    AS last_in_at
       FROM pc_assets a
+      LEFT JOIN (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_out
+        GROUP BY asset_id
+      ) mo ON mo.asset_id = a.id
+      LEFT JOIN pc_out o ON o.id = mo.max_id
+      LEFT JOIN (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_recycle
+        GROUP BY asset_id
+      ) mr ON mr.asset_id = a.id
+      LEFT JOIN pc_recycle r ON r.id = mr.max_id
+      LEFT JOIN (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_in
+        GROUP BY asset_id
+      ) mi ON mi.asset_id = a.id
+      LEFT JOIN pc_in i ON i.id = mi.max_id
       ${where}
       ORDER BY a.id ASC
       LIMIT ? OFFSET ?

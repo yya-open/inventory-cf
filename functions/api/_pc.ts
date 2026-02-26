@@ -113,6 +113,8 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
 
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_created_at ON pc_in(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_serial ON pc_in(serial_no)").run();
+  // speed up latest-in lookup by asset_id
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_asset_id_id ON pc_in(asset_id, id DESC)").run();
 
   await db.prepare(`
     CREATE TABLE IF NOT EXISTS pc_out (
@@ -142,6 +144,8 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_created_at ON pc_out(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_serial ON pc_out(serial_no)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_employee ON pc_out(employee_no)").run();
+  // speed up latest-out lookup by asset_id
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_asset_id_id ON pc_out(asset_id, id DESC)").run();
 
 
   await db.prepare(`
@@ -168,6 +172,8 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_created_at ON pc_recycle(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_serial ON pc_recycle(serial_no)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_employee ON pc_recycle(employee_no)").run();
+  // speed up latest-recycle lookup by asset_id
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_asset_id_id ON pc_recycle(asset_id, id DESC)").run();
 }
 
 export type PcAsset = {
