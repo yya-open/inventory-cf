@@ -207,7 +207,17 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           }
         }
 
-        const objRow = JSON.parse(rowText);
+        const cleanedRowText = (rowText || "").replace(/\u0000/g, "").trim();
+        // Some runtimes may include a trailing comma or stray bytes after the JSON object; keep only the last complete object.
+        const lastBrace = cleanedRowText.lastIndexOf("}");
+        const safeRowText = (lastBrace >= 0) ? cleanedRowText.slice(0, lastBrace + 1) : cleanedRowText;
+
+        let objRow: any;
+        try {
+          objRow = JSON.parse(safeRowText);
+        } catch (e: any) {
+          throw new Error(`解析备份行失败：${String(e?.message || e)}；table=${table}；rowIndex=${rowIndexInTable}；sample=${safeRowText.slice(0, 200)}`);
+        }
         if (!batchTable) batchTable = table;
         batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
         batchRows += 1;
