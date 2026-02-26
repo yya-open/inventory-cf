@@ -67,7 +67,19 @@ export async function logAudit(
   try {
     const ip = getIp(request);
     const ua = request.headers.get("user-agent");
-    const payload_json = payload === undefined ? null : JSON.stringify(payload);
+
+    // Guard: keep audit payload small to avoid oversized rows (especially on batch/import).
+    // If payload_json is too long, truncate and keep a marker.
+    const MAX_PAYLOAD_CHARS = 8192;
+    let payload_json = payload === undefined ? null : JSON.stringify(payload);
+    if (payload_json && payload_json.length > MAX_PAYLOAD_CHARS) {
+      payload_json = JSON.stringify({
+        _truncated: true,
+        _max_chars: MAX_PAYLOAD_CHARS,
+        _original_chars: payload_json.length,
+        data: payload_json.slice(0, MAX_PAYLOAD_CHARS),
+      });
+    }
     await db.prepare(
       `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua)
        VALUES (?,?,?,?,?,?,?,?)`
