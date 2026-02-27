@@ -1,17 +1,18 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { buildKeywordWhere } from "./_search";
-import { createTiming } from "./_timing";
+// Server-Timing is injected globally by functions/_middleware.ts
 
 // 专门用于“只统计 total”的轻量接口：前端列表首屏可用 fast=1 跳过 COUNT(*)，
 // 然后异步请求该接口补齐 total，显著提升首屏速度。
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const t = createTiming();
-    await t.measure("auth", () => requireAuth(env, request, "viewer"));
+    await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
     const url = new URL(request.url);
-    await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
     const status = (url.searchParams.get("status") || "").trim();
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const ageYears = Math.max(0, Number(url.searchParams.get("age_years") || 0));
@@ -50,12 +51,12 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     }
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
-    const row = await t.measure("count", async () => {
-      return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
-    });
-    const resp = Response.json({ ok: true, total: Number((row as any)?.c || 0) });
-    resp.headers.set("Server-Timing", t.header());
-    return resp;
+    const row = t?.measure
+      ? await t.measure("count", async () => {
+          return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+        })
+      : await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+    return Response.json({ ok: true, total: Number((row as any)?.c || 0) });
   } catch (e: any) {
     return errorResponse(e);
   }

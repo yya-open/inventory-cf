@@ -7,11 +7,15 @@ let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
 
 /**
- * In production, schema self-healing (DDL + sqlite_master probing) can make the *first* request slow.
- * You can disable it via Pages env var: DISABLE_SCHEMA_HEALING=1.
- * When disabled, you can still force-run healing by appending: ?init=1
+ * Runtime schema self-healing performs DDL and can slow down cold starts.
+ * This project now prefers *explicit migrations*.
+ *
+ * To fully disable runtime DDL (recommended for production), keep ENABLE_RUNTIME_DDL unset.
+ * If you really need emergency self-healing, set ENABLE_RUNTIME_DDL=1 temporarily.
  */
 export function shouldHealPcSchema(env: any, url: URL) {
+  const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
+  if (!allow) return false;
   const disabled = String(env?.DISABLE_SCHEMA_HEALING || "").trim() === "1";
   const force = (url.searchParams.get("init") || "").trim() === "1";
   return !disabled || force;

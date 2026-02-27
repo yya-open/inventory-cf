@@ -2,15 +2,16 @@ import { requireAuth, errorResponse } from "../_auth";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { toSqlRange } from "./_date";
 import { buildKeywordWhere } from "./_search";
-import { createTiming } from "./_timing";
+// Server-Timing is injected globally by functions/_middleware.ts
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const t = createTiming();
-    await t.measure("auth", () => requireAuth(env, request, "viewer"));
+    await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
     const url = new URL(request.url);
-    await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
     const type = (url.searchParams.get("type") || "").trim().toUpperCase(); // IN / OUT / RETURN / RECYCLE
     const keyword = (url.searchParams.get("keyword") || "").trim();
@@ -148,9 +149,11 @@ FROM pc_scrap s
     let totalCount: number | null = null;
     if (!fast) {
       const countSql = `SELECT COUNT(*) as c FROM ( ${unionSql} ) x ${where}`;
-      const totalRow = await t.measure("count", async () => {
-        return env.DB.prepare(countSql).bind(...binds).first<any>();
-      });
+      const totalRow = t?.measure
+        ? await t.measure("count", async () => {
+            return env.DB.prepare(countSql).bind(...binds).first<any>();
+          })
+        : await env.DB.prepare(countSql).bind(...binds).first<any>();
       totalCount = Number((totalRow as any)?.c || 0);
     }
 
@@ -168,13 +171,13 @@ const sql = `
       LIMIT ? OFFSET ?
     `;
 
-    const { results } = await t.measure("sql", async () => {
-      return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
-    });
+    const { results } = t?.measure
+      ? await t.measure("query", async () => {
+          return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+        })
+      : await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
 
-    const resp = Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
-    resp.headers.set("Server-Timing", t.header());
-    return resp;
+    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }

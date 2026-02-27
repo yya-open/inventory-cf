@@ -1,17 +1,18 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
-import { ensurePcSchema, ensurePcSchemaIfAllowed, must, optional, normalizeText } from "./_pc";
+import { ensurePcSchemaIfAllowed, must, optional, normalizeText } from "./_pc";
 import { buildKeywordWhere } from "./_search";
-import { createTiming } from "./_timing";
+// Server-Timing is injected globally by functions/_middleware.ts
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const t = createTiming();
-    await t.measure("auth", () => requireAuth(env, request, "viewer"));
+    await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     const url = new URL(request.url);
-    await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
     const fast = (url.searchParams.get("fast") || "").trim() === "1"; // 跳过 COUNT(*)，优先首屏速度
     const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED/SCRAPPED
@@ -62,9 +63,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     // fast=1 时跳过 total 统计，让列表先出来；前端可再异步请求 /api/pc-assets-count 获取 total。
     let totalCount: number | null = null;
     if (!fast) {
-      const totalRow = await t.measure("count", async () => {
-        return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
-      });
+      const totalRow = t?.measure
+        ? await t.measure("count", async () => {
+            return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+          })
+        : await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
       totalCount = Number((totalRow as any)?.c || 0);
     }
 
@@ -118,13 +121,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       ORDER BY a.id ASC
     `;
 
-    const { results } = await t.measure("sql", async () => {
-      return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
-    });
+    const { results } = t?.measure
+      ? await t.measure("query", async () => {
+          return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+        })
+      : await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
 
-    const resp = Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
-    resp.headers.set("Server-Timing", t.header());
-    return resp;
+    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -135,7 +138,10 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   try {
     const user = await requireAuth(env, request, "admin");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    const url = new URL(request.url);
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const id = Number(body?.id || 0);
@@ -177,7 +183,10 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
   try {
     const user = await requireAuth(env, request, "operator");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    const url2 = new URL(request.url);
+    const t2 = (env as any).__timing;
+    if (t2?.measure) await t2.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url2));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url2);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const url = new URL(request.url);
