@@ -169,6 +169,14 @@ const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
 
+// PERF: total 统计结果缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
+const totalCache = new Map<string, number>();
+let totalTimer: any = null;
+
+function filterKey() {
+  return `status=${status.value || ""}&keyword=${keyword.value || ""}`;
+}
+
 const status = ref<string>("");
 const keyword = ref<string>("");
 
@@ -203,20 +211,36 @@ async function load() {
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     rows.value = r.data || [];
 
+    const key = filterKey();
+    // 如果已有缓存 total，直接复用，不再触发 count。
+    if (totalCache.has(key)) {
+      total.value = Number(totalCache.get(key) || 0);
+      return;
+    }
+
     // 如果后端没返回 total（fast 模式），异步补齐 total，不阻塞首屏。
     if (r.total === null || typeof r.total === "undefined") {
-      const params2 = new URLSearchParams();
-      if (status.value) params2.set("status", status.value);
-      if (keyword.value) params2.set("keyword", keyword.value);
-      apiGet(`/api/pc-assets-count?${params2.toString()}`)
-        .then((j: any) => {
-          total.value = Number(j.total || 0);
-        })
-        .catch(() => {
-          // ignore
-        });
+      // PERF: 1) debounce，避免用户快速输入/切换导致多次 COUNT；
+      //       2) 仅在当前筛选条件下请求一次并缓存。
+      if (totalTimer) clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => {
+        const params2 = new URLSearchParams();
+        if (status.value) params2.set("status", status.value);
+        if (keyword.value) params2.set("keyword", keyword.value);
+        apiGet(`/api/pc-assets-count?${params2.toString()}`)
+          .then((j: any) => {
+            const v = Number(j.total || 0);
+            totalCache.set(filterKey(), v);
+            total.value = v;
+          })
+          .catch(() => {
+            // ignore
+          });
+      }, 250);
     } else {
-      total.value = Number(r.total || 0);
+      const v = Number(r.total || 0);
+      totalCache.set(key, v);
+      total.value = v;
     }
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");

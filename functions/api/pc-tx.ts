@@ -1,20 +1,24 @@
 import { requireAuth, errorResponse } from "../_auth";
-import { ensurePcSchema } from "./_pc";
+import { ensurePcSchemaIfAllowed } from "./_pc";
 import { toSqlRange } from "./_date";
 import { buildKeywordWhere } from "./_search";
+// Server-Timing is injected globally by functions/_middleware.ts
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-
-    await ensurePcSchema(env.DB);
-
     const url = new URL(request.url);
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+
     const type = (url.searchParams.get("type") || "").trim().toUpperCase(); // IN / OUT / RETURN / RECYCLE
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
+
+    const fast = (url.searchParams.get("fast") || "").trim() === "1"; // 跳过 COUNT(*)
 
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
     const pageSize = Math.min(200, Math.max(20, Number(url.searchParams.get("page_size") || 50)));
@@ -142,8 +146,16 @@ FROM pc_scrap s
 
     `;
 
-    const countSql = `SELECT COUNT(*) as c FROM ( ${unionSql} ) x ${where}`;
-    const totalRow = await env.DB.prepare(countSql).bind(...binds).first<any>();
+    let totalCount: number | null = null;
+    if (!fast) {
+      const countSql = `SELECT COUNT(*) as c FROM ( ${unionSql} ) x ${where}`;
+      const totalRow = t?.measure
+        ? await t.measure("count", async () => {
+            return env.DB.prepare(countSql).bind(...binds).first<any>();
+          })
+        : await env.DB.prepare(countSql).bind(...binds).first<any>();
+      totalCount = Number((totalRow as any)?.c || 0);
+    }
 
     
     // Sorting:
@@ -159,9 +171,13 @@ const sql = `
       LIMIT ? OFFSET ?
     `;
 
-    const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+    const { results } = t?.measure
+      ? await t.measure("query", async () => {
+          return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+        })
+      : await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
 
-    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
+    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }

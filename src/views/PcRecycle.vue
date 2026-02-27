@@ -23,8 +23,7 @@
       </div>
 
 
-      <el-form-item label="选择电脑" prop="asset_id" for="pc-recycle-asset">
-        <input id="pc-recycle-asset" name="asset_id" type="hidden" :value="form.asset_id ?? ''" />
+      <el-form-item label="选择电脑" prop="asset_id">
         <el-select
           v-model="form.asset_id"
           filterable
@@ -74,8 +73,7 @@
         <el-descriptions-item label="预计回收">{{ pickedAsset.last_recycle_date || '-' }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-form-item label="回收/归还日期" prop="recycle_date" for="pc-recycle-date">
-        <input id="pc-recycle-date" name="recycle_date" type="hidden" :value="form.recycle_date ?? ''" />
+      <el-form-item label="回收/归还日期" prop="recycle_date">
         <el-date-picker
           v-model="form.recycle_date"
           type="date"
@@ -85,8 +83,7 @@
         />
       </el-form-item>
 
-      <el-form-item label="备注" for="pc-recycle-remark">
-        <input id="pc-recycle-remark" name="remark" type="hidden" :value="form.remark ?? ''" />
+      <el-form-item label="备注">
         <el-input v-model="form.remark" type="textarea" :rows="3" />
       </el-form-item>
 

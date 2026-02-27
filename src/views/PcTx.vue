@@ -115,6 +115,18 @@ const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
 
+// PERF: total 统计缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
+const totalCache = new Map<string, number>();
+let totalTimer: any = null;
+
+function filterKey() {
+  const t = type.value || "";
+  const k = keyword.value || "";
+  const d0 = dateRange.value?.[0] || "";
+  const d1 = dateRange.value?.[1] || "";
+  return `type=${t}&keyword=${k}&d0=${d0}&d1=${d1}`;
+}
+
 const type = ref<string>("");
 const keyword = ref<string>("");
 const dateRange = ref<[string, string] | null>(null);
@@ -149,9 +161,40 @@ async function load() {
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
 
+    // PERF: 首屏先走 fast=1 跳过 COUNT(*)，让表格尽快出数据；
+    // total 再异步拉取 /api/pc-tx-count 补齐（带缓存）。
+    params.set("fast", "1");
+
     const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
     rows.value = (r.data || []).map((it:any) => ({ ...it, __rowKey: `${String(it.type||"").toUpperCase()}_${it.id}` }));
-    total.value = Number(r.total || 0);
+
+    const key = filterKey();
+    if (totalCache.has(key)) {
+      total.value = Number(totalCache.get(key) || 0);
+      return;
+    }
+
+    if (r.total === null || typeof r.total === "undefined") {
+      if (totalTimer) clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => {
+        const params2 = new URLSearchParams();
+        if (type.value) params2.set("type", type.value);
+        if (keyword.value) params2.set("keyword", keyword.value);
+        if (dateRange.value?.[0]) params2.set("date_from", `${dateRange.value[0]} 00:00:00`);
+        if (dateRange.value?.[1]) params2.set("date_to", `${dateRange.value[1]} 23:59:59`);
+        apiGet(`/api/pc-tx-count?${params2.toString()}`)
+          .then((j: any) => {
+            const v = Number(j.total || 0);
+            totalCache.set(filterKey(), v);
+            total.value = v;
+          })
+          .catch(() => {});
+      }, 250);
+    } else {
+      const v = Number(r.total || 0);
+      totalCache.set(key, v);
+      total.value = v;
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
