@@ -1,16 +1,18 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
-import { ensurePcSchema, must, optional, normalizeText } from "./_pc";
+import { ensurePcSchema, ensurePcSchemaIfAllowed, must, optional, normalizeText } from "./_pc";
 import { buildKeywordWhere } from "./_search";
+import { createTiming } from "./_timing";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    const t = createTiming();
+    await t.measure("auth", () => requireAuth(env, request, "viewer"));
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
-    await ensurePcSchema(env.DB);
-
     const url = new URL(request.url);
+    await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+
     const fast = (url.searchParams.get("fast") || "").trim() === "1"; // 跳过 COUNT(*)，优先首屏速度
     const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED/SCRAPPED
     const keyword = (url.searchParams.get("keyword") || "").trim();
@@ -60,8 +62,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     // fast=1 时跳过 total 统计，让列表先出来；前端可再异步请求 /api/pc-assets-count 获取 total。
     let totalCount: number | null = null;
     if (!fast) {
-      const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
-      totalCount = Number(totalRow?.c || 0);
+      const totalRow = await t.measure("count", async () => {
+        return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+      });
+      totalCount = Number((totalRow as any)?.c || 0);
     }
 
     // PERF: Avoid scanning whole pc_out/pc_in/pc_recycle tables on every request.
@@ -114,9 +118,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       ORDER BY a.id ASC
     `;
 
-    const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+    const { results } = await t.measure("sql", async () => {
+      return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+    });
 
-    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
+    const resp = Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
+    resp.headers.set("Server-Timing", t.header());
+    return resp;
   } catch (e: any) {
     return errorResponse(e);
   }
