@@ -4,25 +4,22 @@ const DEFAULT_RETENTION_DAYS = 180;
 const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12h
 
 async function ensureRetentionState(db: D1Database) {
-  // NOTE: runtime DDL is intentionally removed; schema must be created via migrations.
-  // If the table is missing, we fall back to defaults without blocking business flows.
-  try {
-    const row = await db
-      .prepare("SELECT id, retention_days, last_cleanup_at FROM audit_retention_state WHERE id=1")
-      .first<any>();
-    if (!row) {
-      await db
-        .prepare(
-          "INSERT OR IGNORE INTO audit_retention_state (id, retention_days, last_cleanup_at) VALUES (1, ?, NULL)"
-        )
-        .bind(DEFAULT_RETENTION_DAYS)
-        .run();
-      return { id: 1, retention_days: DEFAULT_RETENTION_DAYS, last_cleanup_at: null as string | null };
-    }
-    return row;
-  } catch {
+  // self-heal: allow project upgrades without running migration first
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS audit_retention_state (
+       id INTEGER PRIMARY KEY CHECK(id=1),
+       retention_days INTEGER NOT NULL DEFAULT ${DEFAULT_RETENTION_DAYS},
+       last_cleanup_at TEXT
+     )`
+  ).run();
+  const row = await db.prepare("SELECT id, retention_days, last_cleanup_at FROM audit_retention_state WHERE id=1").first<any>();
+  if (!row) {
+    await db.prepare("INSERT INTO audit_retention_state (id, retention_days, last_cleanup_at) VALUES (1, ?, NULL)")
+      .bind(DEFAULT_RETENTION_DAYS)
+      .run();
     return { id: 1, retention_days: DEFAULT_RETENTION_DAYS, last_cleanup_at: null as string | null };
   }
+  return row;
 }
 
 function toMs(d: any) {

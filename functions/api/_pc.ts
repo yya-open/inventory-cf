@@ -6,26 +6,6 @@
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
 
-/**
- * Runtime schema self-healing performs DDL and can slow down cold starts.
- * This project now prefers *explicit migrations*.
- *
- * To fully disable runtime DDL (recommended for production), keep ENABLE_RUNTIME_DDL unset.
- * If you really need emergency self-healing, set ENABLE_RUNTIME_DDL=1 temporarily.
- */
-export function shouldHealPcSchema(env: any, url: URL) {
-  const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
-  if (!allow) return false;
-  const disabled = String(env?.DISABLE_SCHEMA_HEALING || "").trim() === "1";
-  const force = (url.searchParams.get("init") || "").trim() === "1";
-  return !disabled || force;
-}
-
-export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  if (!shouldHealPcSchema(env, url)) return;
-  return ensurePcSchema(db);
-}
-
 export async function ensurePcSchema(db: D1Database) {
   // PERF: schema creation / healing is idempotent but expensive if executed on every request.
   // Cloudflare isolates keep module state between requests, so we cache initialization per isolate.
@@ -143,7 +123,6 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
 
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_created_at ON pc_in(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_serial ON pc_in(serial_no)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_no ON pc_in(in_no)").run();
   // speed up latest-in lookup by asset_id
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_in_asset_id_id ON pc_in(asset_id, id DESC)").run();
 
@@ -175,7 +154,6 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_created_at ON pc_out(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_serial ON pc_out(serial_no)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_employee ON pc_out(employee_no)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_no ON pc_out(out_no)").run();
   // speed up latest-out lookup by asset_id
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_out_asset_id_id ON pc_out(asset_id, id DESC)").run();
 
@@ -204,12 +182,8 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_created_at ON pc_recycle(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_serial ON pc_recycle(serial_no)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_employee ON pc_recycle(employee_no)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_no ON pc_recycle(recycle_no)").run();
   // speed up latest-recycle lookup by asset_id
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_asset_id_id ON pc_recycle(asset_id, id DESC)").run();
-
-  // Helpful for transaction list sorting/filtering
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_created_at ON pc_scrap(created_at)").run();
     __pcSchemaReady = true;
   })().finally(() => {
     __pcSchemaInit = null;

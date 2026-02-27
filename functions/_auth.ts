@@ -72,18 +72,6 @@ export async function requireAuth(
   request: Request,
   minRole: Role = "viewer"
 ): Promise<AuthUser> {
-  const t = (env as any)?.__timing as any;
-  if (t?.measure) {
-    return await t.measure("auth", async () => requireAuthInternal(env, request, minRole));
-  }
-  return await requireAuthInternal(env, request, minRole);
-}
-
-async function requireAuthInternal(
-  env: { DB: D1Database; JWT_SECRET?: string },
-  request: Request,
-  minRole: Role
-): Promise<AuthUser> {
   const secret = env.JWT_SECRET;
   if (!secret) throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
   const token = getBearer(request);
