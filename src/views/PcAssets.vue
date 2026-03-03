@@ -177,6 +177,7 @@
 
       <div class="qr-body" v-loading="qrLoading">
         <div class="qr-left">
+          <div class="qr-card">
           <div class="qr-box" v-if="qrDataUrl">
             <img :src="qrDataUrl" alt="QR" />
           </div>
@@ -189,13 +190,25 @@
             <div class="qr-meta-line"><span class="k">状态</span><span class="v">{{ statusText(qrRow.status) }}</span></div>
           </div>
         </div>
+        </div>
 
         <div class="qr-right">
           <div class="qr-actions">
-            <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
-            <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50×30)</el-button>
-            <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
-            <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow?.id" @click="resetQr">重置二维码</el-button>
+            <div class="qr-action-group">
+              <div class="qr-action-title">下载</div>
+              <div class="qr-action-buttons">
+                <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
+                <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50×30)</el-button>
+              </div>
+            </div>
+
+            <div class="qr-action-group">
+              <div class="qr-action-title">操作</div>
+              <div class="qr-action-buttons">
+                <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
+                <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow?.id" @click="resetQr">重置二维码</el-button>
+              </div>
+            </div>
           </div>
 
           <div class="qr-link">
