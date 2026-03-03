@@ -95,6 +95,8 @@ export async function onRequest(context: any) {
   // expose timing to helpers (e.g. requireAuth)
   const envAny = context.env as any;
   envAny.__timing = t;
+  // 每次请求清空一次（避免跨请求残留）
+  envAny.__refresh_token = null;
   if (isApi && envAny.DB) {
     envAny.DB = wrapD1(envAny.DB, t);
   }
@@ -109,6 +111,13 @@ export async function onRequest(context: any) {
   if (isApi) {
     const headers = new Headers(res.headers);
     headers.set("Server-Timing", t.header());
+
+    // 滑动续期：requireAuth 成功时会把新 token 写到 env.__refresh_token
+    const newToken = envAny.__refresh_token;
+    if (newToken && res.status !== 401) {
+      headers.set("X-Auth-Token", String(newToken));
+    }
+
     res = new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     await logSlowRequest(context, t, res);
   }

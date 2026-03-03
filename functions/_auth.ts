@@ -1,5 +1,9 @@
 type Role = "admin" | "operator" | "viewer";
 
+// 登录态有效期（秒）：1 天。
+// 配合滑动续期：只要有接口调用通过鉴权，就会刷新 token。
+export const JWT_TTL_SECONDS = 24 * 3600;
+
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number };
 
 function b64uEncode(bytes: Uint8Array) {
@@ -100,6 +104,18 @@ async function requireAuthInternal(
 
   const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password };
   if (roleLevel(user.role) < roleLevel(minRole)) throw Object.assign(new Error("权限不足"), { status: 403 });
+
+  // 滑动续期：鉴权通过即刷新一个新的 1 天 token。
+  // 全局 middleware 会把它写入响应头，前端收到后更新 localStorage。
+  try {
+    (env as any).__refresh_token = await signJwt(
+      { sub: user.id, u: user.username, r: user.role },
+      secret,
+      JWT_TTL_SECONDS
+    );
+  } catch {
+    // 不影响正常请求
+  }
   return user;
 }
 

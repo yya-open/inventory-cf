@@ -24,6 +24,14 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+function applyRefreshToken(r: Response) {
+  const nt = r.headers.get("X-Auth-Token");
+  if (!nt) return;
+  const auth = useAuth();
+  auth.token = nt;
+  localStorage.setItem("token", nt);
+}
+
 async function parseJson(r: Response) {
   const t = await r.text();
   try { return JSON.parse(t); } catch { return { ok: false, message: t || "请求失败" }; }
@@ -31,6 +39,7 @@ async function parseJson(r: Response) {
 
 export async function apiGet<T>(path: string) {
   const r = await fetch(path, { method: "GET", headers: { ...authHeaders() } });
+  applyRefreshToken(r);
   const j = await parseJson(r);
   if (r.status === 401) return handleUnauthorized(j?.message);
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
@@ -43,6 +52,7 @@ export async function apiPost<T>(path: string, body: any) {
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
+  applyRefreshToken(r);
   const j = await parseJson(r);
   if (r.status === 401) return handleUnauthorized(j?.message);
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
@@ -55,6 +65,7 @@ export async function apiPut<T>(path: string, body: any) {
     headers: { "content-type": "application/json", ...authHeaders() },
     body: JSON.stringify(body),
   });
+  applyRefreshToken(r);
   const j = await parseJson(r);
   if (r.status === 401) return handleUnauthorized(j?.message);
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
@@ -67,6 +78,7 @@ export async function apiDelete<T>(path: string, body?: any) {
     headers: { "content-type": "application/json", ...authHeaders() },
     body: body === undefined ? undefined : JSON.stringify(body),
   });
+  applyRefreshToken(r);
   const j = await parseJson(r);
   if (r.status === 401) return handleUnauthorized(j?.message);
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
@@ -80,6 +92,7 @@ export async function apiPostForm<T>(path: string, form: FormData) {
     headers: { ...authHeaders() },
     body: form,
   });
+  applyRefreshToken(r);
   const j = await parseJson(r);
   if (r.status === 401) return handleUnauthorized(j?.message);
   if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
@@ -88,6 +101,7 @@ export async function apiPostForm<T>(path: string, form: FormData) {
 
 export async function apiDownload(path: string, filename: string) {
   const r = await fetch(path, { method: "GET", headers: { ...authHeaders() } });
+  applyRefreshToken(r);
   if (r.status === 401) {
     const j = await parseJson(r);
     return handleUnauthorized(j?.message);

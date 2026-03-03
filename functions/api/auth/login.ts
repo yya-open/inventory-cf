@@ -1,4 +1,4 @@
-import { json, signJwt, errorResponse } from "../../_auth";
+import { json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword } from "../../_password";
 
 function getClientIp(request: Request) {
@@ -136,7 +136,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     // success: clear throttle
     await clearFail(env as any, ip, u);
 
-    const token = await signJwt({ sub: row.id, u: row.username, r: row.role }, env.JWT_SECRET, 7 * 24 * 3600);
+    const token = await signJwt({ sub: row.id, u: row.username, r: row.role }, env.JWT_SECRET, JWT_TTL_SECONDS);
     return json(true, {
       token,
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password },
