@@ -91,11 +91,22 @@ onMounted(async () => {
 .public-wrap{
   min-height: 100vh;
   display:flex;
-  align-items:flex-start;
+  align-items:center;
   justify-content:center;
   padding: 22px 12px;
+  background: radial-gradient(1200px 600px at 20% 0%, rgba(66,133,244,0.12), transparent 60%),
+              radial-gradient(1200px 600px at 80% 0%, rgba(52,199,89,0.10), transparent 60%),
+              linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.00));
 }
 .public-card{
   width: min(980px, 100%);
+  border-radius: 14px;
+}
+:deep(.el-descriptions__label){
+  width: 120px;
+  color: #666;
+}
+:deep(.el-descriptions__content){
+  color: #333;
 }
 </style>

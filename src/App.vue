@@ -122,7 +122,7 @@ const currentArea = computed(() => {
   return warehouse.active === "pc" ? "pc" : "parts";
 });
 
-const simpleLayout = computed(() => route.path === "/login" || route.path === "/warehouses");
+const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
 
 const activeMenu = computed(() => route.path);
 
