@@ -156,30 +156,73 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="qrVisible" title="扫码查看电脑信息" width="420px" destroy-on-close>
-      <div v-loading="qrLoading" style="display:flex;flex-direction:column;gap:12px;align-items:center">
-        <div v-if="qrDataUrl" style="background:#fff;padding:10px;border-radius:10px;border:1px solid #eee">
-          <img :src="qrDataUrl" alt="QR" style="width:260px;height:260px;display:block" />
+    <el-dialog
+      v-model="qrVisible"
+      class="qr-dialog"
+      width="560px"
+      destroy-on-close
+      :close-on-click-modal="false"
+    >
+      <template #header>
+        <div class="qr-header">
+          <div class="qr-title">
+            <span class="qr-title-main">扫码查看电脑信息</span>
+            <span class="qr-title-sub">可控长期码 · 信息实时更新</span>
+          </div>
+          <el-tag size="small" type="info" effect="plain" v-if="qrRow">
+            {{ qrRow.brand }} · {{ qrRow.model }}
+          </el-tag>
         </div>
-        <div style="width:100%">
-          <el-input v-model="qrLink" readonly>
-            <template #append>
-              <el-button @click="copyQrLink">复制</el-button>
-            </template>
-          </el-input>
+      </template>
+
+      <div class="qr-body" v-loading="qrLoading">
+        <div class="qr-left">
+          <div class="qr-box" v-if="qrDataUrl">
+            <img :src="qrDataUrl" alt="QR" />
+          </div>
+          <div class="qr-box qr-box-empty" v-else>
+            <div style="color:#999">暂无二维码</div>
+          </div>
+
+          <div class="qr-meta" v-if="qrRow">
+            <div class="qr-meta-line"><span class="k">SN</span><span class="v">{{ qrRow.serial_no || '-' }}</span></div>
+            <div class="qr-meta-line"><span class="k">状态</span><span class="v">{{ statusText(qrRow.status) }}</span></div>
+          </div>
         </div>
-        <div style="display:flex;gap:10px;justify-content:center;width:100%">
-          <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
-          <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50x30)</el-button>
-          <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
-          <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow" @click="resetQr">重置二维码</el-button>
-        </div>
-        <div style="color:#999;font-size:12px;line-height:1.5;text-align:center">
-          提示：这是“可控长期码”。你修改电脑信息后，扫码会自动展示最新数据；管理员可重置二维码使旧码立即失效。
+
+        <div class="qr-right">
+          <div class="qr-actions">
+            <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
+            <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50×30)</el-button>
+            <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
+            <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow?.id" @click="resetQr">重置二维码</el-button>
+          </div>
+
+          <div class="qr-link">
+            <div class="qr-link-label">链接</div>
+            <el-input v-model="qrLink" readonly>
+              <template #append>
+                <el-button @click="copyQrLink">复制</el-button>
+              </template>
+            </el-input>
+          </div>
+
+          <el-alert
+            class="qr-tip"
+            type="success"
+            show-icon
+            :closable="false"
+            title="提示"
+            description="修改电脑信息后，扫码会自动展示最新数据；管理员重置二维码后旧码立即失效。"
+          />
         </div>
       </div>
+
       <template #footer>
-        <el-button @click="qrVisible=false">关闭</el-button>
+        <div class="qr-footer">
+          <div class="qr-footnote">建议打印标签时选择“实际大小/100%”，二维码边长 ≥ 25mm 更易识别。</div>
+          <el-button @click="qrVisible=false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
   </el-card>
@@ -192,6 +235,14 @@ import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { can } from "../store/auth";
 import QRCode from "qrcode";
+
+function statusText(s: string) {
+  if (s === "IN_STOCK") return "在库";
+  if (s === "ASSIGNED") return "已领用";
+  if (s === "RECYCLED") return "已回收";
+  if (s === "SCRAPPED") return "已报废";
+  return s || "-";
+}
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -673,3 +724,7 @@ async function onImportAssetsFile(uploadFile: any) {
 
 onMounted(load);
 </script>
+
+<style scoped>
+/* QR dialog polish */
+</style>
