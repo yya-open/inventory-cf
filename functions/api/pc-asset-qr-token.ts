@@ -1,14 +1,27 @@
-import { requireAuth, errorResponse, signJwt } from "../_auth";
+import { requireAuth, errorResponse } from "../_auth";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 
-// 生成“扫码查看电脑信息”的 token（不需要额外建表/迁移）。
-// 扫码打开的页面走 /public/pc-asset?token=xxx ，该页面无需登录。
-// 注意：token 依赖 JWT_SECRET；若你更换 JWT_SECRET，旧二维码会失效。
+// 生成“扫码查看电脑信息”的长期二维码（可控可撤销）。
+// 机制：二维码里包含 id + qr_key；扫码接口会校验 qr_key。
+// 优点：
+// - 信息实时从数据库读取（你更新信息后扫码会自动显示最新）
+// - 不依赖 JWT_SECRET（你更换 JWT_SECRET 不会影响已贴的二维码）
+// - 管理员可“重置二维码”，旧码立即作废
+//
+// 注意：需要先执行迁移：sql/migrate_pc_qr_key.sql（为 pc_assets 增加 qr_key/qr_updated_at）
 
-// 有效期：5 年（适合贴资产标签长期使用）
-const QR_TOKEN_TTL_SECONDS = 5 * 365 * 24 * 3600;
+function genKey() {
+  // 20 bytes => base64url ~ 27 chars，够用且短
+  const bytes = crypto.getRandomValues(new Uint8Array(20));
+  // base64url
+  let s = btoa(String.fromCharCode(...bytes))
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/g, "");
+  return s;
+}
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
@@ -21,14 +34,23 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const id = Number(url.searchParams.get("id") || 0);
     if (!id) throw Object.assign(new Error("缺少资产ID"), { status: 400 });
 
-    const asset = await env.DB.prepare("SELECT id FROM pc_assets WHERE id=?").bind(id).first<any>();
-    if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
+    // 取出当前 qr_key（可能为空）
+    const row = await env.DB.prepare("SELECT id, qr_key FROM pc_assets WHERE id=?").bind(id).first<any>();
+    if (!row) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
 
-    const token = await signJwt({ scope: "pc_view", pc_asset_id: id }, env.JWT_SECRET, QR_TOKEN_TTL_SECONDS);
+    let key = (row.qr_key || "").trim();
+    if (!key) {
+      key = genKey();
+      // 写入 key（并记录更新时间）
+      await env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now'), updated_at=datetime('now') WHERE id=?")
+        .bind(key, id)
+        .run();
+    }
+
     const origin = url.origin;
-    const viewUrl = `${origin}/public/pc-asset?token=${encodeURIComponent(token)}`;
+    const viewUrl = `${origin}/public/pc-asset?id=${encodeURIComponent(String(id))}&key=${encodeURIComponent(key)}`;
 
-    return Response.json({ ok: true, token, url: viewUrl, expires_in: QR_TOKEN_TTL_SECONDS });
+    return Response.json({ ok: true, id, key, url: viewUrl });
   } catch (e: any) {
     return errorResponse(e);
   }

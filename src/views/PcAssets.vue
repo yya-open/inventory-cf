@@ -169,9 +169,10 @@
         <div style="display:flex;gap:10px;justify-content:center;width:100%">
           <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
           <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
+          <el-button v-if=\"isAdmin\" type=\"danger\" plain :disabled=\"!qrRow\" @click=\"resetQr\">重置二维码</el-button>
         </div>
         <div style="color:#999;font-size:12px;line-height:1.5;text-align:center">
-          提示：二维码链接有效期很长（依赖 JWT_SECRET）。如你更换 JWT_SECRET，旧二维码会失效。
+          提示：这是“可控长期码”。你修改电脑信息后，扫码会自动展示最新数据；管理员可重置二维码使旧码立即失效。
         </div>
       </div>
       <template #footer>
@@ -229,6 +230,26 @@ async function openQr(row: any) {
   } catch (e: any) {
     ElMessage.error(e?.message || "生成二维码失败");
     qrVisible.value = false;
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+async function resetQr() {
+  try {
+    if (!qrRow.value?.id) return;
+    await ElMessageBox.confirm(
+      "确认要重置该电脑的二维码吗？重置后旧二维码将立即失效。",
+      "重置二维码",
+      { type: "warning" }
+    );
+    qrLoading.value = true;
+    const r: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(qrRow.value.id))}`, {});
+    qrLink.value = r.url;
+    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
+    ElMessage.success("已重置，新二维码已生成");
+  } catch (e: any) {
+    if (e?.message) ElMessage.error(e.message);
   } finally {
     qrLoading.value = false;
   }

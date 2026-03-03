@@ -70,12 +70,22 @@ function statusTagType(s: string) {
 onMounted(async () => {
   try {
     const url = new URL(window.location.href);
+    const id = (url.searchParams.get("id") || "").trim();
+    const key = (url.searchParams.get("key") || "").trim();
     const token = (url.searchParams.get("token") || "").trim();
-    if (!token) {
-      error.value = "缺少二维码参数（token）";
+
+    let apiUrl = "";
+    if (id && key) {
+      apiUrl = `/api/public/pc-asset?id=${encodeURIComponent(id)}&key=${encodeURIComponent(key)}`;
+    } else if (token) {
+      // 兼容旧版二维码
+      apiUrl = `/api/public/pc-asset?token=${encodeURIComponent(token)}`;
+    } else {
+      error.value = "缺少二维码参数";
       return;
     }
-    const r = await fetch(`/api/public/pc-asset?token=${encodeURIComponent(token)}`);
+
+    const r = await fetch(apiUrl);
     const j = await r.json().catch(() => ({}));
     if (!r.ok || !j?.ok) throw new Error(j?.message || "获取失败");
     row.value = j.data;

@@ -1,22 +1,46 @@
 import { errorResponse, verifyJwt } from "../../_auth";
 
-// 公开（无需登录）接口：通过二维码 token 获取电脑信息
-// GET /api/public/pc-asset?token=...
+// 公开（无需登录）接口：扫码查看电脑信息
+// 支持两种方式：
+// 1) 新版可控长期码：GET /api/public/pc-asset?id=1&key=xxxx   （推荐）
+//    - key 来自 pc_assets.qr_key，可随时重置作废旧码
+//    - 不依赖 JWT_SECRET
+// 2) 旧版 token 码（兼容）：GET /api/public/pc-asset?token=...
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+
     const url = new URL(request.url);
+    const idParam = (url.searchParams.get("id") || "").trim();
+    const keyParam = (url.searchParams.get("key") || "").trim();
     const token = (url.searchParams.get("token") || "").trim();
-    if (!token) throw Object.assign(new Error("缺少 token"), { status: 400 });
-    if (!env.JWT_SECRET) throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
 
-    const payload = await verifyJwt(token, env.JWT_SECRET);
-    if (!payload) throw Object.assign(new Error("二维码已失效"), { status: 401 });
-    if (payload.scope !== "pc_view") throw Object.assign(new Error("二维码无效"), { status: 401 });
+    let id = 0;
+    let key = "";
 
-    const id = Number(payload.pc_asset_id || 0);
-    if (!id) throw Object.assign(new Error("二维码无效"), { status: 401 });
+    if (idParam && keyParam) {
+      id = Number(idParam || 0);
+      key = keyParam;
+      if (!id || !key) throw Object.assign(new Error("二维码参数无效"), { status: 400 });
+
+      // 校验 key 是否匹配（为空视为未启用二维码/未迁移）
+      const r = await env.DB.prepare("SELECT id, qr_key FROM pc_assets WHERE id=?").bind(id).first<any>();
+      if (!r) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
+      const dbKey = (r.qr_key || "").trim();
+      if (!dbKey) throw Object.assign(new Error("该电脑尚未启用二维码（请先在系统里生成一次二维码）"), { status: 400 });
+      if (dbKey !== key) throw Object.assign(new Error("二维码已失效（可能已被重置）"), { status: 401 });
+    } else if (token) {
+      // 旧版 token 兼容
+      if (!env.JWT_SECRET) throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
+      const payload = await verifyJwt(token, env.JWT_SECRET);
+      if (!payload) throw Object.assign(new Error("二维码已失效"), { status: 401 });
+      if (payload.scope !== "pc_view") throw Object.assign(new Error("二维码无效"), { status: 401 });
+      id = Number(payload.pc_asset_id || 0);
+      if (!id) throw Object.assign(new Error("二维码无效"), { status: 401 });
+    } else {
+      throw Object.assign(new Error("缺少二维码参数"), { status: 400 });
+    }
 
     // 取资产 + 最近一次领用/回收信息（与列表页保持一致）
     const asset = await env.DB.prepare(
@@ -53,7 +77,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       .first<any>();
 
     if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
-
     return Response.json({ ok: true, data: asset });
   } catch (e: any) {
     return errorResponse(e);
