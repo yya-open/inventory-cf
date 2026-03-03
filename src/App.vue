@@ -200,7 +200,7 @@ async function changePwd() {
   if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
   changing.value = true;
   try {
-    await apiPost<any>("/api/change_password", { old_password: oldP.value, new_password: newP.value });
+    await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
     ElMessage.success("修改成功，请重新登录");
     doLogout();
   } catch (e: any) {
