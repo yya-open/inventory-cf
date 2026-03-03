@@ -3,8 +3,10 @@
   <router-view v-if="simpleLayout" />
 
   <!-- 主布局 -->
-  <el-container v-else style="height: 100vh">
-    <el-aside width="220px" style="border-right: 1px solid #eee">
+  <div v-else class="app-root">
+    <div class="app-bg"></div>
+    <el-container class="app-layout">
+    <el-aside width="220px" class="app-aside">
       <div style="padding: 14px; font-weight: 700">出入库管理</div>
 
       <!-- 系统菜单（二级菜单） -->
@@ -48,10 +50,8 @@
       </div>
     </el-aside>
 
-    <el-container>
-      <el-header
-        style="border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between"
-      >
+    <el-container class="app-content">
+      <el-header class="app-header">
         <div style="display:flex; align-items:center; gap:10px">
           <div style="font-weight: 700">{{ title }}</div>
 
@@ -77,10 +77,13 @@
         </div>
       </el-header>
 
-      <el-main>
-        <router-view />
+      <el-main class="app-main">
+        <div class="page-wrap">
+          <router-view />
+        </div>
       </el-main>
     </el-container>
+  </el-container>
 
     <el-dialog v-model="showChange" title="修改密码" width="420px">
       <el-form>
@@ -96,7 +99,7 @@
         <el-button type="primary" :loading="changing" @click="changePwd">确定</el-button>
       </template>
     </el-dialog>
-  </el-container>
+  </div>
 </template>
 
 <script setup lang="ts">

@@ -1,0 +1,79 @@
+/* 全局基础 */
+html, body, #app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  color: #222;
+  background: #f6f7fb;
+}
+
+/* 轻渐变背景层（不影响内容可读性） */
+.app-root {
+  height: 100vh;
+  position: relative;
+}
+
+.app-bg{
+  position: fixed;
+  inset: 0;
+  z-index: -1;
+  /* 轻微渐变 + 柔和光晕 */
+  background:
+    radial-gradient(900px 420px at 18% 10%, rgba(64, 158, 255, 0.14), rgba(255,255,255,0) 60%),
+    radial-gradient(760px 380px at 82% 20%, rgba(103, 194, 58, 0.10), rgba(255,255,255,0) 55%),
+    radial-gradient(820px 420px at 60% 92%, rgba(230, 162, 60, 0.10), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #f8fafc 0%, #f5f7fb 100%);
+}
+
+/* 主布局 */
+.app-layout {
+  height: 100vh;
+}
+
+/* 左侧栏：轻微磨砂 */
+.app-aside {
+  border-right: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(10px);
+}
+
+/* 顶部栏：轻微磨砂 */
+.app-header {
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(10px);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+/* 内容区：留白 + 居中最大宽度 */
+.app-main {
+  padding: 16px;
+  background: transparent;
+}
+
+.page-wrap {
+  max-width: 1400px;
+  margin: 0 auto;
+}
+
+/* 卡片：更统一、更耐看 */
+.el-card {
+  border-radius: 12px;
+  border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.06);
+}
+
+/* 表格在卡片里更协调（尽量不侵入 el-table 结构，只做外观） */
+.el-table {
+  border-radius: 10px;
+  overflow: hidden;
+}
+
+.el-dialog {
+  border-radius: 12px;
+}
