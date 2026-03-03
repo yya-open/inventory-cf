@@ -24,12 +24,37 @@ function authHeaders() {
   return token ? { Authorization: `Bearer ${token}` } : {};
 }
 
+
+function decodeJwtExp(token: string): number | null {
+  try {
+    const p = token.split(".")[1];
+    if (!p) return null;
+    const b64 = p.replace(/-/g, "+").replace(/_/g, "/");
+    const pad = b64.length % 4 ? "=".repeat(4 - (b64.length % 4)) : "";
+    const json = atob(b64 + pad);
+    const payload = JSON.parse(decodeURIComponent(Array.from(json).map(c => "%" + c.charCodeAt(0).toString(16).padStart(2, "0")).join("")));
+    const exp = Number(payload?.exp);
+    return Number.isFinite(exp) ? exp : null;
+  } catch {
+    return null;
+  }
+}
+
 function applyRefreshToken(r: Response) {
   const nt = r.headers.get("X-Auth-Token");
   if (!nt) return;
+
   const auth = useAuth();
-  auth.token = nt;
-  localStorage.setItem("token", nt);
+  const cur = auth.token || localStorage.getItem("token") || "";
+
+  const newExp = decodeJwtExp(nt);
+  const curExp = cur ? decodeJwtExp(cur) : null;
+
+  // 并发保护：只接受 exp 更大的 token，避免“旧响应”覆盖“新 token”
+  if (newExp && (!curExp || newExp > curExp)) {
+    auth.token = nt;
+    localStorage.setItem("token", nt);
+  }
 }
 
 async function parseJson(r: Response) {
