@@ -169,7 +169,7 @@
         <div style="display:flex;gap:10px;justify-content:center;width:100%">
           <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
           <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
-          <el-button v-if=\"isAdmin\" type=\"danger\" plain :disabled=\"!qrRow\" @click=\"resetQr\">重置二维码</el-button>
+          <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow" @click="resetQr">重置二维码</el-button>
         </div>
         <div style="color:#999;font-size:12px;line-height:1.5;text-align:center">
           提示：这是“可控长期码”。你修改电脑信息后，扫码会自动展示最新数据；管理员可重置二维码使旧码立即失效。
