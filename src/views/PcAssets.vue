@@ -17,6 +17,8 @@
 
       <el-button size="small" @click="exportExcel">导出Excel</el-button>
 
+      <el-button v-if="isAdmin" size="small" @click="initQrKeys">初始化二维码Key</el-button>
+
       <el-button v-if="canOperator" size="small" @click="downloadAssetTemplate">下载导入模板</el-button>
 
       <el-upload
@@ -168,6 +170,7 @@
         </div>
         <div style="display:flex;gap:10px;justify-content:center;width:100%">
           <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
+          <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50x30)</el-button>
           <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
           <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow" @click="resetQr">重置二维码</el-button>
         </div>
@@ -216,6 +219,30 @@ const qrLoading = ref(false);
 const qrDataUrl = ref<string>("");
 const qrLink = ref<string>("");
 const qrRow = ref<any>(null);
+
+async function initQrKeys() {
+  try {
+    await ElMessageBox.confirm(
+      "将为所有缺少二维码Key的电脑批量生成Key（分批执行）。继续？",
+      "初始化二维码Key",
+      { type: "warning" }
+    );
+    loading.value = true;
+    let totalUpdated = 0;
+    for (let i = 0; i < 20; i++) {
+      // 每次补齐 200 条，最多循环 20 次防止误操作（足够覆盖 4000 台）
+      const r: any = await apiPost(`/api/pc-assets-init-qr-keys?batch=200`, {});
+      const n = Number(r?.updated || 0);
+      totalUpdated += n;
+      if (!n) break;
+    }
+    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 台电脑的二维码Key` : "无需补齐（都已存在）");
+  } catch (e: any) {
+    if (e?.message) ElMessage.error(e.message);
+  } finally {
+    loading.value = false;
+  }
+}
 
 async function openQr(row: any) {
   qrRow.value = row;
@@ -270,6 +297,86 @@ async function copyQrLink() {
     ta.remove();
     ElMessage.success("已复制");
   }
+}
+
+function mmToPx(mm: number, dpi = 300) {
+  return Math.round((mm / 25.4) * dpi);
+}
+
+function downloadLabel() {
+  if (!qrLink.value) return;
+  const row = qrRow.value || {};
+  const title = `${row.brand || ""} ${row.model || ""}`.trim() || "电脑信息";
+  const sn = (row.serial_no || row.id || "").toString();
+
+  // 50x30mm @300dpi
+  const W = mmToPx(50);
+  const H = mmToPx(30);
+
+  const canvas = document.createElement("canvas");
+  canvas.width = W;
+  canvas.height = H;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return;
+
+  // background
+  ctx.fillStyle = "#fff";
+  ctx.fillRect(0, 0, W, H);
+
+  // margins
+  const pad = Math.round(W * 0.04); // ~4%
+  const topH = Math.round(H * 0.22);
+  const bottomH = Math.round(H * 0.18);
+
+  // title (top)
+  ctx.fillStyle = "#111";
+  ctx.textBaseline = "middle";
+  ctx.font = `bold ${Math.round(H * 0.12)}px sans-serif`;
+  const maxTitleW = W - pad * 2;
+  // truncate
+  let t = title;
+  while (ctx.measureText(t).width > maxTitleW && t.length > 6) t = t.slice(0, -1);
+  if (t !== title) t = t + "…";
+  ctx.fillText(t, pad, Math.round(topH / 2));
+
+  // QR area
+  const qrAreaTop = topH;
+  const qrAreaH = H - topH - bottomH;
+  const qrSize = Math.min(qrAreaH, Math.round(W * 0.52));
+  const qrX = Math.round((W - qrSize) / 2);
+  const qrY = qrAreaTop + Math.round((qrAreaH - qrSize) / 2);
+
+  // draw QR (generate on the fly for crispness)
+  // Using QRCode.toCanvas would be ideal, but we already have QRCode imported; use toDataURL with width=qrSize
+  QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 1 })
+    .then((dataUrl: string) => {
+      const img = new Image();
+      img.onload = () => {
+        ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
+
+        // bottom SN
+        ctx.fillStyle = "#111";
+        ctx.font = `${Math.round(H * 0.11)}px monospace`;
+        const bottomY = H - Math.round(bottomH / 2);
+        const snText = sn ? `SN: ${sn}` : "";
+        // center
+        const tw = ctx.measureText(snText).width;
+        ctx.fillText(snText, Math.max(pad, Math.round((W - tw) / 2)), bottomY);
+
+        // export
+        const a = document.createElement("a");
+        const name = (sn || row.id || "pc").toString();
+        a.download = `PC_${name}_标签_50x30mm.png`;
+        a.href = canvas.toDataURL("image/png");
+        document.body.appendChild(a);
+        a.click();
+        a.remove();
+      };
+      img.src = dataUrl;
+    })
+    .catch(() => {
+      ElMessage.error("生成标签失败");
+    });
 }
 
 function downloadQr() {
