@@ -101,12 +101,32 @@ async function requireAuthInternal(
   if (!payload?.sub) throw Object.assign(new Error("登录已过期"), { status: 401 });
 
   const userId = Number(payload.sub);
-  const u = await env.DB.prepare(
-    "SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?"
-  ).bind(userId).first<any>();
+  let u: any = null;
+  try {
+    u = await env.DB
+      .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
+      .bind(userId)
+      .first<any>();
+  } catch (e: any) {
+    // Backward compatible: older DB may not have token_version column yet.
+    if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
+      u = await env.DB
+        .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
+        .bind(userId)
+        .first<any>();
+      if (u) u.token_version = 0;
+    } else {
+      throw e;
+    }
+  }
   if (!u || Number(u.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });
 
   const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password };
+  // Token version check: invalidate old JWT immediately after password change / forced logout
+  const tv = Number((payload as any)?.tv || 0);
+  const dbTv = Number((u as any).token_version || 0);
+  if (tv !== dbTv) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });
+
   if (roleLevel(user.role) < roleLevel(minRole)) throw Object.assign(new Error("权限不足"), { status: 403 });
 
   // 滑动续期（带节流）：只有当 token 剩余时间较短时才刷新，避免每次请求都下发新 token。
@@ -117,7 +137,7 @@ async function requireAuthInternal(
     const remaining = exp ? exp - nowSec : 0;
     if (!exp || remaining < REFRESH_THRESHOLD_SECONDS) {
       (env as any).__refresh_token = await signJwt(
-        { sub: user.id, u: user.username, r: user.role },
+        { sub: user.id, u: user.username, r: user.role, tv: dbTv },
         secret,
         JWT_TTL_SECONDS
       );
