@@ -79,9 +79,10 @@
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
 
 
-      <el-table-column v-if="canOperator" label="操作" width="170" fixed="right">
+      <el-table-column v-if="canOperator" label="操作" width="220" fixed="right">
         <template #default="{row}">
           <el-button link type="primary" @click="openEdit(row)">修改</el-button>
+          <el-button link @click="openQr(row)">二维码</el-button>
           <el-button v-if="isAdmin" link type="danger" @click="removeAsset(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -152,6 +153,31 @@
         <el-button @click="infoVisible=false">关闭</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="qrVisible" title="扫码查看电脑信息" width="420px" destroy-on-close>
+      <div v-loading="qrLoading" style="display:flex;flex-direction:column;gap:12px;align-items:center">
+        <div v-if="qrDataUrl" style="background:#fff;padding:10px;border-radius:10px;border:1px solid #eee">
+          <img :src="qrDataUrl" alt="QR" style="width:260px;height:260px;display:block" />
+        </div>
+        <div style="width:100%">
+          <el-input v-model="qrLink" readonly>
+            <template #append>
+              <el-button @click="copyQrLink">复制</el-button>
+            </template>
+          </el-input>
+        </div>
+        <div style="display:flex;gap:10px;justify-content:center;width:100%">
+          <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
+          <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
+        </div>
+        <div style="color:#999;font-size:12px;line-height:1.5;text-align:center">
+          提示：二维码链接有效期很长（依赖 JWT_SECRET）。如你更换 JWT_SECRET，旧二维码会失效。
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="qrVisible=false">关闭</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -161,6 +187,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { can } from "../store/auth";
+import QRCode from "qrcode";
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -182,6 +209,63 @@ const keyword = ref<string>("");
 
 const canOperator = computed(() => can("operator"));
 const isAdmin = computed(() => can("admin"));
+
+const qrVisible = ref(false);
+const qrLoading = ref(false);
+const qrDataUrl = ref<string>("");
+const qrLink = ref<string>("");
+const qrRow = ref<any>(null);
+
+async function openQr(row: any) {
+  qrRow.value = row;
+  qrVisible.value = true;
+  qrLoading.value = true;
+  qrDataUrl.value = "";
+  qrLink.value = "";
+  try {
+    const r: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+    qrLink.value = r.url;
+    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
+  } catch (e: any) {
+    ElMessage.error(e?.message || "生成二维码失败");
+    qrVisible.value = false;
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+async function copyQrLink() {
+  try {
+    if (!qrLink.value) return;
+    await navigator.clipboard.writeText(qrLink.value);
+    ElMessage.success("已复制");
+  } catch {
+    // fallback
+    const ta = document.createElement("textarea");
+    ta.value = qrLink.value;
+    document.body.appendChild(ta);
+    ta.select();
+    document.execCommand("copy");
+    ta.remove();
+    ElMessage.success("已复制");
+  }
+}
+
+function downloadQr() {
+  if (!qrDataUrl.value) return;
+  const a = document.createElement("a");
+  const sn = (qrRow.value?.serial_no || qrRow.value?.id || "pc").toString();
+  a.download = `PC_${sn}_二维码.png`;
+  a.href = qrDataUrl.value;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+}
+
+function openQrInNewTab() {
+  if (!qrLink.value) return;
+  window.open(qrLink.value, "_blank");
+}
 
 function onSearch() {
   page.value = 1;
