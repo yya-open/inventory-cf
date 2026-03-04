@@ -47,6 +47,12 @@ export async function login(username: string, password: string) {
 }
 
 export function logout() {
+  // Best-effort server-side logout (invalidate token immediately)
+  if (state.token) {
+    apiPost('/api/auth/logout', {}).catch(() => {
+      // ignore
+    });
+  }
   setToken("");
   state.user = null;
 }

@@ -103,6 +103,14 @@ const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
 
+// PERF: total 统计缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
+const totalCache = new Map<string, number>();
+let totalTimer: any = null;
+
+function filterKey() {
+  return `age_years=${ageYears}&status=${status.value || ""}&keyword=${keyword.value.trim()}`;
+}
+
 const status = ref<string>("");
 const keyword = ref<string>("");
 
@@ -230,9 +238,38 @@ async function load() {
     if (status.value) qs.set("status", status.value);
     if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
 
-    const j = await apiGet<{ ok: boolean; data: any[]; total: number }>(`/api/pc-assets?${qs.toString()}`);
+    // PERF: 首屏优先，跳过 COUNT(*)，total 异步补齐
+    qs.set("fast", "1");
+
+    const j = await apiGet<{ ok: boolean; data: any[]; total: number | null }>(`/api/pc-assets?${qs.toString()}`);
     rows.value = j.data || [];
-    total.value = Number((j as any).total || 0);
+
+    const key = filterKey();
+    if (totalCache.has(key)) {
+      total.value = Number(totalCache.get(key) || 0);
+      return;
+    }
+
+    if ((j as any).total === null || typeof (j as any).total === "undefined") {
+      if (totalTimer) clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => {
+        const qs2 = new URLSearchParams();
+        qs2.set("age_years", String(ageYears));
+        if (status.value) qs2.set("status", status.value);
+        if (keyword.value.trim()) qs2.set("keyword", keyword.value.trim());
+        apiGet(`/api/pc-assets-count?${qs2.toString()}`)
+          .then((r: any) => {
+            const v = Number(r.total || 0);
+            totalCache.set(filterKey(), v);
+            total.value = v;
+          })
+          .catch(() => {});
+      }, 250);
+    } else {
+      const v = Number((j as any).total || 0);
+      totalCache.set(key, v);
+      total.value = v;
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {

@@ -23,6 +23,7 @@ import PcWarehouse from "../views/PcWarehouse.vue";
 import PcAgeWarnings from "../views/PcAgeWarnings.vue";
 import SystemHome from "../views/SystemHome.vue";
 import SystemLayout from "../views/SystemLayout.vue";
+import PublicPcAsset from "../views/PublicPcAsset.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "element-plus";
@@ -33,6 +34,8 @@ const router = createRouter({
     // 登录后默认进入“配件仓”首页
     { path: "/", redirect: "/stock" },
     { path: "/login", component: Login, meta: { public: true } },
+    // 扫码查看电脑信息（无需登录）
+    { path: "/public/pc-asset", component: PublicPcAsset, meta: { public: true } },
     { path: "/warehouses", component: WarehouseSelect, meta: { role: "viewer" } },
 
     { path: "/stock", component: StockQuery, meta: { role: "viewer" } },

@@ -3,8 +3,10 @@
   <router-view v-if="simpleLayout" />
 
   <!-- 主布局 -->
-  <el-container v-else style="height: 100vh">
-    <el-aside width="220px" style="border-right: 1px solid #eee">
+  <div v-else class="app-root">
+    <div class="app-bg"></div>
+    <el-container class="app-layout">
+    <el-aside width="220px" class="app-aside">
       <div style="padding: 14px; font-weight: 700">出入库管理</div>
 
       <!-- 系统菜单（二级菜单） -->
@@ -48,10 +50,8 @@
       </div>
     </el-aside>
 
-    <el-container>
-      <el-header
-        style="border-bottom: 1px solid #eee; display: flex; align-items: center; justify-content: space-between"
-      >
+    <el-container class="app-content">
+      <el-header class="app-header">
         <div style="display:flex; align-items:center; gap:10px">
           <div style="font-weight: 700">{{ title }}</div>
 
@@ -77,10 +77,13 @@
         </div>
       </el-header>
 
-      <el-main>
-        <router-view />
+      <el-main class="app-main">
+        <div class="page-wrap">
+          <router-view />
+        </div>
       </el-main>
     </el-container>
+  </el-container>
 
     <el-dialog v-model="showChange" title="修改密码" width="420px">
       <el-form>
@@ -96,7 +99,7 @@
         <el-button type="primary" :loading="changing" @click="changePwd">确定</el-button>
       </template>
     </el-dialog>
-  </el-container>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -106,7 +109,6 @@ import { ElMessage } from "element-plus";
 import { apiPost } from "./api/client";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
-import { validatePassword } from "./utils/password";
 
 const route = useRoute();
 const router = useRouter();
@@ -120,7 +122,7 @@ const currentArea = computed(() => {
   return warehouse.active === "pc" ? "pc" : "parts";
 });
 
-const simpleLayout = computed(() => route.path === "/login" || route.path === "/warehouses");
+const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
 
 const activeMenu = computed(() => route.path);
 
@@ -198,8 +200,7 @@ function goChangePwd() {
 }
 
 async function changePwd() {
-  const pv = validatePassword(newP.value);
-  if (!pv.ok) return ElMessage.warning(pv.message);
+  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });

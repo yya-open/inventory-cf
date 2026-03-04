@@ -1,16 +1,20 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
-import { ensurePcSchema, must, optional, normalizeText } from "./_pc";
+import { ensurePcSchemaIfAllowed, must, optional, normalizeText } from "./_pc";
 import { buildKeywordWhere } from "./_search";
+// Server-Timing is injected globally by functions/_middleware.ts
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
-    await ensurePcSchema(env.DB);
-
     const url = new URL(request.url);
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+
+    const fast = (url.searchParams.get("fast") || "").trim() === "1"; // 跳过 COUNT(*)，优先首屏速度
     const status = (url.searchParams.get("status") || "").trim(); // IN_STOCK/ASSIGNED/RECYCLED/SCRAPPED
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const ageYears = Math.max(0, Number(url.searchParams.get("age_years") || 0)); // 出厂超过 N 年
@@ -55,70 +59,75 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
 
-    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+    // PERF: COUNT(*) 在数据量大时很慢（而且首屏并不需要准确 total）。
+    // fast=1 时跳过 total 统计，让列表先出来；前端可再异步请求 /api/pc-assets-count 获取 total。
+    let totalCount: number | null = null;
+    if (!fast) {
+      const totalRow = t?.measure
+        ? await t.measure("count", async () => {
+            return env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+          })
+        : await env.DB.prepare(`SELECT COUNT(*) as c FROM pc_assets a ${where}`).bind(...binds).first<any>();
+      totalCount = Number((totalRow as any)?.c || 0);
+    }
 
-    // include latest out info for quick view
+    // PERF: Avoid scanning whole pc_out/pc_in/pc_recycle tables on every request.
+    // 1) First, select the page of asset ids.
+    // 2) Only compute latest out/in/recycle for those ids.
+    // Requires indexes: (asset_id, id DESC)
     const sql = `
+      WITH page_a AS (
+        SELECT a.id
+        FROM pc_assets a
+        ${where}
+        ORDER BY a.id ASC
+        LIMIT ? OFFSET ?
+      ),
+      latest_out AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_out
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      ),
+      latest_in AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_in
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      ),
+      latest_recycle AS (
+        SELECT asset_id, MAX(id) AS max_id
+        FROM pc_recycle
+        WHERE asset_id IN (SELECT id FROM page_a)
+        GROUP BY asset_id
+      )
       SELECT
         a.*,
-        (
-          SELECT o.employee_no
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_employee_no,
-        (
-          SELECT o.employee_name
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_employee_name,
-        (
-          SELECT o.department
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_department,
-        (
-          SELECT o.config_date
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_config_date,
-        (
-          SELECT r.recycle_date
-          FROM pc_recycle r
-          WHERE r.asset_id=a.id
-          ORDER BY r.id DESC
-          LIMIT 1
-        ) AS last_recycle_date,
-        (
-          SELECT o.created_at
-          FROM pc_out o
-          WHERE o.asset_id=a.id
-          ORDER BY o.id DESC
-          LIMIT 1
-        ) AS last_out_at,
-        (
-          SELECT i.created_at
-          FROM pc_in i
-          WHERE i.asset_id=a.id
-          ORDER BY i.id DESC
-          LIMIT 1
-        ) AS last_in_at
+        o.employee_no   AS last_employee_no,
+        o.employee_name AS last_employee_name,
+        o.department    AS last_department,
+        o.config_date   AS last_config_date,
+        r.recycle_date  AS last_recycle_date,
+        o.created_at    AS last_out_at,
+        i.created_at    AS last_in_at
       FROM pc_assets a
-      ${where}
+      JOIN page_a p ON p.id = a.id
+      LEFT JOIN latest_out lo ON lo.asset_id = a.id
+      LEFT JOIN pc_out o ON o.id = lo.max_id
+      LEFT JOIN latest_recycle lr ON lr.asset_id = a.id
+      LEFT JOIN pc_recycle r ON r.id = lr.max_id
+      LEFT JOIN latest_in li ON li.asset_id = a.id
+      LEFT JOIN pc_in i ON i.id = li.max_id
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
     `;
 
-    const { results } = await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+    const { results } = t?.measure
+      ? await t.measure("query", async () => {
+          return env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
+        })
+      : await env.DB.prepare(sql).bind(...binds, pageSize, offset).all();
 
-    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize });
+    return Response.json({ ok: true, data: results, total: totalCount, page, pageSize });
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -129,7 +138,10 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   try {
     const user = await requireAuth(env, request, "admin");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    const url = new URL(request.url);
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const id = Number(body?.id || 0);
@@ -171,7 +183,10 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
   try {
     const user = await requireAuth(env, request, "operator");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    const url2 = new URL(request.url);
+    const t2 = (env as any).__timing;
+    if (t2?.measure) await t2.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url2));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url2);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const url = new URL(request.url);

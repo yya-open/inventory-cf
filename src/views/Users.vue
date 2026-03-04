@@ -141,7 +141,6 @@
 import { onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
-import { validatePassword } from "../utils/password";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 
@@ -213,8 +212,7 @@ function openCreate() {
 
 async function createUser() {
   if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
-  const pv = validatePassword(form.value.password);
-  if (!pv.ok) return ElMessage.warning(pv.message);
+  if (form.value.password.length < 6) return ElMessage.warning("密码至少 6 位");
   saving.value = true;
   try {
     await apiPost<any>("/api/users", form.value);
@@ -258,8 +256,7 @@ function openReset(row: Row) {
 
 async function doReset() {
   if (!editing.value) return;
-  const pv = validatePassword(resetPwd.value);
-  if (!pv.ok) return ElMessage.warning(pv.message);
+  if (resetPwd.value.length < 6) return ElMessage.warning("密码至少 6 位");
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, reset_password: resetPwd.value });
