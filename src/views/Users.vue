@@ -143,6 +143,7 @@ import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
+import { validatePassword } from "../utils/password";
 
 type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string };
 
@@ -212,7 +213,8 @@ function openCreate() {
 
 async function createUser() {
   if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
-  if (form.value.password.length < 6) return ElMessage.warning("密码至少 6 位");
+  const vp = validatePassword(form.value.password);
+  if (!vp.ok) return ElMessage.warning(vp.msg);
   saving.value = true;
   try {
     await apiPost<any>("/api/users", form.value);
@@ -256,7 +258,8 @@ function openReset(row: Row) {
 
 async function doReset() {
   if (!editing.value) return;
-  if (resetPwd.value.length < 6) return ElMessage.warning("密码至少 6 位");
+  const vr = validatePassword(resetPwd.value);
+  if (!vr.ok) return ElMessage.warning(vr.msg);
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, reset_password: resetPwd.value });

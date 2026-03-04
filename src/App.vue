@@ -109,6 +109,7 @@ import { ElMessage } from "element-plus";
 import { apiPost } from "./api/client";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
+import { validatePassword } from "./utils/password";
 
 const route = useRoute();
 const router = useRouter();
@@ -200,7 +201,8 @@ function goChangePwd() {
 }
 
 async function changePwd() {
-  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
+  const vp = validatePassword(newP.value);
+  if (!vp.ok) return ElMessage.warning(vp.msg.replace(/^密码/, "新密码"));
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
