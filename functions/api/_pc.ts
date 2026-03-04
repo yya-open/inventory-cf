@@ -68,6 +68,17 @@ try {
   // ignore schema healing errors
 }
 
+/**
+ * Backwards-compatible helper used by some endpoints.
+ *
+ * Some endpoints import `ensurePcSchemaIfAllowed` from this module.
+ * Keep this export to avoid build failures even if the PC module
+ * is always enabled in the current codebase.
+ */
+export async function ensurePcSchemaIfAllowed(db: D1Database) {
+  return ensurePcSchema(db);
+}
+
 // Scrap records (报废单明细)
 await db.prepare(`
   CREATE TABLE IF NOT EXISTS pc_scrap (
