@@ -6,7 +6,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requireAuth(env, request, "viewer");
     const { old_password, new_password } = await request.json<any>();
-    const oldP = String(old_password || "");
+    const oldP = String(old_password || "").trim();
     const newP = String(new_password || "");
     const vp = validatePassword(newP);
     if (!vp.ok) return json(false, null, "新" + vp.msg.replace(/^密码/, "密码"), 400);

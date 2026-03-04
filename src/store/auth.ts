@@ -37,13 +37,30 @@ export async function fetchMe() {
 }
 
 export async function login(username: string, password: string) {
-  const r = await apiPost<{ ok: boolean; data: { token: string; user: User } }>(
-    "/api/auth/login",
-    { username, password }
-  );
-  setToken(r.data.token);
-  state.user = r.data.user;
-  return r.data.user;
+  return loginWithCaptcha(username, password);
+}
+
+// Login that can surface "require_captcha" in error cases (Turnstile).
+export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
+  const r = await fetch("/api/auth/login", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ username, password, turnstile_token }),
+  });
+
+  const t = await r.text();
+  let j: any = null;
+  try { j = JSON.parse(t); } catch { j = { ok: false, message: t || "登录失败" }; }
+
+  if (!r.ok || !j?.ok) {
+    const err: any = new Error(j?.message || "登录失败");
+    if (j?.data?.require_captcha) err.require_captcha = true;
+    throw err;
+  }
+
+  setToken(j.data.token);
+  state.user = j.data.user;
+  return j.data.user as User;
 }
 
 export function logout() {

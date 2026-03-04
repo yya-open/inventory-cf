@@ -94,11 +94,49 @@ async function clearFail(env: any, ip: string, username: string) {
   }
 }
 
+async function getFailCount(env: any, ip: string, username: string, windowMin: number) {
+  try {
+    const r = await env.DB.prepare(
+      `SELECT MAX(fail_count) AS c
+       FROM auth_login_throttle
+       WHERE ip=?
+         AND (username=? OR username='*')
+         AND (
+           last_fail_at IS NULL
+           OR last_fail_at >= datetime('now', '-${windowMin} minutes')
+         )`
+    )
+      .bind(ip, username)
+      .first<any>();
+    const c = Number(r?.c ?? 0);
+    return Number.isFinite(c) ? c : 0;
+  } catch (e: any) {
+    if (String(e?.message || "").includes("no such table")) return 0;
+    throw e;
+  }
+}
+
+async function verifyTurnstile(secret: string, token: string, ip?: string) {
+  const form = new URLSearchParams();
+  form.set("secret", secret);
+  form.set("response", token);
+  if (ip) form.set("remoteip", ip);
+
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    headers: { "content-type": "application/x-www-form-urlencoded" },
+    body: form.toString(),
+  });
+  const j: any = await r.json().catch(() => ({}));
+  return Boolean(j?.success);
+}
+
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const { username, password } = await request.json<any>();
+    const { username, password, turnstile_token } = await request.json<any>();
     const u = (username || "").trim();
-    const p = String(password || "");
+    // Keep password normalization consistent with set/reset/change password logic.
+    const p = String(password || "").trim();
     if (!u || !p) return json(false, null, "请输入账号和密码", 400);
 
     const ip = getClientIp(request);
@@ -111,6 +149,22 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const lockedUntil = await checkLocked(env as any, ip, u);
     if (lockedUntil) {
       return json(false, null, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
+    }
+
+    // 可选：失败次数达到阈值后启用 Turnstile 验证
+    const turnstileSecret = String((env as any).TURNSTILE_SECRET || "");
+    const captchaAfter = clampInt((env as any).AUTH_CAPTCHA_AFTER, 3, 2, 10);
+    if (turnstileSecret) {
+      const failCount = await getFailCount(env as any, ip, u, windowMin);
+      if (failCount >= captchaAfter) {
+        if (!turnstile_token) {
+          return json(false, { require_captcha: true }, "请完成验证后再登录", 403);
+        }
+        const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
+        if (!okCaptcha) {
+          return json(false, { require_captcha: true }, "验证失败，请重试", 403);
+        }
+      }
     }
 
     let row: any = null;

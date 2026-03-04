@@ -9,6 +9,15 @@
         <el-form-item label="密码">
           <el-input v-model="password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
+
+        <div v-if="siteKey && requireCaptcha" style="margin: 10px 0 16px; display:flex; justify-content:center">
+          <div
+            :key="captchaKey"
+            class="cf-turnstile"
+            :data-sitekey="siteKey"
+            data-callback="turnstileCallback"
+          ></div>
+        </div>
         <el-button type="primary" style="width:100%" :loading="loading" @click="doLogin">登录</el-button>
       </el-form>
     </el-card>
@@ -30,10 +39,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from "vue";
+import { onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { login, useAuth, fetchMe } from "../store/auth";
+import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";
 
@@ -45,6 +54,11 @@ const username = ref("");
 const password = ref("");
 const loading = ref(false);
 
+const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITEKEY || "";
+const requireCaptcha = ref(false);
+const turnstileToken = ref("");
+const captchaKey = ref(0);
+
 const showChange = ref(false);
 const oldP = ref("");
 const newP = ref("");
@@ -53,7 +67,7 @@ const changing = ref(false);
 async function doLogin() {
   loading.value = true;
   try {
-    const u = await login(username.value, password.value);
+    const u = await loginWithCaptcha(username.value, password.value, turnstileToken.value || undefined);
     await fetchMe();
     if (u.must_change_password) {
       showChange.value = true;
@@ -64,6 +78,17 @@ async function doLogin() {
     const redirect = (route.query.redirect as string) || "/stock";
     router.replace(redirect);
   } catch (e: any) {
+    if (e?.require_captcha) {
+      requireCaptcha.value = true;
+      turnstileToken.value = "";
+      captchaKey.value++;
+      if (!siteKey) {
+        ElMessage.error("需要验证码登录，但未配置 VITE_TURNSTILE_SITEKEY");
+      } else {
+        ElMessage.warning("请先完成验证码验证");
+      }
+      return;
+    }
     ElMessage.error(e.message || "登录失败");
   } finally {
     loading.value = false;
@@ -87,4 +112,11 @@ async function changePassword() {
     changing.value = false;
   }
 }
+
+onMounted(() => {
+  // Turnstile callback must be global (referenced by data-callback attr)
+  (window as any).turnstileCallback = (token: string) => {
+    turnstileToken.value = token || "";
+  };
+});
 </script>
