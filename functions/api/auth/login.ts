@@ -16,6 +16,46 @@ function clampInt(v: any, def: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
+
+async function getRecentFailCount(env: any, ip: string, username: string, windowMin: number) {
+  try {
+    const r = await env.DB.prepare(
+      `SELECT fail_count, last_fail_at
+       FROM auth_login_throttle
+       WHERE ip=? AND username=?`
+    ).bind(ip, username).first<any>();
+    if (!r) return 0;
+    const last = r.last_fail_at as string | null;
+    if (!last) return 0;
+    // If last_fail_at is older than the window, treat as 0.
+    const ms = Date.parse(last + "Z");
+    if (!Number.isFinite(ms)) return 0;
+    if (Date.now() - ms > windowMin * 60_000) return 0;
+    return Number(r.fail_count) || 0;
+  } catch (e: any) {
+    if (String(e?.message || "").includes("no such table")) return 0;
+    throw e;
+  }
+}
+
+async function verifyTurnstile(secret: string, token: string, ip?: string) {
+  const form = new FormData();
+  form.append("secret", secret);
+  form.append("response", token);
+  if (ip) form.append("remoteip", ip);
+  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
+    method: "POST",
+    body: form,
+  });
+  const j: any = await r.json().catch(() => ({}));
+  return !!j?.success;
+}
+
+function datetimeToMsUtc(dt: string | null) {
+  if (!dt) return null;
+  const ms = Date.parse(dt + "Z"); // SQLite datetime('now') is UTC; add Z to make it ISO-like.
+  return Number.isFinite(ms) ? ms : null;
+}
 async function checkLocked(env: any, ip: string, username: string) {
   try {
     const r = await env.DB.prepare(
@@ -38,11 +78,11 @@ async function checkLocked(env: any, ip: string, username: string) {
   }
 }
 
-async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number, lockEnabled: boolean) {
+async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number, lockEnabled: boolean = true) {
   const sql = `
     INSERT INTO auth_login_throttle (ip, username, fail_count, first_fail_at, last_fail_at, locked_until, updated_at)
     VALUES (?, ?, 1, datetime('now'), datetime('now'),
-            CASE WHEN ${lockEnabled ? 1 : 0} = 1 AND 1 >= ${maxFails} THEN datetime('now', '+${lockMin} minutes') ELSE NULL END,
+            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN datetime('now', '+${lockMin} minutes') ELSE NULL END,
             datetime('now'))
     ON CONFLICT(ip, username) DO UPDATE SET
       fail_count = CASE
@@ -66,8 +106,8 @@ async function bumpFail(env: any, ip: string, username: string, maxFails: number
             THEN 1
             ELSE auth_login_throttle.fail_count + 1
           END
-        ) >= ${maxFails}
-        THEN CASE WHEN ${lockEnabled ? 1 : 0} = 1 THEN datetime('now', '+${lockMin} minutes') ELSE NULL END
+        ) >= ${maxFails} AND ${lockEnabled ? 1 : 0}=1
+        THEN datetime('now', '+${lockMin} minutes')
         ELSE NULL
       END,
       updated_at = datetime('now');
@@ -94,49 +134,11 @@ async function clearFail(env: any, ip: string, username: string) {
   }
 }
 
-async function getFailCount(env: any, ip: string, username: string, windowMin: number) {
-  try {
-    const r = await env.DB.prepare(
-      `SELECT MAX(fail_count) AS c
-       FROM auth_login_throttle
-       WHERE ip=?
-         AND (username=? OR username='*')
-         AND (
-           last_fail_at IS NULL
-           OR last_fail_at >= datetime('now', '-${windowMin} minutes')
-         )`
-    )
-      .bind(ip, username)
-      .first<any>();
-    const c = Number(r?.c ?? 0);
-    return Number.isFinite(c) ? c : 0;
-  } catch (e: any) {
-    if (String(e?.message || "").includes("no such table")) return 0;
-    throw e;
-  }
-}
-
-async function verifyTurnstile(secret: string, token: string, ip?: string) {
-  const form = new URLSearchParams();
-  form.set("secret", secret);
-  form.set("response", token);
-  if (ip) form.set("remoteip", ip);
-
-  const r = await fetch("https://challenges.cloudflare.com/turnstile/v0/siteverify", {
-    method: "POST",
-    headers: { "content-type": "application/x-www-form-urlencoded" },
-    body: form.toString(),
-  });
-  const j: any = await r.json().catch(() => ({}));
-  return Boolean(j?.success);
-}
-
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const { username, password, turnstile_token } = await request.json<any>();
     const u = (username || "").trim();
-    // Keep password normalization consistent with set/reset/change password logic.
-    const p = String(password || "").trim();
+    const p = String(password || "");
     if (!u || !p) return json(false, null, "请输入账号和密码", 400);
 
     const ip = getClientIp(request);
@@ -146,41 +148,29 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const windowMin = clampInt((env as any).AUTH_WINDOW_MIN, 15, 1, 120);
     const lockMin = clampInt((env as any).AUTH_LOCK_MIN, 15, 1, 240);
 
+    const captchaAfter = clampInt((env as any).AUTH_CAPTCHA_AFTER, 3, 1, 50);
+    const turnstileSecret = String((env as any).TURNSTILE_SECRET || "");
+
+    // Determine whether captcha is required for this (ip, username) within the sliding window.
+    const userFails = await getRecentFailCount(env as any, ip, u, windowMin);
+    const ipFails = await getRecentFailCount(env as any, ip, "*", windowMin);
+    const needCaptcha = !!turnstileSecret && Math.max(userFails, ipFails) >= captchaAfter;
+
     const lockedUntil = await checkLocked(env as any, ip, u);
     if (lockedUntil) {
-      // D1 datetime('now') returns UTC formatted as 'YYYY-MM-DD HH:MM:SS'.
-      // Return an unambiguous time (ISO + ms) so the frontend can render in local time.
-      const lockedUntilIso = `${lockedUntil}`.includes("T")
-        ? String(lockedUntil)
-        : String(lockedUntil).replace(" ", "T") + "Z";
-      const lockedUntilMs = Date.parse(lockedUntilIso);
-      return json(
-        false,
-        {
-          locked_until: lockedUntilIso,
-          locked_until_ms: Number.isFinite(lockedUntilMs) ? lockedUntilMs : null,
-        },
-        "尝试次数过多，请稍后再试",
-        429
-      );
+      return json(false, { locked_until: lockedUntil, locked_until_ms: datetimeToMsUtc(lockedUntil) }, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
     }
 
-    // 可选：失败次数达到阈值后启用 Turnstile 验证
-    const turnstileSecret = String((env as any).TURNSTILE_SECRET || "");
-    const captchaAfter = clampInt((env as any).AUTH_CAPTCHA_AFTER, 3, 2, 10);
-    if (turnstileSecret) {
-      const failCount = await getFailCount(env as any, ip, u, windowMin);
-      if (failCount >= captchaAfter) {
-        if (!turnstile_token) {
-          return json(false, { require_captcha: true }, "请完成验证后再登录", 403);
-        }
-        const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
-        if (!okCaptcha) {
-          // Turnstile verification failed: treat as a high-signal abuse indicator and allow lock escalation.
-          await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, true);
-          await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, true);
-          return json(false, { require_captcha: true }, "验证失败，请重试", 403);
-        }
+    if (needCaptcha) {
+      if (!turnstile_token) {
+        return json(false, { require_captcha: true }, "请完成验证后再登录", 403);
+      }
+      const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
+      if (!okCaptcha) {
+        // Captcha failed: count towards lock.
+        await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, true);
+        await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, true);
+        return json(false, { require_captcha: true }, "验证码验证失败", 403);
       }
     }
 
@@ -205,28 +195,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // 统一错误信息，避免枚举账号
     if (!row || Number(row.is_active) !== 1) {
-      // 统一错误信息，避免枚举账号。同样地：当 Turnstile 已要求时，不因口令错误进一步升级到锁定。
-      let lockEnabled = true;
-      if (turnstileSecret) {
-        const failCount = await getFailCount(env as any, ip, u, windowMin);
-        if (failCount >= captchaAfter) lockEnabled = false;
-      }
-      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, lockEnabled);
-      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, lockEnabled);
+      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, !needCaptcha);
+      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, !needCaptcha);
       return json(false, null, "账号或密码错误", 401);
     }
 
     const ok = await verifyPassword(p, row.password_hash);
     if (!ok) {
-      // If Turnstile is enabled and already required for this username/IP, do not escalate to a lock
-      // based purely on password mistakes. Locking is reserved for repeated Turnstile failures.
-      let lockEnabled = true;
-      if (turnstileSecret) {
-        const failCount = await getFailCount(env as any, ip, u, windowMin);
-        if (failCount >= captchaAfter) lockEnabled = false;
-      }
-      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, lockEnabled);
-      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, lockEnabled);
+      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, !needCaptcha);
+      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, !needCaptcha);
       return json(false, null, "账号或密码错误", 401);
     }
 

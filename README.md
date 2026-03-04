@@ -74,18 +74,6 @@ wrangler d1 execute inventory_db --remote --file=sql/migrate_trace_audit.sql
 - `AUTH_WINDOW_MIN`：统计窗口分钟（默认 15）
 - `AUTH_LOCK_MIN`：锁定分钟（默认 15）
 
-#### 可选：开启 Turnstile 验证码（防爆破）
-当同一 IP 在统计窗口内失败次数达到阈值后，登录需要先完成 Turnstile 验证。
-
-后端（Pages → Settings → Environment variables）：
-- `TURNSTILE_SECRET`：Turnstile Secret Key（服务端私钥）
-- `AUTH_CAPTCHA_AFTER`：失败多少次后需要验证码（默认 3）
-
-前端（Vite 构建变量）：
-- `VITE_TURNSTILE_SITEKEY`：Turnstile Site Key（前端公钥）
-
-> 说明：只有配置了 `TURNSTILE_SECRET` 时，后端才会强制验证码；前端配置 `VITE_TURNSTILE_SITEKEY` 后才会显示组件。
-
 > 如果你想分步执行：
 ```bash
 wrangler d1 execute inventory_db --remote --file=sql/schema.sql

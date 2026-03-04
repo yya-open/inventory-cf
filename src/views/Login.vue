@@ -9,14 +9,9 @@
         <el-form-item label="密码">
           <el-input v-model="password" type="password" show-password placeholder="请输入密码" />
         </el-form-item>
-
-        <div v-if="siteKey && requireCaptcha" style="margin: 10px 0 16px; display:flex; justify-content:center">
-          <div
-            :key="captchaKey"
-            class="cf-turnstile"
-            :data-sitekey="siteKey"
-            data-callback="turnstileCallback"
-          ></div>
+        
+        <div v-show="siteKey && requireCaptcha" style="margin: 10px 0 16px; display:flex; justify-content:center">
+          <div ref="turnstileEl" style="min-height:65px"></div>
         </div>
         <el-button type="primary" style="width:100%" :loading="loading" @click="doLogin">登录</el-button>
       </el-form>
@@ -39,12 +34,11 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
-import { validatePassword } from "../utils/password";
 
 const route = useRoute();
 const router = useRouter();
@@ -57,7 +51,36 @@ const loading = ref(false);
 const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITEKEY || "";
 const requireCaptcha = ref(false);
 const turnstileToken = ref("");
-const captchaKey = ref(0);
+const turnstileEl = ref<HTMLElement | null>(null);
+let widgetId: string | null = null;
+
+async function renderTurnstile() {
+  if (!siteKey || !requireCaptcha.value) return;
+  await nextTick();
+  const el = turnstileEl.value;
+  const ts: any = (window as any).turnstile;
+  if (!el || !ts?.render) return;
+
+  // Remove previous widget if any.
+  try { if (widgetId) { ts.remove(widgetId); widgetId = null; } } catch {}
+
+  ts.ready(() => {
+    try {
+      widgetId = ts.render(el, {
+        sitekey: siteKey,
+        callback: (t: string) => { turnstileToken.value = t; },
+        "expired-callback": () => { turnstileToken.value = ""; },
+        "error-callback": () => { turnstileToken.value = ""; },
+      });
+    } catch {}
+  });
+}
+
+onBeforeUnmount(() => {
+  const ts: any = (window as any).turnstile;
+  if (ts && widgetId) { try { ts.remove(widgetId); } catch {} }
+  widgetId = null;
+});
 
 const showChange = ref(false);
 const oldP = ref("");
@@ -80,7 +103,6 @@ async function doLogin() {
   } catch (e: any) {
     if (e?.locked_until_ms) {
       const dt = new Date(Number(e.locked_until_ms));
-      // Render in the user's local timezone (e.g., Beijing time).
       const pad = (n: number) => String(n).padStart(2, "0");
       const s = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
       ElMessage.error(`尝试次数过多，请稍后再试（锁定至 ${s}）`);
@@ -89,12 +111,9 @@ async function doLogin() {
     if (e?.require_captcha) {
       requireCaptcha.value = true;
       turnstileToken.value = "";
-      captchaKey.value++;
-      if (!siteKey) {
-        ElMessage.error("需要验证码登录，但未配置 VITE_TURNSTILE_SITEKEY");
-      } else {
-        ElMessage.warning("请先完成验证码验证");
-      }
+      await renderTurnstile();
+      if (!siteKey) ElMessage.error("需要验证码登录，但未配置 VITE_TURNSTILE_SITEKEY");
+      else ElMessage.warning("请先完成验证码验证");
       return;
     }
     ElMessage.error(e.message || "登录失败");
@@ -104,8 +123,7 @@ async function doLogin() {
 }
 
 async function changePassword() {
-  const vp = validatePassword(newP.value);
-  if (!vp.ok) return ElMessage.warning(vp.msg.replace(/^密码/, "新密码"));
+  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
@@ -120,11 +138,4 @@ async function changePassword() {
     changing.value = false;
   }
 }
-
-onMounted(() => {
-  // Turnstile callback must be global (referenced by data-callback attr)
-  (window as any).turnstileCallback = (token: string) => {
-    turnstileToken.value = token || "";
-  };
-});
 </script>

@@ -40,7 +40,7 @@ export async function login(username: string, password: string) {
   return loginWithCaptcha(username, password);
 }
 
-// Login that can surface "require_captcha" in error cases (Turnstile).
+// Login that can surface "require_captcha" / lock info in error cases (Turnstile).
 export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
   const r = await fetch("/api/auth/login", {
     method: "POST",
@@ -55,8 +55,8 @@ export async function loginWithCaptcha(username: string, password: string, turns
   if (!r.ok || !j?.ok) {
     const err: any = new Error(j?.message || "登录失败");
     if (j?.data?.require_captcha) err.require_captcha = true;
-    if (j?.data?.locked_until) err.locked_until = j.data.locked_until;
     if (j?.data?.locked_until_ms != null) err.locked_until_ms = j.data.locked_until_ms;
+    if (j?.data?.locked_until) err.locked_until = j.data.locked_until;
     throw err;
   }
 
