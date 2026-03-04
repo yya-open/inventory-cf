@@ -38,11 +38,11 @@ async function checkLocked(env: any, ip: string, username: string) {
   }
 }
 
-async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number) {
+async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number, lockEnabled: boolean) {
   const sql = `
     INSERT INTO auth_login_throttle (ip, username, fail_count, first_fail_at, last_fail_at, locked_until, updated_at)
     VALUES (?, ?, 1, datetime('now'), datetime('now'),
-            CASE WHEN 1 >= ${maxFails} THEN datetime('now', '+${lockMin} minutes') ELSE NULL END,
+            CASE WHEN ${lockEnabled ? 1 : 0} = 1 AND 1 >= ${maxFails} THEN datetime('now', '+${lockMin} minutes') ELSE NULL END,
             datetime('now'))
     ON CONFLICT(ip, username) DO UPDATE SET
       fail_count = CASE
@@ -67,7 +67,7 @@ async function bumpFail(env: any, ip: string, username: string, maxFails: number
             ELSE auth_login_throttle.fail_count + 1
           END
         ) >= ${maxFails}
-        THEN datetime('now', '+${lockMin} minutes')
+        THEN CASE WHEN ${lockEnabled ? 1 : 0} = 1 THEN datetime('now', '+${lockMin} minutes') ELSE NULL END
         ELSE NULL
       END,
       updated_at = datetime('now');
@@ -176,6 +176,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         }
         const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
         if (!okCaptcha) {
+          // Turnstile verification failed: treat as a high-signal abuse indicator and allow lock escalation.
+          await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, true);
+          await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, true);
           return json(false, { require_captcha: true }, "验证失败，请重试", 403);
         }
       }
@@ -202,15 +205,28 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // 统一错误信息，避免枚举账号
     if (!row || Number(row.is_active) !== 1) {
-      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin);
-      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin);
+      // 统一错误信息，避免枚举账号。同样地：当 Turnstile 已要求时，不因口令错误进一步升级到锁定。
+      let lockEnabled = true;
+      if (turnstileSecret) {
+        const failCount = await getFailCount(env as any, ip, u, windowMin);
+        if (failCount >= captchaAfter) lockEnabled = false;
+      }
+      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, lockEnabled);
+      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, lockEnabled);
       return json(false, null, "账号或密码错误", 401);
     }
 
     const ok = await verifyPassword(p, row.password_hash);
     if (!ok) {
-      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin);
-      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin);
+      // If Turnstile is enabled and already required for this username/IP, do not escalate to a lock
+      // based purely on password mistakes. Locking is reserved for repeated Turnstile failures.
+      let lockEnabled = true;
+      if (turnstileSecret) {
+        const failCount = await getFailCount(env as any, ip, u, windowMin);
+        if (failCount >= captchaAfter) lockEnabled = false;
+      }
+      await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, lockEnabled);
+      await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, lockEnabled);
       return json(false, null, "账号或密码错误", 401);
     }
 
