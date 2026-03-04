@@ -78,6 +78,14 @@ async function doLogin() {
     const redirect = (route.query.redirect as string) || "/stock";
     router.replace(redirect);
   } catch (e: any) {
+    if (e?.locked_until_ms) {
+      const dt = new Date(Number(e.locked_until_ms));
+      // Render in the user's local timezone (e.g., Beijing time).
+      const pad = (n: number) => String(n).padStart(2, "0");
+      const s = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+      ElMessage.error(`尝试次数过多，请稍后再试（锁定至 ${s}）`);
+      return;
+    }
     if (e?.require_captcha) {
       requireCaptcha.value = true;
       turnstileToken.value = "";

@@ -148,7 +148,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const lockedUntil = await checkLocked(env as any, ip, u);
     if (lockedUntil) {
-      return json(false, null, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
+      // D1 datetime('now') returns UTC formatted as 'YYYY-MM-DD HH:MM:SS'.
+      // Return an unambiguous time (ISO + ms) so the frontend can render in local time.
+      const lockedUntilIso = `${lockedUntil}`.includes("T")
+        ? String(lockedUntil)
+        : String(lockedUntil).replace(" ", "T") + "Z";
+      const lockedUntilMs = Date.parse(lockedUntilIso);
+      return json(
+        false,
+        {
+          locked_until: lockedUntilIso,
+          locked_until_ms: Number.isFinite(lockedUntilMs) ? lockedUntilMs : null,
+        },
+        "尝试次数过多，请稍后再试",
+        429
+      );
     }
 
     // 可选：失败次数达到阈值后启用 Turnstile 验证

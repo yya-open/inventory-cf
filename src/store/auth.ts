@@ -55,6 +55,8 @@ export async function loginWithCaptcha(username: string, password: string, turns
   if (!r.ok || !j?.ok) {
     const err: any = new Error(j?.message || "登录失败");
     if (j?.data?.require_captcha) err.require_captcha = true;
+    if (j?.data?.locked_until) err.locked_until = j.data.locked_until;
+    if (j?.data?.locked_until_ms != null) err.locked_until_ms = j.data.locked_until_ms;
     throw err;
   }
 
