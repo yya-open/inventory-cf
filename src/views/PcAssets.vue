@@ -17,8 +17,6 @@
 
       <el-button size="small" @click="exportExcel">导出Excel</el-button>
 
-      <el-button v-if="isAdmin" size="small" @click="initQrKeys">初始化二维码Key</el-button>
-
       <el-button v-if="canOperator" size="small" @click="downloadAssetTemplate">下载导入模板</el-button>
 
       <el-upload
@@ -39,14 +37,8 @@
       </el-table-column>
       <el-table-column label="电脑" min-width="260">
         <template #default="{row}">
-          <div
-            style="font-weight:600; cursor:pointer"
-            title="点击查看电脑信息"
-            @click="openInfo(row)"
-          >
-            {{ row.brand }} · {{ row.model }}
-          </div>
-          <div style="color:#999;font-size:12px; cursor:pointer" @click="openInfo(row)">SN：{{ row.serial_no }}</div>
+          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
+          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
         </template>
       </el-table-column>
 
@@ -81,10 +73,9 @@
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
 
 
-      <el-table-column v-if="canOperator" label="操作" width="220" fixed="right">
+      <el-table-column v-if="canOperator" label="操作" width="170" fixed="right">
         <template #default="{row}">
           <el-button link type="primary" @click="openEdit(row)">修改</el-button>
-          <el-button link @click="openQr(row)">二维码</el-button>
           <el-button v-if="isAdmin" link type="danger" @click="removeAsset(row)">删除</el-button>
         </template>
       </el-table-column>
@@ -121,123 +112,6 @@
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
-
-    <el-dialog v-model="infoVisible" title="电脑信息" width="720px" destroy-on-close>
-      <el-descriptions :column="2" border>
-        <el-descriptions-item label="品牌">{{ infoRow?.brand || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="型号">{{ infoRow?.model || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="序列号">{{ infoRow?.serial_no || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">
-          <el-tag v-if="infoRow?.status==='IN_STOCK'" type="success">在库</el-tag>
-          <el-tag v-else-if="infoRow?.status==='ASSIGNED'" type="warning">已领用</el-tag>
-          <el-tag v-else-if="infoRow?.status==='RECYCLED'" type="info">已回收</el-tag>
-          <el-tag v-else type="danger">已报废</el-tag>
-        </el-descriptions-item>
-        <el-descriptions-item label="出厂日期">{{ infoRow?.manufacture_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="保修到期">{{ infoRow?.warranty_end || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="硬盘容量">{{ infoRow?.disk_capacity || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="内存大小">{{ infoRow?.memory_size || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="配置日期">{{ infoRow?.last_config_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="回收日期">{{ infoRow?.last_recycle_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="当前领用人" :span="2">
-          <div v-if="infoRow?.status==='ASSIGNED'">
-            <div style="font-weight:600">{{ infoRow?.last_employee_name || '-' }}</div>
-            <div style="color:#999;font-size:12px">{{ infoRow?.last_employee_no || '-' }} · {{ infoRow?.last_department || '-' }}</div>
-          </div>
-          <span v-else>-</span>
-        </el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2">
-          <div style="white-space:pre-wrap">{{ infoRow?.remark || '-' }}</div>
-        </el-descriptions-item>
-      </el-descriptions>
-
-      <template #footer>
-        <el-button @click="infoVisible=false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog
-      v-model="qrVisible"
-      class="qr-dialog"
-      width="560px"
-      destroy-on-close
-      :close-on-click-modal="false"
-    >
-      <template #header>
-        <div class="qr-header">
-          <div class="qr-title">
-            <span class="qr-title-main">扫码查看电脑信息</span>
-            <span class="qr-title-sub">可控长期码 · 信息实时更新</span>
-          </div>
-          <el-tag size="small" type="info" effect="plain" v-if="qrRow">
-            {{ qrRow.brand }} · {{ qrRow.model }}
-          </el-tag>
-        </div>
-      </template>
-
-      <div class="qr-body" v-loading="qrLoading">
-        <div class="qr-left">
-          <div class="qr-card">
-          <div class="qr-box" v-if="qrDataUrl">
-            <img :src="qrDataUrl" alt="QR" />
-          </div>
-          <div class="qr-box qr-box-empty" v-else>
-            <div style="color:#999">暂无二维码</div>
-          </div>
-
-          <div class="qr-meta" v-if="qrRow">
-            <div class="qr-meta-line"><span class="k">SN</span><span class="v">{{ qrRow.serial_no || '-' }}</span></div>
-            <div class="qr-meta-line"><span class="k">状态</span><span class="v">{{ statusText(qrRow.status) }}</span></div>
-          </div>
-        </div>
-        </div>
-
-        <div class="qr-right">
-          <div class="qr-actions">
-            <div class="qr-action-group">
-              <div class="qr-action-title">下载</div>
-              <div class="qr-action-buttons">
-                <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
-                <el-button :disabled="!qrLink" @click="downloadLabel">下载标签(50×30)</el-button>
-              </div>
-            </div>
-
-            <div class="qr-action-group">
-              <div class="qr-action-title">操作</div>
-              <div class="qr-action-buttons">
-                <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
-                <el-button v-if="isAdmin" type="danger" plain :disabled="!qrRow?.id" @click="resetQr">重置二维码</el-button>
-              </div>
-            </div>
-          </div>
-
-          <div class="qr-link">
-            <div class="qr-link-label">链接</div>
-            <el-input v-model="qrLink" readonly>
-              <template #append>
-                <el-button @click="copyQrLink">复制</el-button>
-              </template>
-            </el-input>
-          </div>
-
-          <el-alert
-            class="qr-tip"
-            type="success"
-            show-icon
-            :closable="false"
-            title="提示"
-            description="修改电脑信息后，扫码会自动展示最新数据；管理员重置二维码后旧码立即失效。"
-          />
-        </div>
-      </div>
-
-      <template #footer>
-        <div class="qr-footer">
-          <div class="qr-footnote">建议打印标签时选择“实际大小/100%”，二维码边长 ≥ 25mm 更易识别。</div>
-          <el-button @click="qrVisible=false">关闭</el-button>
-        </div>
-      </template>
-    </el-dialog>
   </el-card>
 </template>
 
@@ -247,15 +121,6 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { can } from "../store/auth";
-import QRCode from "qrcode";
-
-function statusText(s: string) {
-  if (s === "IN_STOCK") return "在库";
-  if (s === "ASSIGNED") return "已领用";
-  if (s === "RECYCLED") return "已回收";
-  if (s === "SCRAPPED") return "已报废";
-  return s || "-";
-}
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -264,200 +129,11 @@ const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
 
-// PERF: total 统计结果缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
-const totalCache = new Map<string, number>();
-let totalTimer: any = null;
-
-function filterKey() {
-  return `status=${status.value || ""}&keyword=${keyword.value || ""}`;
-}
-
 const status = ref<string>("");
 const keyword = ref<string>("");
 
 const canOperator = computed(() => can("operator"));
 const isAdmin = computed(() => can("admin"));
-
-const qrVisible = ref(false);
-const qrLoading = ref(false);
-const qrDataUrl = ref<string>("");
-const qrLink = ref<string>("");
-const qrRow = ref<any>(null);
-
-async function initQrKeys() {
-  try {
-    await ElMessageBox.confirm(
-      "将为所有缺少二维码Key的电脑批量生成Key（分批执行）。继续？",
-      "初始化二维码Key",
-      { type: "warning" }
-    );
-    loading.value = true;
-    let totalUpdated = 0;
-    for (let i = 0; i < 20; i++) {
-      // 每次补齐 200 条，最多循环 20 次防止误操作（足够覆盖 4000 台）
-      const r: any = await apiPost(`/api/pc-assets-init-qr-keys?batch=200`, {});
-      const n = Number(r?.updated || 0);
-      totalUpdated += n;
-      if (!n) break;
-    }
-    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 台电脑的二维码Key` : "无需补齐（都已存在）");
-  } catch (e: any) {
-    if (e?.message) ElMessage.error(e.message);
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function openQr(row: any) {
-  qrRow.value = row;
-  qrVisible.value = true;
-  qrLoading.value = true;
-  qrDataUrl.value = "";
-  qrLink.value = "";
-  try {
-    const r: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-    qrLink.value = r.url;
-    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
-  } catch (e: any) {
-    ElMessage.error(e?.message || "生成二维码失败");
-    qrVisible.value = false;
-  } finally {
-    qrLoading.value = false;
-  }
-}
-
-async function resetQr() {
-  try {
-    if (!qrRow.value?.id) return;
-    await ElMessageBox.confirm(
-      "确认要重置该电脑的二维码吗？重置后旧二维码将立即失效。",
-      "重置二维码",
-      { type: "warning" }
-    );
-    qrLoading.value = true;
-    const r: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(qrRow.value.id))}`, {});
-    qrLink.value = r.url;
-    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
-    ElMessage.success("已重置，新二维码已生成");
-  } catch (e: any) {
-    if (e?.message) ElMessage.error(e.message);
-  } finally {
-    qrLoading.value = false;
-  }
-}
-
-async function copyQrLink() {
-  try {
-    if (!qrLink.value) return;
-    await navigator.clipboard.writeText(qrLink.value);
-    ElMessage.success("已复制");
-  } catch {
-    // fallback
-    const ta = document.createElement("textarea");
-    ta.value = qrLink.value;
-    document.body.appendChild(ta);
-    ta.select();
-    document.execCommand("copy");
-    ta.remove();
-    ElMessage.success("已复制");
-  }
-}
-
-function mmToPx(mm: number, dpi = 300) {
-  return Math.round((mm / 25.4) * dpi);
-}
-
-function downloadLabel() {
-  if (!qrLink.value) return;
-  const row = qrRow.value || {};
-  const title = `${row.brand || ""} ${row.model || ""}`.trim() || "电脑信息";
-  const sn = (row.serial_no || row.id || "").toString();
-
-  // 50x30mm @300dpi
-  const W = mmToPx(50);
-  const H = mmToPx(30);
-
-  const canvas = document.createElement("canvas");
-  canvas.width = W;
-  canvas.height = H;
-  const ctx = canvas.getContext("2d");
-  if (!ctx) return;
-
-  // background
-  ctx.fillStyle = "#fff";
-  ctx.fillRect(0, 0, W, H);
-
-  // margins
-  const pad = Math.round(W * 0.04); // ~4%
-  const topH = Math.round(H * 0.22);
-  const bottomH = Math.round(H * 0.18);
-
-  // title (top)
-  ctx.fillStyle = "#111";
-  ctx.textBaseline = "middle";
-  ctx.font = `bold ${Math.round(H * 0.12)}px sans-serif`;
-  const maxTitleW = W - pad * 2;
-  // truncate
-  let t = title;
-  while (ctx.measureText(t).width > maxTitleW && t.length > 6) t = t.slice(0, -1);
-  if (t !== title) t = t + "…";
-  ctx.fillText(t, pad, Math.round(topH / 2));
-
-  // QR area
-  const qrAreaTop = topH;
-  const qrAreaH = H - topH - bottomH;
-  const qrSize = Math.min(qrAreaH, Math.round(W * 0.52));
-  const qrX = Math.round((W - qrSize) / 2);
-  const qrY = qrAreaTop + Math.round((qrAreaH - qrSize) / 2);
-
-  // draw QR (generate on the fly for crispness)
-  // Using QRCode.toCanvas would be ideal, but we already have QRCode imported; use toDataURL with width=qrSize
-  QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 1 })
-    .then((dataUrl: string) => {
-      const img = new Image();
-      img.onload = () => {
-        ctx.drawImage(img, qrX, qrY, qrSize, qrSize);
-
-        // bottom SN
-        ctx.fillStyle = "#111";
-        ctx.font = `${Math.round(H * 0.11)}px monospace`;
-        const bottomY = H - Math.round(bottomH / 2);
-        const snText = sn ? `SN: ${sn}` : "";
-        // center
-        const tw = ctx.measureText(snText).width;
-        ctx.fillText(snText, Math.max(pad, Math.round((W - tw) / 2)), bottomY);
-
-        // export
-        const a = document.createElement("a");
-        const name = (sn || row.id || "pc").toString();
-        a.download = `PC_${name}_标签_50x30mm.png`;
-        a.href = canvas.toDataURL("image/png");
-        document.body.appendChild(a);
-        a.click();
-        a.remove();
-      };
-      img.src = dataUrl;
-    })
-    .catch(() => {
-      ElMessage.error("生成标签失败");
-    });
-}
-
-function downloadQr() {
-  if (!qrDataUrl.value) return;
-  const a = document.createElement("a");
-  const sn = (qrRow.value?.serial_no || qrRow.value?.id || "pc").toString();
-  a.download = `PC_${sn}_二维码.png`;
-  a.href = qrDataUrl.value;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-}
-
-function openQrInNewTab() {
-  if (!qrLink.value) return;
-  window.open(qrLink.value, "_blank");
-}
 
 function onSearch() {
   page.value = 1;
@@ -480,44 +156,9 @@ async function load() {
     params.set("page", String(page.value));
     params.set("page_size", String(pageSize.value));
 
-    // PERF: 首屏先走 fast=1 跳过 COUNT(*)，让表格尽快出数据；
-    // total 再异步拉取 /api/pc-assets-count 补齐。
-    params.set("fast", "1");
-
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     rows.value = r.data || [];
-
-    const key = filterKey();
-    // 如果已有缓存 total，直接复用，不再触发 count。
-    if (totalCache.has(key)) {
-      total.value = Number(totalCache.get(key) || 0);
-      return;
-    }
-
-    // 如果后端没返回 total（fast 模式），异步补齐 total，不阻塞首屏。
-    if (r.total === null || typeof r.total === "undefined") {
-      // PERF: 1) debounce，避免用户快速输入/切换导致多次 COUNT；
-      //       2) 仅在当前筛选条件下请求一次并缓存。
-      if (totalTimer) clearTimeout(totalTimer);
-      totalTimer = setTimeout(() => {
-        const params2 = new URLSearchParams();
-        if (status.value) params2.set("status", status.value);
-        if (keyword.value) params2.set("keyword", keyword.value);
-        apiGet(`/api/pc-assets-count?${params2.toString()}`)
-          .then((j: any) => {
-            const v = Number(j.total || 0);
-            totalCache.set(filterKey(), v);
-            total.value = v;
-          })
-          .catch(() => {
-            // ignore
-          });
-      }, 250);
-    } else {
-      const v = Number(r.total || 0);
-      totalCache.set(key, v);
-      total.value = v;
-    }
+    total.value = Number(r.total || 0);
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
@@ -558,15 +199,6 @@ function openEdit(row: any) {
     remark: row.remark || "",
   };
   editVisible.value = true;
-}
-
-const infoVisible = ref(false);
-const infoRow = ref<any>(null);
-
-function openInfo(row: any) {
-  // 列表数据已包含大部分字段；这里直接展示
-  infoRow.value = { ...row };
-  infoVisible.value = true;
 }
 
 async function saveEdit() {
@@ -737,126 +369,3 @@ async function onImportAssetsFile(uploadFile: any) {
 
 onMounted(load);
 </script>
-
-<style scoped>
-/* QR dialog polish */
-
-/* === QR Dialog (polished) === */
-:deep(.qr-dialog .el-dialog){
-  border-radius: 16px;
-}
-:deep(.qr-dialog .el-dialog__header){
-  padding: 16px 18px 10px 18px;
-}
-:deep(.qr-dialog .el-dialog__body){
-  padding: 12px 18px 10px 18px;
-}
-:deep(.qr-dialog .el-dialog__footer){
-  padding: 10px 18px 16px 18px;
-}
-.qr-header{
-  display:flex;
-  align-items:flex-start;
-  justify-content:space-between;
-  gap:12px;
-  width:100%;
-}
-.qr-title{ display:flex; flex-direction:column; gap:2px; }
-.qr-title-main{ font-weight:800; font-size:18px; line-height:1.2; }
-.qr-title-sub{ color:#7a7a7a; font-size:12px; }
-
-.qr-body{
-  display:grid;
-  grid-template-columns: 280px 1fr;
-  gap: 16px;
-}
-.qr-left{ display:flex; flex-direction:column; gap:12px; align-items:center; }
-
-.qr-card{
-  width: 100%;
-  padding: 14px 12px;
-  border-radius: 16px;
-  background: radial-gradient(600px 260px at 50% 0%, rgba(0,0,0,0.04), transparent 60%),
-              linear-gradient(180deg, rgba(245,246,248,0.98), rgba(255,255,255,0.98));
-  border: 1px solid rgba(0,0,0,0.06);
-  box-shadow: 0 16px 34px rgba(0,0,0,0.10);
-  display:flex;
-  flex-direction:column;
-  gap:12px;
-  align-items:center;
-}
-
-.qr-box{
-  width: 240px;
-  height: 240px;
-  border-radius: 14px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: linear-gradient(180deg, rgba(255,255,255,0.95), rgba(245,246,248,0.95));
-  display:flex;
-  align-items:center;
-  justify-content:center;
-  overflow:hidden;
-}
-.qr-box img{
-  width: 220px;
-  height: 220px;
-  display:block;
-}
-.qr-box-empty{ box-shadow:none; }
-.qr-meta{
-  width: 240px;
-  border-radius: 12px;
-  border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.75);
-  padding: 10px 12px;
-}
-.qr-meta-line{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:10px;
-  line-height:1.6;
-  font-size:12px;
-}
-.qr-meta-line .k{ color:#8a8a8a; }
-.qr-meta-line .v{ color:#333; font-weight:600; max-width: 160px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
-
-.qr-right{ display:flex; flex-direction:column; gap:12px; }
-
-.qr-actions{ display:flex; flex-direction:column; gap:12px; }
-.qr-action-group{
-  border: 1px solid rgba(0,0,0,0.06);
-  background: rgba(255,255,255,0.75);
-  border-radius: 14px;
-  padding: 12px;
-}
-.qr-action-title{ font-size: 12px; color: #777; margin-bottom: 10px; }
-.qr-action-buttons{ display:flex; flex-wrap:wrap; gap:10px; }
-
-.qr-link-label{ color:#777; font-size:12px; margin-bottom:6px; }
-.qr-tip{ margin-top: 2px; }
-
-.qr-footer{
-  display:flex;
-  align-items:center;
-  justify-content:space-between;
-  gap:12px;
-  width:100%;
-}
-.qr-footnote{ color:#8a8a8a; font-size:12px; line-height:1.4; }
-
-/* Responsive: phone */
-@media (max-width: 640px){
-  :deep(.qr-dialog .el-dialog){
-    width: calc(100vw - 24px) !important;
-    margin-top: 10vh;
-  }
-  .qr-body{ grid-template-columns: 1fr; }
-  .qr-card{ width: 100%; }
-  .qr-box{ width: 100%; height: auto; padding: 12px 0; }
-  .qr-box img{ width: min(240px, 68vw); height: auto; }
-  .qr-meta{ width: 100%; }
-  .qr-footer{ flex-direction:column; align-items:flex-end; }
-}
-
-</style>

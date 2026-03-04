@@ -16,7 +16,7 @@ type ClearBody = {
 
 // POST /api/tx/clear
 // Admin-only. Clears transaction rows from stock_tx.
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     // requireAuth returns the authenticated user; we need it for audit logging
     const actor = await requireAuth(env, request, "admin");
@@ -64,14 +64,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // D1 returns changes in meta
     const deleted = (r as any)?.meta?.changes ?? 0;
-    waitUntil(logAudit(env.DB, request, actor, "TX_CLEAR", "stock_tx", null, {
+    await logAudit(env.DB, request, actor, "TX_CLEAR", "stock_tx", null, {
       mode,
       filters:
         mode === "all"
           ? null
           : { type: body.type, item_id: body.item_id, warehouse_id: body.warehouse_id, date_from: body.date_from, date_to: body.date_to },
       deleted,
-    }).catch(() => {}));
+    });
     return Response.json({ ok: true, data: { deleted } });
   } catch (e: any) {
     return errorResponse(e);

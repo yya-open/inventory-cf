@@ -1,7 +1,6 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
-import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
-import { GuardRollbackError, isGuardRollback } from "./_write";
+import { normalizeClientRequestId, toRidRefNo, isUniqueConstraintError } from "../_idempotency";
 
 function txNo() {
   const d = new Date();
@@ -26,68 +25,59 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
     }
 
-    const no = txNo();
     const rid = normalizeClientRequestId(client_request_id);
     const refNo = rid ? toRidRefNo(rid) : null;
 
-    // Use a D1 batch (transactional) and SQLite's changes() to gate side-effects.
-    // This avoids data-modifying CTEs, which may not be enabled in all D1 runtimes.
-    try {
-      await env.DB.batch([
-        // 1) Insert stock_tx only when stock is sufficient; idempotent by ref_no
-        env.DB.prepare(
-          `INSERT OR IGNORE INTO stock_tx (
-             tx_no, type, item_id, warehouse_id, qty, delta_qty,
-             ref_type, ref_id, ref_no, target, remark, created_by
-           )
-           SELECT
-             ?, 'OUT', ?, ?, ?, ?, 'MANUAL_OUT', NULL, ?, ?, ?, ?
-           WHERE EXISTS (
-             SELECT 1 FROM stock
-             WHERE item_id=? AND warehouse_id=? AND qty >= ?
-           );`
-        ).bind(
-          no,
-          item_id,
-          wid,
-          q,
-          -q,
-          refNo || no,
-          tgt,
-          remark ?? null,
-          user.username,
-          item_id,
-          wid,
-          q
-        ),
-        // 2) Decrease stock only when (1) inserted a row, and re-check stock is sufficient
-        env.DB.prepare(
-          `UPDATE stock
-           SET qty = qty - ?, updated_at=datetime('now')
-           WHERE item_id=? AND warehouse_id=? AND qty >= ?
-             AND (SELECT changes()) > 0;`
-        ).bind(q, item_id, wid, q),
-        // 3) Guard: if tx row exists, stock must have been updated exactly once; else updated 0 times.
-        env.DB.prepare(
-          `SELECT CASE
-             WHEN (SELECT changes()) = (CASE WHEN EXISTS (SELECT 1 FROM stock_tx WHERE tx_no=?) THEN 1 ELSE 0 END)
-               THEN 1
-             ELSE json_extract('[]', '$[')
-           END AS guard_ok;`
-        ).bind(no),
-      ]);
-    } catch (e: any) {
-      if (isGuardRollback(e)) throw new GuardRollbackError();
-      throw e;
+    // If the same request was already processed, return the existing tx_no.
+    if (refNo) {
+      const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
+      if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
     }
 
-    // If duplicate idempotent request, return existing tx_no
-    const insertedRow = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE tx_no=? LIMIT 1`).bind(no).first<any>();
-    if (!insertedRow?.tx_no) {
-      if (refNo) {
+    const no = txNo();
+
+    // Atomic (D1-compatible): run UPDATE then INSERT conditionally in a single batch.
+    // - UPDATE uses qty>=? to prevent negative stock.
+    // - INSERT only happens when the immediately previous UPDATE changed 1 row (SELECT changes()>0).
+    const stmts: D1PreparedStatement[] = [
+      env.DB.prepare(
+        `UPDATE stock
+         SET qty = qty - ?, updated_at=datetime('now')
+         WHERE item_id=? AND warehouse_id=? AND qty >= ?`
+      ).bind(q, item_id, wid, q),
+
+      env.DB.prepare(
+        `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, target, remark, created_by)
+         SELECT ?, 'OUT', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?
+         WHERE (SELECT changes()) > 0`
+      ).bind(
+        no,
+        item_id,
+        wid,
+        q,
+        -q,
+        "MANUAL_OUT",
+        null,
+        (refNo || no),
+        tgt,
+        remark ?? null,
+        user.username
+      ),
+    ];
+
+    let rs: any[];
+    try {
+      rs = await env.DB.batch(stmts) as any;
+    } catch (e: any) {
+      if (refNo && isUniqueConstraintError(e)) {
         const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
         if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
       }
+      throw e;
+    }
+    const inserted = (rs[1] as any)?.meta?.changes || 0;
+
+    if (inserted === 0) {
       return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
     }
 
@@ -101,9 +91,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }).catch(() => {}));
     return Response.json({ ok: true, tx_no: no });
   } catch (e: any) {
-    if (e instanceof GuardRollbackError) {
-      return Response.json({ ok: false, message: "并发出库冲突，本次已回滚，请重试" }, { status: 409 });
-    }
     return errorResponse(e);
   }
 };

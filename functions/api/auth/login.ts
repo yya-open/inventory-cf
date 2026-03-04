@@ -1,4 +1,4 @@
-import { json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
+import { json, signJwt, errorResponse } from "../../_auth";
 import { verifyPassword } from "../../_password";
 
 function getClientIp(request: Request) {
@@ -113,24 +113,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return json(false, null, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
     }
 
-    let row: any = null;
-    try {
-      row = await env.DB
-        .prepare("SELECT id, username, password_hash, role, is_active, must_change_password, token_version FROM users WHERE username=?")
-        .bind(u)
-        .first<any>();
-    } catch (e: any) {
-      // Backward compatible: older DB may not have token_version column yet.
-      if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
-        row = await env.DB
-          .prepare("SELECT id, username, password_hash, role, is_active, must_change_password FROM users WHERE username=?")
-          .bind(u)
-          .first<any>();
-        if (row) row.token_version = 0;
-      } else {
-        throw e;
-      }
-    }
+    const row = await env.DB.prepare(
+      "SELECT id, username, password_hash, role, is_active, must_change_password FROM users WHERE username=?"
+    )
+      .bind(u)
+      .first<any>();
 
     // 统一错误信息，避免枚举账号
     if (!row || Number(row.is_active) !== 1) {
@@ -149,7 +136,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     // success: clear throttle
     await clearFail(env as any, ip, u);
 
-    const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: (row.token_version||0) }, env.JWT_SECRET, JWT_TTL_SECONDS);
+    const token = await signJwt({ sub: row.id, u: row.username, r: row.role }, env.JWT_SECRET, 7 * 24 * 3600);
     return json(true, {
       token,
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password },

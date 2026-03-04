@@ -35,6 +35,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { login, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
+import { validatePassword } from "../utils/password";
 
 const route = useRoute();
 const router = useRouter();
@@ -70,7 +71,8 @@ async function doLogin() {
 }
 
 async function changePassword() {
-  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
+  const pv = validatePassword(newP.value);
+  if (!pv.ok) return ElMessage.warning(pv.message);
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });

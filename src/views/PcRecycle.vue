@@ -23,12 +23,7 @@
       </div>
 
 
-      <!--
-        修复 Chrome DevTools Issues: Incorrect use of <label for=FORM_ELEMENT>
-        Element Plus 的 el-form-item 会生成带 for 的 label；需要确保能匹配到表单控件的 id。
-      -->
-
-      <el-form-item label="选择电脑" prop="asset_id" label-for="pc-recycle-asset">
+      <el-form-item label="选择电脑" prop="asset_id">
         <el-select
           v-model="form.asset_id"
           filterable
@@ -36,8 +31,6 @@
           :remote-method="remoteSearch"
           :loading="assetLoading"
           placeholder="输入序列号/品牌/型号搜索（仅显示已领用）"
-          id="pc-recycle-asset"
-          name="asset_id"
           style="width: 100%"
           @change="onPickAsset"
           clearable
@@ -80,20 +73,18 @@
         <el-descriptions-item label="预计回收">{{ pickedAsset.last_recycle_date || '-' }}</el-descriptions-item>
       </el-descriptions>
 
-      <el-form-item label="回收/归还日期" prop="recycle_date" label-for="pc-recycle-date">
+      <el-form-item label="回收/归还日期" prop="recycle_date">
         <el-date-picker
           v-model="form.recycle_date"
           type="date"
           value-format="YYYY-MM-DD"
           placeholder="选择日期"
-          id="pc-recycle-date"
-          name="recycle_date"
           style="width: 100%"
         />
       </el-form-item>
 
-      <el-form-item label="备注" label-for="pc-recycle-remark">
-        <el-input v-model="form.remark" type="textarea" :rows="3" input-id="pc-recycle-remark" name="remark" />
+      <el-form-item label="备注">
+        <el-input v-model="form.remark" type="textarea" :rows="3" />
       </el-form-item>
 
       <el-form-item>
@@ -137,7 +128,6 @@ async function loadAssets(keyword = "") {
     params.set("status", "ASSIGNED");
     params.set("page", "1");
     params.set("page_size", "50");
-    params.set("fast", "1");
     if (keyword) params.set("keyword", keyword);
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     assetOptions.value = r.data || [];
