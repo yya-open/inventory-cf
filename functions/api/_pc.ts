@@ -68,16 +68,6 @@ try {
   // ignore schema healing errors
 }
 
-/**
- * Backwards-compatible helper used by some endpoints.
- *
- * Some endpoints import `ensurePcSchemaIfAllowed` from this module.
- * Keep this export to avoid build failures even if the PC module
- * is always enabled in the current codebase.
- */
-export async function ensurePcSchemaIfAllowed(db: D1Database) {
-  return ensurePcSchema(db);
-}
 
 // Scrap records (报废单明细)
 await db.prepare(`
@@ -179,6 +169,16 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_created_at ON pc_recycle(created_at)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_serial ON pc_recycle(serial_no)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_recycle_employee ON pc_recycle(employee_no)").run();
+}
+
+/**
+ * Backwards-compatible helper used by some endpoints.
+ *
+ * Some endpoints import `ensurePcSchemaIfAllowed` from this module.
+ * Keep this export to avoid build failures.
+ */
+export async function ensurePcSchemaIfAllowed(db: D1Database) {
+  return ensurePcSchema(db);
 }
 
 export type PcAsset = {
