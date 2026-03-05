@@ -39,6 +39,7 @@
         <el-menu-item index="/pc/assets">电脑台账</el-menu-item>
         <el-menu-item index="/pc/age-warnings">报废预警</el-menu-item>
         <el-menu-item index="/pc/tx">电脑出入库明细</el-menu-item>
+        <el-menu-item index="/pc/inventory-logs">盘点记录</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/in">电脑入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/out">电脑出库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/recycle">电脑回收/归还</el-menu-item>
@@ -141,6 +142,7 @@ const title = computed(() => {
       "/pc/assets": "电脑台账",
       "/pc/age-warnings": "报废预警",
       "/pc/tx": "电脑出入库明细",
+      "/pc/inventory-logs": "盘点记录",
       "/pc/in": "电脑入库",
       "/pc/out": "电脑出库",
       "/pc/recycle": "电脑回收/归还",
