@@ -8,12 +8,12 @@
         </el-select>
 
         <el-select v-model="issueType" placeholder="异常类型" style="width: 170px" clearable @change="onSearch">
-          <el-option label="未找到" value="NOT_FOUND" />
-          <el-option label="位置不对" value="WRONG_LOCATION" />
-          <el-option label="二维码不对" value="WRONG_QR" />
-          <el-option label="状态不对" value="WRONG_STATUS" />
-          <el-option label="缺失" value="MISSING" />
-          <el-option label="其他" value="OTHER" />
+          <el-option label="找不到电脑" value="NOT_FOUND" />
+          <el-option label="位置不符" value="WRONG_LOCATION" />
+          <el-option label="二维码不符" value="WRONG_QR" />
+          <el-option label="台账状态不符" value="WRONG_STATUS" />
+          <el-option label="设备缺失" value="MISSING" />
+          <el-option label="其他原因" value="OTHER" />
         </el-select>
 
         <el-input v-model="keyword" placeholder="关键词（SN/品牌/型号/员工/备注…）" style="width: 320px" clearable @keyup.enter="onSearch" />
@@ -56,7 +56,11 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="issue_type" label="异常类型" width="140" />
+        <el-table-column label="异常类型" width="140">
+          <template #default="{ row }">
+            {{ issueTypeText(String(row.issue_type || '')) }}
+          </template>
+        </el-table-column>
         <el-table-column prop="serial_no" label="SN" width="150" show-overflow-tooltip />
         <el-table-column label="电脑" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
@@ -114,6 +118,16 @@ function statusText(s: string) {
   if (s === "ASSIGNED") return "已领用";
   if (s === "RECYCLED") return "已回收";
   if (s === "SCRAPPED") return "已报废";
+  return s || "-";
+}
+
+function issueTypeText(s: string) {
+  if (s === "NOT_FOUND") return "找不到电脑";
+  if (s === "WRONG_LOCATION") return "位置不符";
+  if (s === "WRONG_QR") return "二维码不符";
+  if (s === "WRONG_STATUS") return "台账状态不符";
+  if (s === "MISSING") return "设备缺失";
+  if (s === "OTHER") return "其他原因";
   return s || "-";
 }
 

@@ -127,20 +127,27 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     };
 
     const filename = `pc_inventory_log_${beijingDateStampCompact()}.csv`;
-    const header = [
-      "时间",
-      "结果",
-      "异常类型",
-      "SN",
-      "品牌",
-      "型号",
-      "台账状态",
-      "员工工号",
-      "员工姓名",
-      "部门",
-      "备注",
-      "IP",
-    ];
+    const statusText = (s: any) => {
+      const v = String(s || "");
+      if (v === "IN_STOCK") return "在库";
+      if (v === "ASSIGNED") return "已领用";
+      if (v === "RECYCLED") return "已回收";
+      if (v === "SCRAPPED") return "已报废";
+      return v || "-";
+    };
+
+    const issueTypeText = (s: any) => {
+      const v = String(s || "");
+      if (v === "NOT_FOUND") return "找不到电脑";
+      if (v === "WRONG_LOCATION") return "位置不符";
+      if (v === "WRONG_QR") return "二维码不符";
+      if (v === "WRONG_STATUS") return "台账状态不符";
+      if (v === "MISSING") return "设备缺失";
+      if (v === "OTHER") return "其他原因";
+      return v || "-";
+    };
+
+    const header = ["时间", "结果", "异常类型", "SN", "品牌", "型号", "台账状态", "员工工号", "员工姓名", "部门", "备注"];
 
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
@@ -160,16 +167,15 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
             const line = [
               r.created_at_bj || r.created_at,
               r.action === "OK" ? "在位" : "异常",
-              r.issue_type || "",
+              issueTypeText(r.issue_type),
               r.serial_no,
               r.brand,
               r.model,
-              r.status,
+              statusText(r.status),
               r.employee_no || "",
               r.employee_name || "",
               r.department || "",
               r.remark || "",
-              r.ip || "",
             ]
               .map(toCsvCell)
               .join(",")
