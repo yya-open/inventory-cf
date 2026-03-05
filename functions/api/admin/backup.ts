@@ -10,6 +10,15 @@ type BackupPayload = {
 const DEFAULT_PAGE_SIZE = 1000;
 const MAX_PAGE_SIZE = 5000;
 
+async function tableExists(DB: D1Database, table: string): Promise<boolean> {
+  try {
+    const r = await DB.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name=?").bind(table).first<any>();
+    return !!r;
+  } catch {
+    return true;
+  }
+}
+
 function toSqlRange(dateStr?: string | null, endOfDay?: boolean) {
   if (!dateStr) return null;
   // Accept YYYY-MM-DD or ISO-like strings; we normalize YYYY-MM-DD to sqlite datetime format.
@@ -18,6 +27,22 @@ function toSqlRange(dateStr?: string | null, endOfDay?: boolean) {
     return endOfDay ? `${s} 23:59:59` : `${s} 00:00:00`;
   }
   return s;
+}
+
+const __tableHasIdCache = new Map<string, boolean>();
+
+async function tableHasId(DB: D1Database, table: string): Promise<boolean> {
+  if (__tableHasIdCache.has(table)) return __tableHasIdCache.get(table)!;
+  try {
+    const r = await DB.prepare(`PRAGMA table_info(${table})`).all<any>();
+    const cols = (r?.results || []).map((x: any) => String(x?.name || '').trim());
+    const has = cols.includes('id');
+    __tableHasIdCache.set(table, has);
+    return has;
+  } catch {
+    __tableHasIdCache.set(table, true);
+    return true;
+  }
 }
 
 async function streamTableAsJsonArray(
@@ -29,16 +54,19 @@ async function streamTableAsJsonArray(
   extraWhereSql: string,
   extraBinds: any[]
 ) {
-  // All tables in this project use an auto-increment numeric `id` primary key.
-  // We paginate by `id` to keep memory usage flat and performance stable.
-  let lastId = 0;
+  // Prefer paginating by numeric `id` when present.
+  // Some auxiliary tables (e.g. public_api_throttle) do NOT have `id`, so we fallback to rowid.
+  const hasId = await tableHasId(DB, table);
+  let lastCursor = 0;
   let firstRow = true;
 
   const whereSql = extraWhereSql ? ` AND ${extraWhereSql}` : "";
 
   while (true) {
-    const stmt = DB.prepare(`SELECT * FROM ${table} WHERE id > ?${whereSql} ORDER BY id LIMIT ?`);
-    const binds = [lastId, ...(extraBinds || []), pageSize];
+    const stmt = hasId
+      ? DB.prepare(`SELECT * FROM ${table} WHERE id > ?${whereSql} ORDER BY id LIMIT ?`)
+      : DB.prepare(`SELECT rowid as __rowid__, * FROM ${table} WHERE rowid > ?${whereSql} ORDER BY rowid LIMIT ?`);
+    const binds = [lastCursor, ...(extraBinds || []), pageSize];
 
     const { results } = await stmt.bind(...binds).all<any>();
     if (!results || results.length === 0) break;
@@ -47,11 +75,19 @@ async function streamTableAsJsonArray(
       if (!firstRow) controller.enqueue(encoder.encode(","));
       firstRow = false;
 
-      controller.enqueue(encoder.encode(JSON.stringify(row)));
-
-      // Advance cursor. If `id` is missing for any reason, we stop paginating to avoid an infinite loop.
-      if (typeof row?.id === "number") lastId = row.id;
-      else return;
+      if (!hasId) {
+        // Strip rowid helper field from export payload.
+        const rid = Number((row as any)?.__rowid__ || 0);
+        delete (row as any).__rowid__;
+        controller.enqueue(encoder.encode(JSON.stringify(row)));
+        if (rid) lastCursor = rid;
+        else return;
+      } else {
+        controller.enqueue(encoder.encode(JSON.stringify(row)));
+        // Advance cursor. If `id` is missing for any reason, stop paginating to avoid an infinite loop.
+        if (typeof (row as any)?.id === "number") lastCursor = (row as any).id;
+        else return;
+      }
     }
   }
 }
@@ -93,14 +129,37 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       "stocktake_line",
       "audit_log",
       "auth_login_throttle",
+      "public_api_throttle",
       "pc_assets",
       "pc_in",
       "pc_out",
       "pc_recycle",
       "pc_scrap",
+      "pc_inventory_log",
+      "pc_locations",
+      "monitor_assets",
+      "monitor_tx",
+      "monitor_inventory_log",
     ]);
 
-    let tables: string[] = ["warehouses", "items", "stock", "users", "pc_assets", "pc_in", "pc_out", "pc_recycle", "pc_scrap"];
+    // Base tables: business-critical, always included in a "完整备份".
+    let tables: string[] = [
+      "warehouses",
+      "items",
+      "stock",
+      "users",
+      "pc_assets",
+      "pc_in",
+      "pc_out",
+      "pc_recycle",
+      "pc_scrap",
+      "pc_inventory_log",
+      "pc_locations",
+      "monitor_assets",
+      "monitor_tx",
+      "monitor_inventory_log",
+      "public_api_throttle",
+    ];
     if (include_tx) tables.push("stock_tx");
     if (include_stocktake) tables.push("stocktake", "stocktake_line");
     if (include_audit) tables.push("audit_log");
@@ -159,7 +218,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
             }
 
             controller.enqueue(encoder.encode(`${JSON.stringify(t)}:[`));
-            await streamTableAsJsonArray(env.DB, t, controller, encoder, pageSize, extraWhere, extraBinds);
+            if (await tableExists(env.DB, t)) {
+              await streamTableAsJsonArray(env.DB, t, controller, encoder, pageSize, extraWhere, extraBinds);
+            }
             controller.enqueue(encoder.encode(`]`));
           }
 

@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
+import { ensureCoreSchema } from "../../_schema";
 import { nowIso } from "./_util";
 
 type RestoreMode = "merge" | "merge_upsert" | "replace";
@@ -13,6 +14,7 @@ function expectedConfirmText(mode: RestoreMode) {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
+    await ensureCoreSchema(env.DB);
 
     const ct = request.headers.get("content-type") || "";
     if (!ct.includes("multipart/form-data")) {

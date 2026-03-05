@@ -1,7 +1,9 @@
 import { json, requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
+import { ensureCoreSchema } from "../_schema";
 import { ensurePcSchema } from "../_pc";
+import { ensureMonitorSchema } from "../_monitor";
 
 type RestoreBody = {
   mode?: "merge" | "replace";
@@ -28,22 +30,43 @@ const TABLE_COLUMNS: Record<string, string[]> = {
   pc_out: ["id","out_no","asset_id","employee_no","department","employee_name","is_employed","brand","serial_no","model","config_date","manufacture_date","warranty_end","disk_capacity","memory_size","remark","recycle_date","created_at","created_by"],
   pc_recycle: ["id","recycle_no","action","asset_id","employee_no","department","employee_name","is_employed","brand","serial_no","model","recycle_date","remark","created_at","created_by"],
   pc_scrap: ["id","scrap_no","asset_id","brand","serial_no","model","manufacture_date","warranty_end","disk_capacity","memory_size","remark","scrap_date","reason","created_at","created_by"],
+  pc_inventory_log: ["id","asset_id","action","issue_type","remark","ip","ua","created_at"],
+
+  // shared locations (used by monitor warehouse)
+  pc_locations: ["id","name","parent_id","enabled","created_at"],
+
+  // monitor warehouse
+  monitor_assets: ["id","asset_code","qr_key","qr_updated_at","sn","brand","model","size_inch","remark","status","location_id","employee_no","department","employee_name","is_employed","created_at","updated_at"],
+  monitor_tx: ["id","tx_no","tx_type","asset_id","asset_code","sn","brand","model","size_inch","from_location_id","to_location_id","employee_no","department","employee_name","is_employed","remark","created_at","created_by","ip","ua"],
+  monitor_inventory_log: ["id","asset_id","action","issue_type","remark","ip","ua","created_at"],
+
+  // public QR throttle
+  public_api_throttle: ["k","count","updated_at"],
 };
 
 const DELETE_ORDER = [
+  // children first
   "stocktake_line",
   "stocktake",
+
+  "monitor_inventory_log",
+  "monitor_tx",
+  "monitor_assets",
+
+  "pc_inventory_log",
   "pc_scrap",
   "pc_recycle",
   "pc_out",
   "pc_in",
   "pc_assets",
+  "pc_locations",
   "stock_tx",
   "stock",
   "items",
   "warehouses",
   "audit_log",
   "auth_login_throttle",
+  "public_api_throttle",
   "users",
 ];
 
@@ -52,11 +75,19 @@ const INSERT_ORDER = [
   "items",
   "users",
   "stock",
+  "pc_locations",
   "pc_assets",
   "pc_in",
   "pc_out",
   "pc_recycle",
   "pc_scrap",
+  "pc_inventory_log",
+
+  "monitor_assets",
+  "monitor_tx",
+  "monitor_inventory_log",
+
+  "public_api_throttle",
   "stock_tx",
   "stocktake",
   "stocktake_line",
@@ -79,7 +110,9 @@ function pick(obj: any, cols: string[]) {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
+    await ensureCoreSchema(env.DB);
     await ensurePcSchema(env.DB);
+    await ensureMonitorSchema(env.DB);
     const body = (await request.json().catch(() => ({}))) as RestoreBody;
     const mode = body.mode || "merge";
 

@@ -1,9 +1,11 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
+import { ensureCoreSchema } from "../../_schema";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
+    await ensureCoreSchema(env.DB);
     const { id } = await request.json<any>();
     const jobId = String(id || "").trim();
     if (!jobId) return Response.json({ ok: false, message: "缺少 id" }, { status: 400 });
