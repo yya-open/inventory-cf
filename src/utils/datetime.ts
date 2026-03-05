@@ -3,12 +3,13 @@ export function parseServerDateTime(input: any): Date | null {
   const s = String(input).trim();
   if (!s) return null;
   let d: Date;
-  // D1 常见格式: YYYY-MM-DD HH:mm:ss (UTC)
+  // 服务器存储的时间统一为北京时间（UTC+8）：YYYY-MM-DD HH:mm:ss
+  // 注意：过去如果把该格式当成 UTC 再转 Asia/Shanghai，会造成 +8 小时“二次转换”。
   if (/^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s)) {
-    d = new Date(s.replace(' ', 'T') + 'Z');
+    d = new Date(s.replace(' ', 'T') + '+08:00');
   } else if (/^\d{4}-\d{2}-\d{2}$/.test(s)) {
-    // 纯日期按原样返回，避免时区偏移；用于日期型字段时建议直接显示原字符串
-    d = new Date(s + 'T00:00:00Z');
+    // 纯日期按北京时间 00:00:00 解析，避免出现跨天偏移
+    d = new Date(s + 'T00:00:00+08:00');
   } else {
     d = new Date(s);
   }
