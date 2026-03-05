@@ -529,7 +529,10 @@ async function openQr(row: any) {
   qrDataUrl.value = "";
   qrLoading.value = true;
   try {
-    const r = await apiGet<any>(`/api/monitor-asset-qr-token`, { id: row.id });
+    // apiGet() does not accept a params object; build query string explicitly.
+    const rid = Number(row?.id || 0);
+    if (!rid) throw new Error("缺少资产ID");
+    const r = await apiGet<any>("/api/monitor-asset-qr-token?id=" + encodeURIComponent(String(rid)));
     const link = String(r?.url || "");
     qrLink.value = link;
     if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
