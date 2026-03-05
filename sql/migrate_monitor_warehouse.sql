@@ -76,3 +76,20 @@ CREATE TABLE IF NOT EXISTS monitor_tx (
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_created_at ON monitor_tx(created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_id ON monitor_tx(asset_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_type ON monitor_tx(tx_type);
+
+-- =========================
+-- 显示器扫码盘点记录（公开扫码页提交）
+-- =========================
+CREATE TABLE IF NOT EXISTS monitor_inventory_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  asset_id INTEGER NOT NULL,
+  action TEXT NOT NULL CHECK(action IN ('OK','ISSUE')),
+  issue_type TEXT,
+  remark TEXT,
+  ip TEXT,
+  ua TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  FOREIGN KEY(asset_id) REFERENCES monitor_assets(id)
+);
+
+CREATE INDEX IF NOT EXISTS idx_monitor_inventory_log_asset_id_created_at ON monitor_inventory_log(asset_id, created_at);

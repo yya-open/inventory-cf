@@ -122,6 +122,35 @@ export async function ensureMonitorSchema(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_id ON monitor_tx(asset_id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_type ON monitor_tx(tx_type)").run();
 
+    // monitor inventory log
+    await db
+      .prepare(`
+        CREATE TABLE IF NOT EXISTS monitor_inventory_log (
+          id INTEGER PRIMARY KEY AUTOINCREMENT,
+          asset_id INTEGER NOT NULL,
+          action TEXT NOT NULL CHECK(action IN ('OK','ISSUE')),
+          issue_type TEXT,
+          remark TEXT,
+          ip TEXT,
+          ua TEXT,
+          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+          FOREIGN KEY(asset_id) REFERENCES monitor_assets(id)
+        )
+      `)
+      .run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_inventory_log_asset_id_created_at ON monitor_inventory_log(asset_id, created_at)").run();
+
+    // public_api_throttle (shared by public QR endpoints)
+    await db
+      .prepare(`
+        CREATE TABLE IF NOT EXISTS public_api_throttle (
+          k TEXT PRIMARY KEY,
+          count INTEGER NOT NULL DEFAULT 0,
+          updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+        )
+      `)
+      .run();
+
     __monitorSchemaReady = true;
   })().finally(() => {
     __monitorSchemaInit = null;
