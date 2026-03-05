@@ -24,7 +24,6 @@
     <el-card shadow="never">
       <el-table :data="rows" v-loading="loading" size="small" border @selection-change="onSel">
         <el-table-column type="selection" width="44" />
-        <el-table-column prop="id" label="ID" width="70" />
         <el-table-column prop="created_at" label="时间" min-width="170" />
         <el-table-column label="动作" width="100">
           <template #default="{ row }">{{ typeText(row.tx_type) }}</template>
