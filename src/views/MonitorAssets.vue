@@ -221,8 +221,32 @@ const locationParentOptions = computed(() => {
 });
 
 async function loadLocations() {
-  const r = await apiGet<any>(`/api/pc-locations?enabled=1`);
-  locations.value = (r.data || []) as Loc[];
+  try {
+    const r = await apiGet<any>(`/api/pc-locations?enabled=1`);
+    locations.value = (r.data || []) as Loc[];
+  } catch (e: any) {
+    // If schema not initialized yet, pc_locations may not exist.
+    await handleMaybeMissingSchema(e);
+  }
+}
+
+async function handleMaybeMissingSchema(e: any) {
+  const msg = String(e?.message || '');
+  const missing = msg.includes('no such table: monitor_assets') || msg.includes('no such table: pc_locations') || msg.includes('no such table: monitor_tx');
+  if (!missing) throw e;
+  if (!can('admin')) {
+    ElMessage.error('显示器模块数据库表尚未初始化，请联系管理员执行初始化');
+    throw e;
+  }
+
+  await ElMessageBox.confirm(
+    '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
+    '需要初始化',
+    { type: 'warning', confirmButtonText: '初始化', cancelButtonText: '取消' }
+  );
+
+  await apiPost<any>('/api/monitor-init', { confirm: '初始化' });
+  ElMessage.success('初始化完成，请重试操作');
 }
 
 async function loadList(opts?: { keepPage?: boolean }) {
@@ -236,13 +260,22 @@ async function loadList(opts?: { keepPage?: boolean }) {
     if (q.location_id) params.set("location_id", String(q.location_id));
     if (q.keyword) params.set("keyword", q.keyword);
 
-    const r = await apiGet<any>(`/api/monitor-assets?${params.toString()}`);
-    rows.value = r.data || [];
-    if (!opts?.keepPage) page.value = 1;
+    try {
+      const r = await apiGet<any>(`/api/monitor-assets?${params.toString()}`);
+      rows.value = r.data || [];
+      if (!opts?.keepPage) page.value = 1;
 
-    // async total
-    const c = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace('fast=1&', '')}`);
-    total.value = Number(c.data?.total || 0);
+      // async total
+      const c = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace('fast=1&', '')}`);
+      total.value = Number(c.data?.total || 0);
+    } catch (e: any) {
+      await handleMaybeMissingSchema(e);
+      // retry once after init
+      const r2 = await apiGet<any>(`/api/monitor-assets?${params.toString()}`);
+      rows.value = r2.data || [];
+      const c2 = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace('fast=1&', '')}`);
+      total.value = Number(c2.data?.total || 0);
+    }
   } finally {
     loading.value = false;
   }
@@ -300,7 +333,21 @@ async function saveAsset() {
     dlgAsset.show = false;
     await loadList({ keepPage: true });
   } catch (e: any) {
-    ElMessage.error(e.message || "操作失败");
+    try {
+      await handleMaybeMissingSchema(e);
+      // retry once after init
+      if (dlgAsset.mode === "create") {
+        await apiPost<any>(`/api/monitor-assets`, dlgAsset.form);
+        ElMessage.success("新增成功");
+      } else {
+        await apiPut<any>(`/api/monitor-assets`, dlgAsset.form);
+        ElMessage.success("保存成功");
+      }
+      dlgAsset.show = false;
+      await loadList({ keepPage: true });
+    } catch (e2: any) {
+      ElMessage.error(e2.message || "操作失败");
+    }
   }
 }
 
@@ -379,7 +426,21 @@ async function submitOp() {
     dlgOp.show = false;
     await loadList({ keepPage: true });
   } catch (e: any) {
-    ElMessage.error(e.message || "操作失败");
+    try {
+      await handleMaybeMissingSchema(e);
+      // retry once after init
+      if (dlgAsset.mode === "create") {
+        await apiPost<any>(`/api/monitor-assets`, dlgAsset.form);
+        ElMessage.success("新增成功");
+      } else {
+        await apiPut<any>(`/api/monitor-assets`, dlgAsset.form);
+        ElMessage.success("保存成功");
+      }
+      dlgAsset.show = false;
+      await loadList({ keepPage: true });
+    } catch (e2: any) {
+      ElMessage.error(e2.message || "操作失败");
+    }
   }
 }
 
