@@ -1,5 +1,43 @@
 import { errorResponse, verifyJwt } from "../../_auth";
 
+type Env = { DB: D1Database; JWT_SECRET: string };
+
+function getClientIp(request: Request) {
+  const h = request.headers;
+  return (
+    h.get("CF-Connecting-IP") ||
+    h.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
+    ""
+  );
+}
+
+async function rateLimit(env: Env, request: Request, route: string, limitPerMinute: number) {
+  const ip = getClientIp(request) || "unknown";
+  const minuteBucket = Math.floor(Date.now() / 60000);
+  const k = `${route}|${ip}|${minuteBucket}`;
+
+  // best-effort cleanup (avoid table growth)
+  if ((Date.now() & 63) === 0) {
+    await env.DB.prepare(
+      "DELETE FROM public_api_throttle WHERE updated_at < datetime('now','-2 hours')"
+    ).run();
+  }
+
+  await env.DB.prepare(
+    "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now')"
+  )
+    .bind(k)
+    .run();
+
+  const row = await env.DB.prepare("SELECT count FROM public_api_throttle WHERE k=?")
+    .bind(k)
+    .first<any>();
+  const c = Number(row?.count || 0);
+  if (c > limitPerMinute) {
+    throw Object.assign(new Error("访问过于频繁，请稍后再试"), { status: 429 });
+  }
+}
+
 // 公开（无需登录）接口：扫码查看电脑信息
 // 支持两种方式：
 // 1) 新版可控长期码：GET /api/public/pc-asset?id=1&key=xxxx   （推荐）
@@ -7,9 +45,12 @@ import { errorResponse, verifyJwt } from "../../_auth";
 //    - 不依赖 JWT_SECRET
 // 2) 旧版 token 码（兼容）：GET /api/public/pc-asset?token=...
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+
+    // 限流：公开扫码查询
+    await rateLimit(env, request, "public_pc_asset", 30);
 
     const url = new URL(request.url);
     const idParam = (url.searchParams.get("id") || "").trim();

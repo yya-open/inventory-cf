@@ -317,7 +317,8 @@ async function openQr(row: any) {
   try {
     const r: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
     qrLink.value = r.url;
-    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
+    // 工位贴纸场景：提高容错(Q) + 留足白边，抗反光/磨损更稳
+    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
   } catch (e: any) {
     ElMessage.error(e?.message || "生成二维码失败");
     qrVisible.value = false;
@@ -337,7 +338,7 @@ async function resetQr() {
     qrLoading.value = true;
     const r: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(qrRow.value.id))}`, {});
     qrLink.value = r.url;
-    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 1 });
+    qrDataUrl.value = await QRCode.toDataURL(r.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
     ElMessage.success("已重置，新二维码已生成");
   } catch (e: any) {
     if (e?.message) ElMessage.error(e.message);
@@ -412,7 +413,7 @@ function downloadLabel() {
 
   // draw QR (generate on the fly for crispness)
   // Using QRCode.toCanvas would be ideal, but we already have QRCode imported; use toDataURL with width=qrSize
-  QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 1 })
+  QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 3, errorCorrectionLevel: 'Q' })
     .then((dataUrl: string) => {
       const img = new Image();
       img.onload = () => {
