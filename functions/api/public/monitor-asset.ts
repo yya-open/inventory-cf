@@ -42,7 +42,16 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const key = (url.searchParams.get("key") || "").trim();
     if (!id || !key) throw Object.assign(new Error("缺少二维码参数"), { status: 400 });
 
-    const r = await env.DB.prepare("SELECT id, qr_key FROM monitor_assets WHERE id=?").bind(id).first<any>();
+    let r: any;
+    try {
+      r = await env.DB.prepare("SELECT id, qr_key FROM monitor_assets WHERE id=?").bind(id).first<any>();
+    } catch (err: any) {
+      const msg = String(err?.message || err || "");
+      if (msg.includes("no such column") && msg.includes("qr_key")) {
+        throw Object.assign(new Error("数据库未升级：缺少二维码字段，请管理员先在后台点击一次‘二维码’或执行初始化"), { status: 500 });
+      }
+      throw err;
+    }
     if (!r) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
     const dbKey = String(r.qr_key || "").trim();
     if (!dbKey) throw Object.assign(new Error("该显示器尚未启用二维码（请先在系统里生成一次二维码）"), { status: 400 });

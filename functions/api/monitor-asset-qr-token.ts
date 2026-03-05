@@ -1,5 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
-import { ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { ensureMonitorSchemaIfAllowed, ensureMonitorQrColumns } from "./_monitor";
 
 function genKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(20));
@@ -20,6 +20,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
     const t = (env as any).__timing;
     if (t?.measure) await t.measure("schema", () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
     else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+
+    await ensureMonitorQrColumns(env.DB);
 
     const id = Number(url.searchParams.get("id") || 0);
     if (!id) throw Object.assign(new Error("缺少资产ID"), { status: 400 });

@@ -133,3 +133,23 @@ export async function ensureMonitorSchema(db: D1Database) {
 export function monitorTxNo(prefix = "MONTX") {
   return `${prefix}-${crypto.randomUUID()}`;
 }
+
+// Only ensure qr_key columns exist (safe no-op if already present).
+// Used by QR-related endpoints so they can work even when migrations were not applied.
+export async function ensureMonitorQrColumns(db: D1Database) {
+  for (const ddl of [
+    "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
+    "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
+  ]) {
+    try {
+      await db.prepare(ddl).run();
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
+  } catch {
+    // ignore
+  }
+}

@@ -1,5 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
-import { ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { ensureMonitorSchemaIfAllowed, ensureMonitorQrColumns } from "./_monitor";
 
 function genKey() {
   const bytes = crypto.getRandomValues(new Uint8Array(20));
@@ -20,6 +20,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     const t = (env as any).__timing;
     if (t?.measure) await t.measure("schema", () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
     else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+
+    await ensureMonitorQrColumns(env.DB);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const batchSize = Math.min(200, Math.max(10, Number(body?.batch_size || 50)));
