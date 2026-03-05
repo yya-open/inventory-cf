@@ -3,7 +3,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS warehouses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS items (
@@ -16,7 +16,7 @@ CREATE TABLE IF NOT EXISTS items (
   unit TEXT NOT NULL DEFAULT '个',
   warning_qty INTEGER NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE TABLE IF NOT EXISTS stock (
@@ -24,7 +24,7 @@ CREATE TABLE IF NOT EXISTS stock (
   item_id INTEGER NOT NULL,
   warehouse_id INTEGER NOT NULL,
   qty INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   UNIQUE(item_id, warehouse_id),
   FOREIGN KEY(item_id) REFERENCES items(id),
   FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
@@ -45,7 +45,7 @@ CREATE TABLE IF NOT EXISTS stock_tx (
   source TEXT,
   target TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(item_id) REFERENCES items(id),
   FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
@@ -75,7 +75,7 @@ CREATE TABLE IF NOT EXISTS users (
    must_change_password INTEGER NOT NULL DEFAULT 1,
   -- 令牌版本号：用于“踢下线/改密码立即失效旧登录态”等场景
   token_version INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
@@ -89,7 +89,7 @@ CREATE TABLE IF NOT EXISTS auth_login_throttle (
   first_fail_at TEXT,
   last_fail_at TEXT,
   locked_until TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   UNIQUE(ip, username)
 );
 
@@ -108,7 +108,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   payload_json TEXT,
   ip TEXT,
   ua TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id);
@@ -131,8 +131,8 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   memory_size TEXT,
   remark TEXT,
   status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
@@ -150,7 +150,7 @@ CREATE TABLE IF NOT EXISTS pc_in (
   disk_capacity TEXT,
   memory_size TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );
@@ -176,7 +176,7 @@ CREATE TABLE IF NOT EXISTS pc_out (
   memory_size TEXT,
   remark TEXT,
   recycle_date TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );
@@ -201,7 +201,7 @@ CREATE TABLE IF NOT EXISTS pc_scrap (
   remark TEXT,
   scrap_date TEXT NOT NULL,
   reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );

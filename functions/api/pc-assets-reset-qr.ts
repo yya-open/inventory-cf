@@ -28,7 +28,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
 
     const key = genKey();
-    await env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now'), updated_at=datetime('now') WHERE id=?")
+    await env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?")
       .bind(key, id)
       .run();
 

@@ -50,7 +50,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
 
     await env.DB.prepare(
       `INSERT INTO restore_job (id, status, stage, mode, file_key, filename, created_by, cursor_json, per_table_json, replaced_done, total_rows, processed_rows, created_at, updated_at)
-       VALUES (?, 'QUEUED', 'SCAN', ?, ?, ?, ?, '{}', '{}', 0, 0, 0, datetime('now'), datetime('now'))`
+       VALUES (?, 'QUEUED', 'SCAN', ?, ?, ?, ?, '{}', '{}', 0, 0, 0, datetime('now','+8 hours'), datetime('now','+8 hours'))`
     )
       .bind(jobId, mode, key, file.name || null, actor.username)
       .run();

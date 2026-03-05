@@ -76,7 +76,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       ),
       env.DB.prepare(
         `UPDATE pc_assets
-         SET status=?, updated_at=datetime('now')
+         SET status=?, updated_at=datetime('now','+8 hours')
          WHERE id=?`
       ).bind(afterStatus, asset.id),
     ]);

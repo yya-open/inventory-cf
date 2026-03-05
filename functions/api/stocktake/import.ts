@@ -53,7 +53,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         env.DB
           .prepare(
             `UPDATE stocktake_line
-             SET counted_qty=?, diff_qty=(? - system_qty), updated_at=datetime('now')
+             SET counted_qty=?, diff_qty=(? - system_qty), updated_at=datetime('now','+8 hours')
              WHERE stocktake_id=? AND item_id=?`
           )
           .bind(counted, counted, id, item_id)

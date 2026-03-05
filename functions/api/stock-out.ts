@@ -63,7 +63,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         // 2) Decrease stock only when (1) inserted a row, and re-check stock is sufficient
         env.DB.prepare(
           `UPDATE stock
-           SET qty = qty - ?, updated_at=datetime('now')
+           SET qty = qty - ?, updated_at=datetime('now','+8 hours')
            WHERE item_id=? AND warehouse_id=? AND qty >= ?
              AND (SELECT changes()) > 0;`
         ).bind(q, item_id, wid, q),

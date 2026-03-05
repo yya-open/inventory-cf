@@ -15,8 +15,8 @@ CREATE TABLE IF NOT EXISTS restore_job (
   replaced_done INTEGER NOT NULL DEFAULT 0,
   error_count INTEGER NOT NULL DEFAULT 0,
   last_error TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_restore_job_status ON restore_job(status);

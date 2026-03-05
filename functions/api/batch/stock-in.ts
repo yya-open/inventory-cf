@@ -112,9 +112,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       stmts.push(
         env.DB.prepare(
           `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-           SELECT ?, ?, ?, datetime('now')
+           SELECT ?, ?, ?, datetime('now','+8 hours')
            WHERE (SELECT changes()) > 0
-           ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now')`
+           ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now','+8 hours')`
         ).bind(item_id, warehouse_id, l.qty)
       );
     }

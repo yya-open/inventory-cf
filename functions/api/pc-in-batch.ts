@@ -59,8 +59,8 @@ seenSerial.add(snKey);
           const rs: any = await env.DB.batch([
             env.DB.prepare(
               `INSERT INTO pc_assets (
-                brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status
-              ) VALUES (?,?,?,?,?,?,?,?, 'IN_STOCK')`
+                brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at
+              ) VALUES (?,?,?,?,?,?,?,?, 'IN_STOCK', datetime('now','+8 hours'), datetime('now','+8 hours'))`
             ).bind(brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark),
 
             env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no),
@@ -75,8 +75,8 @@ seenSerial.add(snKey);
                 in_no, asset_id,
                 brand, serial_no, model,
                 manufacture_date, warranty_end, disk_capacity, memory_size,
-                remark, created_by
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+                remark, created_by, created_at
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
             ).bind(no, Number(q.id), brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
           } else {
             await env.DB.prepare(
@@ -84,8 +84,8 @@ seenSerial.add(snKey);
                 in_no, asset_id,
                 brand, serial_no, model,
                 manufacture_date, warranty_end, disk_capacity, memory_size,
-                remark, created_by
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?)`
+                remark, created_by, created_at
+              ) VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
             ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
           }
         }

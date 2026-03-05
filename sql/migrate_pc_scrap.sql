@@ -17,8 +17,8 @@ CREATE TABLE IF NOT EXISTS pc_assets_v2 (
   memory_size TEXT,
   remark TEXT,
   status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at)
@@ -46,7 +46,7 @@ CREATE TABLE IF NOT EXISTS pc_scrap (
   remark TEXT,
   scrap_date TEXT NOT NULL,
   reason TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );

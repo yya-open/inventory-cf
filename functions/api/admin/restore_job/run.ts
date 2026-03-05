@@ -29,11 +29,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     if (job.status === "CANCELED") return json(true, { id: jobId, status: "CANCELED", more: false });
     if (job.status === "PAUSED") {
       // resume
-      await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
       job.status = "RUNNING";
     }
     if (job.status === "QUEUED") {
-      await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
       job.status = "RUNNING";
     }
 
@@ -43,7 +43,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     const obj = await env.BACKUP_BUCKET.get(job.file_key);
     if (!obj || !obj.body) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', last_error=?, updated_at=datetime('now') WHERE id=?`)
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', last_error=?, updated_at=datetime('now','+8 hours') WHERE id=?`)
         .bind("R2 文件不存在或已被删除", jobId).run();
       return Response.json({ ok: false, message: "R2 文件不存在或已被删除" }, { status: 500 });
     }
@@ -78,7 +78,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const cursor = order.length ? { table: order[0], row: 0 } : { table: "", row: 0 };
 
       await env.DB.prepare(
-        `UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, updated_at=datetime('now') WHERE id=?`
+        `UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, updated_at=datetime('now','+8 hours') WHERE id=?`
       )
         .bind(total, JSON.stringify(perTable), JSON.stringify(cursor), cursor.table || null, jobId)
         .run();
@@ -119,7 +119,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       try {
         const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
         await env.DB.batch(stmts);
-        await env.DB.prepare(`UPDATE restore_job SET replaced_done=1, updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET replaced_done=1, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
         } catch (e) {
         throw e;
       }
@@ -242,13 +242,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       perTable.__inserted__ = insertedMap;
 
       await env.DB.prepare(
-        `UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=datetime('now') WHERE id=?`
+        `UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=datetime('now','+8 hours') WHERE id=?`
       )
         .bind(processedRowsNew, nextCursor.table || null, JSON.stringify(nextCursor), JSON.stringify(perTable), jobId)
         .run();
 
       if (done) {
-        await env.DB.prepare(`UPDATE restore_job SET status='DONE', updated_at=datetime('now') WHERE id=?`).bind(jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET status='DONE', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
       }
 
       const more = !done;
@@ -267,7 +267,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         more,
       });
     } catch (e: any) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=datetime('now') WHERE id=?`)
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=datetime('now','+8 hours') WHERE id=?`)
         .bind(String(e?.message || e), jobId).run();
       return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
     }

@@ -84,8 +84,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           // 将库存恢复到盘点前系统数量（幂等）
           env.DB.prepare(
             `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-             VALUES (?, ?, ?, datetime('now'))
-             ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=datetime('now')`
+             VALUES (?, ?, ?, datetime('now','+8 hours'))
+             ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=datetime('now','+8 hours')`
           ).bind(itemId, warehouseId, Number(l.system_qty)),
         ];
       };

@@ -22,6 +22,6 @@ export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number|st
     else if (t === 'SCRAP') status = 'SCRAPPED';
     else if (t === 'RETURN' || t === 'IN') status = 'IN_STOCK';
 
-    await db.prepare(`UPDATE pc_assets SET status=?, updated_at=datetime('now') WHERE id=?`).bind(status, assetId).run();
+    await db.prepare(`UPDATE pc_assets SET status=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(status, assetId).run();
   }
 }

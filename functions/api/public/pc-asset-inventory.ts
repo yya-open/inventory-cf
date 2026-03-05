@@ -14,11 +14,11 @@ async function rateLimit(env: Env, request: Request, route: string, limitPerMinu
 
   // best-effort cleanup (avoid table growth)
   if ((Date.now() & 63) === 0) {
-    await env.DB.prepare("DELETE FROM public_api_throttle WHERE updated_at < datetime('now','-2 hours')").run();
+    await env.DB.prepare("DELETE FROM public_api_throttle WHERE updated_at < datetime('now','+8 hours', '-2 hours')").run();
   }
 
   await env.DB.prepare(
-    "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now')"
+    "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now','+8 hours')"
   )
     .bind(k)
     .run();
@@ -98,7 +98,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const ua = (request.headers.get("User-Agent") || "").slice(0, 300);
 
     await env.DB.prepare(
-      "INSERT INTO pc_inventory_log (asset_id, action, issue_type, remark, ip, ua) VALUES (?, ?, ?, ?, ?, ?)"
+      "INSERT INTO pc_inventory_log (asset_id, action, issue_type, remark, ip, ua, created_at) VALUES (?, ?, ?, ?, ?, ?, datetime('now','+8 hours'))"
     )
       .bind(assetId, action, action === "ISSUE" ? issueType : null, remark || null, ip, ua)
       .run();

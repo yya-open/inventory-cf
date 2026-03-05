@@ -42,7 +42,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
     if (!key) {
       key = genKey();
       // 写入 key（并记录更新时间）
-      await env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now'), updated_at=datetime('now') WHERE id=?")
+      await env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?")
         .bind(key, id)
         .run();
     }

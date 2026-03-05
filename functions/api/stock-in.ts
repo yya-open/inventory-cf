@@ -44,10 +44,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         // 2) Stock upsert ONLY if statement (1) actually inserted a row
         env.DB.prepare(
           `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-           SELECT ?, ?, ?, datetime('now')
+           SELECT ?, ?, ?, datetime('now','+8 hours')
            WHERE (SELECT changes()) > 0
            ON CONFLICT(item_id, warehouse_id)
-           DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now');`
+           DO UPDATE SET qty = qty + excluded.qty, updated_at=datetime('now','+8 hours');`
         ).bind(item_id, warehouse_id, q),
         // 3) Guard: if tx row exists, stock must have been updated exactly once; else updated 0 times.
         // Trigger JSON path error to rollback the whole batch if mismatch.

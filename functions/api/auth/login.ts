@@ -17,6 +17,15 @@ function clampInt(v: any, def: number, min: number, max: number) {
 }
 
 
+function datetimeTextToMsBj(dt: string | null) {
+  if (!dt) return null;
+  // DB stores Beijing time (UTC+8) as 'YYYY-MM-DD HH:MM:SS'. Convert to ISO with explicit offset.
+  const iso = dt.replace(' ', 'T') + '+08:00';
+  const ms = Date.parse(iso);
+  return Number.isFinite(ms) ? ms : null;
+}
+
+
 async function getRecentFailCount(env: any, ip: string, username: string, windowMin: number) {
   try {
     const r = await env.DB.prepare(
@@ -28,7 +37,7 @@ async function getRecentFailCount(env: any, ip: string, username: string, window
     const last = r.last_fail_at as string | null;
     if (!last) return 0;
     // If last_fail_at is older than the window, treat as 0.
-    const ms = Date.parse(last + "Z");
+    const ms = datetimeTextToMsBj(last);
     if (!Number.isFinite(ms)) return 0;
     if (Date.now() - ms > windowMin * 60_000) return 0;
     return Number(r.fail_count) || 0;
@@ -51,9 +60,11 @@ async function verifyTurnstile(secret: string, token: string, ip?: string) {
   return !!j?.success;
 }
 
-function datetimeToMsUtc(dt: string | null) {
+function datetimeToMsBj(dt: string | null) {
   if (!dt) return null;
-  const ms = Date.parse(dt + "Z"); // SQLite datetime('now') is UTC; add Z to make it ISO-like.
+  const ms = datetimeTextToMsBj(dt);
+  // DB stores Beijing time, so this returns a Beijing-based timestamp.
+
   return Number.isFinite(ms) ? ms : null;
 }
 async function checkLocked(env: any, ip: string, username: string) {
@@ -64,7 +75,7 @@ async function checkLocked(env: any, ip: string, username: string) {
        WHERE ip=?
          AND (username=? OR username='*')
          AND locked_until IS NOT NULL
-         AND locked_until > datetime('now')`
+         AND locked_until > datetime('now','+8 hours')`
     )
       .bind(ip, username)
       .first<any>();
@@ -81,36 +92,36 @@ async function checkLocked(env: any, ip: string, username: string) {
 async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number, lockEnabled: boolean = true) {
   const sql = `
     INSERT INTO auth_login_throttle (ip, username, fail_count, first_fail_at, last_fail_at, locked_until, updated_at)
-    VALUES (?, ?, 1, datetime('now'), datetime('now'),
-            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN datetime('now', '+${lockMin} minutes') ELSE NULL END,
-            datetime('now'))
+    VALUES (?, ?, 1, datetime('now','+8 hours'), datetime('now','+8 hours'),
+            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN datetime('now','+8 hours', '+${lockMin} minutes') ELSE NULL END,
+            datetime('now','+8 hours'))
     ON CONFLICT(ip, username) DO UPDATE SET
       fail_count = CASE
         WHEN auth_login_throttle.last_fail_at IS NULL
-          OR auth_login_throttle.last_fail_at < datetime('now', '-${windowMin} minutes')
+          OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
         THEN 1
         ELSE auth_login_throttle.fail_count + 1
       END,
       first_fail_at = CASE
         WHEN auth_login_throttle.last_fail_at IS NULL
-          OR auth_login_throttle.last_fail_at < datetime('now', '-${windowMin} minutes')
-        THEN datetime('now')
+          OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
+        THEN datetime('now','+8 hours')
         ELSE auth_login_throttle.first_fail_at
       END,
-      last_fail_at = datetime('now'),
+      last_fail_at = datetime('now','+8 hours'),
       locked_until = CASE
         WHEN (
           CASE
             WHEN auth_login_throttle.last_fail_at IS NULL
-              OR auth_login_throttle.last_fail_at < datetime('now', '-${windowMin} minutes')
+              OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
             THEN 1
             ELSE auth_login_throttle.fail_count + 1
           END
         ) >= ${maxFails} AND ${lockEnabled ? 1 : 0}=1
-        THEN datetime('now', '+${lockMin} minutes')
+        THEN datetime('now','+8 hours', '+${lockMin} minutes')
         ELSE NULL
       END,
-      updated_at = datetime('now');
+      updated_at = datetime('now','+8 hours');
   `;
 
   try {
@@ -158,7 +169,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const lockedUntil = await checkLocked(env as any, ip, u);
     if (lockedUntil) {
-      return json(false, { locked_until: lockedUntil, locked_until_ms: datetimeToMsUtc(lockedUntil) }, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
+      return json(false, { locked_until: lockedUntil, locked_until_ms: datetimeToMsBj(lockedUntil) }, `尝试次数过多，请稍后再试（锁定至 ${lockedUntil}）`, 429);
     }
 
     if (needCaptcha) {

@@ -16,8 +16,8 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   memory_size TEXT,
   remark TEXT,
   status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED')) DEFAULT 'IN_STOCK',
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
@@ -35,7 +35,7 @@ CREATE TABLE IF NOT EXISTS pc_in (
   disk_capacity TEXT,
   memory_size TEXT,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );
@@ -61,7 +61,7 @@ CREATE TABLE IF NOT EXISTS pc_out (
   memory_size TEXT,
   remark TEXT,
   recycle_date TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );
@@ -87,7 +87,7 @@ CREATE TABLE IF NOT EXISTS pc_recycle (
   model TEXT NOT NULL,
   recycle_date TEXT NOT NULL,
   remark TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
 );

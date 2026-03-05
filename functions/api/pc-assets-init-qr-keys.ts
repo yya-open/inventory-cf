@@ -36,7 +36,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     for (const id of list) {
       const key = genKey();
       stmts.push(
-        env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now'), updated_at=datetime('now') WHERE id=? AND (qr_key IS NULL OR TRIM(qr_key)='')")
+        env.DB.prepare("UPDATE pc_assets SET qr_key=?, qr_updated_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=? AND (qr_key IS NULL OR TRIM(qr_key)='')")
           .bind(key, id)
       );
     }

@@ -66,7 +66,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     let newId: number | null = null;
     try {
       const ins = await env.DB
-        .prepare("INSERT INTO users (username, password_hash, role, is_active, must_change_password) VALUES (?,?,?,?,1)")
+        .prepare("INSERT INTO users (username, password_hash, role, is_active, must_change_password, created_at) VALUES (?,?,?,?,1, datetime('now','+8 hours'))")
         .bind(u, ph, r, 1)
         .run();
       newId = Number((ins as any)?.meta?.last_row_id || 0) || null;

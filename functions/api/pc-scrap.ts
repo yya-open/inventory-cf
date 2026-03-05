@@ -68,14 +68,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const stmts: D1PreparedStatement[] = [];
     for (const a of rows) {
       stmts.push(
-        env.DB.prepare(`UPDATE pc_assets SET status='SCRAPPED', updated_at=datetime('now') WHERE id=?`).bind(a.id),
+        env.DB.prepare(`UPDATE pc_assets SET status='SCRAPPED', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(a.id),
         env.DB.prepare(
           `INSERT INTO pc_scrap (
             scrap_no, asset_id,
             brand, serial_no, model,
             manufacture_date, warranty_end, disk_capacity, memory_size, remark,
-            scrap_date, reason, created_by
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+            scrap_date, reason, created_by, created_at
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
         ).bind(
           scrap_no, a.id,
           a.brand, a.serial_no, a.model,

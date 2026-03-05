@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS audit_log (
   payload_json TEXT,
   ip TEXT,
   ua TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);

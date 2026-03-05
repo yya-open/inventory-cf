@@ -19,12 +19,12 @@ async function rateLimit(env: Env, request: Request, route: string, limitPerMinu
   // best-effort cleanup (avoid table growth)
   if ((Date.now() & 63) === 0) {
     await env.DB.prepare(
-      "DELETE FROM public_api_throttle WHERE updated_at < datetime('now','-2 hours')"
+      "DELETE FROM public_api_throttle WHERE updated_at < datetime('now','+8 hours', '-2 hours')"
     ).run();
   }
 
   await env.DB.prepare(
-    "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now')"
+    "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now','+8 hours')"
   )
     .bind(k)
     .run();

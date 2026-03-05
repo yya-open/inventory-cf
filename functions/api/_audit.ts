@@ -39,11 +39,11 @@ async function maybeCleanupAudit(db: D1Database) {
     if (lastMs && now - lastMs < CLEANUP_COOLDOWN_MS) return;
     const days = Math.max(1, Math.min(3650, Number(state.retention_days || DEFAULT_RETENTION_DAYS)));
 
-    // created_at is stored as ISO-like text; SQLite datetime('now') is UTC.
+    // created_at is stored as Beijing time (UTC+8) text: 'YYYY-MM-DD HH:MM:SS'.
     await db.prepare(
-      "DELETE FROM audit_log WHERE created_at < datetime('now', '-' || ? || ' days')"
+      "DELETE FROM audit_log WHERE created_at < datetime('now','+8 hours', '-' || ? || ' days')"
     ).bind(days).run();
-    await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now') WHERE id=1").run();
+    await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now','+8 hours') WHERE id=1").run();
   } catch {
     // do not block business flows
   }
@@ -72,8 +72,8 @@ export async function logAudit(
     const ua = request.headers.get("user-agent");
     const payload_json = payload === undefined ? null : JSON.stringify(payload);
     await db.prepare(
-      `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua)
-       VALUES (?,?,?,?,?,?,?,?)`
+      `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua, created_at)
+       VALUES (?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
     ).bind(
       user?.id ?? null,
       user?.username ?? null,
@@ -111,8 +111,8 @@ export async function runAuditCleanup(db: D1Database) {
   const st = await ensureRetentionState(db);
   const days = Math.max(1, Math.min(3650, Number(st?.retention_days || DEFAULT_RETENTION_DAYS)));
   const res = await db.prepare(
-    "DELETE FROM audit_log WHERE created_at < datetime('now', '-' || ? || ' days')"
+    "DELETE FROM audit_log WHERE created_at < datetime('now','+8 hours', '-' || ? || ' days')"
   ).bind(days).run();
-  await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now') WHERE id=1").run();
+  await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now','+8 hours') WHERE id=1").run();
   return { days, deleted: Number((res as any)?.meta?.changes || 0) };
 }

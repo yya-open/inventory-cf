@@ -2,7 +2,7 @@
 
 CREATE TABLE IF NOT EXISTS api_slow_requests (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   method TEXT,
   path TEXT,
   query TEXT,

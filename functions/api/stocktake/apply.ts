@@ -76,13 +76,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return [
         // ensure stock row exists
         env.DB.prepare(
-          `INSERT OR IGNORE INTO stock (item_id, warehouse_id, qty, updated_at) VALUES (?, ?, 0, datetime('now'))`
+          `INSERT OR IGNORE INTO stock (item_id, warehouse_id, qty, updated_at) VALUES (?, ?, 0, datetime('now','+8 hours'))`
         ).bind(itemId, warehouseId),
 
         // adjust stock only if not already applied for this (stocktake,item,warehouse)
         env.DB.prepare(
           `UPDATE stock
-           SET qty = qty + ?, updated_at=datetime('now')
+           SET qty = qty + ?, updated_at=datetime('now','+8 hours')
            WHERE item_id=? AND warehouse_id=?
              AND (qty + ?) >= 0
              AND NOT EXISTS (
@@ -129,7 +129,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // Finalize status: APPLYING -> APPLIED
     const done = await env.DB.prepare(
-      `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now') WHERE id=? AND status='APPLYING'`
+      `UPDATE stocktake SET status='APPLIED', applied_at=datetime('now','+8 hours') WHERE id=? AND status='APPLYING'`
     )
       .bind(st_id)
       .run();

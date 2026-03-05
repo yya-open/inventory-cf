@@ -135,7 +135,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       stmts.push(
         env.DB.prepare(
           `UPDATE stock
-           SET qty = qty - ?, updated_at=datetime('now')
+           SET qty = qty - ?, updated_at=datetime('now','+8 hours')
            WHERE item_id=? AND warehouse_id=? AND qty >= ?
              AND (SELECT changes()) > 0`
         ).bind(l.qty, item_id, warehouse_id, l.qty)

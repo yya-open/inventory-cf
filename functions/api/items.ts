@@ -73,7 +73,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     ).run();
   } else {
     const ins = await env.DB.prepare(
-      `INSERT INTO items (sku, name, brand, model, category, unit, warning_qty) VALUES (?,?,?,?,?,?,?)`
+      `INSERT INTO items (sku, name, brand, model, category, unit, warning_qty, created_at) VALUES (?,?,?,?,?,?,?, datetime('now','+8 hours'))`
     ).bind(
       sku,
       name,

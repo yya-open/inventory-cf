@@ -22,7 +22,7 @@ CREATE TABLE IF NOT EXISTS auth_login_throttle (
   first_fail_at TEXT,
   last_fail_at TEXT,
   locked_until TEXT,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   UNIQUE(ip, username)
 );
 

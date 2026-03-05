@@ -4,7 +4,7 @@ PRAGMA foreign_keys = ON;
 CREATE TABLE IF NOT EXISTS public_api_throttle (
   k TEXT PRIMARY KEY,
   count INTEGER NOT NULL DEFAULT 0,
-  updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_public_api_throttle_updated_at ON public_api_throttle(updated_at);
@@ -18,7 +18,7 @@ CREATE TABLE IF NOT EXISTS pc_inventory_log (
   remark TEXT,
   ip TEXT,
   ua TEXT,
-  created_at TEXT NOT NULL DEFAULT (datetime('now')),
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
 );
 

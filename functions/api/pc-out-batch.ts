@@ -55,7 +55,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         await env.DB.batch([
           env.DB.prepare(
             `UPDATE pc_assets
-             SET status=?, updated_at=datetime('now')
+             SET status=?, updated_at=datetime('now','+8 hours')
              WHERE id=?`
           ).bind(afterStatus, asset.id),
 
@@ -66,8 +66,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
               brand, serial_no, model,
               config_date,
               manufacture_date, warranty_end, disk_capacity, memory_size,
-              remark, created_by
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
+              remark, created_by, created_at
+            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
           ).bind(
             no,
             asset.id,

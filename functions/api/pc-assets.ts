@@ -164,7 +164,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     await env.DB.prepare(`
       UPDATE pc_assets
-      SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, updated_at=datetime('now')
+      SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, updated_at=datetime('now','+8 hours')
       WHERE id=?
     `).bind(brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, id).run();
 
