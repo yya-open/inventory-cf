@@ -39,9 +39,10 @@
         </el-descriptions-item>
       </el-descriptions>
 
-      <template #footer>
-        <el-button @click="refresh">刷新</el-button>
-      </template>
+      <div v-if="!loading && !error" class="public-actions">
+        <el-button type="primary" @click="refresh">刷新</el-button>
+        <div class="hint">可按需刷新，信息实时更新</div>
+      </div>
     </el-card>
   </div>
 </template>
@@ -103,16 +104,36 @@ onMounted(refresh);
 </script>
 
 <style scoped>
-.public-wrap {
+.public-wrap{
   min-height: 100vh;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding: 18px;
-  background: #f6f7fb;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding: 22px 12px;
+  background: radial-gradient(1200px 600px at 20% 0%, rgba(66,133,244,0.12), transparent 60%),
+              radial-gradient(1200px 600px at 80% 0%, rgba(52,199,89,0.10), transparent 60%),
+              linear-gradient(180deg, rgba(0,0,0,0.02), rgba(0,0,0,0.00));
 }
-.public-card {
-  width: 860px;
-  max-width: 100%;
+.public-card{
+  width: min(980px, 100%);
+  border-radius: 14px;
+}
+.public-actions{
+  display:flex;
+  align-items:center;
+  gap: 10px;
+  margin-top: 14px;
+  flex-wrap: wrap;
+}
+.hint{
+  color:#999;
+  font-size:12px;
+}
+:deep(.el-descriptions__label){
+  width: 120px;
+  color: #666;
+}
+:deep(.el-descriptions__content){
+  color: #333;
 }
 </style>

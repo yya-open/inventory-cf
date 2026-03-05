@@ -40,6 +40,8 @@ const router = createRouter({
     { path: "/login", component: Login, meta: { public: true } },
     // 扫码查看电脑信息（无需登录）
     { path: "/public/pc-asset", component: PublicPcAsset, meta: { public: true } },
+    // 扫码查看显示器信息（无需登录）
+    { path: "/public/monitor-asset", component: PublicMonitorAsset, meta: { public: true } },
     { path: "/warehouses", component: WarehouseSelect, meta: { role: "viewer" } },
 
     { path: "/stock", component: StockQuery, meta: { role: "viewer" } },
