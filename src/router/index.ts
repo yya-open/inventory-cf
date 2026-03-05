@@ -22,6 +22,8 @@ import PcAssets from "../views/PcAssets.vue";
 import PcWarehouse from "../views/PcWarehouse.vue";
 import PcAgeWarnings from "../views/PcAgeWarnings.vue";
 import PcInventoryLogs from "../views/PcInventoryLogs.vue";
+import MonitorAssets from "../views/MonitorAssets.vue";
+import MonitorTx from "../views/MonitorTx.vue";
 import SystemHome from "../views/SystemHome.vue";
 import SystemLayout from "../views/SystemLayout.vue";
 import PublicPcAsset from "../views/PublicPcAsset.vue";
@@ -70,8 +72,10 @@ const router = createRouter({
       meta: { role: "viewer", title: "电脑仓（仓库2）" },
       children: [
         { path: "assets", component: PcAssets, meta: { role: "viewer", title: "电脑台账" } },
+        { path: "monitors", component: MonitorAssets, meta: { role: "viewer", title: "显示器台账" } },
         { path: "age-warnings", component: PcAgeWarnings, meta: { role: "viewer", title: "报废预警" } },
         { path: "tx", component: PcTx, meta: { role: "viewer", title: "出入库明细" } },
+        { path: "monitor-tx", component: MonitorTx, meta: { role: "viewer", title: "显示器出入库明细" } },
         { path: "inventory-logs", component: PcInventoryLogs, meta: { role: "viewer", title: "盘点记录" } },
         { path: "in", component: PcIn, meta: { role: "operator", title: "电脑入库" } },
         { path: "out", component: PcOut, meta: { role: "operator", title: "电脑出库" } },
