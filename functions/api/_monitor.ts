@@ -47,6 +47,8 @@ export async function ensureMonitorSchema(db: D1Database) {
         CREATE TABLE IF NOT EXISTS monitor_assets (
           id INTEGER PRIMARY KEY AUTOINCREMENT,
           asset_code TEXT NOT NULL UNIQUE,
+          qr_key TEXT,
+          qr_updated_at TEXT,
           sn TEXT,
           brand TEXT,
           model TEXT,
@@ -66,11 +68,14 @@ export async function ensureMonitorSchema(db: D1Database) {
       .run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_asset_code ON monitor_assets(asset_code)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id)").run();
 
     // Backward compatibility: add employee fields if early versions created table without them.
     for (const ddl of [
+      "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN employee_no TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN department TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN employee_name TEXT",

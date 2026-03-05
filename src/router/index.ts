@@ -27,6 +27,7 @@ import MonitorTx from "../views/MonitorTx.vue";
 import SystemHome from "../views/SystemHome.vue";
 import SystemLayout from "../views/SystemLayout.vue";
 import PublicPcAsset from "../views/PublicPcAsset.vue";
+import PublicMonitorAsset from "../views/PublicMonitorAsset.vue";
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "element-plus";

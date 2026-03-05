@@ -18,6 +18,7 @@
         <el-button @click="reload()">查询</el-button>
         <el-button v-if="can('operator')" type="primary" @click="openCreate">新增台账</el-button>
         <el-button v-if="can('operator')" @click="openLocationMgr">管理位置</el-button>
+        <el-button v-if="can('admin')" @click="initQrKeys">初始化二维码Key</el-button>
       </div>
     </el-card>
 
@@ -46,14 +47,15 @@
         </el-table-column>
         <el-table-column prop="department" label="部门" min-width="140" />
         <el-table-column prop="updated_at" label="更新时间" min-width="170" />
-        <el-table-column label="操作" width="360" fixed="right">
+        <el-table-column label="操作" width="420" fixed="right">
           <template #default="{ row }">
             <el-button v-if="can('admin')" size="small" @click="openEdit(row)">编辑</el-button>
+            <el-button v-if="can('operator')" size="small" @click="openQr(row)">二维码</el-button>
             <el-button v-if="can('operator')" size="small" @click="openIn(row)">入库</el-button>
             <el-button v-if="can('operator')" size="small" @click="openOut(row)">出库</el-button>
             <el-button v-if="can('operator')" size="small" @click="openReturn(row)">归还</el-button>
             <el-button v-if="can('operator')" size="small" @click="openTransfer(row)">调拨</el-button>
-            <el-button v-if="can('operator')" size="small" type="danger" plain @click="openScrap(row)">报废</el-button>
+            <el-button v-if="can('admin')" size="small" type="danger" plain @click="removeAsset(row)">删除</el-button>
           </template>
         </el-table-column>
       </el-table>
@@ -104,7 +106,7 @@
       </template>
     </el-dialog>
 
-    <!-- in/out/return/transfer/scrap dialogs -->
+    <!-- in/out/return/transfer dialogs -->
     <el-dialog v-model="dlgOp.show" :title="dlgOp.title" width="520px">
       <div style="margin-bottom:8px; color:#666">{{ dlgOp.asset?.asset_code }} {{ dlgOp.asset?.sn ? ' / ' + dlgOp.asset.sn : '' }}</div>
       <el-form label-width="90px">
@@ -114,21 +116,97 @@
           <el-form-item label="部门"><el-input v-model="dlgOp.form.department" /></el-form-item>
         </template>
 
-        <template v-if="dlgOp.kind!=='scrap'">
-          <el-form-item label="位置">
-            <el-select v-model="dlgOp.form.location_id" filterable clearable style="width:100%" placeholder="可选/建议填写">
-              <el-option v-for="it in locationOptions" :key="it.value" :label="it.label" :value="it.value" />
-            </el-select>
-          </el-form-item>
-        </template>
+        <el-form-item label="位置">
+          <el-select v-model="dlgOp.form.location_id" filterable clearable style="width:100%" placeholder="可选/建议填写">
+            <el-option v-for="it in locationOptions" :key="it.value" :label="it.label" :value="it.value" />
+          </el-select>
+        </el-form-item>
 
-        <el-form-item :label="dlgOp.kind==='scrap' ? '原因' : '备注'">
+        <el-form-item label="备注">
           <el-input v-model="dlgOp.form.remark" type="textarea" :rows="3" />
         </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="dlgOp.show=false">取消</el-button>
         <el-button type="primary" @click="submitOp">提交</el-button>
+      </template>
+    </el-dialog>
+
+    <!-- QR dialog -->
+    <el-dialog v-model="qrVisible" class="qr-dialog" width="560px" destroy-on-close :close-on-click-modal="false">
+      <template #header>
+        <div class="qr-header">
+          <div class="qr-title">
+            <span class="qr-title-main">扫码查看显示器信息</span>
+            <span class="qr-title-sub">可控长期码 · 信息实时更新</span>
+          </div>
+          <el-tag size="small" type="info" effect="plain" v-if="qrRow">
+            {{ [qrRow.brand, qrRow.model].filter(Boolean).join(' ') || '显示器' }}
+          </el-tag>
+        </div>
+      </template>
+
+      <div class="qr-body" v-loading="qrLoading">
+        <div class="qr-left">
+          <div class="qr-card">
+            <div class="qr-box" v-if="qrDataUrl">
+              <img :src="qrDataUrl" alt="QR" />
+            </div>
+            <div class="qr-box qr-box-empty" v-else>
+              <div style="color:#999">暂无二维码</div>
+            </div>
+
+            <div class="qr-meta" v-if="qrRow">
+              <div class="qr-meta-line"><span class="k">资产编号</span><span class="v">{{ qrRow.asset_code || '-' }}</span></div>
+              <div class="qr-meta-line"><span class="k">SN</span><span class="v">{{ qrRow.sn || '-' }}</span></div>
+              <div class="qr-meta-line"><span class="k">状态</span><span class="v">{{ statusText(qrRow.status) }}</span></div>
+            </div>
+          </div>
+        </div>
+
+        <div class="qr-right">
+          <div class="qr-actions">
+            <div class="qr-action-group">
+              <div class="qr-action-title">下载</div>
+              <div class="qr-action-buttons">
+                <el-button :disabled="!qrDataUrl" @click="downloadQr">下载二维码</el-button>
+              </div>
+            </div>
+
+            <div class="qr-action-group">
+              <div class="qr-action-title">操作</div>
+              <div class="qr-action-buttons">
+                <el-button type="primary" :disabled="!qrLink" @click="openQrInNewTab">打开页面</el-button>
+                <el-button v-if="can('admin')" type="danger" plain :disabled="!qrRow?.id" @click="resetQr">重置二维码</el-button>
+              </div>
+            </div>
+          </div>
+
+          <div class="qr-link">
+            <div class="qr-link-label">链接</div>
+            <el-input v-model="qrLink" readonly>
+              <template #append>
+                <el-button @click="copyQrLink">复制</el-button>
+              </template>
+            </el-input>
+          </div>
+
+          <el-alert
+            class="qr-tip"
+            type="success"
+            show-icon
+            :closable="false"
+            title="提示"
+            description="修改台账/出入库后，扫码会自动展示最新数据；管理员重置二维码后旧码立即失效。"
+          />
+        </div>
+      </div>
+
+      <template #footer>
+        <div class="qr-footer">
+          <div class="qr-footnote">建议打印标签时选择“实际大小/100%”，二维码边长 ≥ 25mm 更易识别。</div>
+          <el-button @click="qrVisible=false">关闭</el-button>
+        </div>
       </template>
     </el-dialog>
 
@@ -173,6 +251,7 @@ import { computed, onMounted, reactive, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiDelete, apiGet, apiPost, apiPut } from "../api/client";
 import { can } from "../store/auth";
+import QRCode from "qrcode";
 
 type Loc = { id: number; name: string; parent_id: number | null; enabled: number; created_at?: string };
 
@@ -225,28 +304,27 @@ async function loadLocations() {
     const r = await apiGet<any>(`/api/pc-locations?enabled=1`);
     locations.value = (r.data || []) as Loc[];
   } catch (e: any) {
-    // If schema not initialized yet, pc_locations may not exist.
     await handleMaybeMissingSchema(e);
   }
 }
 
 async function handleMaybeMissingSchema(e: any) {
-  const msg = String(e?.message || '');
-  const missing = msg.includes('no such table: monitor_assets') || msg.includes('no such table: pc_locations') || msg.includes('no such table: monitor_tx');
+  const msg = String(e?.message || "");
+  const missing = msg.includes("no such table: monitor_assets") || msg.includes("no such table: pc_locations") || msg.includes("no such table: monitor_tx");
   if (!missing) throw e;
-  if (!can('admin')) {
-    ElMessage.error('显示器模块数据库表尚未初始化，请联系管理员执行初始化');
+  if (!can("admin")) {
+    ElMessage.error("显示器模块数据库表尚未初始化，请联系管理员执行初始化");
     throw e;
   }
 
   await ElMessageBox.confirm(
-    '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
-    '需要初始化',
-    { type: 'warning', confirmButtonText: '初始化', cancelButtonText: '取消' }
+    "检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）",
+    "需要初始化",
+    { type: "warning", confirmButtonText: "初始化", cancelButtonText: "取消" }
   );
 
-  await apiPost<any>('/api/monitor-init', { confirm: '初始化' });
-  ElMessage.success('初始化完成，请重试操作');
+  await apiPost<any>("/api/monitor-init", { confirm: "初始化" });
+  ElMessage.success("初始化完成，请重试操作");
 }
 
 async function loadList(opts?: { keepPage?: boolean }) {
@@ -265,15 +343,13 @@ async function loadList(opts?: { keepPage?: boolean }) {
       rows.value = r.data || [];
       if (!opts?.keepPage) page.value = 1;
 
-      // async total
-      const c = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace('fast=1&', '')}`);
+      const c = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace("fast=1&", "")}`);
       total.value = Number(c.data?.total || 0);
     } catch (e: any) {
       await handleMaybeMissingSchema(e);
-      // retry once after init
       const r2 = await apiGet<any>(`/api/monitor-assets?${params.toString()}`);
       rows.value = r2.data || [];
-      const c2 = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace('fast=1&', '')}`);
+      const c2 = await apiGet<any>(`/api/monitor-assets-count?${params.toString().replace("fast=1&", "")}`);
       total.value = Number(c2.data?.total || 0);
     }
   } finally {
@@ -335,7 +411,6 @@ async function saveAsset() {
   } catch (e: any) {
     try {
       await handleMaybeMissingSchema(e);
-      // retry once after init
       if (dlgAsset.mode === "create") {
         await apiPost<any>(`/api/monitor-assets`, dlgAsset.form);
         ElMessage.success("新增成功");
@@ -351,10 +426,30 @@ async function saveAsset() {
   }
 }
 
+async function removeAsset(row: any) {
+  try {
+    await ElMessageBox.confirm(`确认删除显示器台账：${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）？`, "删除确认", {
+      type: "warning",
+      confirmButtonText: "确认删除",
+      cancelButtonText: "取消",
+    });
+    loading.value = true;
+    await apiDelete<any>(`/api/monitor-assets`, { id: row.id });
+    ElMessage.success("删除成功");
+    if (rows.value.length === 1 && page.value > 1) page.value -= 1;
+    await loadList({ keepPage: true });
+  } catch (e: any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "删除失败");
+  } finally {
+    loading.value = false;
+  }
+}
+
 // operations
 const dlgOp = reactive({
   show: false,
-  kind: "in" as "in" | "out" | "return" | "transfer" | "scrap",
+  kind: "in" as "in" | "out" | "return" | "transfer",
   title: "",
   asset: null as any,
   form: { location_id: "" as any, employee_no: "", employee_name: "", department: "", remark: "" },
@@ -388,13 +483,6 @@ function openTransfer(row: any) {
   dlgOp.form = { location_id: row.location_id || "", employee_no: "", employee_name: "", department: "", remark: "" };
   dlgOp.show = true;
 }
-function openScrap(row: any) {
-  dlgOp.kind = "scrap";
-  dlgOp.title = "显示器报废";
-  dlgOp.asset = row;
-  dlgOp.form = { location_id: "", employee_no: "", employee_name: "", department: "", remark: "" };
-  dlgOp.show = true;
-}
 
 async function submitOp() {
   const a = dlgOp.asset;
@@ -419,28 +507,104 @@ async function submitOp() {
     } else if (dlgOp.kind === "transfer") {
       await apiPost<any>(`/api/monitor-transfer`, { asset_id: a.id, to_location_id: dlgOp.form.location_id, remark: dlgOp.form.remark });
       ElMessage.success("调拨成功");
-    } else if (dlgOp.kind === "scrap") {
-      await apiPost<any>(`/api/monitor-scrap`, { asset_id: a.id, reason: dlgOp.form.remark || "报废" });
-      ElMessage.success("报废成功");
     }
     dlgOp.show = false;
     await loadList({ keepPage: true });
   } catch (e: any) {
-    try {
-      await handleMaybeMissingSchema(e);
-      // retry once after init
-      if (dlgAsset.mode === "create") {
-        await apiPost<any>(`/api/monitor-assets`, dlgAsset.form);
-        ElMessage.success("新增成功");
-      } else {
-        await apiPut<any>(`/api/monitor-assets`, dlgAsset.form);
-        ElMessage.success("保存成功");
-      }
-      dlgAsset.show = false;
-      await loadList({ keepPage: true });
-    } catch (e2: any) {
-      ElMessage.error(e2.message || "操作失败");
+    ElMessage.error(e?.message || "操作失败");
+  }
+}
+
+// QR
+const qrVisible = ref(false);
+const qrLoading = ref(false);
+const qrRow = ref<any>(null);
+const qrLink = ref("");
+const qrDataUrl = ref("");
+
+async function openQr(row: any) {
+  qrVisible.value = true;
+  qrRow.value = { ...row };
+  qrLink.value = "";
+  qrDataUrl.value = "";
+  qrLoading.value = true;
+  try {
+    const r = await apiGet<any>(`/api/monitor-asset-qr-token`, { id: row.id });
+    const link = String(r?.url || "");
+    qrLink.value = link;
+    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+  } catch (e: any) {
+    ElMessage.error(e?.message || "生成二维码失败");
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+function downloadQr() {
+  if (!qrDataUrl.value) return;
+  const a = document.createElement("a");
+  a.href = qrDataUrl.value;
+  const code = qrRow.value?.asset_code || "monitor";
+  a.download = `显示器二维码_${code}.png`;
+  a.click();
+}
+
+async function copyQrLink() {
+  try {
+    await navigator.clipboard.writeText(qrLink.value || "");
+    ElMessage.success("已复制");
+  } catch {
+    ElMessage.warning("复制失败，请手动复制");
+  }
+}
+
+function openQrInNewTab() {
+  if (!qrLink.value) return;
+  window.open(qrLink.value, "_blank");
+}
+
+async function resetQr() {
+  try {
+    const id = Number(qrRow.value?.id || 0);
+    if (!id) return;
+    await ElMessageBox.confirm("重置后旧二维码将立即失效，确认继续？", "重置二维码", {
+      type: "warning",
+      confirmButtonText: "重置",
+      cancelButtonText: "取消",
+    });
+    qrLoading.value = true;
+    const r = await apiPost<any>(`/api/monitor-assets-reset-qr?id=${id}`, {});
+    const link = String(r?.url || "");
+    qrLink.value = link;
+    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    ElMessage.success("已重置");
+  } catch (e: any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "重置失败");
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+async function initQrKeys() {
+  try {
+    await ElMessageBox.confirm("将为所有缺少二维码Key的显示器批量生成Key（分批执行）。继续？", "初始化二维码Key", {
+      type: "warning",
+      confirmButtonText: "继续",
+      cancelButtonText: "取消",
+    });
+    let totalUpdated = 0;
+    // loop a few batches
+    for (let i = 0; i < 20; i++) {
+      const r = await apiPost<any>("/api/monitor-assets-init-qr-keys", { batch_size: 50 });
+      const updated = Number(r?.updated || 0);
+      totalUpdated += updated;
+      if (updated <= 0) break;
     }
+    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 条` : "无需补齐（都已存在）");
+  } catch (e: any) {
+    if (e === "cancel" || e === "close") return;
+    ElMessage.error(e?.message || "初始化失败");
   }
 }
 
@@ -505,4 +669,38 @@ onMounted(async () => {
 
 <style scoped>
 .mb12 { margin-bottom: 12px; }
+
+.qr-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+.qr-title { display: flex; flex-direction: column; gap: 2px; }
+.qr-title-main { font-weight: 700; }
+.qr-title-sub { font-size: 12px; color: #888; }
+
+.qr-body { display: flex; gap: 12px; }
+.qr-left { width: 260px; }
+.qr-right { flex: 1; }
+.qr-card { border: 1px solid #eee; border-radius: 10px; padding: 12px; }
+.qr-box { width: 220px; height: 220px; display:flex; align-items:center; justify-content:center; margin: 0 auto; }
+.qr-box img { width: 100%; height: 100%; object-fit: contain; }
+.qr-box-empty { background: #fafafa; border-radius: 8px; }
+.qr-meta { margin-top: 10px; font-size: 12px; color: #666; display:flex; flex-direction:column; gap: 6px; }
+.qr-meta-line { display:flex; gap: 8px; }
+.qr-meta-line .k { width: 62px; color: #999; }
+.qr-meta-line .v { flex: 1; }
+
+.qr-actions { display:flex; flex-direction:column; gap: 12px; }
+.qr-action-group { border: 1px solid #eee; border-radius: 10px; padding: 12px; }
+.qr-action-title { font-weight: 600; margin-bottom: 8px; }
+.qr-action-buttons { display:flex; gap: 10px; flex-wrap:wrap; }
+
+.qr-link { margin-top: 12px; }
+.qr-link-label { font-size: 12px; color: #888; margin-bottom: 6px; }
+.qr-tip { margin-top: 12px; }
+
+.qr-footer { display:flex; align-items:center; justify-content:space-between; gap: 10px; }
+.qr-footnote { font-size: 12px; color: #888; }
 </style>

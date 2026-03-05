@@ -22,6 +22,8 @@ CREATE INDEX IF NOT EXISTS idx_pc_locations_enabled ON pc_locations(enabled);
 CREATE TABLE IF NOT EXISTS monitor_assets (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   asset_code TEXT NOT NULL UNIQUE,
+  qr_key TEXT,
+  qr_updated_at TEXT,
   sn TEXT,
   brand TEXT,
   model TEXT,
@@ -40,6 +42,7 @@ CREATE TABLE IF NOT EXISTS monitor_assets (
 
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_asset_code ON monitor_assets(asset_code);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
 
