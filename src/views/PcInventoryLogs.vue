@@ -16,7 +16,7 @@
           <el-option label="其他" value="OTHER" />
         </el-select>
 
-        <el-input v-model="keyword" placeholder="关键词（SN/品牌/型号/员工/备注/IP…）" style="width: 320px" clearable @keyup.enter="onSearch" />
+        <el-input v-model="keyword" placeholder="关键词（SN/品牌/型号/员工/备注…）" style="width: 320px" clearable @keyup.enter="onSearch" />
 
         <el-date-picker
           v-model="dateRange"
@@ -63,7 +63,11 @@
             {{ row.brand }} {{ row.model }}
           </template>
         </el-table-column>
-        <el-table-column prop="status" label="台账状态" width="110" />
+        <el-table-column label="台账状态" width="110">
+          <template #default="{ row }">
+            {{ statusText(String(row.status || '')) }}
+          </template>
+        </el-table-column>
 
         <el-table-column label="领用信息" min-width="220" show-overflow-tooltip>
           <template #default="{ row }">
@@ -75,7 +79,6 @@
         </el-table-column>
 
         <el-table-column prop="remark" label="备注" min-width="240" show-overflow-tooltip />
-        <el-table-column prop="ip" label="IP" width="140" show-overflow-tooltip />
 
         <el-table-column v-if="isAdmin" label="操作" width="110" fixed="right">
           <template #default="{ row }">
@@ -105,6 +108,14 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
+
+function statusText(s: string) {
+  if (s === "IN_STOCK") return "在库";
+  if (s === "ASSIGNED") return "已领用";
+  if (s === "RECYCLED") return "已回收";
+  if (s === "SCRAPPED") return "已报废";
+  return s || "-";
+}
 
 const action = ref<string>("");
 const issueType = ref<string>("");
