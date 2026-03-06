@@ -1,37 +1,53 @@
 <template>
-  <el-card>
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-      <el-select v-model="status" placeholder="状态" clearable style="width:160px" @change="onSearch">
-        <el-option label="在库" value="IN_STOCK" />
-        <el-option label="已领用" value="ASSIGNED" />
-        <el-option label="已回收" value="RECYCLED" />
-        <el-option label="已报废" value="SCRAPPED" />
-      </el-select>
+  <el-card class="asset-page-card">
+    <div class="asset-toolbar">
+      <div class="toolbar-left">
+        <div class="toolbar-block toolbar-search">
+          <div class="toolbar-block-title">筛选查询</div>
+          <div class="toolbar-row">
+            <el-select v-model="status" placeholder="状态" clearable class="toolbar-select" @change="onSearch">
+              <el-option label="在库" value="IN_STOCK" />
+              <el-option label="已领用" value="ASSIGNED" />
+              <el-option label="已回收" value="RECYCLED" />
+              <el-option label="已报废" value="SCRAPPED" />
+            </el-select>
 
-      <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" style="width: 280px" @keyup.enter="onSearch" />
+            <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="toolbar-input" @keyup.enter="onSearch" />
 
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="reset">重置</el-button>
+            <div class="toolbar-actions-inline">
+              <el-button type="primary" @click="onSearch">查询</el-button>
+              <el-button @click="reset">重置</el-button>
+            </div>
+          </div>
+        </div>
 
-      <div style="flex:1"></div>
+        <div v-if="canOperator" class="toolbar-block toolbar-import">
+          <div class="toolbar-block-title">批量操作</div>
+          <div class="toolbar-row compact">
+            <el-upload
+              :show-file-list="false"
+              :auto-upload="false"
+              accept=".xlsx,.xls"
+              :on-change="onImportAssetsFile"
+            >
+              <el-button type="primary">Excel导入（批量入库）</el-button>
+            </el-upload>
+            <div class="toolbar-hint">适合批量新增电脑台账</div>
+          </div>
+        </div>
+      </div>
 
-      <el-button size="small" @click="exportExcel">导出Excel</el-button>
-
-      <el-button v-if="isAdmin" size="small" @click="initQrKeys">初始化二维码Key</el-button>
-
-      <el-button v-if="canOperator" size="small" @click="downloadAssetTemplate">下载导入模板</el-button>
-
-      <el-upload
-        v-if="canOperator"
-        :show-file-list="false"
-        :auto-upload="false"
-        accept=".xlsx,.xls"
-        :on-change="onImportAssetsFile"
-      >
-        <el-button size="small" type="primary">Excel导入（批量入库）</el-button>
-      </el-upload>
-
-</div>
+      <div class="toolbar-right">
+        <div class="toolbar-block toolbar-tools">
+          <div class="toolbar-block-title">快捷工具</div>
+          <div class="toolbar-tool-grid">
+            <el-button @click="exportExcel">导出Excel</el-button>
+            <el-button v-if="isAdmin" @click="initQrKeys">初始化二维码Key</el-button>
+            <el-button v-if="canOperator" @click="downloadAssetTemplate">下载导入模板</el-button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <el-table :data="rows" border v-loading="loading">
       <el-table-column label="ID" width="80">
@@ -741,6 +757,95 @@ onMounted(load);
 </script>
 
 <style scoped>
+
+.asset-page-card{
+  border-radius: 18px;
+}
+.asset-toolbar{
+  display:grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap:16px;
+  margin-bottom:16px;
+}
+.toolbar-left,
+.toolbar-right{
+  min-width:0;
+}
+.toolbar-left{
+  display:flex;
+  flex-direction:column;
+  gap:12px;
+}
+.toolbar-block{
+  padding:14px 16px;
+  border:1px solid #ebeef5;
+  border-radius:16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+}
+.toolbar-block-title{
+  margin-bottom:10px;
+  font-size:13px;
+  font-weight:700;
+  color:#606266;
+}
+.toolbar-row{
+  display:flex;
+  align-items:center;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.toolbar-row.compact{
+  justify-content:space-between;
+}
+.toolbar-select{
+  width:160px;
+}
+.toolbar-input{
+  width:300px;
+  max-width:100%;
+}
+.toolbar-actions-inline{
+  display:flex;
+  gap:12px;
+  flex-wrap:wrap;
+}
+.toolbar-hint{
+  color:#909399;
+  font-size:12px;
+  line-height:1.4;
+}
+.toolbar-tool-grid{
+  display:grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap:10px;
+}
+.toolbar-tool-grid :deep(.el-button){
+  margin-left:0;
+  width:100%;
+}
+@media (max-width: 1100px){
+  .asset-toolbar{
+    grid-template-columns: 1fr;
+  }
+}
+@media (max-width: 768px){
+  .toolbar-block{
+    padding:12px;
+    border-radius:14px;
+  }
+  .toolbar-select,
+  .toolbar-input,
+  .toolbar-actions-inline,
+  .toolbar-actions-inline :deep(.el-button),
+  .toolbar-row.compact :deep(.el-upload),
+  .toolbar-row.compact :deep(.el-upload .el-button){
+    width:100%;
+  }
+  .toolbar-row.compact{
+    align-items:stretch;
+  }
+}
+
 /* QR dialog polish */
 
 /* === QR Dialog (polished) === */
