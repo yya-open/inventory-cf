@@ -209,58 +209,11 @@
               恢复完成 ✅
             </el-alert>
 
-            <div v-if="jobId && (jobStage || jobSnapshotStatus || restoreSummaryCards.length || jobRestorePoints.length)" style="display:flex; flex-direction:column; gap:12px">
-              <div style="border:1px solid #ebeef5; border-radius:8px; padding:12px; background:#fff">
-                <div style="font-weight:700; margin-bottom:10px">恢复摘要</div>
-                <div style="display:grid; grid-template-columns:repeat(auto-fit,minmax(160px,1fr)); gap:10px">
-                  <div v-for="card in restoreSummaryCards" :key="card.label" style="border:1px solid #f0f0f0; border-radius:8px; padding:10px; background:#fafafa">
-                    <div style="color:#666; font-size:12px">{{ card.label }}</div>
-                    <div style="font-size:22px; font-weight:700; margin-top:4px">{{ card.value }}</div>
-                    <div v-if="card.tip" style="color:#999; font-size:12px; margin-top:4px">{{ card.tip }}</div>
-                  </div>
-                </div>
-                <div style="margin-top:10px; color:#666; font-size:12px; line-height:1.7">
-                  <div>阶段：{{ jobStage || '-' }}　模式：{{ restoreModeText }}　恢复点：{{ jobRestorePoints.length }} 个</div>
-                  <div v-if="jobSnapshotStatus">恢复点状态：{{ snapshotStatusText }}</div>
-                </div>
-              </div>
 
-              <div style="border:1px solid #ebeef5; border-radius:8px; padding:12px; background:#fff">
-                <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; margin-bottom:10px">
-                  <div style="font-weight:700">恢复点</div>
-                  <div style="color:#666; font-size:12px">恢复前自动创建，可用于回滚</div>
-                </div>
-                <el-alert v-if="!jobRestorePoints.length" type="info" show-icon :closable="false">当前任务还没有可用恢复点。</el-alert>
-                <el-table v-else :data="jobRestorePoints" size="small" border style="width:100%">
-                  <el-table-column label="类型" width="120">
-                    <template #default="{row}">{{ restorePointTypeText(row.type) }}</template>
-                  </el-table-column>
-                  <el-table-column label="文件名" min-width="220">
-                    <template #default="{row}">{{ row.filename || '-' }}</template>
-                  </el-table-column>
-                  <el-table-column label="创建时间" min-width="180">
-                    <template #default="{row}">{{ row.created_at || '-' }}</template>
-                  </el-table-column>
-                  <el-table-column label="状态" width="120">
-                    <template #default="{row}">
-                      <el-tag size="small" type="success">可回滚</el-tag>
-                    </template>
-                  </el-table-column>
-                </el-table>
-                <div style="margin-top:10px; display:flex; gap:10px; flex-wrap:wrap">
-                  <el-button
-                    type="warning"
-                    plain
-                    :disabled="!jobId || !jobRestorePoints.length || rollbackCreating"
-                    :loading="rollbackCreating"
-                    @click="createRollbackJob"
-                  >
-                    基于恢复点创建回滚任务
-                  </el-button>
-                  <el-button v-if="jobStatus==='DONE' && restoreDetailRows.length" type="primary" plain @click="detailDlg=true">查看本次恢复明细</el-button>
-                </div>
-              </div>
-            </div>
+	            <!-- 恢复完成后仅通过弹窗查看明细，避免页面内容过长且保持风格一致 -->
+	            <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
+	              <el-button type="primary" plain size="small" @click="detailDlg=true">查看本次恢复明细</el-button>
+	            </div>
 
 
             <el-alert v-if="jobStatus==='FAILED'" type="error" show-icon :closable="false">
@@ -565,11 +518,6 @@ const jobCurrentTable = ref<string>("");
 const jobLastError = ref<string>("");
 const jobMode = ref<string>("");
 const jobPerTable = ref<any>({});
-const jobSnapshotStatus = ref<string>("");
-const jobSnapshotFilename = ref<string>("");
-const jobSnapshotCreatedAt = ref<string>("");
-const jobRestorePoints = ref<any[]>([]);
-const rollbackCreating = ref(false);
 
 const running = ref(false);
 const pausing = ref(false);
@@ -586,42 +534,6 @@ const progressStatus = computed(() => {
   return undefined as any;
 });
 
-const restoreModeText = computed(() => {
-  if (jobMode.value === "replace") return "清空并恢复";
-  if (jobMode.value === "merge_upsert") return "合并覆盖";
-  return "合并导入";
-});
-
-const snapshotStatusText = computed(() => {
-  if (jobSnapshotStatus.value === "DONE") return "已创建";
-  if (jobSnapshotStatus.value === "RUNNING") return "创建中";
-  if (jobSnapshotStatus.value === "FAILED") return "创建失败";
-  if (jobSnapshotStatus.value === "REUSED") return "复用已有恢复点";
-  if (jobSnapshotStatus.value === "PENDING") return "等待创建";
-  return jobSnapshotStatus.value || "-";
-});
-
-const restoreSummaryCards = computed(() => {
-  const rows = restoreDetailRows.value;
-  const assetsWritten = rows.filter((r) => ["pc_assets","monitor_assets","stock"].includes(r.table)).reduce((n, r) => n + Number(r.written || 0), 0);
-  const txProcessed = rows.filter((r) => ["pc_in","pc_out","pc_recycle","pc_scrap","pc_inventory_log","monitor_tx","monitor_inventory_log","stock_tx","stocktake","stocktake_line"].includes(r.table)).reduce((n, r) => n + Number(r.processed || 0), 0);
-  const systemWritten = rows.filter((r) => tableGroupKey(r.table) === "system").reduce((n, r) => n + Number(r.written || 0), 0);
-  const skipped = rows.reduce((n, r) => n + Number(r.skipped || 0), 0);
-  return [
-    { label: "已处理行数", value: String(jobProcessed.value || 0), tip: jobTotal.value ? `共 ${jobTotal.value} 行` : "等待扫描结果" },
-    { label: "写入变更", value: String(rows.reduce((n, r) => n + Number(r.written || 0), 0)), tip: skipped ? `未写入 ${skipped} 行` : "无重复跳过" },
-    { label: "资产写入", value: String(assetsWritten), tip: "电脑/显示器/配件台账" },
-    { label: "流转处理", value: String(txProcessed), tip: "入库/出库/回收/盘点等" },
-    { label: "系统写入", value: String(systemWritten), tip: "用户、审计、限流等" },
-    { label: "恢复点", value: String(jobRestorePoints.value.length), tip: jobSnapshotCreatedAt.value || jobSnapshotFilename.value || "恢复前自动创建" },
-  ];
-});
-
-function restorePointTypeText(type: string) {
-  if (type === "pre_restore") return "恢复前快照";
-  if (type === "rollback") return "回滚点";
-  return type || "恢复点";
-}
 
 const TABLE_LABEL: Record<string, string> = {
   warehouses: "仓库",
@@ -859,10 +771,6 @@ async function refreshStatus() {
     jobProcessed.value = Number(d.processed_rows || 0);
     jobCurrentTable.value = d.current_table || "";
     jobLastError.value = d.last_error || "";
-    jobSnapshotStatus.value = d.snapshot_status || "";
-    jobSnapshotFilename.value = d.snapshot_filename || "";
-    jobSnapshotCreatedAt.value = d.snapshot_created_at || "";
-    jobRestorePoints.value = Array.isArray(d.restore_points) ? d.restore_points : [];
   } catch (e:any) {
     msgError(e?.message || "刷新失败");
   }
@@ -925,43 +833,4 @@ async function pauseJob() {
     pausing.value = false;
   }
 }
-
-async function createRollbackJob() {
-  if (!jobId.value) {
-    msgWarn("请先创建恢复任务");
-    return;
-  }
-  if (!jobRestorePoints.value.length) {
-    msgWarn("当前任务还没有可用恢复点");
-    return;
-  }
-  try {
-    const { value } = await ElMessageBox.prompt(
-      "将基于该任务的恢复点创建一个新的回滚任务。请输入：回滚",
-      "创建回滚任务",
-      {
-        confirmButtonText: "创建",
-        cancelButtonText: "取消",
-        inputPlaceholder: "回滚",
-        inputValue: "",
-        type: "warning",
-      }
-    ).catch(() => ({ value: "" } as any));
-    if (String(value || "").trim() !== "回滚") {
-      msgWarn("二次确认未通过，已取消");
-      return;
-    }
-    rollbackCreating.value = true;
-    const r = await apiPost<any>("/api/admin/restore_job/rollback", { id: jobId.value });
-    jobId.value = r.data.id;
-    detailDlgAutoOpened.value = false;
-    msgSuccess("已创建回滚任务，请点击“开始恢复”执行");
-    await refreshStatus();
-  } catch (e:any) {
-    msgError(e?.message || "创建回滚任务失败");
-  } finally {
-    rollbackCreating.value = false;
-  }
-}
-
 </script>
