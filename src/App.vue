@@ -13,7 +13,6 @@
       <el-menu v-if="isSystem" router :default-active="activeMenu">
         <el-menu-item index="/system/home">系统首页</el-menu-item>
         <el-menu-item index="/system/dashboard">报表与看板</el-menu-item>
-        <el-menu-item index="/system/import">Excel 导入配件</el-menu-item>
         <el-menu-item index="/system/backup">备份/恢复</el-menu-item>
         <el-menu-item index="/system/audit">审计日志</el-menu-item>
         <el-menu-item index="/system/users">用户管理</el-menu-item>
@@ -30,8 +29,9 @@
         <el-menu-item v-if="can('operator')" index="/batch">批量出入库</el-menu-item>
 
         <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入配件</el-menu-item>
         <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
+        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
       </el-menu>
 
       <!-- 电脑仓菜单（布局与配件仓一致，只是菜单项不同） -->

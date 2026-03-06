@@ -24,7 +24,7 @@
           <el-card shadow="never" style="border-radius: 12px; height: 100%">
             <div style="font-weight:700; margin-bottom: 8px">Excel 导入配件</div>
             <div style="color:#777; font-size: 12px; margin-bottom: 12px">批量导入配件基础数据（SKU/名称/品牌/型号…）</div>
-            <el-button type="primary" plain size="small" @click="go('/system/import')">打开</el-button>
+            <el-button type="primary" plain size="small" @click="go('/import/items')">打开</el-button>
           </el-card>
         </el-col>
 

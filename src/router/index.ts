@@ -61,7 +61,7 @@ const router = createRouter({
       children: [
         { path: "home", component: SystemHome, meta: { role: "admin", title: "系统" } },
         { path: "dashboard", component: Dashboard, meta: { role: "admin", title: "报表与看板" } },
-        { path: "import", component: ImportItems, meta: { role: "admin", title: "Excel 导入配件" } },
+        { path: "import", redirect: "/import/items", meta: { role: "admin", title: "Excel 导入配件" } },
         { path: "backup", component: BackupRestore, meta: { role: "admin", title: "备份/恢复" } },
         { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },
         { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
@@ -96,7 +96,8 @@ const router = createRouter({
 
     // 兼容旧链接：系统功能旧路径全部跳转到 /system/*
     { path: "/backup", redirect: "/system/backup" },
-    { path: "/import/items", redirect: "/system/import" },
+    { path: "/import/items", component: ImportItems, meta: { role: "admin", title: "Excel 导入配件" } },
+    { path: "/system/import", redirect: "/import/items" },
     { path: "/audit", redirect: "/system/audit" },
     { path: "/users", redirect: "/system/users" },
 
