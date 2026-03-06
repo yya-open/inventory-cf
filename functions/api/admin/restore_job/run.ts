@@ -122,6 +122,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       let batch: D1PreparedStatement[] = [];
       let batchTable = '';
       let batchRows = 0;
+      let exhaustedAllTables = true;
 
       const flush = async () => {
         if (!batch.length) return;
