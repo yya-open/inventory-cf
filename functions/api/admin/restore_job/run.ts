@@ -197,9 +197,23 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       perTable.__processed__ = processedMap;
       perTable.__inserted__ = insertedMap;
 
+      const hitBudgetLimit = processedThisRun >= maxRows || (Date.now() - startTime) >= maxMs;
       const restorableOrder = order.filter((t) => !!TABLE_COLUMNS[t] && t !== 'restore_job');
-      const tablesComplete = restorableOrder.every((t) => Number(processedMap[t] || 0) >= Number(perTable[t] || 0));
-      const done = exhaustedAllTables && tablesComplete && (totalRows > 0 ? processedRowsNew >= totalRows : true);
+      let hasMoreRows = false;
+      const nextIndex = nextCursor.table ? restorableOrder.indexOf(nextCursor.table) : -1;
+      for (let i = 0; i < restorableOrder.length; i++) {
+        const table = restorableOrder[i];
+        const rows = Array.isArray((tables as any)[table]) ? (tables as any)[table] : [];
+        if (nextIndex >= 0) {
+          if (i < nextIndex) continue;
+          if (i === nextIndex) {
+            if (Number(nextCursor.row || 0) < rows.length) { hasMoreRows = true; break; }
+            continue;
+          }
+        }
+        if (rows.length > 0) { hasMoreRows = true; break; }
+      }
+      const done = !hasMoreRows && !hitBudgetLimit && Number(job.error_count || 0) === 0 && (totalRows > 0 ? processedRowsNew >= totalRows : true);
       const currentTableForSave = done ? null : (nextCursor.table || null);
       const cursorForSave = done ? { table: '', row: 0 } : nextCursor;
 
