@@ -290,7 +290,12 @@
                 </div>
               </template>
             </el-table-column>
-            <el-table-column prop="total" label="备份行数" width="110" />
+            <el-table-column label="备份行数" width="110">
+              <template #default="{row}">
+                <span v-if="row.in_backup">{{ row.total }}</span>
+                <span v-else style="color:#999">—</span>
+              </template>
+            </el-table-column>
             <el-table-column prop="processed" label="已处理" width="90" />
             <el-table-column prop="written" label="写入变更" width="100" />
             <el-table-column prop="skipped" label="未写入(可能重复)" width="140" />
@@ -573,6 +578,7 @@ const restoreDetailRows = computed(() => {
 
   const pt = jobPerTable.value || {};
   const order: string[] = Array.isArray(pt.__order__) ? pt.__order__ : [];
+  const present = (pt.__present__ && typeof pt.__present__ === "object") ? pt.__present__ : {};
   const processed = (pt.__processed__ && typeof pt.__processed__ === "object") ? pt.__processed__ : {};
   const inserted = (pt.__inserted__ && typeof pt.__inserted__ === "object") ? pt.__inserted__ : {};
 
@@ -594,12 +600,14 @@ const restoreDetailRows = computed(() => {
 
   return list
     .map((t) => {
-      const total = Number(pt[t] || 0);
+      const in_backup = Boolean(present[t]);
+      const total = in_backup ? Number(pt[t] || 0) : 0;
       const p = Number(processed[t] || 0);
       const w = Number(inserted[t] || 0);
       return {
         table: t,
         table_cn: tableCn(t),
+        in_backup,
         total,
         processed: p,
         written: w,

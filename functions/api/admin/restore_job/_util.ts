@@ -508,3 +508,127 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
     }
   }
 }
+
+// Iterate table keys under top-level "tables" object, even when the table array is empty.
+// This lets UI distinguish between "table not included in backup" vs "included but 0 rows".
+export async function* iterBackupTableKeysFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
+  const skipWS = (buf: string, i: number) => {
+    while (i < buf.length) {
+      const c = buf[i];
+      if (c === " " || c === "\n" || c === "\r" || c === "\t") i++;
+      else break;
+    }
+    return i;
+  };
+
+  const readJsonString = (buf: string, i: number) => {
+    i++; // skip opening quote
+    let out = "";
+    let esc = false;
+    while (i < buf.length) {
+      const c = buf[i++];
+      if (esc) {
+        out += c;
+        esc = false;
+        continue;
+      }
+      if (c === "\\") {
+        out += c;
+        esc = true;
+        continue;
+      }
+      if (c === '"') {
+        return { value: JSON.parse(`"${out}"`), next: i };
+      }
+      out += c;
+    }
+    return null;
+  };
+
+  let buf = "";
+  let state: "seek_tables" | "seek_table_key" | "seek_array_start" = "seek_tables";
+  const yielded = new Set<string>();
+
+  for await (const chunk of textChunksFromStream(stream, gzip)) {
+    buf += chunk;
+    let i = 0;
+
+    while (i < buf.length) {
+      if (state === "seek_tables") {
+        const idx = buf.indexOf('"tables"', i);
+        if (idx === -1) {
+          buf = buf.slice(Math.max(0, buf.length - 64));
+          i = 0;
+          break;
+        }
+        i = idx + '"tables"'.length;
+        i = skipWS(buf, i);
+        if (buf[i] !== ":") { i++; continue; }
+        i++;
+        i = skipWS(buf, i);
+        if (buf[i] !== "{") { i++; continue; }
+        i++;
+        state = "seek_table_key";
+        continue;
+      }
+
+      if (state === "seek_table_key") {
+        i = skipWS(buf, i);
+        if (i >= buf.length) break;
+        if (buf[i] === "}") return;
+        if (buf[i] === ",") { i++; continue; }
+        if (buf[i] !== '"') { i++; continue; }
+
+        const r = readJsonString(buf, i);
+        if (!r) break;
+        const table = r.value;
+        if (table && !yielded.has(table)) {
+          yielded.add(table);
+          yield table;
+        }
+        i = r.next;
+        state = "seek_array_start";
+        continue;
+      }
+
+      if (state === "seek_array_start") {
+        i = skipWS(buf, i);
+        if (i >= buf.length) break;
+        if (buf[i] !== ":") { i++; continue; }
+        i++;
+        i = skipWS(buf, i);
+        if (i >= buf.length) break;
+        if (buf[i] !== "[") { i++; continue; }
+
+        let depth = 0;
+        let inStr = false;
+        let esc = false;
+        for (; i < buf.length; i++) {
+          const ch = buf[i];
+          if (inStr) {
+            if (esc) { esc = false; continue; }
+            if (ch === "\\") { esc = true; continue; }
+            if (ch === '"') { inStr = false; continue; }
+            continue;
+          }
+          if (ch === '"') { inStr = true; continue; }
+          if (ch === "[") depth++;
+          if (ch === "]") {
+            depth--;
+            if (depth === 0) { i++; break; }
+          }
+        }
+
+        if (depth !== 0) {
+          buf = buf.slice(Math.max(0, i - 4096));
+          i = 0;
+          break;
+        }
+        state = "seek_table_key";
+        continue;
+      }
+
+      i++;
+    }
+  }
+}

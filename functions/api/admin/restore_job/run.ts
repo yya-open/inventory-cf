@@ -3,7 +3,7 @@ import { logAudit } from "../../_audit";
 import { ensureCoreSchema } from "../../_schema";
 import { ensurePcSchema } from "../../_pc";
 import { ensureMonitorSchema } from "../../_monitor";
-import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, sniffGzipFromStream } from "./_util";
+import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, iterBackupTableKeysFromStream, sniffGzipFromStream } from "./_util";
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 type RestoreMode = "merge" | "merge_upsert" | "replace";
@@ -55,7 +55,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     // Stage 1: scan and count totals (one full pass without DB writes)
     if (job.stage === "SCAN") {
-      const perTable: any = { __order__: [] as string[] };
+      const perTable: any = { __order__: [] as string[], __present__: {} as Record<string, boolean> };
       let total = 0;
 
       // Use a stable order containing ALL supported tables so the UI can show
@@ -68,14 +68,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const scanObj = await env.BACKUP_BUCKET.get(job.file_key);
       if (!scanObj?.body) throw new Error("R2 文件读取失败（SCAN）");
 
-      const sniff1 = await sniffGzipFromStream(scanObj.body);
+      // Pass 1: detect which table keys exist in the backup, even when array is empty.
+      const sniffKeys = await sniffGzipFromStream(scanObj.body);
+      const present: Record<string, boolean> = {};
+      for await (const t of iterBackupTableKeysFromStream(sniffKeys.stream, sniffKeys.gzip)) {
+        if (!TABLE_COLUMNS[t]) continue;
+        present[t] = true;
+      }
+
+      // Pass 2: count total rows per table (only yields when rows exist)
+      const scanObj2 = await env.BACKUP_BUCKET.get(job.file_key);
+      if (!scanObj2?.body) throw new Error("R2 文件读取失败（SCAN-2）");
+      const sniff1 = await sniffGzipFromStream(scanObj2.body);
       for await (const { table } of iterBackupRowsFromStream(sniff1.stream, sniff1.gzip)) {
         if (!TABLE_COLUMNS[table]) continue;
         counts[table] += 1;
         total += 1;
+        present[table] = true;
       }
 
       perTable.__order__ = order;
+      perTable.__present__ = present;
       for (const t of order) perTable[t] = Number(counts[t] || 0);
 
       const cursor = order.length ? { table: order[0], row: 0 } : { table: "", row: 0 };
