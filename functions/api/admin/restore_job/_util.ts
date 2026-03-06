@@ -1,5 +1,6 @@
 import { errorResponse } from "../../../_auth";
 import { DELETE_ORDER, TABLE_COLUMNS } from "../_backup_schema";
+import { Inflate } from "pako";
 
 export { DELETE_ORDER, TABLE_COLUMNS };
 
@@ -281,12 +282,60 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
 
 
 export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
-  let s: ReadableStream<Uint8Array> = stream;
-  if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
-    s = s.pipeThrough(new DecompressionStream("gzip"));
+  // Prefer native DecompressionStream when available (streaming + low memory).
+  // Cloudflare runtimes may not always expose it; in that case fall back to pako streaming inflate.
+  if (gzip) {
+    const DS = (globalThis as any).DecompressionStream;
+    if (typeof DS !== "undefined") {
+      let s: ReadableStream<Uint8Array> = stream;
+      s = s.pipeThrough(new DS("gzip"));
+      const decoder = new TextDecoderStream();
+      const reader = s.pipeThrough(decoder).getReader();
+      try {
+        while (true) {
+          const { value, done } = await reader.read();
+          if (done) break;
+          if (value) yield value;
+        }
+      } finally {
+        reader.releaseLock();
+      }
+      return;
+    }
+
+    // Fallback: pako streaming gunzip
+    const td = new TextDecoder();
+    const reader = stream.getReader();
+    const infl = new Inflate({ to: "string", gzip: true });
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (!value) continue;
+        infl.push(value, false);
+        if (infl.err) {
+          throw new Error(`gzip 解压失败：${infl.msg || infl.err}`);
+        }
+        const out = infl.result as any;
+        if (out) {
+          // pako may return string or array; normalize to string
+          yield typeof out === "string" ? out : td.decode(out);
+          (infl as any).result = null;
+        }
+      }
+      infl.push(new Uint8Array(), true);
+      if (infl.err) throw new Error(`gzip 解压失败：${infl.msg || infl.err}`);
+      const out = infl.result as any;
+      if (out) yield typeof out === "string" ? out : td.decode(out);
+    } finally {
+      try { reader.releaseLock(); } catch {}
+    }
+    return;
   }
+
+  // Plain JSON
   const decoder = new TextDecoderStream();
-  const reader = s.pipeThrough(decoder).getReader();
+  const reader = stream.pipeThrough(decoder).getReader();
   try {
     while (true) {
       const { value, done } = await reader.read();
