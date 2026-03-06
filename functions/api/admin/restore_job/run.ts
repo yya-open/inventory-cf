@@ -38,7 +38,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       return Response.json({ ok: false, message: "未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。" }, { status: 500 });
     }
 
-    const dbSchema = await getAllTableSchemas(env.DB, { includeInternal: true });
+    const dbSchema = await getAllTableSchemas();
     const dbTableNames = Object.keys(dbSchema).filter((t) => !INTERNAL_SKIP_TABLES.has(t));
 
     const obj = await env.BACKUP_BUCKET.get(job.file_key);

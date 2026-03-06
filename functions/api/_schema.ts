@@ -4,7 +4,6 @@
 
 export async function ensureCoreSchema(db: D1Database) {
   const stmts: string[] = [
-    "PRAGMA foreign_keys = ON",
 
     // Warehouses
     `CREATE TABLE IF NOT EXISTS warehouses (
@@ -146,6 +145,31 @@ export async function ensureCoreSchema(db: D1Database) {
       updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
     )`,
 
+
+
+    `CREATE TABLE IF NOT EXISTS audit_retention_state (
+      id INTEGER PRIMARY KEY CHECK(id=1),
+      retention_days INTEGER NOT NULL DEFAULT 180,
+      last_cleanup_at TEXT
+    )`,
+    "INSERT OR IGNORE INTO audit_retention_state (id, retention_days, last_cleanup_at) VALUES (1, 180, NULL)",
+
+    `CREATE TABLE IF NOT EXISTS api_slow_requests (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      method TEXT,
+      path TEXT,
+      query TEXT,
+      status INTEGER,
+      dur_ms INTEGER,
+      auth_ms INTEGER,
+      sql_ms INTEGER,
+      colo TEXT,
+      country TEXT,
+      user_id INTEGER
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_api_slow_requests_created_at ON api_slow_requests(created_at)",
+
     // Restore jobs (admin progress restore)
     `CREATE TABLE IF NOT EXISTS restore_job (
       id TEXT PRIMARY KEY,
@@ -172,20 +196,13 @@ export async function ensureCoreSchema(db: D1Database) {
   // Best-effort execute.
   await db.batch(stmts.map((sql) => db.prepare(sql)));
 
-  // Backfill/upgrade columns for older installs.
-  // Some early versions didn't have token_version.
+  // Backfill/upgrade columns for older installs (D1-friendly: no PRAGMA introspection).
   try {
-    const cols = await db.prepare("PRAGMA table_info(users)").all<any>();
-    const names = new Set((cols?.results || []).map((r: any) => String(r?.name || '').trim()));
-    if (!names.has("token_version")) {
-      await db.prepare("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0").run();
-    }
-    if (!names.has("must_change_password")) {
-      await db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1").run();
-    }
-  } catch {
-    // ignore
-  }
+    await db.prepare("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0").run();
+  } catch {}
+  try {
+    await db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1").run();
+  } catch {}
 
   // Ensure warehouse '电脑仓' exists (id=2) to keep existing PC logic stable.
   try {

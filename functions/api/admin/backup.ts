@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { logAudit } from "../_audit";
-import { getAllTableSchemas, INTERNAL_SKIP_TABLES, listUserTables, sortTablesForInsert } from "./_backup_schema";
+import { getAllTableSchemas, getKnownTables, INTERNAL_SKIP_TABLES } from "./_backup_schema";
 
 const DEFAULT_PAGE_SIZE = 1000;
 const MAX_PAGE_SIZE = 5000;
@@ -18,20 +18,9 @@ function toSqlRange(dateStr?: string | null, endOfDay?: boolean) {
   return s;
 }
 
-const __tableHasIdCache = new Map<string, boolean>();
-
-async function tableHasId(DB: D1Database, table: string): Promise<boolean> {
-  if (__tableHasIdCache.has(table)) return __tableHasIdCache.get(table)!;
-  try {
-    const r = await DB.prepare(`PRAGMA table_info(${quoteIdent(table)})`).all<any>();
-    const cols = (r?.results || []).map((x: any) => String(x?.name || "").trim());
-    const has = cols.includes("id");
-    __tableHasIdCache.set(table, has);
-    return has;
-  } catch {
-    __tableHasIdCache.set(table, true);
-    return true;
-  }
+function tableHasId(table: string) {
+  const schema = getAllTableSchemas()[table];
+  return !!schema?.columns?.some((c) => c.name === 'id');
 }
 
 async function streamTableAsJsonArray(
@@ -43,7 +32,7 @@ async function streamTableAsJsonArray(
   extraWhereSql: string,
   extraBinds: any[]
 ) {
-  const hasId = await tableHasId(DB, table);
+  const hasId = tableHasId(table);
   let lastCursor = 0;
   let firstRow = true;
   const qTable = quoteIdent(table);
@@ -54,9 +43,14 @@ async function streamTableAsJsonArray(
       ? DB.prepare(`SELECT * FROM ${qTable} WHERE id > ?${whereSql} ORDER BY id LIMIT ?`)
       : DB.prepare(`SELECT rowid as __rowid__, * FROM ${qTable} WHERE rowid > ?${whereSql} ORDER BY rowid LIMIT ?`);
     const binds = [lastCursor, ...(extraBinds || []), pageSize];
-    const { results } = await stmt.bind(...binds).all<any>();
-    if (!results || results.length === 0) break;
-
+    let results: any[] = [];
+    try {
+      const r = await stmt.bind(...binds).all<any>();
+      results = r?.results || [];
+    } catch {
+      break;
+    }
+    if (!results.length) break;
     for (const row of results) {
       if (!firstRow) controller.enqueue(encoder.encode(","));
       firstRow = false;
@@ -64,12 +58,10 @@ async function streamTableAsJsonArray(
         const rid = Number((row as any)?.__rowid__ || 0);
         delete (row as any).__rowid__;
         controller.enqueue(encoder.encode(JSON.stringify(row)));
-        if (rid) lastCursor = rid;
-        else return;
+        if (rid) lastCursor = rid; else return;
       } else {
         controller.enqueue(encoder.encode(JSON.stringify(row)));
-        if (typeof (row as any)?.id === "number") lastCursor = (row as any).id;
-        else return;
+        if (typeof (row as any)?.id === 'number') lastCursor = (row as any).id; else return;
       }
     }
   }
@@ -81,7 +73,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     const download = url.searchParams.get("download") === "1";
     const gzip = url.searchParams.get("gzip") === "1";
-    const includeSystem = url.searchParams.get("include_system") !== "0";
     const pageSizeRaw = Number(url.searchParams.get("page_size") || DEFAULT_PAGE_SIZE);
     const pageSize = Math.min(Math.max(pageSizeRaw || DEFAULT_PAGE_SIZE, 100), MAX_PAGE_SIZE);
     const singleTable = (url.searchParams.get("table") || "").trim();
@@ -91,36 +82,33 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const audit_since = toSqlRange(url.searchParams.get("audit_since"), false);
     const audit_until = toSqlRange(url.searchParams.get("audit_until"), true);
 
-    let tables = await listUserTables(env.DB, { includeInternal: includeSystem });
-    tables = sortTablesForInsert(tables.filter((t) => !INTERNAL_SKIP_TABLES.has(t)));
+    let tables = getKnownTables().filter((t) => !INTERNAL_SKIP_TABLES.has(t));
     if (singleTable) {
       if (!tables.includes(singleTable)) throw new Error(`不支持导出该表：${singleTable}`);
       tables = [singleTable];
     }
 
-    const schema = await getAllTableSchemas(env.DB, { includeInternal: includeSystem });
+    const schema = getAllTableSchemas();
     const exported_at = new Date().toISOString();
     const encoder = new TextEncoder();
 
     const stream = new ReadableStream({
       async start(controller) {
         try {
-          controller.enqueue(encoder.encode(`{"version":"inventory-cf-backup-v2","exported_at":${JSON.stringify(exported_at)},"meta":{"include_system":${includeSystem ? "true" : "false"},"table_order":${JSON.stringify(tables)},"table_count":${tables.length}},"schema":${JSON.stringify(schema)},"tables":{`));
+          controller.enqueue(encoder.encode(`{"version":"inventory-cf-backup-v2","exported_at":${JSON.stringify(exported_at)},"meta":{"table_order":${JSON.stringify(tables)},"table_count":${tables.length}},"schema":${JSON.stringify(schema)},"tables":{`));
           let firstTable = true;
           for (const t of tables) {
             if (!firstTable) controller.enqueue(encoder.encode(","));
             firstTable = false;
-
             let extraWhere = "";
             const extraBinds: any[] = [];
-            if (t === "stock_tx") {
-              if (tx_since) { extraWhere += (extraWhere ? " AND " : "") + "created_at >= ?"; extraBinds.push(tx_since); }
-              if (tx_until) { extraWhere += (extraWhere ? " AND " : "") + "created_at <= ?"; extraBinds.push(tx_until); }
-            } else if (t === "audit_log") {
-              if (audit_since) { extraWhere += (extraWhere ? " AND " : "") + "created_at >= ?"; extraBinds.push(audit_since); }
-              if (audit_until) { extraWhere += (extraWhere ? " AND " : "") + "created_at <= ?"; extraBinds.push(audit_until); }
+            if (t === 'stock_tx') {
+              if (tx_since) { extraWhere += (extraWhere ? ' AND ' : '') + 'created_at >= ?'; extraBinds.push(tx_since); }
+              if (tx_until) { extraWhere += (extraWhere ? ' AND ' : '') + 'created_at <= ?'; extraBinds.push(tx_until); }
+            } else if (t === 'audit_log') {
+              if (audit_since) { extraWhere += (extraWhere ? ' AND ' : '') + 'created_at >= ?'; extraBinds.push(audit_since); }
+              if (audit_until) { extraWhere += (extraWhere ? ' AND ' : '') + 'created_at <= ?'; extraBinds.push(audit_until); }
             }
-
             controller.enqueue(encoder.encode(`${JSON.stringify(t)}:[`));
             await streamTableAsJsonArray(env.DB, t, controller, encoder, pageSize, extraWhere, extraBinds);
             controller.enqueue(encoder.encode(`]`));
@@ -133,30 +121,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       },
     });
 
-    waitUntil(logAudit(env.DB, request, actor, "ADMIN_BACKUP", "backup", null, {
-      tables,
-      exported_at,
-      gzip,
-      page_size: pageSize,
-      include_system: includeSystem,
-      version: "inventory-cf-backup-v2",
-    }).catch(() => {}));
+    waitUntil(logAudit(env.DB, request, actor, "ADMIN_BACKUP", "backup", null, { tables, exported_at, gzip, page_size: pageSize, version: "inventory-cf-backup-v2" }).catch(() => {}));
 
-    const headers = new Headers({
-      "content-type": gzip ? "application/gzip" : "application/json; charset=utf-8",
-      "cache-control": "no-store",
-    });
-    if (download) {
-      const filename = gzip ? "inventory_backup.json.gz" : "inventory_backup.json";
-      headers.set("content-disposition", `attachment; filename=${filename}`);
-    }
-
+    const headers = new Headers({ "content-type": gzip ? "application/gzip" : "application/json; charset=utf-8", "cache-control": "no-store" });
+    if (download) headers.set("content-disposition", `attachment; filename=${gzip ? 'inventory_backup.json.gz' : 'inventory_backup.json'}`);
     if (!gzip) return new Response(stream, { headers });
-    if (typeof (globalThis as any).CompressionStream === "undefined") {
-      throw new Error("当前环境不支持 gzip 压缩");
-    }
-    const gz = stream.pipeThrough(new CompressionStream("gzip"));
-    return new Response(gz, { headers });
+    if (typeof (globalThis as any).CompressionStream === "undefined") throw new Error("当前环境不支持 gzip 压缩");
+    return new Response(stream.pipeThrough(new CompressionStream("gzip")), { headers });
   } catch (e: any) {
     return errorResponse(e);
   }

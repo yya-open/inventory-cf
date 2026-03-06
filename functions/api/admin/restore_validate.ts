@@ -59,7 +59,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: '备份数据为空或格式不正确' }, { status: 400 });
     }
 
-    const dbSchema = await getAllTableSchemas(env.DB, { includeInternal: true });
+    const dbSchema = await getAllTableSchemas();
     const dbTables = Object.keys(dbSchema);
     const backupSchema = (backup?.schema && typeof backup.schema === 'object') ? backup.schema : {};
     const backupTableNames = Object.keys(tables).filter((t) => !INTERNAL_SKIP_TABLES.has(t));

@@ -53,7 +53,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const tables = backup?.tables || {};
     if (!tables || typeof tables !== 'object') return Response.json({ ok: false, message: '备份数据为空' }, { status: 400 });
 
-    const dbSchema = await getAllTableSchemas(env.DB, { includeInternal: true });
+    const dbSchema = await getAllTableSchemas();
     const tableNames = sortTablesForInsert([...new Set(Object.keys(tables).filter((t) => !INTERNAL_SKIP_TABLES.has(t)))])
       .filter((t) => !!dbSchema[t]);
 
