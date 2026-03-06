@@ -3,7 +3,7 @@ import { logAudit } from "../../_audit";
 import { ensureCoreSchema } from "../../_schema";
 import { ensurePcSchema } from "../../_pc";
 import { ensureMonitorSchema } from "../../_monitor";
-import { DELETE_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, iterBackupTableKeysFromStream, sniffGzipFromStream } from "./_util";
+import { DELETE_ORDER, INSERT_ORDER, TABLE_COLUMNS, pick, iterBackupRowsFromStream, iterBackupTableKeysFromStream, sniffGzipFromStream } from "./_util";
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 type RestoreMode = "merge" | "merge_upsert" | "replace";
@@ -60,7 +60,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
       // Use a stable order containing ALL supported tables so the UI can show
       // missing tables as 0 rows instead of not showing them.
-      const order: string[] = Object.keys(TABLE_COLUMNS);
+      const order: string[] = INSERT_ORDER.slice();
       const counts: Record<string, number> = {};
       for (const t of order) counts[t] = 0;
 

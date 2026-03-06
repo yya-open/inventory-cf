@@ -2,6 +2,7 @@ import { errorResponse, json, requireAuth } from '../../_auth';
 import { ensureCoreSchema } from '../_schema';
 import { ensurePcSchema } from '../_pc';
 import { ensureMonitorSchema } from '../_monitor';
+import { getTableColumnsMap, sortTablesForBackup } from './_backup_schema';
 
 type Severity = 'error' | 'warn' | 'info';
 
@@ -11,29 +12,6 @@ type Issue = {
   table?: string;
   column?: string;
   message: string;
-};
-
-const TABLE_COLUMNS: Record<string, string[]> = {
-  warehouses: ['id','name','created_at'],
-  items: ['id','sku','name','brand','model','category','unit','warning_qty','enabled','created_at'],
-  stock: ['id','item_id','warehouse_id','qty','updated_at'],
-  stock_tx: ['id','tx_no','type','item_id','warehouse_id','qty','delta_qty','ref_type','ref_id','ref_no','unit_price','source','target','remark','created_at','created_by'],
-  users: ['id','username','password_hash','role','is_active','must_change_password','token_version','created_at'],
-  auth_login_throttle: ['id','ip','username','fail_count','first_fail_at','last_fail_at','locked_until','updated_at'],
-  audit_log: ['id','user_id','username','action','entity','entity_id','payload_json','ip','ua','created_at'],
-  stocktake: ['id','st_no','warehouse_id','status','created_at','created_by','applied_at'],
-  stocktake_line: ['id','stocktake_id','item_id','system_qty','counted_qty','diff_qty','updated_at'],
-  pc_assets: ['id','brand','serial_no','model','manufacture_date','warranty_end','disk_capacity','memory_size','remark','status','qr_key','qr_updated_at','created_at','updated_at'],
-  pc_in: ['id','in_no','asset_id','brand','serial_no','model','manufacture_date','warranty_end','disk_capacity','memory_size','remark','created_at','created_by'],
-  pc_out: ['id','out_no','asset_id','employee_no','department','employee_name','is_employed','brand','serial_no','model','config_date','manufacture_date','warranty_end','disk_capacity','memory_size','remark','recycle_date','created_at','created_by'],
-  pc_recycle: ['id','recycle_no','action','asset_id','employee_no','department','employee_name','is_employed','brand','serial_no','model','recycle_date','remark','created_at','created_by'],
-  pc_scrap: ['id','scrap_no','asset_id','brand','serial_no','model','manufacture_date','warranty_end','disk_capacity','memory_size','remark','scrap_date','reason','created_at','created_by'],
-  pc_inventory_log: ['id','asset_id','action','issue_type','remark','ip','ua','created_at'],
-  pc_locations: ['id','name','parent_id','enabled','created_at'],
-  monitor_assets: ['id','asset_code','qr_key','qr_updated_at','sn','brand','model','size_inch','remark','status','location_id','employee_no','department','employee_name','is_employed','created_at','updated_at'],
-  monitor_tx: ['id','tx_no','tx_type','asset_id','asset_code','sn','brand','model','size_inch','from_location_id','to_location_id','employee_no','department','employee_name','is_employed','remark','created_at','created_by','ip','ua'],
-  monitor_inventory_log: ['id','asset_id','action','issue_type','remark','ip','ua','created_at'],
-  public_api_throttle: ['k','count','updated_at'],
 };
 
 function isGzipMagicBytes(bytes?: Uint8Array | null) {
@@ -58,18 +36,6 @@ async function readBackupText(file: File) {
     return await new Response(ds).text();
   }
   return await file.text();
-}
-
-async function dbColumns(db: D1Database, table: string): Promise<string[] | null> {
-  try {
-    const rows = await db.prepare(`PRAGMA table_info(${table})`).all<any>();
-    const list = (rows?.results || [])
-      .map((r: any) => String(r?.name || '').trim())
-      .filter(Boolean);
-    return list.length ? list : null;
-  } catch {
-    return null;
-  }
 }
 
 function sampleRowColumns(rows: any[] | undefined): string[] {
@@ -110,55 +76,61 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     const issues: Issue[] = [];
-    const backupTableNames = Object.keys(tables);
-    const supported = new Set(Object.keys(TABLE_COLUMNS));
+    const backupTableNames = sortTablesForBackup(Object.keys(tables));
+    const actualColumnsMap = await getTableColumnsMap(env.DB);
+    const allTables = sortTablesForBackup(Array.from(new Set([
+      ...Object.keys(actualColumnsMap),
+      ...backupTableNames,
+    ])));
 
-    for (const t of backupTableNames) {
-      if (!supported.has(t)) {
+    for (const t of Object.keys(tables)) {
+      if (!allTables.includes(t)) {
         issues.push({ severity: 'warn', type: 'unsupported_backup_table', table: t, message: `备份中包含未识别表：${t}（将被忽略）` });
       }
     }
 
-    for (const [t, expectedCols] of Object.entries(TABLE_COLUMNS)) {
+    for (const t of allTables) {
       const rows = (tables as any)[t] as any[] | undefined;
       const backupHasTable = Object.prototype.hasOwnProperty.call(tables, t);
+      const actualCols = actualColumnsMap[t] || [];
+
       if (!backupHasTable) {
         issues.push({ severity: 'info', type: 'backup_table_missing', table: t, message: `备份中未包含表：${t}` });
       }
 
-      const actualCols = await dbColumns(env.DB, t);
-      if (!actualCols) {
+      if (!actualCols.length) {
         issues.push({ severity: 'error', type: 'db_table_missing', table: t, message: `当前数据库缺少表：${t}` });
         continue;
       }
 
+      if (!backupHasTable) continue;
+
       const actualSet = new Set(actualCols);
-      for (const c of expectedCols) {
+      const backupCols = sampleRowColumns(rows);
+      const backupSet = new Set(backupCols);
+
+      for (const c of backupCols) {
         if (!actualSet.has(c)) {
-          issues.push({ severity: 'error', type: 'db_column_missing', table: t, column: c, message: `当前数据库表 ${t} 缺少字段：${c}` });
+          issues.push({ severity: 'warn', type: 'db_missing_backup_column', table: t, column: c, message: `备份表 ${t} 的字段 ${c} 在当前数据库中不存在（该字段数据将无法恢复）` });
         }
       }
 
-      if (backupHasTable) {
-        const backupCols = sampleRowColumns(rows);
-        const expectedSet = new Set(expectedCols);
-        for (const c of backupCols) {
-          if (!expectedSet.has(c)) {
-            issues.push({ severity: 'warn', type: 'backup_extra_column', table: t, column: c, message: `备份表 ${t} 含额外字段：${c}（恢复时将忽略）` });
-          }
-          if (!actualSet.has(c)) {
-            issues.push({ severity: 'warn', type: 'db_missing_backup_column', table: t, column: c, message: `备份表 ${t} 的字段 ${c} 在当前数据库中不存在（该字段数据将无法恢复）` });
-          }
+      for (const c of actualCols) {
+        if (!backupSet.has(c)) {
+          issues.push({ severity: 'info', type: 'backup_column_missing', table: t, column: c, message: `备份表 ${t} 未提供字段：${c}（恢复时将使用当前库默认值或 NULL）` });
         }
       }
     }
 
+    issues.push({
+      severity: 'info',
+      type: 'restore_scope_tip',
+      message: '当前全量备份/恢复已覆盖所有业务表；系统任务表 restore_job 会自动跳过，避免影响正在执行的恢复任务。',
+    });
+
     const counts = { error: 0, warn: 0, info: 0 };
     for (const i of issues) (counts as any)[i.severity]++;
 
-    // For UI: always include ALL supported tables (even if missing in backup) so users can
-    // clearly see what's absent (rows=0) instead of silently not showing that table.
-    const allTables = Object.keys(TABLE_COLUMNS);
     const backupRowsByTable: Record<string, number> = {};
     const includedInBackup: Record<string, boolean> = {};
     for (const t of allTables) {
@@ -175,7 +147,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       backup_summary: {
         version: backup?.version || null,
         exported_at: backup?.exported_at || null,
-        // Keep a stable list for UI rendering
         tables: allTables,
         included_tables: backupTableNames,
         included_in_backup: includedInBackup,

@@ -4,7 +4,7 @@
       <div>
         <div style="font-weight:700; font-size:16px">备份 / 恢复</div>
         <div style="color:#888; font-size:12px; margin-top:6px; line-height:1.5">
-          备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。
+          备份文件为 JSON（支持 <b>.json.gz</b> 压缩），默认会导出当前库中的<b>全部业务表</b>。
           <b>恢复属于高风险操作</b>，请谨慎。
         </div>
       </div>
@@ -86,13 +86,13 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载完整备份</el-button>
+              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载全表备份</el-button>
               <el-button :loading="downloading" @click="downloadTxOnly" plain>只下载明细</el-button>
               <el-button :loading="downloading" @click="downloadAuditOnly" plain>只下载审计</el-button>
             </div>
 
             <el-alert type="info" show-icon :closable="false">
-              建议：明细/审计单独导出，配合时间范围与分页，避免文件过大。
+              提示：现在“全表备份”会自动包含当前数据库中的全部业务表；如仅需排查问题，仍建议把明细/审计按时间范围单独导出，避免文件过大。
             </el-alert>
           </div>
         </el-card>
@@ -538,14 +538,15 @@ const progressStatus = computed(() => {
 const TABLE_LABEL: Record<string, string> = {
   warehouses: "仓库",
   items: "配件",
-  stock: "stock",
-  categories: "分类",
+  stock: "库存",
   stock_tx: "出入库明细",
   stocktake: "盘点单",
   stocktake_line: "盘点明细",
   audit_log: "审计日志",
   auth_login_throttle: "登录限流",
   public_api_throttle: "公共接口限流",
+  audit_retention_state: "审计清理状态",
+  api_slow_requests: "慢请求日志",
   users: "用户",
   pc_assets: "电脑台账",
   pc_in: "电脑入库记录",
@@ -565,7 +566,7 @@ function tableCn(t: string) {
 
 
 function tableGroupKey(t: string) {
-  if (["warehouses","items","categories","stock","stock_tx","stocktake","stocktake_line"].includes(t)) return "parts";
+  if (["warehouses","items","stock","stock_tx","stocktake","stocktake_line"].includes(t)) return "parts";
   if (t.startsWith("pc_")) return "pc";
   if (t.startsWith("monitor_") || ["monitor_assets","monitor_tx","monitor_inventory_log"].includes(t)) return "monitor";
   return "system";

@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { logAudit } from "../_audit";
+import { listBackupTables } from "./_backup_schema";
 
 type BackupPayload = {
   version: string;
@@ -119,51 +120,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const singleTable = (url.searchParams.get("table") || "").trim();
 
-    const allowTables = new Set([
-      "warehouses",
-      "items",
-      "stock",
-      "users",
-      "stock_tx",
-      "stocktake",
-      "stocktake_line",
-      "audit_log",
-      "auth_login_throttle",
-      "public_api_throttle",
-      "pc_assets",
-      "pc_in",
-      "pc_out",
-      "pc_recycle",
-      "pc_scrap",
-      "pc_inventory_log",
-      "pc_locations",
-      "monitor_assets",
-      "monitor_tx",
-      "monitor_inventory_log",
-    ]);
-
-    // Base tables: business-critical, always included in a "完整备份".
-    let tables: string[] = [
-      "warehouses",
-      "items",
-      "stock",
-      "users",
-      "pc_assets",
-      "pc_in",
-      "pc_out",
-      "pc_recycle",
-      "pc_scrap",
-      "pc_inventory_log",
-      "pc_locations",
-      "monitor_assets",
-      "monitor_tx",
-      "monitor_inventory_log",
-      "public_api_throttle",
-    ];
-    if (include_tx) tables.push("stock_tx");
-    if (include_stocktake) tables.push("stocktake", "stocktake_line");
-    if (include_audit) tables.push("audit_log");
-    if (include_throttle) tables.push("auth_login_throttle");
+    // 兼容旧参数：现在默认导出所有业务表，include_* 仅保留为兼容开关，不再缩小“完整备份”的范围。
+    const allTables = await listBackupTables(env.DB);
+    const allowTables = new Set(allTables);
+    let tables: string[] = allTables;
 
     if (singleTable) {
       if (!allowTables.has(singleTable)) {

@@ -1,5 +1,7 @@
 import { errorResponse } from "../../../_auth";
 
+import { getDeleteOrder, getInsertOrder } from "../_backup_schema";
+
 export const TABLE_COLUMNS: Record<string, string[]> = {
   warehouses: ["id","name","created_at"],
   items: ["id","sku","name","brand","model","category","unit","warning_qty","enabled","created_at"],
@@ -21,30 +23,12 @@ export const TABLE_COLUMNS: Record<string, string[]> = {
   monitor_tx: ["id","tx_no","tx_type","asset_id","asset_code","sn","brand","model","size_inch","from_location_id","to_location_id","employee_no","department","employee_name","is_employed","remark","created_at","created_by","ip","ua"],
   monitor_inventory_log: ["id","asset_id","action","issue_type","remark","ip","ua","created_at"],
   public_api_throttle: ["k","count","updated_at"],
+  audit_retention_state: ["scope","last_pruned_at","updated_at"],
+  api_slow_requests: ["id","path","method","duration_ms","status_code","ip","ua","created_at"],
 };
 
-export const DELETE_ORDER = [
-  "stocktake_line",
-  "stocktake",
-  "monitor_inventory_log",
-  "monitor_tx",
-  "monitor_assets",
-  "pc_inventory_log",
-  "pc_scrap",
-  "pc_recycle",
-  "pc_out",
-  "pc_in",
-  "pc_assets",
-  "pc_locations",
-  "stock_tx",
-  "stock",
-  "items",
-  "warehouses",
-  "audit_log",
-  "auth_login_throttle",
-  "public_api_throttle",
-  "users",
-];
+export const INSERT_ORDER = getInsertOrder(Object.keys(TABLE_COLUMNS));
+export const DELETE_ORDER = getDeleteOrder(Object.keys(TABLE_COLUMNS));
 
 export function pick(obj: any, cols: string[]) {
   return cols.map((c) => (obj?.[c] === undefined ? null : obj[c]));
