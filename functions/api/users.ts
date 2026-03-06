@@ -1,6 +1,7 @@
 import { json, requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { hashPassword } from "../_password";
+import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
 
 type Env = { DB: D1Database; JWT_SECRET: string };
@@ -58,10 +59,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const r = (role || "viewer") as any;
 
     if (!u) return json(false, null, "username 必填", 400);
-    if (p.length < 6) return json(false, null, "密码至少 6 位", 400);
+    const pv = validatePassword(p);
+    if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
     if (!["admin", "operator", "viewer"].includes(r)) return json(false, null, "role 无效", 400);
 
-    const ph = await hashPassword(p);
+    const ph = await hashPassword(pv.password);
 
     let newId: number | null = null;
     try {
@@ -128,8 +130,9 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const changes: any = {};
     if (reset_password) {
       const newP = String(reset_password);
-      if (newP.length < 6) return json(false, null, "重置密码至少 6 位", 400);
-      const ph = await hashPassword(newP);
+      const pv = validatePassword(newP);
+      if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
+      const ph = await hashPassword(pv.password);
       await env.DB.prepare("UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?").bind(ph, uid).run();
       changes.reset_password = true;
       changes.must_change_password = 1;

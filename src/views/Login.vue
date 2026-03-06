@@ -24,6 +24,7 @@
         </el-form-item>
         <el-form-item label="新密码">
           <el-input v-model="newP" type="password" show-password />
+          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -39,6 +40,7 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
 import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
+import { validatePassword } from "../utils/password";
 
 const route = useRoute();
 const router = useRouter();
@@ -123,7 +125,8 @@ async function doLogin() {
 }
 
 async function changePassword() {
-  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
+  const pv = validatePassword(newP.value);
+  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });

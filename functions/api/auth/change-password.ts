@@ -1,5 +1,6 @@
 import { json, requireAuth, errorResponse, signJwt, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword, hashPassword } from "../../_password";
+import { validatePassword } from "../../_password_policy";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -7,7 +8,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const { old_password, new_password } = await request.json<any>();
     const oldP = String(old_password || "");
     const newP = String(new_password || "");
-    if (newP.length < 6) return json(false, null, "新密码至少 6 位", 400);
+    const pv = validatePassword(newP);
+    if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
 
     const row = await env.DB.prepare("SELECT password_hash FROM users WHERE id=?").bind(user.id).first<any>();
     if (!row) return json(false, null, "用户不存在", 404);
@@ -15,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const ok = await verifyPassword(oldP, row.password_hash);
     if (!ok) return json(false, null, "旧密码不正确", 400);
 
-    const ph = await hashPassword(newP);
+    const ph = await hashPassword(pv.password);
 
     // Increase token_version so all existing tokens become invalid immediately.
     await env.DB
