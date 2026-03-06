@@ -49,6 +49,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     if (job.stage === 'SNAPSHOT') {
       try {
+        if (job.mode !== 'replace') {
+          await env.DB.prepare(
+            `UPDATE restore_job
+             SET snapshot_status='SKIPPED', stage='SCAN', updated_at=datetime('now','+8 hours')
+             WHERE id=?`
+          ).bind(jobId).run();
+          waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_SKIPPED', 'restore_job', jobId, { mode: job.mode || 'merge' }).catch(() => {}));
+          return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'SKIPPED', more: true });
+        }
         await env.DB.prepare(`UPDATE restore_job SET snapshot_status='RUNNING', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
         const snap = await createSnapshot(env, actor.username, jobId);
         waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_DONE', 'restore_job', jobId, snap).catch(() => {}));
