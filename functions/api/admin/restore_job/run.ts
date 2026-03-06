@@ -169,8 +169,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           lastTable = table;
           lastNextRow = rowIndexInTable + 1;
           if (batch.length >= 50) await flush();
-          if (processedThisRun >= maxRows) break outer;
-          if (Date.now() - startTime >= maxMs) break outer;
+          if (processedThisRun >= maxRows) { exhaustedAllTables = false; break outer; }
+          if (Date.now() - startTime >= maxMs) { exhaustedAllTables = false; break outer; }
         }
         await flush();
       }
@@ -178,7 +178,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
       const processedRowsNew = Number(job.processed_rows || 0) + processedThisRun;
       const totalRows = Number(job.total_rows || 0);
-      const done = totalRows > 0 ? processedRowsNew >= totalRows : true;
       const nextCursor = { table: lastTable || '', row: lastNextRow || 0 };
 
       const processedMap: Record<string, number> = (perTable.__processed__ && typeof perTable.__processed__ === 'object') ? perTable.__processed__ : {};
@@ -188,13 +187,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       perTable.__processed__ = processedMap;
       perTable.__inserted__ = insertedMap;
 
+      const restorableOrder = order.filter((t) => !!TABLE_COLUMNS[t] && t !== 'restore_job');
+      const tablesComplete = restorableOrder.every((t) => Number(processedMap[t] || 0) >= Number(perTable[t] || 0));
+      const done = exhaustedAllTables && tablesComplete && (totalRows > 0 ? processedRowsNew >= totalRows : true);
+      const currentTableForSave = done ? null : (nextCursor.table || null);
+      const cursorForSave = done ? { table: '', row: 0 } : nextCursor;
+
       await env.DB.prepare(`UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=datetime('now','+8 hours') WHERE id=?`)
-        .bind(processedRowsNew, nextCursor.table || null, JSON.stringify(nextCursor), JSON.stringify(perTable), jobId).run();
+        .bind(processedRowsNew, currentTableForSave, JSON.stringify(cursorForSave), JSON.stringify(perTable), jobId).run();
 
       if (done) {
         await finalizeRestoreState(env.DB);
-        await env.DB.prepare(`UPDATE restore_job SET status='DONE', completed_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
-        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_DONE', 'restore_job', jobId, { processed_rows: processedRowsNew }).catch(() => {}));
+        await env.DB.prepare(`UPDATE restore_job SET status='DONE', completed_at=datetime('now','+8 hours'), current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
+        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_DONE', 'restore_job', jobId, { processed_rows: processedRowsNew, total_rows: totalRows }).catch(() => {}));
       }
 
       return json(true, {
@@ -204,7 +209,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         processed_delta: processedThisRun,
         processed_rows: processedRowsNew,
         total_rows: totalRows,
-        current_table: nextCursor.table || null,
+        current_table: currentTableForSave,
         snapshot_status: job.snapshot_status || null,
         more: !done,
       });
