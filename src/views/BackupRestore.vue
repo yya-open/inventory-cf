@@ -576,7 +576,23 @@ const restoreDetailRows = computed(() => {
   const processed = (pt.__processed__ && typeof pt.__processed__ === "object") ? pt.__processed__ : {};
   const inserted = (pt.__inserted__ && typeof pt.__inserted__ === "object") ? pt.__inserted__ : {};
 
-  return order
+  // Ensure all known tables are listed (even 0 rows) so user can see what's missing.
+  const all = Object.keys(TABLE_LABEL);
+  const seen = new Set<string>();
+  const list: string[] = [];
+  for (const t of order) {
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    list.push(t);
+  }
+  for (const t of all) {
+    if (!seen.has(t)) {
+      seen.add(t);
+      list.push(t);
+    }
+  }
+
+  return list
     .map((t) => {
       const total = Number(pt[t] || 0);
       const p = Number(processed[t] || 0);
@@ -589,8 +605,7 @@ const restoreDetailRows = computed(() => {
         written: w,
         skipped: Math.max(0, p - w),
       };
-    })
-    .filter((r) => r.total || r.processed || r.written);
+    });
 });
 
 const restoreDetailGroups = computed(() => {

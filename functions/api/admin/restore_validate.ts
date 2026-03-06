@@ -156,10 +156,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const counts = { error: 0, warn: 0, info: 0 };
     for (const i of issues) (counts as any)[i.severity]++;
 
+    // For UI: always include ALL supported tables (even if missing in backup) so users can
+    // clearly see what's absent (rows=0) instead of silently not showing that table.
+    const allTables = Object.keys(TABLE_COLUMNS);
     const backupRowsByTable: Record<string, number> = {};
-    for (const k of backupTableNames) {
-      const rows = (tables as any)[k];
-      backupRowsByTable[k] = Array.isArray(rows) ? rows.length : 0;
+    const includedInBackup: Record<string, boolean> = {};
+    for (const t of allTables) {
+      const rows = (tables as any)[t];
+      const has = Object.prototype.hasOwnProperty.call(tables, t);
+      includedInBackup[t] = has;
+      backupRowsByTable[t] = has && Array.isArray(rows) ? rows.length : 0;
     }
 
     return json(true, {
@@ -169,7 +175,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       backup_summary: {
         version: backup?.version || null,
         exported_at: backup?.exported_at || null,
-        tables: backupTableNames,
+        // Keep a stable list for UI rendering
+        tables: allTables,
+        included_tables: backupTableNames,
+        included_in_backup: includedInBackup,
         rows_by_table: backupRowsByTable,
       },
     });

@@ -58,8 +58,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const perTable: any = { __order__: [] as string[] };
       let total = 0;
 
-      const order: string[] = [];
+      // Use a stable order containing ALL supported tables so the UI can show
+      // missing tables as 0 rows instead of not showing them.
+      const order: string[] = Object.keys(TABLE_COLUMNS);
       const counts: Record<string, number> = {};
+      for (const t of order) counts[t] = 0;
 
       // Need a fresh stream; R2 object body is single-use -> re-get
       const scanObj = await env.BACKUP_BUCKET.get(job.file_key);
@@ -68,16 +71,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const sniff1 = await sniffGzipFromStream(scanObj.body);
       for await (const { table } of iterBackupRowsFromStream(sniff1.stream, sniff1.gzip)) {
         if (!TABLE_COLUMNS[table]) continue;
-        if (!counts[table]) {
-          counts[table] = 0;
-          order.push(table);
-        }
         counts[table] += 1;
         total += 1;
       }
 
       perTable.__order__ = order;
-      for (const [t, c] of Object.entries(counts)) perTable[t] = c;
+      for (const t of order) perTable[t] = Number(counts[t] || 0);
 
       const cursor = order.length ? { table: order[0], row: 0 } : { table: "", row: 0 };
 
