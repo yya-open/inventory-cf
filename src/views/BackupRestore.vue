@@ -4,8 +4,8 @@
       <div>
         <div style="font-weight:700; font-size:16px">备份 / 恢复</div>
         <div style="color:#888; font-size:12px; margin-top:6px; line-height:1.5">
-          备份文件为 JSON（支持 <b>.json.gz</b> 压缩），默认导出全部业务表与系统表。
-          <b>恢复属于高风险操作</b>，restore_job 会自动跳过，避免恢复任务执行中被自身覆盖。
+          备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。
+          <b>恢复属于高风险操作</b>，请谨慎。
         </div>
       </div>
 
@@ -86,13 +86,13 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载全表备份</el-button>
+              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载完整备份</el-button>
               <el-button :loading="downloading" @click="downloadTxOnly" plain>只下载明细</el-button>
               <el-button :loading="downloading" @click="downloadAuditOnly" plain>只下载审计</el-button>
             </div>
 
             <el-alert type="info" show-icon :closable="false">
-              建议：日常优先使用“下载全表备份”；明细/审计/慢请求可再按时间单独导出。
+              建议：明细/审计单独导出，配合时间范围与分页，避免文件过大。
             </el-alert>
           </div>
         </el-card>
@@ -173,7 +173,7 @@
               <br />
               合并覆盖：遇到重复主键/唯一键时更新已有记录（UPSERT，不会先删再插，较安全）。
               <br />
-              清空并恢复：会先清空库再写入（不可恢复）。
+              清空并恢复：会先创建恢复点快照，再清空库写入；如需回滚可用恢复点重建。
             </el-alert>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
@@ -193,7 +193,7 @@
             </div>
 
             <el-alert v-if="jobId" type="info" show-icon :closable="false">
-              任务：{{ jobId }}　状态：{{ jobStatus }}　阶段：{{ jobStage }}
+              任务：{{ jobId }}　状态：{{ jobStatus }}　阶段：{{ jobStage }}（SNAPSHOT→SCAN→RESTORE）
               <span v-if="jobCurrentTable">　当前表：{{ jobCurrentTable }}</span>
             </el-alert>
 
@@ -546,9 +546,6 @@ const TABLE_LABEL: Record<string, string> = {
   audit_log: "审计日志",
   auth_login_throttle: "登录限流",
   public_api_throttle: "公共接口限流",
-  audit_retention_state: "审计清理状态",
-  api_slow_requests: "慢请求日志",
-  restore_job: "恢复任务",
   users: "用户",
   pc_assets: "电脑台账",
   pc_in: "电脑入库记录",
@@ -725,10 +722,10 @@ async function createJob() {
   try {
     const { value: confirmText } = await ElMessageBox.prompt(
       mode.value === "replace"
-        ? "将先清空数据库再恢复。请输入：清空并恢复"
+        ? "将先自动创建恢复点快照，再清空数据库恢复。请输入：清空并恢复"
         : (mode.value === "merge_upsert"
             ? "将导入备份数据并更新重复记录（覆盖同主键/唯一键）。请输入：覆盖导入"
-            : "将导入备份数据（尽量不覆盖现有）。请输入：恢复"),
+            : "将先自动创建恢复点快照，再导入备份数据。请输入：恢复"),
       "二次确认",
       {
         confirmButtonText: "创建任务",

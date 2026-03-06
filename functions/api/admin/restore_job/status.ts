@@ -32,6 +32,12 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       replaced_done: Number(job.replaced_done || 0),
       error_count: Number(job.error_count || 0),
       last_error: job.last_error || null,
+      snapshot_key: job.snapshot_key || null,
+      snapshot_status: job.snapshot_status || null,
+      snapshot_filename: job.snapshot_filename || null,
+      snapshot_created_at: job.snapshot_created_at || null,
+      restore_points: (() => { try { return JSON.parse(job.restore_points_json || '[]'); } catch { return []; } })(),
+      completed_at: job.completed_at || null,
       created_at: job.created_at,
       updated_at: job.updated_at,
     });

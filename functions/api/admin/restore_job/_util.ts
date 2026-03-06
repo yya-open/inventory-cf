@@ -1,9 +1,10 @@
-import { TABLE_COLUMNS, DELETE_ORDER, pickRestoreValues } from '../_backup_schema';
+import { errorResponse } from "../../../_auth";
+import { DELETE_ORDER, TABLE_COLUMNS } from "../_backup_schema";
 
-export { TABLE_COLUMNS, DELETE_ORDER };
+export { DELETE_ORDER, TABLE_COLUMNS };
 
 export function pick(obj: any, cols: string[]) {
-  return pickRestoreValues(obj, cols);
+  return cols.map((c) => (obj?.[c] === undefined ? null : obj[c]));
 }
 
 export function nowIso() {
