@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
 import { logAudit } from '../../_audit';
-import { DELETE_ORDER, TABLE_COLUMNS, iterBackupRowsFromStream, parseJsonSafe, pick, sniffGzipFromStream, iterBackupTableKeysFromStream } from './_util';
+import { DELETE_ORDER, TABLE_COLUMNS, iterBackupRowsFromStream, parseJsonSafe, pick, sniffGzipFromStream, iterBackupTableKeysFromStream, readBackupStatsFromStream } from './_util';
 import { buildBackupPayload } from '../_backup_helpers';
 import { finalizeRestoreState } from '../_restore_finalize';
 
@@ -78,14 +78,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         perTable.__present__[t] = true;
       }
 
+      // Prefer using backup.stats (table -> count) to compute totals quickly and correctly,
+      // instead of iterating every row during SCAN.
       const scanObj2 = await env.BACKUP_BUCKET.get(job.file_key);
       if (!scanObj2?.body) throw new Error('R2 文件读取失败（SCAN-2）');
       const sniff1 = await sniffGzipFromStream(scanObj2.body);
-      for await (const { table } of iterBackupRowsFromStream(sniff1.stream, sniff1.gzip)) {
-        if (!TABLE_COLUMNS[table]) continue;
-        counts[table] += 1;
-        total += 1;
-        perTable.__present__[table] = true;
+      const stats = await readBackupStatsFromStream(sniff1.stream, sniff1.gzip);
+
+      if (stats) {
+        for (const t of Object.keys(TABLE_COLUMNS)) {
+          const n = Number((stats as any)[t] ?? 0) || 0;
+          counts[t] = n;
+        }
+        total = Object.entries(counts)
+          .filter(([t]) => t !== 'restore_job')
+          .reduce((acc, [, n]) => acc + Number(n || 0), 0);
+      } else {
+        // Fallback: iterate rows if stats not found.
+        const scanObj3 = await env.BACKUP_BUCKET.get(job.file_key);
+        if (!scanObj3?.body) throw new Error('R2 文件读取失败（SCAN-3）');
+        const sniff2 = await sniffGzipFromStream(scanObj3.body);
+        for await (const { table } of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
+          if (!TABLE_COLUMNS[table]) continue;
+          counts[table] += 1;
+          total += 1;
+          perTable.__present__[table] = true;
+        }
       }
       for (const t of Object.keys(TABLE_COLUMNS)) perTable[t] = counts[t] || 0;
       const order: string[] = perTable.__order__;

@@ -45,9 +45,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await ensureMonitorSchema(env.DB);
 
     const backup = await readBackup(request);
-    // backup v1: { tables: { ... } }
-    // backup v2+: { data: { ... }, stats: { ... } }
-    const tables = backup?.tables || backup?.data || {};
+    const tables = backup?.tables || {};
     const issues: Issue[] = [];
     const backupTableNames = Object.keys(tables || {});
 
