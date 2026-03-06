@@ -30,7 +30,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     requireConfirm(body, mode === 'replace' ? '清空并恢复' : mode === 'merge_upsert' ? '覆盖导入' : '恢复', '二次确认不通过');
 
     const backup = body.backup;
-    const tables = backup?.tables || {};
+    // backup v1: { tables: { ... } }
+    // backup v2+: { data: { ... }, stats: { ... } }
+    const tables = (backup as any)?.tables || (backup as any)?.data || {};
     if (!tables || typeof tables !== 'object') return Response.json({ ok: false, message: '缺少备份数据 tables' }, { status: 400 });
 
     if (mode === 'replace') await env.DB.batch(DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));

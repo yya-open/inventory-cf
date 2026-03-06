@@ -45,7 +45,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!(file instanceof File)) return Response.json({ ok: false, message: '缺少 file' }, { status: 400 });
 
     const backup = JSON.parse((await readBackupText(file)) || '{}');
-    const tables = backup?.tables || {};
+    // backup v1: { tables: { ... } }
+    // backup v2+: { data: { ... }, stats: { ... } }
+    const tables = backup?.tables || backup?.data || {};
     if (!tables || typeof tables !== 'object') return Response.json({ ok: false, message: '备份数据为空' }, { status: 400 });
 
     if (mode === 'replace') await env.DB.batch(DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`)));
