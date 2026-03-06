@@ -37,11 +37,11 @@
       <!-- 电脑仓菜单（布局与配件仓一致，只是菜单项不同） -->
       <el-menu v-else router :default-active="activeMenu">
         <el-menu-item index="/pc/assets">电脑台账</el-menu-item>
-        <el-menu-item index="/pc/monitors">显示器台账</el-menu-item>
         <el-menu-item index="/pc/age-warnings">报废预警</el-menu-item>
         <el-menu-item index="/pc/tx">电脑出入库明细</el-menu-item>
-        <el-menu-item index="/pc/monitor-tx">显示器出入库明细</el-menu-item>
         <el-menu-item index="/pc/inventory-logs">盘点记录</el-menu-item>
+        <el-menu-item index="/pc/monitors">显示器台账</el-menu-item>
+        <el-menu-item index="/pc/monitor-tx">显示器出入库明细</el-menu-item>
         <el-menu-item index="/pc/monitor-inventory-logs">显示器盘点记录</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/in">电脑入库</el-menu-item>
         <el-menu-item v-if="can('operator')" index="/pc/out">电脑出库</el-menu-item>
