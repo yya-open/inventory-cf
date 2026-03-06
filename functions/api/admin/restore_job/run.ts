@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
 import { logAudit } from '../../_audit';
-import { DELETE_ORDER, TABLE_COLUMNS, iterBackupRowsFromStream, parseJsonSafe, pick, sniffGzipFromStream, iterBackupTableKeysFromStream, readBackupStatsFromStream } from './_util';
+import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
 import { buildBackupPayload } from '../_backup_helpers';
 import { finalizeRestoreState } from '../_restore_finalize';
 
@@ -70,37 +70,15 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const counts: Record<string, number> = Object.fromEntries(Object.keys(TABLE_COLUMNS).map((t) => [t, 0]));
       let total = 0;
 
-      const scanObj = await env.BACKUP_BUCKET.get(job.file_key);
-      if (!scanObj?.body) throw new Error('R2 文件读取失败（SCAN）');
-      const sniffKeys = await sniffGzipFromStream(scanObj.body);
-      for await (const t of iterBackupTableKeysFromStream(sniffKeys.stream, sniffKeys.gzip)) {
+      const sniffScan = await sniffGzipFromStream(obj.body);
+      const backup = await readBackupJsonFromStream(sniffScan.stream, sniffScan.gzip);
+      const tables = getBackupTablesObject(backup);
+      for (const [t, rows] of Object.entries(tables)) {
         if (!TABLE_COLUMNS[t]) continue;
         perTable.__present__[t] = true;
-      }
-
-      // Prefer "stats" (v2 backup) to compute per-table row counts.
-      // This avoids partial/early stream termination causing wrong totals.
-      const scanObj2 = await env.BACKUP_BUCKET.get(job.file_key);
-      if (!scanObj2?.body) throw new Error('R2 文件读取失败（SCAN-2）');
-      const sniff1 = await sniffGzipFromStream(scanObj2.body);
-      const stats = await readBackupStatsFromStream(sniff1.stream, sniff1.gzip);
-      if (stats) {
-        for (const [t, n] of Object.entries(stats)) {
-          if (!TABLE_COLUMNS[t]) continue;
-          counts[t] = Number(n || 0);
-          total += counts[t];
-          perTable.__present__[t] = true;
-        }
-      } else {
-        const scanObj3 = await env.BACKUP_BUCKET.get(job.file_key);
-        if (!scanObj3?.body) throw new Error('R2 文件读取失败（SCAN-3）');
-        const sniff2 = await sniffGzipFromStream(scanObj3.body);
-        for await (const { table } of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
-          if (!TABLE_COLUMNS[table]) continue;
-          counts[table] += 1;
-          total += 1;
-          perTable.__present__[table] = true;
-        }
+        const n = Array.isArray(rows) ? rows.length : 0;
+        counts[t] = n;
+        total += n;
       }
       for (const t of Object.keys(TABLE_COLUMNS)) perTable[t] = counts[t] || 0;
       const order: string[] = perTable.__order__;
@@ -160,47 +138,47 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       };
 
       const sniff2 = await sniffGzipFromStream(runObj.body);
-      let exhausted = true;
-      for await (const { table, rowText } of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
+      const backup = await readBackupJsonFromStream(sniff2.stream, sniff2.gzip);
+      const tables = getBackupTablesObject(backup);
+      outer:
+      for (const table of order) {
         if (!TABLE_COLUMNS[table] || table === 'restore_job') continue;
-        if (table !== curTable) {
-          await flush();
-          curTable = table;
-          curTableIndex = order.indexOf(table);
-          rowIndexInTable = -1;
-          cols = TABLE_COLUMNS[table];
-          sql = buildInsertSql(mode, table, cols);
-          batchTable = table;
-        }
-        rowIndexInTable += 1;
-        if (cursorTableIndex >= 0) {
-          if (curTableIndex < cursorTableIndex) continue;
-          if (curTableIndex === cursorTableIndex && rowIndexInTable < cursorRow) continue;
-        }
-        if ((processedThisRun % 200) === 0) {
-          const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
-          if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
-            await flush();
-            return json(true, { id: jobId, status: s.status, more: false });
+        const rows = Array.isArray((tables as any)[table]) ? (tables as any)[table] : [];
+        curTable = table;
+        curTableIndex = order.indexOf(table);
+        cols = TABLE_COLUMNS[table];
+        sql = buildInsertSql(mode, table, cols);
+        batchTable = table;
+        for (let idx = 0; idx < rows.length; idx++) {
+          rowIndexInTable = idx;
+          if (cursorTableIndex >= 0) {
+            if (curTableIndex < cursorTableIndex) continue;
+            if (curTableIndex === cursorTableIndex && rowIndexInTable < cursorRow) continue;
           }
+          if ((processedThisRun % 200) === 0) {
+            const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
+            if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
+              await flush();
+              return json(true, { id: jobId, status: s.status, more: false });
+            }
+          }
+          const objRow = rows[idx] as Record<string, any>;
+          batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
+          batchRows += 1;
+          processedThisRun += 1;
+          lastTable = table;
+          lastNextRow = rowIndexInTable + 1;
+          if (batch.length >= 50) await flush();
+          if (processedThisRun >= maxRows) break outer;
+          if (Date.now() - startTime >= maxMs) break outer;
         }
-        const objRow = JSON.parse(rowText);
-        batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
-        batchRows += 1;
-        processedThisRun += 1;
-        lastTable = table;
-        lastNextRow = rowIndexInTable + 1;
-        if (batch.length >= 50) await flush();
-        if (processedThisRun >= maxRows) { exhausted = false; break; }
-        if (Date.now() - startTime >= maxMs) { exhausted = false; break; }
+        await flush();
       }
       await flush();
 
       const processedRowsNew = Number(job.processed_rows || 0) + processedThisRun;
       const totalRows = Number(job.total_rows || 0);
-      // Mark done only when we actually hit EOF of the backup stream.
-      // This prevents early DONE when total_rows was miscomputed.
-      const done = exhausted;
+      const done = totalRows > 0 ? processedRowsNew >= totalRows : true;
       const nextCursor = { table: lastTable || '', row: lastNextRow || 0 };
 
       const processedMap: Record<string, number> = (perTable.__processed__ && typeof perTable.__processed__ === 'object') ? perTable.__processed__ : {};

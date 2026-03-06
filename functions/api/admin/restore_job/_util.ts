@@ -280,6 +280,27 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
 }
 
 
+
+
+export async function readBackupJsonFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
+  let s: ReadableStream<Uint8Array> = stream;
+  if (gzip) {
+    if (typeof (globalThis as any).DecompressionStream === "undefined") {
+      throw new Error("当前环境不支持 gzip 解压，请上传 .json 备份或在支持 DecompressionStream 的环境中操作");
+    }
+    s = s.pipeThrough(new DecompressionStream("gzip"));
+  }
+  const text = await new Response(s).text();
+  return JSON.parse(text);
+}
+
+export function getBackupTablesObject(backup: any): Record<string, any[]> {
+  if (backup && typeof backup === 'object') {
+    const tables = (backup as any).tables || (backup as any).data || {};
+    if (tables && typeof tables === 'object') return tables as Record<string, any[]>;
+  }
+  return {};
+}
 export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
   let s: ReadableStream<Uint8Array> = stream;
   if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
@@ -296,82 +317,6 @@ export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, 
   } finally {
     reader.releaseLock();
   }
-}
-
-// Read top-level "stats" object from a backup json stream (v2), without parsing the full file.
-// Brace-balanced so it works even when chunks split in the middle.
-export async function readBackupStatsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean): Promise<Record<string, number> | null> {
-  let buf = "";
-  let found = false;
-  let started = false;
-  let depth = 0;
-  let inStr = false;
-  let esc = false;
-  let objStart = -1;
-
-  for await (const chunk of textChunksFromStream(stream, gzip)) {
-    buf += chunk;
-
-    if (!found) {
-      const idx = buf.indexOf('"stats"');
-      if (idx === -1) {
-        buf = buf.slice(Math.max(0, buf.length - 256));
-        continue;
-      }
-      found = true;
-      buf = buf.slice(idx);
-    }
-
-    if (!started) {
-      const colon = buf.indexOf(':');
-      if (colon === -1) continue;
-      const brace = buf.indexOf('{', colon);
-      if (brace === -1) continue;
-      started = true;
-      objStart = brace;
-      depth = 0;
-      inStr = false;
-      esc = false;
-    }
-
-    for (let i = objStart; i < buf.length; i++) {
-      const ch = buf[i];
-      if (inStr) {
-        if (esc) { esc = false; continue; }
-        if (ch === '\\') { esc = true; continue; }
-        if (ch === '"') { inStr = false; continue; }
-        continue;
-      }
-      if (ch === '"') { inStr = true; continue; }
-      if (ch === '{') depth++;
-      if (ch === '}') {
-        depth--;
-        if (depth === 0) {
-          const raw = buf.slice(objStart, i + 1);
-          try {
-            const parsed = JSON.parse(raw);
-            if (parsed && typeof parsed === 'object') {
-              const out: Record<string, number> = {};
-              for (const [k, v] of Object.entries(parsed)) {
-                if (typeof v === 'number') out[k] = Number(v || 0);
-                else if (v && typeof v === 'object' && 'rows' in (v as any)) out[k] = Number((v as any).rows || 0);
-                else out[k] = 0;
-              }
-              return out;
-            }
-          } catch {
-            // keep reading more chunks
-          }
-        }
-      }
-    }
-
-    if (started && objStart > 0 && buf.length > 1024 * 1024) {
-      buf = buf.slice(objStart);
-      objStart = 0;
-    }
-  }
-  return null;
 }
 
 export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
