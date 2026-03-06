@@ -8,6 +8,18 @@
           <b>恢复属于高风险操作</b>，请谨慎。
         </div>
       </div>
+
+      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+        <el-button
+          v-if="canAdmin"
+          type="warning"
+          plain
+          :loading="initingSchema"
+          @click="initAllSchema"
+        >
+          管理员一键初始化全部表结构
+        </el-button>
+      </div>
     </div>
 
     <el-divider />
@@ -307,6 +319,7 @@ import { ElMessageBox } from "element-plus";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
+import { can } from "../store/auth";
 
 const bk = ref({
   include_tx: false,
@@ -324,6 +337,35 @@ const bk = ref({
 });
 
 const downloading = ref(false);
+
+const canAdmin = computed(() => can("admin"));
+const initingSchema = ref(false);
+
+async function initAllSchema() {
+  try {
+    const { value } = await ElMessageBox.prompt(
+      "将创建/补齐所有业务表结构（含电脑仓/显示器/盘点/限流/恢复任务等）。请输入：初始化",
+      "二次确认",
+      {
+        confirmButtonText: "开始初始化",
+        cancelButtonText: "取消",
+        inputPlaceholder: "初始化",
+      }
+    );
+    if (String(value || "").trim() !== "初始化") {
+      msgWarn("确认文字不正确");
+      return;
+    }
+    initingSchema.value = true;
+    await apiPost("/api/admin/init_schema", { confirm: "初始化" });
+    msgSuccess("初始化完成");
+  } catch (e: any) {
+    if (e?.message && String(e.message).includes("cancel")) return;
+    msgError(e?.message || "初始化失败");
+  } finally {
+    initingSchema.value = false;
+  }
+}
 
 
 const detailDlg = ref(false);
@@ -491,18 +533,25 @@ const progressStatus = computed(() => {
 const TABLE_LABEL: Record<string, string> = {
   warehouses: "仓库",
   items: "配件",
+  stock: "stock",
   categories: "分类",
   stock_tx: "出入库明细",
   stocktake: "盘点单",
   stocktake_line: "盘点明细",
   audit_log: "审计日志",
   auth_login_throttle: "登录限流",
+  public_api_throttle: "公共接口限流",
   users: "用户",
   pc_assets: "电脑台账",
   pc_in: "电脑入库记录",
   pc_out: "电脑出库记录",
   pc_recycle: "电脑回收/归还记录",
   pc_scrap: "电脑报废记录",
+  pc_inventory_log: "电脑盘点记录",
+  pc_locations: "位置表",
+  monitor_assets: "显示器台账",
+  monitor_tx: "显示器出入库明细",
+  monitor_inventory_log: "显示器盘点记录",
 };
 
 function tableCn(t: string) {
@@ -513,10 +562,11 @@ function tableCn(t: string) {
 function tableGroupKey(t: string) {
   if (["warehouses","items","categories","stock","stock_tx","stocktake","stocktake_line"].includes(t)) return "parts";
   if (t.startsWith("pc_")) return "pc";
+  if (t.startsWith("monitor_") || ["monitor_assets","monitor_tx","monitor_inventory_log"].includes(t)) return "monitor";
   return "system";
 }
 function tableGroupLabel(key: string) {
-  return key === "parts" ? "配件仓" : (key === "pc" ? "电脑仓" : "系统表");
+  return key === "parts" ? "配件仓" : (key === "pc" ? "电脑仓" : (key === "monitor" ? "显示器" : "系统表"));
 }
 
 const restoreDetailRows = computed(() => {
@@ -550,7 +600,7 @@ const restoreDetailGroups = computed(() => {
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(row);
   }
-  const order = ["parts", "pc", "system"];
+  const order = ["parts", "pc", "monitor", "system"];
   return order
     .filter((k) => grouped.has(k))
     .map((k) => {
@@ -582,7 +632,7 @@ const restoreValidateIssueGroups = computed(() => {
     if (!grouped.has(key)) grouped.set(key, []);
     grouped.get(key)!.push(row);
   }
-  const order = ["parts", "pc", "system"];
+  const order = ["parts", "pc", "monitor", "system"];
   return order.filter((k) => grouped.has(k)).map((k) => {
     const rows = grouped.get(k)!;
     return {
