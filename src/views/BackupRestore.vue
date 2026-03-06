@@ -190,28 +190,11 @@
               </el-button>
 
               <el-button :disabled="!jobId" @click="refreshStatus" plain>刷新状态</el-button>
-
-              <el-button
-                v-if="jobId && jobSnapshotKey && (jobStatus==='FAILED' || jobStatus==='PAUSED' || jobStatus==='CANCELED' || jobStatus==='DONE')"
-                type="warning"
-                plain
-                :loading="rollingBack"
-                :disabled="running"
-                @click="rollbackToRestorePoint"
-              >
-                回滚到恢复前快照
-              </el-button>
             </div>
 
             <el-alert v-if="jobId" type="info" show-icon :closable="false">
               任务：{{ jobId }}　状态：{{ jobStatus }}　阶段：{{ jobStage }}（SNAPSHOT→SCAN→RESTORE）
               <span v-if="jobCurrentTable">　当前表：{{ jobCurrentTable }}</span>
-            </el-alert>
-
-            <el-alert v-if="jobId && jobSnapshotKey" type="warning" show-icon :closable="false">
-              恢复点：{{ jobSnapshotStatus || 'UNKNOWN' }}
-              <span v-if="jobSnapshotCreatedAt">　创建时间：{{ jobSnapshotCreatedAt }}</span>
-              <span v-if="jobSnapshotFilename">　文件：{{ jobSnapshotFilename }}</span>
             </el-alert>
 
             <div v-if="jobId" style="display:flex; flex-direction:column; gap:8px">
@@ -536,14 +519,8 @@ const jobLastError = ref<string>("");
 const jobMode = ref<string>("");
 const jobPerTable = ref<any>({});
 
-const jobSnapshotKey = ref<string | null>(null);
-const jobSnapshotStatus = ref<string | null>(null);
-const jobSnapshotFilename = ref<string | null>(null);
-const jobSnapshotCreatedAt = ref<string | null>(null);
-
 const running = ref(false);
 const pausing = ref(false);
-const rollingBack = ref(false);
 
 const progressPercent = computed(() => {
   if (!jobTotal.value) return 0;
@@ -794,11 +771,6 @@ async function refreshStatus() {
     jobProcessed.value = Number(d.processed_rows || 0);
     jobCurrentTable.value = d.current_table || "";
     jobLastError.value = d.last_error || "";
-
-    jobSnapshotKey.value = d.snapshot_key || null;
-    jobSnapshotStatus.value = d.snapshot_status || null;
-    jobSnapshotFilename.value = d.snapshot_filename || null;
-    jobSnapshotCreatedAt.value = d.snapshot_created_at || null;
   } catch (e:any) {
     msgError(e?.message || "刷新失败");
   }
@@ -859,49 +831,6 @@ async function pauseJob() {
     msgError(e?.message || "暂停失败");
   } finally {
     pausing.value = false;
-  }
-}
-
-async function rollbackToRestorePoint() {
-  if (!jobId.value) return;
-  if (!jobSnapshotKey.value) {
-    msgWarn("该任务没有可用恢复点");
-    return;
-  }
-  if (rollingBack.value) return;
-
-  try {
-    const { value: confirmText } = await ElMessageBox.prompt(
-      "将使用该任务的恢复点快照回滚数据库（会生成一个新的恢复任务并执行）。请输入：回滚",
-      "二次确认",
-      {
-        confirmButtonText: "创建回滚任务",
-        cancelButtonText: "取消",
-        inputPlaceholder: "回滚",
-        inputValue: "",
-        type: "warning",
-      }
-    ).catch(() => ({ value: "" } as any));
-
-    if (String(confirmText || "").trim() !== "回滚") {
-      msgWarn("二次确认未通过，已取消");
-      return;
-    }
-
-    rollingBack.value = true;
-    const r = await apiPost<any>("/api/admin/restore_job/rollback", { id: jobId.value });
-    const newId = r?.data?.id;
-    if (!newId) throw new Error("回滚任务创建失败");
-
-    jobId.value = newId;
-    msgSuccess("回滚任务已创建，开始执行...");
-    await refreshStatus();
-    await startOrResume();
-  } catch (e:any) {
-    msgError(e?.message || "回滚失败");
-    await refreshStatus();
-  } finally {
-    rollingBack.value = false;
   }
 }
 </script>

@@ -210,26 +210,6 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
 
   // Helpful for transaction list sorting/filtering
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_created_at ON pc_scrap(created_at)").run();
-
-  // PC inventory scan logs (扫码盘点记录)
-  // Referenced by public inventory scan API and admin export/list.
-  // Keep it here so "管理员一键初始化全部表结构" can repair missing tables.
-  await db.prepare(`
-    CREATE TABLE IF NOT EXISTS pc_inventory_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      asset_id INTEGER NOT NULL,
-      action TEXT NOT NULL CHECK(action IN ('SCAN','CHECKIN','CHECKOUT','ISSUE')),
-      issue_type TEXT,
-      remark TEXT,
-      ip TEXT,
-      ua TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-      FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
-    )
-  `).run();
-
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_inventory_log_asset_id ON pc_inventory_log(asset_id)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_inventory_log_created_at ON pc_inventory_log(created_at)").run();
     __pcSchemaReady = true;
   })().finally(() => {
     __pcSchemaInit = null;

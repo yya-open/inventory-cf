@@ -1,6 +1,6 @@
 import { errorResponse } from "../../../_auth";
 import { DELETE_ORDER, TABLE_COLUMNS } from "../_backup_schema";
-import { Inflate } from "pako";
+import { Inflate } from 'pako';
 
 export { DELETE_ORDER, TABLE_COLUMNS };
 
@@ -282,60 +282,66 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
 
 
 export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
-  // Prefer native DecompressionStream when available (streaming + low memory).
-  // Cloudflare runtimes may not always expose it; in that case fall back to pako streaming inflate.
-  if (gzip) {
-    const DS = (globalThis as any).DecompressionStream;
-    if (typeof DS !== "undefined") {
-      let s: ReadableStream<Uint8Array> = stream;
-      s = s.pipeThrough(new DS("gzip"));
-      const decoder = new TextDecoderStream();
-      const reader = s.pipeThrough(decoder).getReader();
-      try {
-        while (true) {
-          const { value, done } = await reader.read();
-          if (done) break;
-          if (value) yield value;
-        }
-      } finally {
-        reader.releaseLock();
-      }
-      return;
-    }
-
-    // Fallback: pako streaming gunzip
-    const td = new TextDecoder();
-    const reader = stream.getReader();
-    const infl = new Inflate({ to: "string", gzip: true });
+  let s: ReadableStream<Uint8Array> = stream;
+  // Cloudflare runtime may not provide DecompressionStream in all environments.
+  // When gzip=true, always try to decompress:
+  // 1) use native DecompressionStream when available;
+  // 2) otherwise fallback to pako streaming gunzip.
+  if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
+    s = s.pipeThrough(new DecompressionStream("gzip"));
+    const decoder = new TextDecoderStream();
+    const reader = s.pipeThrough(decoder).getReader();
     try {
       while (true) {
         const { value, done } = await reader.read();
         if (done) break;
-        if (!value) continue;
-        infl.push(value, false);
-        if (infl.err) {
-          throw new Error(`gzip 解压失败：${infl.msg || infl.err}`);
-        }
-        const out = infl.result as any;
-        if (out) {
-          // pako may return string or array; normalize to string
-          yield typeof out === "string" ? out : td.decode(out);
-          (infl as any).result = null;
+        if (value) yield value;
+      }
+    } finally {
+      reader.releaseLock();
+    }
+    return;
+  }
+
+  if (gzip) {
+    const infl = new Inflate({ to: 'string' });
+    const reader = s.getReader();
+    try {
+      while (true) {
+        const { value, done } = await reader.read();
+        if (done) break;
+        if (value && value.length) {
+          infl.push(value, false);
+          if (infl.err) throw new Error(infl.msg || 'gzip 解压失败');
+          const out: any = infl.result;
+          if (out) {
+            // pako may return string or string[] depending on internal chunking.
+            if (Array.isArray(out)) {
+              for (const part of out) if (part) yield String(part);
+            } else {
+              yield String(out);
+            }
+          }
         }
       }
-      infl.push(new Uint8Array(), true);
-      if (infl.err) throw new Error(`gzip 解压失败：${infl.msg || infl.err}`);
-      const out = infl.result as any;
-      if (out) yield typeof out === "string" ? out : td.decode(out);
+      infl.push(new Uint8Array(0), true);
+      if (infl.err) throw new Error(infl.msg || 'gzip 解压失败');
+      const out: any = infl.result;
+      if (out) {
+        if (Array.isArray(out)) {
+          for (const part of out) if (part) yield String(part);
+        } else {
+          yield String(out);
+        }
+      }
     } finally {
       try { reader.releaseLock(); } catch {}
     }
     return;
   }
 
-  // Plain JSON
   const decoder = new TextDecoderStream();
-  const reader = stream.pipeThrough(decoder).getReader();
+  const reader = s.pipeThrough(decoder).getReader();
   try {
     while (true) {
       const { value, done } = await reader.read();
