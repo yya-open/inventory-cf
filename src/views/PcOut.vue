@@ -173,6 +173,70 @@ const canSubmit = computed(() => {
   );
 });
 
+function downloadOutTemplate() {
+  downloadTemplate({
+    filename: "电脑出库导入模板.xlsx",
+    headers: [
+      { title: "序列号" },
+      { title: "员工工号" },
+      { title: "部门" },
+      { title: "员工姓名" },
+      { title: "是否在职" },
+      { title: "配置日期" },
+      { title: "备注" },
+    ],
+    exampleRows: [
+      {
+        "序列号": "PF5S995W",
+        "员工工号": "02107084",
+        "部门": "车辆",
+        "员工姓名": "罗宇浩",
+        "是否在职": "在职",
+        "配置日期": "2026-03-06",
+        "备注": "示例，可删除该行",
+      },
+    ],
+  });
+}
+
+async function onImportOutFile(uploadFile: any) {
+  const file: File = uploadFile?.raw;
+  if (!file) return;
+  try {
+    const rows = await parseXlsx(file);
+    const items = rows
+      .map((r) => ({
+        serial_no: String(r["序列号"] ?? r["serial_no"] ?? "").trim(),
+        employee_no: String(r["员工工号"] ?? r["employee_no"] ?? "").trim(),
+        department: String(r["部门"] ?? r["department"] ?? "").trim(),
+        employee_name: String(r["员工姓名"] ?? r["employee_name"] ?? "").trim(),
+        is_employed: String(r["是否在职"] ?? r["is_employed"] ?? "在职").trim() || "在职",
+        config_date: String(r["配置日期"] ?? r["config_date"] ?? "").trim(),
+        remark: String(r["备注"] ?? r["remark"] ?? "").trim(),
+      }))
+      .filter((x) => x.serial_no && x.employee_no && x.department && x.employee_name);
+
+    if (!items.length) {
+      ElMessage.warning("Excel里没有可导入的数据");
+      return;
+    }
+
+    const res: any = await apiPost("/api/pc-out-batch", { items });
+    const okSum = Number(res?.success || 0);
+    const failSum = Number(res?.failed || 0);
+    if (failSum > 0) {
+      console.warn("pc-out-batch errors", res?.errors);
+      ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
+    } else {
+      ElMessage.success(`导入完成：成功 ${okSum} 条`);
+    }
+
+    await loadAssets();
+  } catch (e: any) {
+    ElMessage.error(e?.message || "导入失败");
+  }
+}
+
 async function submit() {
   const ok = await formRef.value?.validate().catch(() => false);
   if (!ok) return;

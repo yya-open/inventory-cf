@@ -164,6 +164,61 @@ const canSubmit = computed(() => {
   return !!form.value.asset_id && !!String(form.value.action || "").trim() && !!String(form.value.recycle_date || "").trim() && !submitting.value;
 });
 
+function downloadRecycleTemplate() {
+  downloadTemplate({
+    filename: "电脑回收归还导入模板.xlsx",
+    headers: [
+      { title: "序列号" },
+      { title: "动作" },
+      { title: "回收/归还日期" },
+      { title: "备注" },
+    ],
+    exampleRows: [
+      {
+        "序列号": "PF5S995W",
+        "动作": "RETURN",
+        "回收/归还日期": "2026-03-06",
+        "备注": "示例，可删除该行",
+      },
+    ],
+  });
+}
+
+async function onImportRecycleFile(uploadFile: any) {
+  const file: File = uploadFile?.raw;
+  if (!file) return;
+  try {
+    const rows = await parseXlsx(file);
+    const items = rows
+      .map((r) => ({
+        serial_no: String(r["序列号"] ?? r["serial_no"] ?? "").trim(),
+        action: String(r["动作"] ?? r["action"] ?? "RETURN").trim() || "RETURN",
+        recycle_date: String(r["回收日期"] ?? r["回收/归还日期"] ?? r["recycle_date"] ?? "").trim(),
+        remark: String(r["备注"] ?? r["remark"] ?? "").trim(),
+      }))
+      .filter((x) => x.serial_no && x.recycle_date);
+
+    if (!items.length) {
+      ElMessage.warning("Excel里没有可导入的数据");
+      return;
+    }
+
+    const res: any = await apiPost("/api/pc-recycle-batch", { items });
+    const okSum = Number(res?.success || 0);
+    const failSum = Number(res?.failed || 0);
+    if (failSum > 0) {
+      console.warn("pc-recycle-batch errors", res?.errors);
+      ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
+    } else {
+      ElMessage.success(`导入完成：成功 ${okSum} 条`);
+    }
+
+    await loadAssets();
+  } catch (e: any) {
+    ElMessage.error(e?.message || "导入失败");
+  }
+}
+
 async function submit() {
   const ok = await formRef.value?.validate().catch(() => false);
   if (!ok) return;
