@@ -59,7 +59,7 @@ export async function ensurePcSchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)").run();
 
 
-// D1 兼容：跳过基于 sqlite_master 的运行时重建，依赖显式迁移。
+// D1 环境下不使用 sqlite_master 进行运行时表重建；缺失列通过后续 ADD COLUMN 容错补齐。
 
 // Scrap records (报废单明细)
 await db.prepare(`

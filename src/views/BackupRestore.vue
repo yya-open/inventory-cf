@@ -4,9 +4,8 @@
       <div>
         <div style="font-weight:700; font-size:16px">备份 / 恢复</div>
         <div style="color:#888; font-size:12px; margin-top:6px; line-height:1.5">
-          备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。<br />
-          默认执行<b>全表备份</b>（除正在运行的恢复任务表 restore_job 外），包含业务表与系统表。<br />
-          <b>恢复属于高风险操作</b>，请谨慎。
+          备份文件为 JSON（支持 <b>.json.gz</b> 压缩），默认导出全部业务表与系统表。
+          <b>恢复属于高风险操作</b>，restore_job 会自动跳过，避免恢复任务执行中被自身覆盖。
         </div>
       </div>
 
@@ -87,13 +86,13 @@
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载完整备份</el-button>
+              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载全表备份</el-button>
               <el-button :loading="downloading" @click="downloadTxOnly" plain>只下载明细</el-button>
               <el-button :loading="downloading" @click="downloadAuditOnly" plain>只下载审计</el-button>
             </div>
 
             <el-alert type="info" show-icon :closable="false">
-              企业级备份默认会自动发现并导出全部表；restore_job 会自动跳过，避免恢复任务影响自身执行。
+              建议：日常优先使用“下载全表备份”；明细/审计/慢请求可再按时间单独导出。
             </el-alert>
           </div>
         </el-card>
@@ -140,7 +139,7 @@
 
             <el-alert
               v-if="restoreValidate"
-              :type="restoreValidate.counts?.error ? 'error' : (restoreValidate.counts?.warn ? 'warning' : 'success')"
+              :type="restoreValidate.valid ? 'success' : 'error'"
               show-icon
               :closable="false"
             >
@@ -389,7 +388,6 @@ function buildBackupQuery(extra?: Record<string, string>) {
 
   // gzip / pagination
   if (bk.value.gzip) q.set("gzip", "1");
-  q.set("include_system", "1");
   q.set("page_size", String(bk.value.page_size || 1000));
 
   // time ranges for big tables
@@ -538,9 +536,6 @@ const progressStatus = computed(() => {
 
 
 const TABLE_LABEL: Record<string, string> = {
-  audit_retention_state: '审计清理状态',
-  api_slow_requests: '慢请求日志',
-  user_password_history: '密码历史',
   warehouses: "仓库",
   items: "配件",
   stock: "stock",
@@ -551,6 +546,9 @@ const TABLE_LABEL: Record<string, string> = {
   audit_log: "审计日志",
   auth_login_throttle: "登录限流",
   public_api_throttle: "公共接口限流",
+  audit_retention_state: "审计清理状态",
+  api_slow_requests: "慢请求日志",
+  restore_job: "恢复任务",
   users: "用户",
   pc_assets: "电脑台账",
   pc_in: "电脑入库记录",
