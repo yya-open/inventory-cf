@@ -78,23 +78,20 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         perTable.__present__[t] = true;
       }
 
-      // Prefer using backup.stats (table -> count) to compute totals quickly and correctly,
-      // instead of iterating every row during SCAN.
+      // Prefer "stats" (v2 backup) to compute per-table row counts.
+      // This avoids partial/early stream termination causing wrong totals.
       const scanObj2 = await env.BACKUP_BUCKET.get(job.file_key);
       if (!scanObj2?.body) throw new Error('R2 文件读取失败（SCAN-2）');
       const sniff1 = await sniffGzipFromStream(scanObj2.body);
       const stats = await readBackupStatsFromStream(sniff1.stream, sniff1.gzip);
-
       if (stats) {
-        for (const t of Object.keys(TABLE_COLUMNS)) {
-          const n = Number((stats as any)[t] ?? 0) || 0;
-          counts[t] = n;
+        for (const [t, n] of Object.entries(stats)) {
+          if (!TABLE_COLUMNS[t]) continue;
+          counts[t] = Number(n || 0);
+          total += counts[t];
+          perTable.__present__[t] = true;
         }
-        total = Object.entries(counts)
-          .filter(([t]) => t !== 'restore_job')
-          .reduce((acc, [, n]) => acc + Number(n || 0), 0);
       } else {
-        // Fallback: iterate rows if stats not found.
         const scanObj3 = await env.BACKUP_BUCKET.get(job.file_key);
         if (!scanObj3?.body) throw new Error('R2 文件读取失败（SCAN-3）');
         const sniff2 = await sniffGzipFromStream(scanObj3.body);
@@ -163,6 +160,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       };
 
       const sniff2 = await sniffGzipFromStream(runObj.body);
+      let exhausted = true;
       for await (const { table, rowText } of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
         if (!TABLE_COLUMNS[table] || table === 'restore_job') continue;
         if (table !== curTable) {
@@ -193,14 +191,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         lastTable = table;
         lastNextRow = rowIndexInTable + 1;
         if (batch.length >= 50) await flush();
-        if (processedThisRun >= maxRows) break;
-        if (Date.now() - startTime >= maxMs) break;
+        if (processedThisRun >= maxRows) { exhausted = false; break; }
+        if (Date.now() - startTime >= maxMs) { exhausted = false; break; }
       }
       await flush();
 
       const processedRowsNew = Number(job.processed_rows || 0) + processedThisRun;
       const totalRows = Number(job.total_rows || 0);
-      const done = totalRows > 0 ? processedRowsNew >= totalRows : true;
+      // Mark done only when we actually hit EOF of the backup stream.
+      // This prevents early DONE when total_rows was miscomputed.
+      const done = exhausted;
       const nextCursor = { table: lastTable || '', row: lastNextRow || 0 };
 
       const processedMap: Record<string, number> = (perTable.__processed__ && typeof perTable.__processed__ === 'object') ? perTable.__processed__ : {};

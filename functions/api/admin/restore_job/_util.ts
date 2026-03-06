@@ -298,6 +298,82 @@ export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, 
   }
 }
 
+// Read top-level "stats" object from a backup json stream (v2), without parsing the full file.
+// Brace-balanced so it works even when chunks split in the middle.
+export async function readBackupStatsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean): Promise<Record<string, number> | null> {
+  let buf = "";
+  let found = false;
+  let started = false;
+  let depth = 0;
+  let inStr = false;
+  let esc = false;
+  let objStart = -1;
+
+  for await (const chunk of textChunksFromStream(stream, gzip)) {
+    buf += chunk;
+
+    if (!found) {
+      const idx = buf.indexOf('"stats"');
+      if (idx === -1) {
+        buf = buf.slice(Math.max(0, buf.length - 256));
+        continue;
+      }
+      found = true;
+      buf = buf.slice(idx);
+    }
+
+    if (!started) {
+      const colon = buf.indexOf(':');
+      if (colon === -1) continue;
+      const brace = buf.indexOf('{', colon);
+      if (brace === -1) continue;
+      started = true;
+      objStart = brace;
+      depth = 0;
+      inStr = false;
+      esc = false;
+    }
+
+    for (let i = objStart; i < buf.length; i++) {
+      const ch = buf[i];
+      if (inStr) {
+        if (esc) { esc = false; continue; }
+        if (ch === '\\') { esc = true; continue; }
+        if (ch === '"') { inStr = false; continue; }
+        continue;
+      }
+      if (ch === '"') { inStr = true; continue; }
+      if (ch === '{') depth++;
+      if (ch === '}') {
+        depth--;
+        if (depth === 0) {
+          const raw = buf.slice(objStart, i + 1);
+          try {
+            const parsed = JSON.parse(raw);
+            if (parsed && typeof parsed === 'object') {
+              const out: Record<string, number> = {};
+              for (const [k, v] of Object.entries(parsed)) {
+                if (typeof v === 'number') out[k] = Number(v || 0);
+                else if (v && typeof v === 'object' && 'rows' in (v as any)) out[k] = Number((v as any).rows || 0);
+                else out[k] = 0;
+              }
+              return out;
+            }
+          } catch {
+            // keep reading more chunks
+          }
+        }
+      }
+    }
+
+    if (started && objStart > 0 && buf.length > 1024 * 1024) {
+      buf = buf.slice(objStart);
+      objStart = 0;
+    }
+  }
+  return null;
+}
+
 export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
   const skipWS = (buf: string, i: number) => {
     while (i < buf.length) {
@@ -597,121 +673,4 @@ export async function* iterBackupTableKeysFromStream(stream: ReadableStream<Uint
       i++;
     }
   }
-}
-
-// Read top-level "stats" object (a shallow map of table -> rowCount).
-// This is used to compute total_rows in SCAN without iterating every row.
-export async function readBackupStatsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean): Promise<Record<string, number> | null> {
-  const skipWS = (buf: string, i: number) => {
-    while (i < buf.length) {
-      const c = buf[i];
-      if (c === " " || c === "\n" || c === "\r" || c === "\t") i++;
-      else break;
-    }
-    return i;
-  };
-
-  const readJsonString = (buf: string, i: number) => {
-    i++; // skip opening quote
-    let out = "";
-    let esc = false;
-    while (i < buf.length) {
-      const c = buf[i++];
-      if (esc) {
-        out += c;
-        esc = false;
-        continue;
-      }
-      if (c === "\\") {
-        out += c;
-        esc = true;
-        continue;
-      }
-      if (c === '"') {
-        return { value: JSON.parse(`"${out}"`), next: i };
-      }
-      out += c;
-    }
-    return null;
-  };
-
-  const readNumber = (buf: string, i: number) => {
-    let j = i;
-    while (j < buf.length) {
-      const c = buf[j];
-      if ((c >= '0' && c <= '9') || c === '-' || c === '+') j++;
-      else break;
-    }
-    if (j === i) return null;
-    const n = Number(buf.slice(i, j));
-    if (Number.isNaN(n)) return null;
-    return { value: n, next: j };
-  };
-
-  let buf = "";
-  let state: "seek_stats" | "seek_key" | "seek_value" = "seek_stats";
-  const out: Record<string, number> = {};
-  let curKey = "";
-
-  for await (const chunk of textChunksFromStream(stream, gzip)) {
-    buf += chunk;
-    let i = 0;
-    while (i < buf.length) {
-      if (state === 'seek_stats') {
-        const idx = buf.indexOf('"stats"', i);
-        if (idx === -1) {
-          buf = buf.slice(Math.max(0, buf.length - 64));
-          i = 0;
-          break;
-        }
-        i = idx + '"stats"'.length;
-        i = skipWS(buf, i);
-        if (buf[i] !== ':') { i++; continue; }
-        i++;
-        i = skipWS(buf, i);
-        if (buf[i] !== '{') { i++; continue; }
-        i++;
-        state = 'seek_key';
-        continue;
-      }
-
-      if (state === 'seek_key') {
-        i = skipWS(buf, i);
-        if (i >= buf.length) break;
-        if (buf[i] === '}') return out;
-        if (buf[i] === ',') { i++; continue; }
-        if (buf[i] !== '"') { i++; continue; }
-        const r = readJsonString(buf, i);
-        if (!r) break;
-        curKey = r.value;
-        i = r.next;
-        i = skipWS(buf, i);
-        if (buf[i] !== ':') { i++; continue; }
-        i++;
-        state = 'seek_value';
-        continue;
-      }
-
-      if (state === 'seek_value') {
-        i = skipWS(buf, i);
-        if (i >= buf.length) break;
-        if (buf.startsWith('null', i)) {
-          out[curKey] = 0;
-          i += 4;
-          state = 'seek_key';
-          continue;
-        }
-        const r = readNumber(buf, i);
-        if (!r) { i++; continue; }
-        out[curKey] = r.value;
-        i = r.next;
-        state = 'seek_key';
-        continue;
-      }
-
-      i++;
-    }
-  }
-
-  return Object.keys(out).length ? out : null;
 }
