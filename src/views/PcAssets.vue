@@ -21,20 +21,6 @@
           </div>
         </div>
 
-        <div v-if="canOperator" class="toolbar-block toolbar-import">
-          <div class="toolbar-block-title">批量操作</div>
-          <div class="toolbar-row compact">
-            <el-upload
-              :show-file-list="false"
-              :auto-upload="false"
-              accept=".xlsx,.xls"
-              :on-change="onImportAssetsFile"
-            >
-              <el-button type="primary">Excel导入（批量入库）</el-button>
-            </el-upload>
-            <div class="toolbar-hint">适合批量新增电脑台账</div>
-          </div>
-        </div>
       </div>
 
       <div class="toolbar-right">
@@ -44,6 +30,16 @@
             <el-button @click="exportExcel">导出Excel</el-button>
             <el-button v-if="isAdmin" @click="initQrKeys">初始化二维码Key</el-button>
             <el-button v-if="canOperator" @click="downloadAssetTemplate">下载导入模板</el-button>
+            <el-upload
+              v-if="canOperator"
+              class="toolbar-upload"
+              :show-file-list="false"
+              :auto-upload="false"
+              accept=".xlsx,.xls"
+              :on-change="onImportAssetsFile"
+            >
+              <el-button type="primary">Excel导入（批量入库）</el-button>
+            </el-upload>
           </div>
         </div>
       </div>
@@ -821,6 +817,10 @@ onMounted(load);
 }
 .toolbar-tool-grid :deep(.el-button){
   margin-left:0;
+  width:100%;
+}
+.toolbar-tool-grid :deep(.el-upload),
+.toolbar-tool-grid :deep(.el-upload .el-button){
   width:100%;
 }
 @media (max-width: 1100px){
