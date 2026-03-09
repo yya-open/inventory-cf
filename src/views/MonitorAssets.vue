@@ -29,11 +29,11 @@
         <div class="toolbar-right">
           <div class="toolbar-block toolbar-tools">
             <div class="toolbar-block-title">快捷工具</div>
-            <div class="toolbar-tool-grid">
+            <div class="toolbar-tool-row">
               <el-button @click="exportExcel">导出Excel</el-button>
               <el-button @click="downloadMonitorTemplate">下载导入模板</el-button>
               <el-upload
-                class="toolbar-upload"
+                class="toolbar-upload toolbar-upload-inline"
                 :show-file-list="false"
                 :auto-upload="false"
                 accept=".xlsx,.xls"
@@ -42,8 +42,22 @@
                 <el-button type="primary">Excel导入</el-button>
               </el-upload>
               <el-button v-if="can('operator')" type="primary" plain @click="openCreate">新增台账</el-button>
-              <el-button v-if="can('operator')" @click="openLocationMgr">管理位置</el-button>
-              <el-button v-if="can('admin')" @click="initQrKeys">初始化二维码Key</el-button>
+              <el-dropdown
+                v-if="can('operator') || can('admin')"
+                trigger="click"
+                @command="handleToolbarMore"
+              >
+                <el-button class="toolbar-more-button">
+                  更多
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="can('operator')" command="location">管理位置</el-dropdown-item>
+                    <el-dropdown-item v-if="can('admin')" command="initQr">初始化二维码Key</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </div>
@@ -75,16 +89,30 @@
         </el-table-column>
         <el-table-column prop="department" label="部门" min-width="140" />
         <el-table-column prop="updated_at" label="更新时间" min-width="170" />
-        <el-table-column label="操作" width="320" fixed="right">
+        <el-table-column label="操作" width="220" fixed="right">
           <template #default="{ row }">
-            <div class="monitor-op-group">
-              <el-button v-if="can('admin')" link type="primary" @click="openEdit(row)">编辑</el-button>
-              <el-button v-if="can('operator')" link @click="openQr(row)">二维码</el-button>
+            <div class="monitor-op-group compact">
               <el-button v-if="can('operator')" link type="success" @click="openIn(row)">入库</el-button>
               <el-button v-if="can('operator')" link type="warning" @click="openOut(row)">出库</el-button>
-              <el-button v-if="can('operator')" link type="info" @click="openReturn(row)">归还</el-button>
-              <el-button v-if="can('operator')" link type="primary" @click="openTransfer(row)">调拨</el-button>
-              <el-button v-if="can('admin')" link type="danger" @click="removeAsset(row)">删除</el-button>
+              <el-dropdown
+                v-if="can('operator') || can('admin')"
+                trigger="click"
+                @command="(command) => handleRowMore(command, row)"
+              >
+                <el-button link class="row-more-trigger">
+                  更多
+                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item v-if="can('admin')" command="edit">编辑</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="qr">二维码</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="return">归还</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="transfer">调拨</el-dropdown-item>
+                    <el-dropdown-item v-if="can('admin')" command="delete" divided>删除</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </template>
         </el-table-column>
@@ -278,6 +306,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { ArrowDown } from "@element-plus/icons-vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiDelete, apiGet, apiPost, apiPut } from "../api/client";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
@@ -390,6 +419,20 @@ async function loadList(opts?: { keepPage?: boolean }) {
 
 function reload() {
   loadList({ keepPage: false });
+}
+
+
+function handleToolbarMore(command: string) {
+  if (command === "location") return openLocationMgr();
+  if (command === "initQr") return initQrKeys();
+}
+
+function handleRowMore(command: string, row: any) {
+  if (command === "edit") return openEdit(row);
+  if (command === "qr") return openQr(row);
+  if (command === "return") return openReturn(row);
+  if (command === "transfer") return openTransfer(row);
+  if (command === "delete") return removeAsset(row);
 }
 
 async function fetchAll() {
@@ -857,13 +900,17 @@ onMounted(async () => {
 .toolbar-location{ width:220px; }
 .toolbar-input{ width:300px; max-width:100%; }
 .toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:wrap; }
-.toolbar-tool-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:10px; }
-.toolbar-tool-grid :deep(.el-button){ width:100%; margin-left:0; }
-.toolbar-tool-grid :deep(.el-upload), .toolbar-tool-grid :deep(.el-upload .el-button){ width:100%; }
-.monitor-op-group{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.toolbar-tool-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; }
+.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; }
+.toolbar-upload-inline{ flex:0 0 auto; }
+.toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:auto; }
+.toolbar-more-button{ min-width:88px; }
+.monitor-op-group{ display:flex; align-items:center; gap:4px 14px; white-space:nowrap; }
+.monitor-op-group.compact{ justify-content:flex-start; }
 .monitor-op-group :deep(.el-button){ margin-left:0; padding:4px 0; height:auto; font-weight:600; }
+.row-more-trigger{ color:var(--el-color-primary); }
 @media (max-width: 1100px){ .monitor-toolbar{ grid-template-columns:1fr; } }
-@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } }
+@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-row{ flex-wrap:wrap; } }
 
 .qr-header {
   display: flex;
