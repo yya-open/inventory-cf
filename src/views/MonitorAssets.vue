@@ -29,7 +29,7 @@
         <div class="toolbar-right">
           <div class="toolbar-block toolbar-tools">
             <div class="toolbar-block-title">快捷工具</div>
-            <div class="toolbar-tool-row">
+            <div class="toolbar-tool-grid-two">
               <el-button @click="exportExcel">导出Excel</el-button>
               <el-button @click="downloadMonitorTemplate">下载导入模板</el-button>
               <el-upload
@@ -900,17 +900,19 @@ onMounted(async () => {
 .toolbar-location{ width:220px; }
 .toolbar-input{ width:300px; max-width:100%; }
 .toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:wrap; }
-.toolbar-tool-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; }
-.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; }
-.toolbar-upload-inline{ flex:0 0 auto; }
-.toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:auto; }
+.toolbar-tool-grid-two{ display:grid; grid-template-columns:repeat(2, minmax(0, 1fr)); gap:10px; }
+.toolbar-tool-grid-two :deep(.el-button),
+.toolbar-tool-grid-two :deep(.el-upload),
+.toolbar-tool-grid-two :deep(.el-upload .el-button){ width:100%; margin-left:0; }
+.toolbar-upload-inline{ display:block; }
 .toolbar-more-button{ min-width:88px; }
+.toolbar-tool-grid-two :deep(.el-dropdown){ display:block; width:100%; }
 .monitor-op-group{ display:flex; align-items:center; gap:4px 14px; white-space:nowrap; }
 .monitor-op-group.compact{ justify-content:flex-start; }
 .monitor-op-group :deep(.el-button){ margin-left:0; padding:4px 0; height:auto; font-weight:600; }
 .row-more-trigger{ color:var(--el-color-primary); }
 @media (max-width: 1100px){ .monitor-toolbar{ grid-template-columns:1fr; } }
-@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-row{ flex-wrap:wrap; } }
+@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-grid-two{ grid-template-columns:1fr; } }
 
 .qr-header {
   display: flex;

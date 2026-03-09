@@ -20,6 +20,11 @@
                 <el-option label="其他原因" value="OTHER" />
               </el-select>
 
+              <div class="ui-toolbar-actions ui-toolbar-actions-inline">
+                <el-button type="primary" @click="onSearch">查询</el-button>
+                <el-button @click="reset">重置</el-button>
+              </div>
+
               <el-input v-model="keyword" placeholder="关键词（资产编号/SN/品牌/型号/员工/备注…）" clearable class="ui-toolbar-input" @keyup.enter="onSearch" />
 
               <el-date-picker
@@ -33,10 +38,6 @@
                 @change="onSearch"
               />
 
-              <div class="ui-toolbar-actions">
-                <el-button type="primary" @click="onSearch">查询</el-button>
-                <el-button @click="reset">重置</el-button>
-              </div>
             </div>
           </div>
         </div>

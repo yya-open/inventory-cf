@@ -146,6 +146,10 @@ body {
   flex-wrap: wrap;
 }
 
+.ui-toolbar-actions-inline {
+  flex: 0 0 auto;
+}
+
 .ui-toolbar-grow {
   flex: 1 1 auto;
 }
