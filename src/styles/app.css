@@ -86,10 +86,10 @@ body {
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.92fr);
   gap: 16px;
   margin-bottom: 16px;
-  align-items: stretch;
+  align-items: start;
 }
 
 .ui-toolbar-main,
@@ -200,7 +200,7 @@ body {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 12px;
-  align-content: space-between;
+  align-content: start;
   grid-auto-rows: minmax(44px, 1fr);
 }
 
@@ -232,6 +232,12 @@ body {
   font-weight: 600;
 }
 
+@media (max-width: 1200px) {
+  .ui-toolbar {
+    grid-template-columns: minmax(0, 1.12fr) minmax(280px, 0.88fr);
+  }
+}
+
 @media (max-width: 1100px) {
   .ui-toolbar {
     grid-template-columns: 1fr;
@@ -253,8 +259,12 @@ body {
     grid-template-columns: 1fr;
   }
 
-  .ui-toolbar-actions-2,
+  .ui-toolbar-actions-2 {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
   .ui-toolbar-tool-row {
-    grid-template-columns: 1fr;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    min-height: auto;
   }
 }
