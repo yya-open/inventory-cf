@@ -86,26 +86,31 @@ body {
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.92fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
-  align-items: start;
+  align-items: stretch;
 }
 
 .ui-toolbar-main,
 .ui-toolbar-side {
   min-width: 0;
-}
-
-.ui-toolbar-side .ui-toolbar-block {
-  padding: 12px 14px;
+  display: flex;
 }
 
 .ui-toolbar-block {
+  flex: 1;
+  min-height: 156px;
   padding: 14px 16px;
   border: 1px solid #ebeef5;
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+  display: flex;
+  flex-direction: column;
+}
+
+.ui-toolbar-side .ui-toolbar-block {
+  padding: 12px 14px;
 }
 
 .ui-toolbar-title {
@@ -116,11 +121,31 @@ body {
 }
 
 .ui-toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: nowrap;
+  flex: 1;
   min-width: 0;
+  display: grid;
+  gap: 12px;
+  align-items: center;
+}
+
+.ui-toolbar-search-basic {
+  grid-template-columns: 1fr 2.15fr 0.9fr 0.9fr;
+}
+
+.ui-toolbar-search-warning {
+  grid-template-columns: 1.55fr 1fr 1.35fr 0.85fr 0.85fr;
+}
+
+.ui-toolbar-search-tx {
+  grid-template-columns: 0.95fr 1.55fr 1.45fr 1fr;
+}
+
+.ui-toolbar-search-log {
+  grid-template-columns: 0.8fr 1fr 1.2fr 1.45fr 1fr;
+}
+
+.ui-toolbar-search-monitor-tx {
+  grid-template-columns: 0.95fr 1.55fr 1.5fr 0.85fr;
 }
 
 .ui-toolbar-row > * {
@@ -128,82 +153,65 @@ body {
 }
 
 .ui-toolbar-tag {
-  flex: 0 1 auto;
-  max-width: 220px;
-  height: 32px;
+  height: 38px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
   padding-inline: 12px;
+  white-space: nowrap;
   overflow: hidden;
+  text-overflow: ellipsis;
 }
 
-.ui-toolbar-select {
-  width: 120px;
-  flex: 0 1 120px;
-}
-
-.ui-toolbar-select-wide {
-  width: 150px;
-  flex: 0 1 150px;
-}
-
-.ui-toolbar-input {
-  flex: 1 1 0;
-  width: auto;
-  min-width: 0;
-  max-width: 100%;
-}
-
+.ui-toolbar-select,
+.ui-toolbar-select-wide,
+.ui-toolbar-input,
 .ui-toolbar-date {
-  width: 232px;
-  flex: 0 0 232px;
-  max-width: 100%;
+  width: 100%;
+  min-width: 0;
 }
 
 .ui-toolbar-actions {
-  display: flex;
+  width: 100%;
+  display: grid;
   gap: 12px;
-  flex-wrap: nowrap;
-  flex: 0 0 auto;
+  align-items: stretch;
+}
+
+.ui-toolbar-actions-2 {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.ui-toolbar-actions-1 {
+  grid-template-columns: 1fr;
 }
 
 .ui-toolbar-actions .el-button {
-  min-width: 88px;
-  height: 38px;
-  padding-inline: 18px;
-}
-
-.ui-toolbar-grow {
-  flex: 1 1 auto;
-}
-
-.ui-toolbar-tool-grid {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ui-toolbar-tool-grid .el-button,
-.ui-toolbar-tool-grid .el-upload,
-.ui-toolbar-tool-grid .el-upload .el-button {
   width: 100%;
+  min-width: 0;
+  height: 42px;
+  padding-inline: 18px;
   margin-left: 0;
 }
 
 .ui-toolbar-tool-row {
+  flex: 1;
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(132px, 1fr));
-  gap: 10px;
-  align-items: stretch;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
   align-content: space-between;
-  min-height: 88px;
+  grid-auto-rows: minmax(44px, 1fr);
 }
 
 .ui-toolbar-tool-row .el-button,
 .ui-toolbar-tool-row .el-upload,
 .ui-toolbar-tool-row .el-upload .el-button {
-  margin-left: 0;
   width: 100%;
-  height: 38px;
   min-width: 0;
+  height: 100%;
+  min-height: 44px;
+  margin-left: 0;
 }
 
 .ui-toolbar-more-button {
@@ -224,12 +232,6 @@ body {
   font-weight: 600;
 }
 
-@media (max-width: 1200px) {
-  .ui-toolbar {
-    grid-template-columns: 1.12fr 0.88fr;
-  }
-}
-
 @media (max-width: 1100px) {
   .ui-toolbar {
     grid-template-columns: 1fr;
@@ -238,30 +240,21 @@ body {
 
 @media (max-width: 768px) {
   .ui-toolbar-block {
+    min-height: auto;
     padding: 12px;
     border-radius: 14px;
   }
 
-  .ui-toolbar-row {
-    flex-wrap: wrap;
+  .ui-toolbar-search-basic,
+  .ui-toolbar-search-warning,
+  .ui-toolbar-search-tx,
+  .ui-toolbar-search-log,
+  .ui-toolbar-search-monitor-tx {
+    grid-template-columns: 1fr;
   }
 
-  .ui-toolbar-select,
-  .ui-toolbar-select-wide,
-  .ui-toolbar-input,
-  .ui-toolbar-date,
-  .ui-toolbar-actions,
-  .ui-toolbar-actions .el-button,
-  .ui-toolbar-tool-grid,
-  .ui-toolbar-tool-grid .el-button,
-  .ui-toolbar-tool-grid .el-upload,
-  .ui-toolbar-tool-grid .el-upload .el-button {
-    width: 100%;
-  }
-
-  .ui-toolbar-tool-row,
-  .ui-toolbar-tool-grid {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    min-height: auto;
+  .ui-toolbar-actions-2,
+  .ui-toolbar-tool-row {
+    grid-template-columns: 1fr;
   }
 }

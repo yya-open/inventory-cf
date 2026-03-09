@@ -4,7 +4,7 @@
       <div class="toolbar-left">
         <div class="toolbar-block toolbar-search">
           <div class="toolbar-block-title">筛选查询</div>
-          <div class="toolbar-row">
+          <div class="toolbar-row toolbar-row-4">
             <el-select v-model="status" placeholder="状态" clearable class="toolbar-select" @change="onSearch">
               <el-option label="在库" value="IN_STOCK" />
               <el-option label="已领用" value="ASSIGNED" />
@@ -763,14 +763,15 @@ onMounted(load);
 }
 .asset-toolbar{
   display:grid;
-  grid-template-columns:minmax(0, 1.28fr) minmax(300px, 0.92fr);
+  grid-template-columns:repeat(2, minmax(0, 1fr));
   gap:16px;
   margin-bottom:16px;
-  align-items:start;
+  align-items:stretch;
 }
 .toolbar-left,
 .toolbar-right{
   min-width:0;
+  display:flex;
 }
 .toolbar-right .toolbar-block{
   padding:12px 14px;
@@ -781,10 +782,14 @@ onMounted(load);
   gap:12px;
 }
 .toolbar-block{
+  flex:1;
+  min-height:156px;
   padding:14px 16px;
   border:1px solid #ebeef5;
   border-radius:16px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+  display:flex;
+  flex-direction:column;
 }
 .toolbar-block-title{
   margin-bottom:10px;
@@ -793,11 +798,14 @@ onMounted(load);
   color:#606266;
 }
 .toolbar-row{
-  display:flex;
-  align-items:center;
-  gap:12px;
-  flex-wrap:nowrap;
+  flex:1;
   min-width:0;
+  display:grid;
+  gap:12px;
+  align-items:center;
+}
+.toolbar-row-4{
+  grid-template-columns: 1fr 2.15fr 0.9fr 0.9fr;
 }
 .toolbar-row > *{
   min-width:0;
@@ -806,24 +814,24 @@ onMounted(load);
   justify-content:space-between;
 }
 .toolbar-select{
-  width:120px;
-  flex:0 1 120px;
+  width:100%;
+  min-width:0;
 }
 .toolbar-input{
-  flex:1 1 0;
-  width:auto;
+  width:100%;
   min-width:0;
   max-width:100%;
 }
 .toolbar-actions-inline{
-  display:flex;
+  width:100%;
+  display:grid;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
   gap:12px;
-  flex-wrap:nowrap;
-  flex:0 0 auto;
 }
 .toolbar-actions-inline :deep(.el-button){
-  min-width:88px;
-  height:38px;
+  width:100%;
+  min-width:0;
+  height:42px;
   padding-inline:18px;
 }
 .toolbar-hint{
@@ -832,18 +840,19 @@ onMounted(load);
   line-height:1.4;
 }
 .toolbar-tool-row{
+  flex:1;
   display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(132px, 1fr));
-  gap:10px;
-  align-items:stretch;
+  grid-template-columns:repeat(2, minmax(0, 1fr));
+  gap:12px;
   align-content:space-between;
-  min-height:88px;
+  grid-auto-rows:minmax(44px, 1fr);
 }
 .toolbar-tool-row :deep(.el-button){
   margin-left:0;
   width:100%;
   min-width:0;
-  height:38px;
+  height:100%;
+  min-height:44px;
 }
 .toolbar-tool-row :deep(.el-upload),
 .toolbar-tool-row :deep(.el-upload .el-button){
@@ -855,11 +864,6 @@ onMounted(load);
 .toolbar-more-button{
   min-width:0 !important;
 }
-@media (max-width: 1200px){
-  .asset-toolbar{
-    grid-template-columns:minmax(0, 1.12fr) minmax(280px, 0.88fr);
-  }
-}
 @media (max-width: 1100px){
   .asset-toolbar{
     grid-template-columns: 1fr;
@@ -870,8 +874,9 @@ onMounted(load);
     padding:12px;
     border-radius:14px;
   }
-  .toolbar-row{
-    flex-wrap:wrap;
+  .toolbar-row,
+  .toolbar-row-4{
+    grid-template-columns:1fr;
   }
   .toolbar-select,
   .toolbar-input,
@@ -882,7 +887,7 @@ onMounted(load);
     width:100%;
   }
   .toolbar-tool-row{
-    grid-template-columns:repeat(2, minmax(0, 1fr));
+    grid-template-columns:1fr;
     min-height:auto;
   }
   .toolbar-row.compact{

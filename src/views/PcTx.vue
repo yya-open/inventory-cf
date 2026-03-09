@@ -4,7 +4,7 @@
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">筛选查询</div>
-          <div class="ui-toolbar-row">
+          <div class="ui-toolbar-row ui-toolbar-search-tx">
             <el-select v-model="type" placeholder="类型" clearable class="ui-toolbar-select" @change="onSearch">
               <el-option label="入库(IN)" value="IN" />
               <el-option label="出库(OUT)" value="OUT" />
@@ -24,7 +24,7 @@
 
             <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" class="ui-toolbar-input" @keyup.enter="onSearch" />
 
-            <div class="ui-toolbar-actions">
+            <div class="ui-toolbar-actions ui-toolbar-actions-2">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="reset">重置</el-button>
             </div>
@@ -47,13 +47,14 @@
             >
               <el-button type="primary">Excel导入</el-button>
             </el-upload>
-            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-            <el-dropdown trigger="click" @command="handleMoreCommand">
+            <el-button v-if="!isAdmin" type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
+            <el-dropdown v-else trigger="click" @command="handleMoreCommand">
               <el-button class="ui-toolbar-more-button">更多</el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-if="isAdmin" command="delete" :disabled="selectedRows.length===0 || loading">删除选中</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="clear" :disabled="loading">清空记录</el-dropdown-item>
+                  <el-dropdown-item command="back">返回台账</el-dropdown-item>
+                  <el-dropdown-item command="delete" :disabled="selectedRows.length===0 || loading">删除选中</el-dropdown-item>
+                  <el-dropdown-item command="clear" :disabled="loading">清空记录</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
@@ -152,6 +153,7 @@ const keyword = ref<string>("");
 const dateRange = ref<[string, string] | null>(null);
 
 function handleMoreCommand(command: string) {
+  if (command === "back") return (window.location.hash = "#/pc/assets");
   if (command === "delete") return deleteSelected();
   if (command === "clear") return clearPcTx();
 }

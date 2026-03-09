@@ -5,7 +5,7 @@
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
-            <div class="ui-toolbar-row">
+            <div class="ui-toolbar-row ui-toolbar-search-log">
               <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-select" @change="onSearch">
                 <el-option label="在位(OK)" value="OK" />
                 <el-option label="异常(ISSUE)" value="ISSUE" />
@@ -33,7 +33,7 @@
                 @change="onSearch"
               />
 
-              <div class="ui-toolbar-actions">
+              <div class="ui-toolbar-actions ui-toolbar-actions-2">
                 <el-button type="primary" @click="onSearch">查询</el-button>
                 <el-button @click="reset">重置</el-button>
               </div>

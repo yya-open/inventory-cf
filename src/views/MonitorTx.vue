@@ -5,7 +5,7 @@
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
-            <div class="ui-toolbar-row">
+            <div class="ui-toolbar-row ui-toolbar-search-monitor-tx">
               <el-select v-model="q.type" placeholder="动作" clearable class="ui-toolbar-select" @change="reload()">
                 <el-option label="入库" value="IN" />
                 <el-option label="出库" value="OUT" />
@@ -19,7 +19,7 @@
 
               <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable class="ui-toolbar-input" @keyup.enter="reload()" />
 
-              <div class="ui-toolbar-actions">
+              <div class="ui-toolbar-actions ui-toolbar-actions-1">
                 <el-button type="primary" @click="reload()">查询</el-button>
               </div>
             </div>
