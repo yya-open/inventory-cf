@@ -900,8 +900,9 @@ onMounted(async () => {
 .toolbar-location{ width:220px; }
 .toolbar-input{ width:300px; max-width:100%; }
 .toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:wrap; }
+.toolbar-actions-inline :deep(.el-button){ min-width:106px; height:40px; }
 .toolbar-tool-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; }
-.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; }
+.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; height:40px; flex:0 0 auto; }
 .toolbar-upload-inline{ flex:0 0 auto; }
 .toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:auto; }
 .toolbar-more-button{ min-width:88px; }

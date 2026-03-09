@@ -35,7 +35,7 @@
       <div class="ui-toolbar-side">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">快捷工具</div>
-          <div class="ui-toolbar-tool-grid">
+          <div class="ui-toolbar-tool-row">
             <el-button @click="exportExcel">导出Excel</el-button>
             <el-button v-if="canOperator" @click="downloadTxTemplate">下载导入模板</el-button>
             <el-upload
@@ -45,11 +45,18 @@
               accept=".xlsx,.xls"
               :on-change="onImportTxFile"
             >
-              <el-button type="primary">Excel导入（按类型写入记录）</el-button>
+              <el-button type="primary">Excel导入</el-button>
             </el-upload>
             <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-            <el-button v-if="isAdmin" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
-            <el-button v-if="isAdmin" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
+            <el-dropdown trigger="click" @command="handleMoreCommand">
+              <el-button class="ui-toolbar-more-button">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="isAdmin" command="delete" :disabled="selectedRows.length===0 || loading">删除选中</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="clear" :disabled="loading">清空记录</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -143,6 +150,11 @@ function filterKey() {
 const type = ref<string>("");
 const keyword = ref<string>("");
 const dateRange = ref<[string, string] | null>(null);
+
+function handleMoreCommand(command: string) {
+  if (command === "delete") return deleteSelected();
+  if (command === "clear") return clearPcTx();
+}
 
 function onSearch() {
   page.value = 1;

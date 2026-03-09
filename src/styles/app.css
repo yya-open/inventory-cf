@@ -146,6 +146,11 @@ body {
   flex-wrap: wrap;
 }
 
+.ui-toolbar-actions .el-button {
+  min-width: 106px;
+  height: 40px;
+}
+
 .ui-toolbar-grow {
   flex: 1 1 auto;
 }
@@ -161,6 +166,28 @@ body {
 .ui-toolbar-tool-grid .el-upload .el-button {
   width: 100%;
   margin-left: 0;
+}
+
+.ui-toolbar-tool-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: nowrap;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.ui-toolbar-tool-row .el-button,
+.ui-toolbar-tool-row .el-upload,
+.ui-toolbar-tool-row .el-upload .el-button {
+  margin-left: 0;
+  height: 40px;
+  min-width: 122px;
+  flex: 0 0 auto;
+}
+
+.ui-toolbar-more-button {
+  min-width: 88px !important;
 }
 
 .ui-link-group {
@@ -200,5 +227,9 @@ body {
   .ui-toolbar-tool-grid .el-upload,
   .ui-toolbar-tool-grid .el-upload .el-button {
     width: 100%;
+  }
+
+  .ui-toolbar-tool-row {
+    flex-wrap: wrap;
   }
 }

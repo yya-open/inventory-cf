@@ -26,11 +26,18 @@
       <div class="ui-toolbar-side">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">快捷工具</div>
-          <div class="ui-toolbar-tool-grid">
-            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单（选中）</el-button>
-            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
-            <el-button type="success" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
+          <div class="ui-toolbar-tool-row">
+            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单</el-button>
+            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出当前页</el-button>
             <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
+            <el-dropdown trigger="click" @command="handleMoreCommand">
+              <el-button class="ui-toolbar-more-button">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="exportAll">导出全部</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -152,6 +159,10 @@ function onPageSizeChange() {
   load();
 }
 
+
+function handleMoreCommand(command: string) {
+  if (command === "exportAll") exportExcel(true);
+}
 
 function onSelectionChange(list: any[]) {
   selectedIds.value = (list || []).map((r: any) => Number(r.id)).filter((x) => Number.isFinite(x) && x > 0);

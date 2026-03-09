@@ -44,9 +44,16 @@
         <div class="ui-toolbar-side">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">快捷工具</div>
-            <div class="ui-toolbar-tool-grid">
+            <div class="ui-toolbar-tool-row">
               <el-button :disabled="loading" @click="exportCsv">导出</el-button>
-              <el-button v-if="isAdmin" type="danger" plain :disabled="loading" @click="deleteSelected">删除选中</el-button>
+              <el-dropdown v-if="isAdmin" trigger="click" @command="handleMoreCommand">
+                <el-button class="ui-toolbar-more-button">更多</el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="delete" :disabled="loading">删除选中</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
             </div>
           </div>
         </div>
@@ -180,6 +187,10 @@ function buildParams(withPage: boolean) {
     params.set("page_size", String(pageSize.value));
   }
   return params;
+}
+
+function handleMoreCommand(command: string) {
+  if (command === "delete") deleteSelected();
 }
 
 function onSearch() {

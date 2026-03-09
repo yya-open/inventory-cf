@@ -26,20 +26,27 @@
       <div class="toolbar-right">
         <div class="toolbar-block toolbar-tools">
           <div class="toolbar-block-title">快捷工具</div>
-          <div class="toolbar-tool-grid">
+          <div class="toolbar-tool-row">
             <el-button @click="exportExcel">导出Excel</el-button>
-            <el-button v-if="isAdmin" @click="initQrKeys">初始化二维码Key</el-button>
             <el-button v-if="canOperator" @click="downloadAssetTemplate">下载导入模板</el-button>
             <el-upload
               v-if="canOperator"
-              class="toolbar-upload"
+              class="toolbar-upload toolbar-upload-inline"
               :show-file-list="false"
               :auto-upload="false"
               accept=".xlsx,.xls"
               :on-change="onImportAssetsFile"
             >
-              <el-button type="primary">Excel导入（批量入库）</el-button>
+              <el-button type="primary">Excel导入</el-button>
             </el-upload>
+            <el-dropdown v-if="isAdmin" trigger="click" @command="handleAssetMoreCommand">
+              <el-button class="toolbar-more-button">更多</el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="initQr">初始化二维码Key</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
           </div>
         </div>
       </div>
@@ -296,6 +303,10 @@ const qrLoading = ref(false);
 const qrDataUrl = ref<string>("");
 const qrLink = ref<string>("");
 const qrRow = ref<any>(null);
+
+function handleAssetMoreCommand(command: string) {
+  if (command === "initQr") initQrKeys();
+}
 
 async function initQrKeys() {
   try {
@@ -805,23 +816,38 @@ onMounted(load);
   gap:12px;
   flex-wrap:wrap;
 }
+.toolbar-actions-inline :deep(.el-button){
+  min-width:106px;
+  height:40px;
+}
 .toolbar-hint{
   color:#909399;
   font-size:12px;
   line-height:1.4;
 }
-.toolbar-tool-grid{
-  display:grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+.toolbar-tool-row{
+  display:flex;
+  align-items:center;
   gap:10px;
+  flex-wrap:nowrap;
+  overflow-x:auto;
+  padding-bottom:2px;
 }
-.toolbar-tool-grid :deep(.el-button){
+.toolbar-tool-row :deep(.el-button){
   margin-left:0;
-  width:100%;
+  min-width:122px;
+  height:40px;
+  flex:0 0 auto;
 }
-.toolbar-tool-grid :deep(.el-upload),
-.toolbar-tool-grid :deep(.el-upload .el-button){
-  width:100%;
+.toolbar-tool-row :deep(.el-upload),
+.toolbar-tool-row :deep(.el-upload .el-button){
+  width:auto;
+}
+.toolbar-upload-inline{
+  flex:0 0 auto;
+}
+.toolbar-more-button{
+  min-width:88px !important;
 }
 @media (max-width: 1100px){
   .asset-toolbar{
@@ -840,6 +866,9 @@ onMounted(load);
   .toolbar-row.compact :deep(.el-upload),
   .toolbar-row.compact :deep(.el-upload .el-button){
     width:100%;
+  }
+  .toolbar-tool-row{
+    flex-wrap:wrap;
   }
   .toolbar-row.compact{
     align-items:stretch;
