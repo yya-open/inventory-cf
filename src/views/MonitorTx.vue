@@ -31,14 +31,7 @@
             <div class="ui-toolbar-title">快捷工具</div>
             <div class="ui-toolbar-tool-row">
               <el-button @click="doExport">导出</el-button>
-              <el-dropdown v-if="can('admin')" trigger="click" @command="handleMoreCommand">
-                <el-button class="ui-toolbar-more-button">更多</el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="delete" :disabled="!selected.length">删除</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button v-if="can('admin')" type="danger" plain :disabled="!selected.length" @click="doDelete">删除</el-button>
             </div>
           </div>
         </div>
@@ -150,9 +143,6 @@ async function loadList() {
   }
 }
 
-function handleMoreCommand(command: string) {
-  if (command === "delete") doDelete();
-}
 
 function reload() {
   page.value = 1;

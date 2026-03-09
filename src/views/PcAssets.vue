@@ -799,22 +799,29 @@ onMounted(load);
   display:flex;
   align-items:center;
   gap:12px;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
+}
+.toolbar-row > *{
+  min-width:0;
 }
 .toolbar-row.compact{
   justify-content:space-between;
 }
 .toolbar-select{
-  width:160px;
+  width:138px;
+  flex:0 0 138px;
 }
 .toolbar-input{
-  width:300px;
+  flex:1 1 auto;
+  width:auto;
+  min-width:180px;
   max-width:100%;
 }
 .toolbar-actions-inline{
   display:flex;
   gap:12px;
-  flex-wrap:wrap;
+  flex-wrap:nowrap;
+  flex:0 0 auto;
 }
 .toolbar-actions-inline :deep(.el-button){
   min-width:106px;
@@ -855,6 +862,9 @@ onMounted(load);
   .toolbar-block{
     padding:12px;
     border-radius:14px;
+  }
+  .toolbar-row{
+    flex-wrap:wrap;
   }
   .toolbar-select,
   .toolbar-input,

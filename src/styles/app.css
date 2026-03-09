@@ -114,7 +114,11 @@ body {
   display: flex;
   align-items: center;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+}
+
+.ui-toolbar-row > * {
+  min-width: 0;
 }
 
 .ui-toolbar-tag {
@@ -123,27 +127,33 @@ body {
 }
 
 .ui-toolbar-select {
-  width: 160px;
+  width: 138px;
+  flex: 0 0 138px;
 }
 
 .ui-toolbar-select-wide {
-  width: 220px;
+  width: 180px;
+  flex: 0 0 180px;
 }
 
 .ui-toolbar-input {
-  width: 300px;
+  flex: 1 1 auto;
+  width: auto;
+  min-width: 180px;
   max-width: 100%;
 }
 
 .ui-toolbar-date {
-  width: 260px;
+  width: 220px;
+  flex: 0 0 220px;
   max-width: 100%;
 }
 
 .ui-toolbar-actions {
   display: flex;
   gap: 12px;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
+  flex: 0 0 auto;
 }
 
 .ui-toolbar-actions .el-button {
@@ -211,6 +221,10 @@ body {
   .ui-toolbar-block {
     padding: 12px;
     border-radius: 14px;
+  }
+
+  .ui-toolbar-row {
+    flex-wrap: wrap;
   }
 
   .ui-toolbar-select,
