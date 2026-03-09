@@ -4,7 +4,7 @@
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">筛选查询</div>
-          <div class="ui-toolbar-row ui-toolbar-search-warning">
+          <div class="ui-toolbar-row">
             <el-tag type="warning" class="ui-toolbar-tag">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
 
             <el-select v-model="status" placeholder="状态" clearable class="ui-toolbar-select" @change="onSearch">
@@ -15,7 +15,7 @@
 
             <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="ui-toolbar-input" @keyup.enter="onSearch" />
 
-            <div class="ui-toolbar-actions ui-toolbar-actions-2">
+            <div class="ui-toolbar-actions">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="reset">重置</el-button>
             </div>
@@ -26,11 +26,11 @@
       <div class="ui-toolbar-side">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">快捷工具</div>
-          <div class="ui-toolbar-tool-row">
-            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单</el-button>
-            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出当前页</el-button>
+          <div class="ui-toolbar-tool-grid">
+            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单（选中）</el-button>
+            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
+            <el-button type="success" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
             <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-            <el-button @click="handleMoreCommand('exportAll')">导出全部</el-button>
           </div>
         </div>
       </div>
@@ -152,10 +152,6 @@ function onPageSizeChange() {
   load();
 }
 
-
-function handleMoreCommand(command: string) {
-  if (command === "exportAll") exportExcel(true);
-}
 
 function onSelectionChange(list: any[]) {
   selectedIds.value = (list || []).map((r: any) => Number(r.id)).filter((x) => Number.isFinite(x) && x > 0);

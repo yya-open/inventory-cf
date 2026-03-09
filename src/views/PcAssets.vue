@@ -4,7 +4,7 @@
       <div class="toolbar-left">
         <div class="toolbar-block toolbar-search">
           <div class="toolbar-block-title">筛选查询</div>
-          <div class="toolbar-row toolbar-row-4">
+          <div class="toolbar-row">
             <el-select v-model="status" placeholder="状态" clearable class="toolbar-select" @change="onSearch">
               <el-option label="在库" value="IN_STOCK" />
               <el-option label="已领用" value="ASSIGNED" />
@@ -26,20 +26,20 @@
       <div class="toolbar-right">
         <div class="toolbar-block toolbar-tools">
           <div class="toolbar-block-title">快捷工具</div>
-          <div class="toolbar-tool-row">
+          <div class="toolbar-tool-grid">
             <el-button @click="exportExcel">导出Excel</el-button>
+            <el-button v-if="isAdmin" @click="initQrKeys">初始化二维码Key</el-button>
             <el-button v-if="canOperator" @click="downloadAssetTemplate">下载导入模板</el-button>
             <el-upload
               v-if="canOperator"
-              class="toolbar-upload toolbar-upload-inline"
+              class="toolbar-upload"
               :show-file-list="false"
               :auto-upload="false"
               accept=".xlsx,.xls"
               :on-change="onImportAssetsFile"
             >
-              <el-button type="primary">Excel导入</el-button>
+              <el-button type="primary">Excel导入（批量入库）</el-button>
             </el-upload>
-            <el-button v-if="isAdmin" @click="handleAssetMoreCommand('initQr')">初始化二维码Key</el-button>
           </div>
         </div>
       </div>
@@ -296,10 +296,6 @@ const qrLoading = ref(false);
 const qrDataUrl = ref<string>("");
 const qrLink = ref<string>("");
 const qrRow = ref<any>(null);
-
-function handleAssetMoreCommand(command: string) {
-  if (command === "initQr") initQrKeys();
-}
 
 async function initQrKeys() {
   try {
@@ -763,18 +759,13 @@ onMounted(load);
 }
 .asset-toolbar{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
   gap:16px;
   margin-bottom:16px;
-  align-items:stretch;
 }
 .toolbar-left,
 .toolbar-right{
   min-width:0;
-  display:flex;
-}
-.toolbar-right .toolbar-block{
-  padding:12px 14px;
 }
 .toolbar-left{
   display:flex;
@@ -782,14 +773,10 @@ onMounted(load);
   gap:12px;
 }
 .toolbar-block{
-  flex:1;
-  min-height:156px;
   padding:14px 16px;
   border:1px solid #ebeef5;
   border-radius:16px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-  display:flex;
-  flex-direction:column;
 }
 .toolbar-block-title{
   margin-bottom:10px;
@@ -798,71 +785,43 @@ onMounted(load);
   color:#606266;
 }
 .toolbar-row{
-  flex:1;
-  min-width:0;
-  display:grid;
-  gap:12px;
+  display:flex;
   align-items:center;
-}
-.toolbar-row-4{
-  grid-template-columns: 1fr 2.15fr 0.9fr 0.9fr;
-}
-.toolbar-row > *{
-  min-width:0;
+  gap:12px;
+  flex-wrap:wrap;
 }
 .toolbar-row.compact{
   justify-content:space-between;
 }
 .toolbar-select{
-  width:100%;
-  min-width:0;
+  width:160px;
 }
 .toolbar-input{
-  width:100%;
-  min-width:0;
+  width:300px;
   max-width:100%;
 }
 .toolbar-actions-inline{
-  width:100%;
-  display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
+  display:flex;
   gap:12px;
-}
-.toolbar-actions-inline :deep(.el-button){
-  width:100%;
-  min-width:0;
-  height:42px;
-  padding-inline:18px;
+  flex-wrap:wrap;
 }
 .toolbar-hint{
   color:#909399;
   font-size:12px;
   line-height:1.4;
 }
-.toolbar-tool-row{
-  flex:1;
+.toolbar-tool-grid{
   display:grid;
-  grid-template-columns:repeat(2, minmax(0, 1fr));
-  gap:12px;
-  align-content:space-between;
-  grid-auto-rows:minmax(44px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap:10px;
 }
-.toolbar-tool-row :deep(.el-button){
+.toolbar-tool-grid :deep(.el-button){
   margin-left:0;
   width:100%;
-  min-width:0;
-  height:100%;
-  min-height:44px;
 }
-.toolbar-tool-row :deep(.el-upload),
-.toolbar-tool-row :deep(.el-upload .el-button){
+.toolbar-tool-grid :deep(.el-upload),
+.toolbar-tool-grid :deep(.el-upload .el-button){
   width:100%;
-}
-.toolbar-upload-inline{
-  width:100%;
-}
-.toolbar-more-button{
-  min-width:0 !important;
 }
 @media (max-width: 1100px){
   .asset-toolbar{
@@ -874,10 +833,6 @@ onMounted(load);
     padding:12px;
     border-radius:14px;
   }
-  .toolbar-row,
-  .toolbar-row-4{
-    grid-template-columns:1fr;
-  }
   .toolbar-select,
   .toolbar-input,
   .toolbar-actions-inline,
@@ -885,10 +840,6 @@ onMounted(load);
   .toolbar-row.compact :deep(.el-upload),
   .toolbar-row.compact :deep(.el-upload .el-button){
     width:100%;
-  }
-  .toolbar-tool-row{
-    grid-template-columns:1fr;
-    min-height:auto;
   }
   .toolbar-row.compact{
     align-items:stretch;

@@ -86,31 +86,21 @@ body {
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.28fr) minmax(300px, 0.92fr);
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
   gap: 16px;
   margin-bottom: 16px;
-  align-items: start;
 }
 
 .ui-toolbar-main,
 .ui-toolbar-side {
   min-width: 0;
-  display: flex;
 }
 
 .ui-toolbar-block {
-  flex: 1;
-  min-height: 156px;
   padding: 14px 16px;
   border: 1px solid #ebeef5;
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-  display: flex;
-  flex-direction: column;
-}
-
-.ui-toolbar-side .ui-toolbar-block {
-  padding: 12px 14px;
 }
 
 .ui-toolbar-title {
@@ -121,101 +111,56 @@ body {
 }
 
 .ui-toolbar-row {
-  flex: 1;
-  min-width: 0;
-  display: grid;
-  gap: 12px;
+  display: flex;
   align-items: center;
-}
-
-.ui-toolbar-search-basic {
-  grid-template-columns: 1fr 2.15fr 0.9fr 0.9fr;
-}
-
-.ui-toolbar-search-warning {
-  grid-template-columns: 1.55fr 1fr 1.35fr 0.85fr 0.85fr;
-}
-
-.ui-toolbar-search-tx {
-  grid-template-columns: 0.95fr 1.55fr 1.45fr 1fr;
-}
-
-.ui-toolbar-search-log {
-  grid-template-columns: 0.8fr 1fr 1.2fr 1.45fr 1fr;
-}
-
-.ui-toolbar-search-monitor-tx {
-  grid-template-columns: 0.95fr 1.55fr 1.5fr 0.85fr;
-}
-
-.ui-toolbar-row > * {
-  min-width: 0;
+  gap: 12px;
+  flex-wrap: wrap;
 }
 
 .ui-toolbar-tag {
-  height: 38px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  text-align: center;
+  height: 32px;
   padding-inline: 12px;
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 
-.ui-toolbar-select,
-.ui-toolbar-select-wide,
-.ui-toolbar-input,
+.ui-toolbar-select {
+  width: 160px;
+}
+
+.ui-toolbar-select-wide {
+  width: 220px;
+}
+
+.ui-toolbar-input {
+  width: 300px;
+  max-width: 100%;
+}
+
 .ui-toolbar-date {
-  width: 100%;
-  min-width: 0;
+  width: 260px;
+  max-width: 100%;
 }
 
 .ui-toolbar-actions {
-  width: 100%;
-  display: grid;
+  display: flex;
   gap: 12px;
-  align-items: stretch;
+  flex-wrap: wrap;
 }
 
-.ui-toolbar-actions-2 {
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+.ui-toolbar-grow {
+  flex: 1 1 auto;
 }
 
-.ui-toolbar-actions-1 {
-  grid-template-columns: 1fr;
-}
-
-.ui-toolbar-actions .el-button {
-  width: 100%;
-  min-width: 0;
-  height: 42px;
-  padding-inline: 18px;
-  margin-left: 0;
-}
-
-.ui-toolbar-tool-row {
-  flex: 1;
+.ui-toolbar-tool-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  align-content: start;
-  grid-auto-rows: minmax(44px, 1fr);
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
 }
 
-.ui-toolbar-tool-row .el-button,
-.ui-toolbar-tool-row .el-upload,
-.ui-toolbar-tool-row .el-upload .el-button {
+.ui-toolbar-tool-grid .el-button,
+.ui-toolbar-tool-grid .el-upload,
+.ui-toolbar-tool-grid .el-upload .el-button {
   width: 100%;
-  min-width: 0;
-  height: 100%;
-  min-height: 44px;
   margin-left: 0;
-}
-
-.ui-toolbar-more-button {
-  min-width: 0 !important;
 }
 
 .ui-link-group {
@@ -232,12 +177,6 @@ body {
   font-weight: 600;
 }
 
-@media (max-width: 1200px) {
-  .ui-toolbar {
-    grid-template-columns: minmax(0, 1.12fr) minmax(280px, 0.88fr);
-  }
-}
-
 @media (max-width: 1100px) {
   .ui-toolbar {
     grid-template-columns: 1fr;
@@ -246,25 +185,20 @@ body {
 
 @media (max-width: 768px) {
   .ui-toolbar-block {
-    min-height: auto;
     padding: 12px;
     border-radius: 14px;
   }
 
-  .ui-toolbar-search-basic,
-  .ui-toolbar-search-warning,
-  .ui-toolbar-search-tx,
-  .ui-toolbar-search-log,
-  .ui-toolbar-search-monitor-tx {
-    grid-template-columns: 1fr;
-  }
-
-  .ui-toolbar-actions-2 {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ui-toolbar-tool-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    min-height: auto;
+  .ui-toolbar-select,
+  .ui-toolbar-select-wide,
+  .ui-toolbar-input,
+  .ui-toolbar-date,
+  .ui-toolbar-actions,
+  .ui-toolbar-actions .el-button,
+  .ui-toolbar-tool-grid,
+  .ui-toolbar-tool-grid .el-button,
+  .ui-toolbar-tool-grid .el-upload,
+  .ui-toolbar-tool-grid .el-upload .el-button {
+    width: 100%;
   }
 }

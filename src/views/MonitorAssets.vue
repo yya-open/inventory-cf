@@ -42,12 +42,8 @@
                 <el-button type="primary">Excel导入</el-button>
               </el-upload>
               <el-button v-if="can('operator')" type="primary" plain @click="openCreate">新增台账</el-button>
-              <el-button
-                v-if="toolbarMoreItems.length === 1"
-                @click="handleToolbarMore(toolbarMoreItems[0].command)"
-              >{{ toolbarMoreItems[0].label }}</el-button>
               <el-dropdown
-                v-else-if="toolbarMoreItems.length > 1"
+                v-if="can('operator') || can('admin')"
                 trigger="click"
                 @command="handleToolbarMore"
               >
@@ -57,7 +53,8 @@
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-for="item in toolbarMoreItems" :key="item.command" :command="item.command">{{ item.label }}</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="location">管理位置</el-dropdown-item>
+                    <el-dropdown-item v-if="can('admin')" command="initQr">初始化二维码Key</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -97,14 +94,8 @@
             <div class="monitor-op-group compact">
               <el-button v-if="can('operator')" link type="success" @click="openIn(row)">入库</el-button>
               <el-button v-if="can('operator')" link type="warning" @click="openOut(row)">出库</el-button>
-              <el-button
-                v-if="getRowMoreItems(row).length === 1"
-                link
-                class="row-more-trigger"
-                @click="handleRowMore(getRowMoreItems(row)[0].command, row)"
-              >{{ getRowMoreItems(row)[0].label }}</el-button>
               <el-dropdown
-                v-else-if="getRowMoreItems(row).length > 1"
+                v-if="can('operator') || can('admin')"
                 trigger="click"
                 @command="(command) => handleRowMore(command, row)"
               >
@@ -114,7 +105,11 @@
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item v-for="item in getRowMoreItems(row)" :key="item.command" :command="item.command" :divided="item.command==='delete'">{{ item.label }}</el-dropdown-item>
+                    <el-dropdown-item v-if="can('admin')" command="edit">编辑</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="qr">二维码</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="return">归还</el-dropdown-item>
+                    <el-dropdown-item v-if="can('operator')" command="transfer">调拨</el-dropdown-item>
+                    <el-dropdown-item v-if="can('admin')" command="delete" divided>删除</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -328,23 +323,6 @@ const pageSize = ref(50);
 const total = ref(0);
 
 const locations = ref<Loc[]>([]);
-
-const toolbarMoreItems = computed(() => {
-  const items: Array<{ command: string; label: string }> = [];
-  if (can("operator")) items.push({ command: "location", label: "管理位置" });
-  if (can("admin")) items.push({ command: "initQr", label: "初始化二维码Key" });
-  return items;
-});
-
-function getRowMoreItems(_row: any) {
-  const items: Array<{ command: string; label: string }> = [];
-  if (can("admin")) items.push({ command: "edit", label: "编辑" });
-  if (can("operator")) items.push({ command: "qr", label: "二维码" });
-  if (can("operator")) items.push({ command: "return", label: "归还" });
-  if (can("operator")) items.push({ command: "transfer", label: "调拨" });
-  if (can("admin")) items.push({ command: "delete", label: "删除" });
-  return items;
-}
 
 function statusText(s: any) {
   const v = String(s || "");
@@ -913,30 +891,26 @@ onMounted(async () => {
 <style scoped>
 .mb12 { margin-bottom: 12px; }
 .monitor-page-card{ border-radius: 18px; }
-.monitor-toolbar{ display:grid; grid-template-columns:minmax(0,1.28fr) minmax(300px,0.92fr); gap:16px; align-items:start; }
+.monitor-toolbar{ display:grid; grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr); gap:16px; }
 .toolbar-left,.toolbar-right{ min-width:0; }
-.toolbar-right .toolbar-block{ padding:12px 14px; }
 .toolbar-block{ padding:14px 16px; border:1px solid #ebeef5; border-radius:16px; background:linear-gradient(180deg,#ffffff 0%,#fafcff 100%); }
 .toolbar-block-title{ margin-bottom:10px; font-size:13px; font-weight:700; color:#606266; }
-.toolbar-row{ display:flex; align-items:center; gap:12px; flex-wrap:nowrap; min-width:0; }
-.toolbar-row > *{ min-width:0; }
-.toolbar-select{ width:120px; flex:0 1 120px; }
-.toolbar-location{ width:150px; flex:0 1 150px; }
-.toolbar-input{ flex:1 1 0; width:auto; min-width:0; max-width:100%; }
-.toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:nowrap; flex:0 0 auto; }
-.toolbar-actions-inline :deep(.el-button){ min-width:88px; height:38px; padding-inline:18px; }
-.toolbar-tool-row{ display:grid; grid-template-columns:repeat(auto-fit, minmax(132px, 1fr)); gap:10px; align-items:stretch; align-content:space-between; min-height:88px; }
-.toolbar-tool-row :deep(.el-button){ margin-left:0; width:100%; min-width:0; height:38px; }
-.toolbar-upload-inline{ width:100%; }
-.toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:100%; }
-.toolbar-more-button{ min-width:0; }
+.toolbar-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
+.toolbar-select{ width:160px; }
+.toolbar-location{ width:220px; }
+.toolbar-input{ width:300px; max-width:100%; }
+.toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:wrap; }
+.toolbar-tool-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; }
+.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; }
+.toolbar-upload-inline{ flex:0 0 auto; }
+.toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:auto; }
+.toolbar-more-button{ min-width:88px; }
 .monitor-op-group{ display:flex; align-items:center; gap:4px 14px; white-space:nowrap; }
 .monitor-op-group.compact{ justify-content:flex-start; }
 .monitor-op-group :deep(.el-button){ margin-left:0; padding:4px 0; height:auto; font-weight:600; }
 .row-more-trigger{ color:var(--el-color-primary); }
-@media (max-width: 1200px){ .monitor-toolbar{ grid-template-columns:minmax(0, 1.12fr) minmax(280px, 0.88fr); } }
 @media (max-width: 1100px){ .monitor-toolbar{ grid-template-columns:1fr; } }
-@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-row{ flex-wrap:wrap; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-row{ grid-template-columns:repeat(2, minmax(0,1fr)); min-height:auto; } }
+@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-row{ flex-wrap:wrap; } }
 
 .qr-header {
   display: flex;

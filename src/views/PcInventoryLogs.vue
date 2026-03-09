@@ -5,7 +5,7 @@
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
-            <div class="ui-toolbar-row ui-toolbar-search-log">
+            <div class="ui-toolbar-row">
               <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-select" @change="onSearch">
                 <el-option label="在位(OK)" value="OK" />
                 <el-option label="异常(ISSUE)" value="ISSUE" />
@@ -33,7 +33,7 @@
                 @change="onSearch"
               />
 
-              <div class="ui-toolbar-actions ui-toolbar-actions-2">
+              <div class="ui-toolbar-actions">
                 <el-button type="primary" @click="onSearch">查询</el-button>
                 <el-button @click="reset">重置</el-button>
               </div>
@@ -44,7 +44,7 @@
         <div class="ui-toolbar-side">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">快捷工具</div>
-            <div class="ui-toolbar-tool-row">
+            <div class="ui-toolbar-tool-grid">
               <el-button :disabled="loading" @click="exportCsv">导出</el-button>
               <el-button v-if="isAdmin" type="danger" plain :disabled="loading" @click="deleteSelected">删除选中</el-button>
             </div>
@@ -181,7 +181,6 @@ function buildParams(withPage: boolean) {
   }
   return params;
 }
-
 
 function onSearch() {
   page.value = 1;
