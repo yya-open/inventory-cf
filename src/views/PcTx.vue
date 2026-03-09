@@ -1,46 +1,59 @@
 <template>
-  <el-card>
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-      <el-select v-model="type" placeholder="类型" clearable style="width:140px" @change="onSearch">
-        <el-option label="入库(IN)" value="IN" />
-        <el-option label="出库(OUT)" value="OUT" />
-        <el-option label="归还(RETURN)" value="RETURN" />
-        <el-option label="回收(RECYCLE)" value="RECYCLE" />
-      </el-select>
+  <el-card class="ui-page-card">
+    <div class="ui-toolbar">
+      <div class="ui-toolbar-main">
+        <div class="ui-toolbar-block">
+          <div class="ui-toolbar-title">筛选查询</div>
+          <div class="ui-toolbar-row">
+            <el-select v-model="type" placeholder="类型" clearable class="ui-toolbar-select" @change="onSearch">
+              <el-option label="入库(IN)" value="IN" />
+              <el-option label="出库(OUT)" value="OUT" />
+              <el-option label="归还(RETURN)" value="RETURN" />
+              <el-option label="回收(RECYCLE)" value="RECYCLE" />
+            </el-select>
 
-      <el-date-picker
-        v-model="dateRange"
-        type="daterange"
-        range-separator="到"
-        start-placeholder="开始日期"
-        end-placeholder="结束日期"
-        value-format="YYYY-MM-DD"
-      />
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="到"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="ui-toolbar-date"
+            />
 
-      <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" style="width: 260px" @keyup.enter="onSearch" />
+            <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" class="ui-toolbar-input" @keyup.enter="onSearch" />
 
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="reset">重置</el-button>
+            <div class="ui-toolbar-actions">
+              <el-button type="primary" @click="onSearch">查询</el-button>
+              <el-button @click="reset">重置</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-    
-      <div style="flex:1"></div>
-      <el-button size="small" @click="exportExcel">导出Excel</el-button>
-      <el-button v-if="canOperator" size="small" @click="downloadTxTemplate">下载导入模板</el-button>
-      <el-upload
-        v-if="canOperator"
-        :show-file-list="false"
-        :auto-upload="false"
-        accept=".xlsx,.xls"
-        :on-change="onImportTxFile"
-      >
-        <el-button size="small" type="primary">Excel导入（按类型写入记录）</el-button>
-      </el-upload>
-
-      <el-button v-if="isAdmin" size="small" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
-      <el-button v-if="isAdmin" size="small" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
-
-</div>
+      <div class="ui-toolbar-side">
+        <div class="ui-toolbar-block">
+          <div class="ui-toolbar-title">快捷工具</div>
+          <div class="ui-toolbar-tool-grid">
+            <el-button @click="exportExcel">导出Excel</el-button>
+            <el-button v-if="canOperator" @click="downloadTxTemplate">下载导入模板</el-button>
+            <el-upload
+              v-if="canOperator"
+              :show-file-list="false"
+              :auto-upload="false"
+              accept=".xlsx,.xls"
+              :on-change="onImportTxFile"
+            >
+              <el-button type="primary">Excel导入（按类型写入记录）</el-button>
+            </el-upload>
+            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
+            <el-button v-if="isAdmin" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
+            <el-button v-if="isAdmin" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
+          </div>
+        </div>
+      </div>
+    </div>
 
     <el-table :data="rows" border v-loading="loading" row-key="__rowKey" @selection-change="onSelectionChange">
       <el-table-column v-if="isAdmin" type="selection" width="46" />

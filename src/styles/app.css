@@ -77,3 +77,128 @@ body {
 .el-dialog {
   border-radius: 12px;
 }
+
+
+/* 统一页头工具区（参考电脑台账） */
+.ui-page-card {
+  border-radius: 18px;
+}
+
+.ui-toolbar {
+  display: grid;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 16px;
+}
+
+.ui-toolbar-main,
+.ui-toolbar-side {
+  min-width: 0;
+}
+
+.ui-toolbar-block {
+  padding: 14px 16px;
+  border: 1px solid #ebeef5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
+}
+
+.ui-toolbar-title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #606266;
+}
+
+.ui-toolbar-row {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ui-toolbar-tag {
+  height: 32px;
+  padding-inline: 12px;
+}
+
+.ui-toolbar-select {
+  width: 160px;
+}
+
+.ui-toolbar-select-wide {
+  width: 220px;
+}
+
+.ui-toolbar-input {
+  width: 300px;
+  max-width: 100%;
+}
+
+.ui-toolbar-date {
+  width: 260px;
+  max-width: 100%;
+}
+
+.ui-toolbar-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ui-toolbar-grow {
+  flex: 1 1 auto;
+}
+
+.ui-toolbar-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+  gap: 10px;
+}
+
+.ui-toolbar-tool-grid .el-button,
+.ui-toolbar-tool-grid .el-upload,
+.ui-toolbar-tool-grid .el-upload .el-button {
+  width: 100%;
+  margin-left: 0;
+}
+
+.ui-link-group {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 4px 12px;
+}
+
+.ui-link-group .el-button {
+  margin-left: 0;
+  padding: 4px 0;
+  height: auto;
+  font-weight: 600;
+}
+
+@media (max-width: 1100px) {
+  .ui-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .ui-toolbar-block {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .ui-toolbar-select,
+  .ui-toolbar-select-wide,
+  .ui-toolbar-input,
+  .ui-toolbar-date,
+  .ui-toolbar-actions,
+  .ui-toolbar-actions .el-button,
+  .ui-toolbar-tool-grid,
+  .ui-toolbar-tool-grid .el-button,
+  .ui-toolbar-tool-grid .el-upload,
+  .ui-toolbar-tool-grid .el-upload .el-button {
+    width: 100%;
+  }
+}

@@ -1,23 +1,40 @@
 <template>
   <div>
-    <el-card shadow="never" class="mb12">
-      <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-        <el-select v-model="q.type" placeholder="动作" clearable style="width:140px" @change="reload()">
-          <el-option label="入库" value="IN" />
-          <el-option label="出库" value="OUT" />
-          <el-option label="归还" value="RETURN" />
-          <el-option label="调拨" value="TRANSFER" />
-          <el-option label="报废" value="SCRAP" />
-          <el-option label="调整" value="ADJUST" />
-        </el-select>
+    <el-card shadow="never" class="ui-page-card mb12">
+      <div class="ui-toolbar">
+        <div class="ui-toolbar-main">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">筛选查询</div>
+            <div class="ui-toolbar-row">
+              <el-select v-model="q.type" placeholder="动作" clearable class="ui-toolbar-select" @change="reload()">
+                <el-option label="入库" value="IN" />
+                <el-option label="出库" value="OUT" />
+                <el-option label="归还" value="RETURN" />
+                <el-option label="调拨" value="TRANSFER" />
+                <el-option label="报废" value="SCRAP" />
+                <el-option label="调整" value="ADJUST" />
+              </el-select>
 
-        <el-date-picker v-model="q.dates" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" @change="reload()" />
+              <el-date-picker v-model="q.dates" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" class="ui-toolbar-date" @change="reload()" />
 
-        <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable style="width:260px" @keyup.enter="reload()" />
+              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable class="ui-toolbar-input" @keyup.enter="reload()" />
 
-        <el-button @click="reload()">查询</el-button>
-        <el-button @click="doExport">导出</el-button>
-        <el-button v-if="can('admin')" type="danger" plain :disabled="!selected.length" @click="doDelete">删除</el-button>
+              <div class="ui-toolbar-actions">
+                <el-button type="primary" @click="reload()">查询</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="ui-toolbar-side">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">快捷工具</div>
+            <div class="ui-toolbar-tool-grid">
+              <el-button @click="doExport">导出</el-button>
+              <el-button v-if="can('admin')" type="danger" plain :disabled="!selected.length" @click="doDelete">删除</el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </el-card>
 

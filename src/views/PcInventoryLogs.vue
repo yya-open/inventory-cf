@@ -1,40 +1,55 @@
 <template>
   <div>
-    <el-card shadow="never" style="margin-bottom: 12px">
-      <div style="display:flex; flex-wrap: wrap; gap: 10px; align-items: center">
-        <el-select v-model="action" placeholder="动作" style="width: 130px" clearable @change="onSearch">
-          <el-option label="在位(OK)" value="OK" />
-          <el-option label="异常(ISSUE)" value="ISSUE" />
-        </el-select>
+    <el-card shadow="never" class="ui-page-card" style="margin-bottom: 12px">
+      <div class="ui-toolbar">
+        <div class="ui-toolbar-main">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">筛选查询</div>
+            <div class="ui-toolbar-row">
+              <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-select" @change="onSearch">
+                <el-option label="在位(OK)" value="OK" />
+                <el-option label="异常(ISSUE)" value="ISSUE" />
+              </el-select>
 
-        <el-select v-model="issueType" placeholder="异常类型" style="width: 170px" clearable @change="onSearch">
-          <el-option label="找不到电脑" value="NOT_FOUND" />
-          <el-option label="位置不符" value="WRONG_LOCATION" />
-          <el-option label="二维码不符" value="WRONG_QR" />
-          <el-option label="台账状态不符" value="WRONG_STATUS" />
-          <el-option label="设备缺失" value="MISSING" />
-          <el-option label="其他原因" value="OTHER" />
-        </el-select>
+              <el-select v-model="issueType" placeholder="异常类型" clearable class="ui-toolbar-select-wide" @change="onSearch">
+                <el-option label="找不到电脑" value="NOT_FOUND" />
+                <el-option label="位置不符" value="WRONG_LOCATION" />
+                <el-option label="二维码不符" value="WRONG_QR" />
+                <el-option label="台账状态不符" value="WRONG_STATUS" />
+                <el-option label="设备缺失" value="MISSING" />
+                <el-option label="其他原因" value="OTHER" />
+              </el-select>
 
-        <el-input v-model="keyword" placeholder="关键词（SN/品牌/型号/员工/备注…）" style="width: 320px" clearable @keyup.enter="onSearch" />
+              <el-input v-model="keyword" placeholder="关键词（SN/品牌/型号/员工/备注…）" clearable class="ui-toolbar-input" @keyup.enter="onSearch" />
 
-        <el-date-picker
-          v-model="dateRange"
-          type="daterange"
-          range-separator="-"
-          start-placeholder="开始日期"
-          end-placeholder="结束日期"
-          value-format="YYYY-MM-DD"
-          @change="onSearch"
-        />
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                range-separator="-"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+                class="ui-toolbar-date"
+                @change="onSearch"
+              />
 
-        <el-button type="primary" @click="onSearch">查询</el-button>
-        <el-button @click="reset">重置</el-button>
+              <div class="ui-toolbar-actions">
+                <el-button type="primary" @click="onSearch">查询</el-button>
+                <el-button @click="reset">重置</el-button>
+              </div>
+            </div>
+          </div>
+        </div>
 
-        <div style="flex: 1"></div>
-
-        <el-button :disabled="loading" @click="exportCsv">导出</el-button>
-        <el-button v-if="isAdmin" type="danger" plain :disabled="loading" @click="deleteSelected">删除选中</el-button>
+        <div class="ui-toolbar-side">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">快捷工具</div>
+            <div class="ui-toolbar-tool-grid">
+              <el-button :disabled="loading" @click="exportCsv">导出</el-button>
+              <el-button v-if="isAdmin" type="danger" plain :disabled="loading" @click="deleteSelected">删除选中</el-button>
+            </div>
+          </div>
+        </div>
       </div>
     </el-card>
 

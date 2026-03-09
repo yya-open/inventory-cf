@@ -1,27 +1,39 @@
 <template>
-  <el-card>
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-      <el-tag type="warning">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
+  <el-card class="ui-page-card">
+    <div class="ui-toolbar">
+      <div class="ui-toolbar-main">
+        <div class="ui-toolbar-block">
+          <div class="ui-toolbar-title">筛选查询</div>
+          <div class="ui-toolbar-row">
+            <el-tag type="warning" class="ui-toolbar-tag">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
 
-      <el-select v-model="status" placeholder="状态" clearable style="width:160px" @change="onSearch">
-        <el-option label="在库" value="IN_STOCK" />
-        <el-option label="已领用" value="ASSIGNED" />
-        <el-option label="已回收" value="RECYCLED" />
-      </el-select>
+            <el-select v-model="status" placeholder="状态" clearable class="ui-toolbar-select" @change="onSearch">
+              <el-option label="在库" value="IN_STOCK" />
+              <el-option label="已领用" value="ASSIGNED" />
+              <el-option label="已回收" value="RECYCLED" />
+            </el-select>
 
-      <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" style="width: 280px" @keyup.enter="onSearch" />
+            <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="ui-toolbar-input" @keyup.enter="onSearch" />
 
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="reset">重置</el-button>
+            <div class="ui-toolbar-actions">
+              <el-button type="primary" @click="onSearch">查询</el-button>
+              <el-button @click="reset">重置</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
 
-      <el-button type="danger" size="small" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单（选中）</el-button>
-
-      <el-button type="success" plain size="small" :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
-      <el-button type="success" size="small" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
-
-      <div style="flex:1"></div>
-
-      <el-button type="info" plain size="small" @click="$router.push('/pc/assets')">返回台账</el-button>
+      <div class="ui-toolbar-side">
+        <div class="ui-toolbar-block">
+          <div class="ui-toolbar-title">快捷工具</div>
+          <div class="ui-toolbar-tool-grid">
+            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单（选中）</el-button>
+            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
+            <el-button type="success" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
+            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
+          </div>
+        </div>
+      </div>
     </div>
 
     <el-table :data="rows" border v-loading="loading" @selection-change="onSelectionChange">

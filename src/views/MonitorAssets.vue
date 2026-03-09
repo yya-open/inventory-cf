@@ -75,15 +75,17 @@
         </el-table-column>
         <el-table-column prop="department" label="部门" min-width="140" />
         <el-table-column prop="updated_at" label="更新时间" min-width="170" />
-        <el-table-column label="操作" width="420" fixed="right">
+        <el-table-column label="操作" width="320" fixed="right">
           <template #default="{ row }">
-            <el-button v-if="can('admin')" size="small" @click="openEdit(row)">编辑</el-button>
-            <el-button v-if="can('operator')" size="small" @click="openQr(row)">二维码</el-button>
-            <el-button v-if="can('operator')" size="small" @click="openIn(row)">入库</el-button>
-            <el-button v-if="can('operator')" size="small" @click="openOut(row)">出库</el-button>
-            <el-button v-if="can('operator')" size="small" @click="openReturn(row)">归还</el-button>
-            <el-button v-if="can('operator')" size="small" @click="openTransfer(row)">调拨</el-button>
-            <el-button v-if="can('admin')" size="small" type="danger" plain @click="removeAsset(row)">删除</el-button>
+            <div class="monitor-op-group">
+              <el-button v-if="can('admin')" link type="primary" @click="openEdit(row)">编辑</el-button>
+              <el-button v-if="can('operator')" link @click="openQr(row)">二维码</el-button>
+              <el-button v-if="can('operator')" link type="success" @click="openIn(row)">入库</el-button>
+              <el-button v-if="can('operator')" link type="warning" @click="openOut(row)">出库</el-button>
+              <el-button v-if="can('operator')" link type="info" @click="openReturn(row)">归还</el-button>
+              <el-button v-if="can('operator')" link type="primary" @click="openTransfer(row)">调拨</el-button>
+              <el-button v-if="can('admin')" link type="danger" @click="removeAsset(row)">删除</el-button>
+            </div>
           </template>
         </el-table-column>
       </el-table>
@@ -858,6 +860,8 @@ onMounted(async () => {
 .toolbar-tool-grid{ display:grid; grid-template-columns:repeat(auto-fit, minmax(140px,1fr)); gap:10px; }
 .toolbar-tool-grid :deep(.el-button){ width:100%; margin-left:0; }
 .toolbar-tool-grid :deep(.el-upload), .toolbar-tool-grid :deep(.el-upload .el-button){ width:100%; }
+.monitor-op-group{ display:flex; flex-wrap:wrap; align-items:center; gap:4px 12px; }
+.monitor-op-group :deep(.el-button){ margin-left:0; padding:4px 0; height:auto; font-weight:600; }
 @media (max-width: 1100px){ .monitor-toolbar{ grid-template-columns:1fr; } }
 @media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } }
 
