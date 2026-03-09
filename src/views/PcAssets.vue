@@ -39,14 +39,7 @@
             >
               <el-button type="primary">Excel导入</el-button>
             </el-upload>
-            <el-dropdown v-if="isAdmin" trigger="click" @command="handleAssetMoreCommand">
-              <el-button class="toolbar-more-button">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="initQr">初始化二维码Key</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <el-button v-if="isAdmin" @click="handleAssetMoreCommand('initQr')">初始化二维码Key</el-button>
           </div>
         </div>
       </div>
@@ -770,9 +763,10 @@ onMounted(load);
 }
 .asset-toolbar{
   display:grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns:minmax(0, 1fr) minmax(0, 1fr);
   gap:16px;
   margin-bottom:16px;
+  align-items:start;
 }
 .toolbar-left,
 .toolbar-right{
@@ -800,6 +794,7 @@ onMounted(load);
   align-items:center;
   gap:12px;
   flex-wrap:nowrap;
+  min-width:0;
 }
 .toolbar-row > *{
   min-width:0;
@@ -808,13 +803,13 @@ onMounted(load);
   justify-content:space-between;
 }
 .toolbar-select{
-  width:138px;
-  flex:0 0 138px;
+  width:120px;
+  flex:0 1 120px;
 }
 .toolbar-input{
-  flex:1 1 auto;
+  flex:1 1 0;
   width:auto;
-  min-width:180px;
+  min-width:0;
   max-width:100%;
 }
 .toolbar-actions-inline{
@@ -824,8 +819,9 @@ onMounted(load);
   flex:0 0 auto;
 }
 .toolbar-actions-inline :deep(.el-button){
-  min-width:106px;
+  min-width:88px;
   height:40px;
+  padding-inline:18px;
 }
 .toolbar-hint{
   color:#909399;
@@ -834,8 +830,9 @@ onMounted(load);
 }
 .toolbar-tool-row{
   display:grid;
-  grid-template-columns:repeat(auto-fit, minmax(120px, 1fr));
+  grid-template-columns:repeat(4, minmax(0, 1fr));
   gap:10px;
+  align-items:stretch;
 }
 .toolbar-tool-row :deep(.el-button){
   margin-left:0;
@@ -875,7 +872,7 @@ onMounted(load);
     width:100%;
   }
   .toolbar-tool-row{
-    flex-wrap:wrap;
+    grid-template-columns:repeat(2, minmax(0, 1fr));
   }
   .toolbar-row.compact{
     align-items:stretch;

@@ -30,14 +30,7 @@
             <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单</el-button>
             <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出当前页</el-button>
             <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-            <el-dropdown trigger="click" @command="handleMoreCommand">
-              <el-button class="ui-toolbar-more-button">更多</el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="exportAll">导出全部</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+            <el-button @click="handleMoreCommand('exportAll')">导出全部</el-button>
           </div>
         </div>
       </div>
