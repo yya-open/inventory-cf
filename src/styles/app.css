@@ -86,7 +86,7 @@ body {
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 16px;
   margin-bottom: 16px;
 }
@@ -169,25 +169,22 @@ body {
 }
 
 .ui-toolbar-tool-row {
-  display: flex;
-  align-items: center;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(120px, 1fr));
   gap: 10px;
-  flex-wrap: nowrap;
-  overflow-x: auto;
-  padding-bottom: 2px;
 }
 
 .ui-toolbar-tool-row .el-button,
 .ui-toolbar-tool-row .el-upload,
 .ui-toolbar-tool-row .el-upload .el-button {
   margin-left: 0;
+  width: 100%;
   height: 40px;
-  min-width: 122px;
-  flex: 0 0 auto;
+  min-width: 0;
 }
 
 .ui-toolbar-more-button {
-  min-width: 88px !important;
+  min-width: 0 !important;
 }
 
 .ui-link-group {
