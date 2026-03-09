@@ -1,39 +1,39 @@
 <template>
   <div>
     <el-card shadow="never" class="monitor-page-card mb12">
-      <div class="monitor-toolbar">
-        <div class="toolbar-left">
-          <div class="toolbar-block toolbar-search">
-            <div class="toolbar-block-title">筛选查询</div>
-            <div class="toolbar-row">
-              <el-select v-model="q.status" placeholder="状态" clearable class="toolbar-select" @change="reload()">
-                <el-option label="在库" value="IN_STOCK" />
-                <el-option label="已领用" value="ASSIGNED" />
-                <el-option label="已回收" value="RECYCLED" />
-                <el-option label="已报废" value="SCRAPPED" />
-              </el-select>
+      <div class="ui-toolbar">
+        <div class="ui-toolbar-main">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">筛选查询</div>
+            <div class="ui-toolbar-form">
+              <div class="ui-toolbar-grid-2">
+                <el-select v-model="q.status" placeholder="状态" clearable filterable class="ui-toolbar-control" @change="reload()">
+                  <el-option label="在库" value="IN_STOCK" />
+                  <el-option label="已领用" value="ASSIGNED" />
+                  <el-option label="已回收" value="RECYCLED" />
+                  <el-option label="已报废" value="SCRAPPED" />
+                </el-select>
 
-              <el-select v-model="q.location_id" placeholder="位置" clearable filterable class="toolbar-location" @change="reload()">
-                <el-option v-for="it in locationOptions" :key="it.value" :label="it.label" :value="it.value" />
-              </el-select>
-
-              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/型号" clearable class="toolbar-input" @keyup.enter="reload()" />
-
-              <div class="toolbar-actions-inline">
+                <el-select v-model="q.location_id" placeholder="位置" clearable filterable class="ui-toolbar-control" @change="reload()">
+                  <el-option v-for="it in locationOptions" :key="it.value" :label="it.label" :value="it.value" />
+                </el-select>
+              </div>
+              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/型号" clearable class="ui-toolbar-control" @keyup.enter="reload()" />
+              <div class="ui-toolbar-actions">
                 <el-button type="primary" @click="reload()">查询</el-button>
+                <el-button @click="resetFilters">重置</el-button>
               </div>
             </div>
           </div>
         </div>
 
-        <div class="toolbar-right">
-          <div class="toolbar-block toolbar-tools">
-            <div class="toolbar-block-title">快捷工具</div>
-            <div class="toolbar-tool-row">
+        <div class="ui-toolbar-side">
+          <div class="ui-toolbar-block">
+            <div class="ui-toolbar-title">快捷工具</div>
+            <div class="ui-toolbar-tool-grid">
               <el-button @click="exportExcel">导出Excel</el-button>
               <el-button @click="downloadMonitorTemplate">下载导入模板</el-button>
               <el-upload
-                class="toolbar-upload toolbar-upload-inline"
                 :show-file-list="false"
                 :auto-upload="false"
                 accept=".xlsx,.xls"
@@ -42,22 +42,8 @@
                 <el-button type="primary">Excel导入</el-button>
               </el-upload>
               <el-button v-if="can('operator')" type="primary" plain @click="openCreate">新增台账</el-button>
-              <el-dropdown
-                v-if="can('operator') || can('admin')"
-                trigger="click"
-                @command="handleToolbarMore"
-              >
-                <el-button class="toolbar-more-button">
-                  更多
-                  <el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item v-if="can('operator')" command="location">管理位置</el-dropdown-item>
-                    <el-dropdown-item v-if="can('admin')" command="initQr">初始化二维码Key</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
+              <el-button v-if="can('operator')" @click="openLocationMgr">管理位置</el-button>
+              <el-button v-if="can('admin')" @click="initQrKeys">初始化二维码Key</el-button>
             </div>
           </div>
         </div>
@@ -419,6 +405,13 @@ async function loadList(opts?: { keepPage?: boolean }) {
 
 function reload() {
   loadList({ keepPage: false });
+}
+
+function resetFilters() {
+  q.status = "";
+  q.location_id = "" as any;
+  q.keyword = "";
+  reload();
 }
 
 
@@ -891,26 +884,10 @@ onMounted(async () => {
 <style scoped>
 .mb12 { margin-bottom: 12px; }
 .monitor-page-card{ border-radius: 18px; }
-.monitor-toolbar{ display:grid; grid-template-columns:minmax(0,1.5fr) minmax(340px,1fr); gap:16px; }
-.toolbar-left,.toolbar-right{ min-width:0; }
-.toolbar-block{ padding:14px 16px; border:1px solid #ebeef5; border-radius:16px; background:linear-gradient(180deg,#ffffff 0%,#fafcff 100%); }
-.toolbar-block-title{ margin-bottom:10px; font-size:13px; font-weight:700; color:#606266; }
-.toolbar-row{ display:flex; align-items:center; gap:12px; flex-wrap:wrap; }
-.toolbar-select{ width:160px; }
-.toolbar-location{ width:220px; }
-.toolbar-input{ width:300px; max-width:100%; }
-.toolbar-actions-inline{ display:flex; gap:12px; flex-wrap:wrap; }
-.toolbar-tool-row{ display:flex; align-items:center; gap:10px; flex-wrap:nowrap; overflow-x:auto; padding-bottom:2px; }
-.toolbar-tool-row :deep(.el-button){ margin-left:0; min-width:118px; }
-.toolbar-upload-inline{ flex:0 0 auto; }
-.toolbar-tool-row :deep(.el-upload), .toolbar-tool-row :deep(.el-upload .el-button){ width:auto; }
-.toolbar-more-button{ min-width:88px; }
 .monitor-op-group{ display:flex; align-items:center; gap:4px 14px; white-space:nowrap; }
 .monitor-op-group.compact{ justify-content:flex-start; }
 .monitor-op-group :deep(.el-button){ margin-left:0; padding:4px 0; height:auto; font-weight:600; }
 .row-more-trigger{ color:var(--el-color-primary); }
-@media (max-width: 1100px){ .monitor-toolbar{ grid-template-columns:1fr; } }
-@media (max-width: 768px){ .toolbar-block{ padding:12px; border-radius:14px; } .toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){ width:100%; } .toolbar-tool-row{ flex-wrap:wrap; } }
 
 .qr-header {
   display: flex;

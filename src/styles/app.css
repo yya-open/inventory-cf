@@ -79,16 +79,17 @@ body {
 }
 
 
-/* 统一页头工具区（参考电脑台账） */
+/* 统一页头工具区 */
 .ui-page-card {
   border-radius: 18px;
 }
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  grid-template-columns: minmax(0, 1.7fr) minmax(340px, 1fr);
   gap: 16px;
   margin-bottom: 16px;
+  align-items: start;
 }
 
 .ui-toolbar-main,
@@ -97,69 +98,74 @@ body {
 }
 
 .ui-toolbar-block {
-  padding: 14px 16px;
+  min-height: 126px;
+  padding: 16px;
   border: 1px solid #ebeef5;
-  border-radius: 16px;
+  border-radius: 18px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
 }
 
 .ui-toolbar-title {
-  margin-bottom: 10px;
-  font-size: 13px;
+  margin-bottom: 12px;
+  font-size: 14px;
   font-weight: 700;
   color: #606266;
 }
 
-.ui-toolbar-row {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.ui-toolbar-tag {
-  height: 32px;
-  padding-inline: 12px;
-}
-
-.ui-toolbar-select {
-  width: 160px;
-}
-
-.ui-toolbar-select-wide {
-  width: 220px;
-}
-
-.ui-toolbar-input {
-  width: 300px;
-  max-width: 100%;
-}
-
-.ui-toolbar-date {
-  width: 260px;
-  max-width: 100%;
-}
-
-.ui-toolbar-actions {
-  display: flex;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.ui-toolbar-grow {
-  flex: 1 1 auto;
-}
-
-.ui-toolbar-tool-grid {
+.ui-toolbar-form {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px;
+  gap: 12px;
 }
 
+.ui-toolbar-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ui-toolbar-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ui-toolbar-span-2 {
+  grid-column: span 2;
+}
+
+.ui-toolbar-control,
+.ui-toolbar-control.el-date-editor,
+.ui-toolbar-control .el-input__wrapper,
+.ui-toolbar-control .el-select__wrapper,
+.ui-toolbar-actions .el-button,
 .ui-toolbar-tool-grid .el-button,
 .ui-toolbar-tool-grid .el-upload,
 .ui-toolbar-tool-grid .el-upload .el-button {
   width: 100%;
+}
+
+.ui-toolbar-tag {
+  height: 40px;
+  padding-inline: 14px;
+  justify-content: flex-start;
+}
+
+.ui-toolbar-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.ui-toolbar-tool-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  align-items: stretch;
+}
+
+.ui-toolbar-tool-grid .el-button,
+.ui-toolbar-actions .el-button {
+  min-height: 40px;
   margin-left: 0;
 }
 
@@ -185,20 +191,20 @@ body {
 
 @media (max-width: 768px) {
   .ui-toolbar-block {
-    padding: 12px;
-    border-radius: 14px;
+    min-height: auto;
+    padding: 14px;
+    border-radius: 16px;
   }
 
-  .ui-toolbar-select,
-  .ui-toolbar-select-wide,
-  .ui-toolbar-input,
-  .ui-toolbar-date,
+  .ui-toolbar-grid-2,
+  .ui-toolbar-grid-3,
   .ui-toolbar-actions,
-  .ui-toolbar-actions .el-button,
-  .ui-toolbar-tool-grid,
-  .ui-toolbar-tool-grid .el-button,
-  .ui-toolbar-tool-grid .el-upload,
-  .ui-toolbar-tool-grid .el-upload .el-button {
-    width: 100%;
+  .ui-toolbar-tool-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .ui-toolbar-span-2 {
+    grid-column: auto;
   }
 }
+

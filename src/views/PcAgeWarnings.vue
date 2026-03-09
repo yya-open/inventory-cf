@@ -4,17 +4,16 @@
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">筛选查询</div>
-          <div class="ui-toolbar-row">
-            <el-tag type="warning" class="ui-toolbar-tag">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
-
-            <el-select v-model="status" placeholder="状态" clearable class="ui-toolbar-select" @change="onSearch">
-              <el-option label="在库" value="IN_STOCK" />
-              <el-option label="已领用" value="ASSIGNED" />
-              <el-option label="已回收" value="RECYCLED" />
-            </el-select>
-
-            <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="ui-toolbar-input" @keyup.enter="onSearch" />
-
+          <div class="ui-toolbar-form">
+            <div class="ui-toolbar-grid-2">
+              <el-tag type="warning" class="ui-toolbar-tag">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
+              <el-select v-model="status" placeholder="状态" clearable class="ui-toolbar-control" @change="onSearch">
+                <el-option label="在库" value="IN_STOCK" />
+                <el-option label="已领用" value="ASSIGNED" />
+                <el-option label="已回收" value="RECYCLED" />
+              </el-select>
+            </div>
+            <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="ui-toolbar-control" @keyup.enter="onSearch" />
             <div class="ui-toolbar-actions">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="reset">重置</el-button>
