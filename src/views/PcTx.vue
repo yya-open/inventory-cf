@@ -4,26 +4,26 @@
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">筛选查询</div>
-          <div class="ui-toolbar-form">
-            <div class="ui-toolbar-grid-2">
-              <el-select v-model="type" placeholder="类型" clearable class="ui-toolbar-control" @change="onSearch">
-                <el-option label="入库(IN)" value="IN" />
-                <el-option label="出库(OUT)" value="OUT" />
-                <el-option label="归还(RETURN)" value="RETURN" />
-                <el-option label="回收(RECYCLE)" value="RECYCLE" />
-              </el-select>
+          <div class="ui-toolbar-row">
+            <el-select v-model="type" placeholder="类型" clearable class="ui-toolbar-select" @change="onSearch">
+              <el-option label="入库(IN)" value="IN" />
+              <el-option label="出库(OUT)" value="OUT" />
+              <el-option label="归还(RETURN)" value="RETURN" />
+              <el-option label="回收(RECYCLE)" value="RECYCLE" />
+            </el-select>
 
-              <el-date-picker
-                v-model="dateRange"
-                type="daterange"
-                range-separator="到"
-                start-placeholder="开始日期"
-                end-placeholder="结束日期"
-                value-format="YYYY-MM-DD"
-                class="ui-toolbar-control"
-              />
-            </div>
-            <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" class="ui-toolbar-control" @keyup.enter="onSearch" />
+            <el-date-picker
+              v-model="dateRange"
+              type="daterange"
+              range-separator="到"
+              start-placeholder="开始日期"
+              end-placeholder="结束日期"
+              value-format="YYYY-MM-DD"
+              class="ui-toolbar-date"
+            />
+
+            <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" class="ui-toolbar-input" @keyup.enter="onSearch" />
+
             <div class="ui-toolbar-actions">
               <el-button type="primary" @click="onSearch">查询</el-button>
               <el-button @click="reset">重置</el-button>

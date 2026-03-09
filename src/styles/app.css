@@ -78,21 +78,17 @@ body {
   border-radius: 12px;
 }
 
-/* =========================
-   统一页头工具区（紧凑版）
-   可直接覆盖 src/styles/app.css
-   ========================= */
 
+/* 统一页头工具区（参考电脑台账） */
 .ui-page-card {
   border-radius: 18px;
 }
 
 .ui-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.7fr) minmax(320px, 0.95fr);
-  gap: 14px;
-  margin-bottom: 14px;
-  align-items: start;
+  grid-template-columns: minmax(0, 1.6fr) minmax(280px, 0.9fr);
+  gap: 16px;
+  margin-bottom: 16px;
 }
 
 .ui-toolbar-main,
@@ -101,52 +97,52 @@ body {
 }
 
 .ui-toolbar-block {
-  min-height: 104px;
-  padding: 14px;
+  padding: 14px 16px;
   border: 1px solid #ebeef5;
   border-radius: 16px;
   background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
-  box-sizing: border-box;
 }
 
 .ui-toolbar-title {
-  margin: 0 0 10px;
+  margin-bottom: 10px;
   font-size: 13px;
   font-weight: 700;
-  line-height: 1.2;
   color: #606266;
 }
 
-.ui-toolbar-form {
-  display: grid;
-  gap: 10px;
-}
-
-.ui-toolbar-grid-2 {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ui-toolbar-grid-3 {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ui-toolbar-span-2 {
-  grid-column: span 2;
-}
-
-.ui-toolbar-span-3 {
-  grid-column: span 3;
-}
-
-/* 兼容旧页面的 flex 行布局 */
 .ui-toolbar-row {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.ui-toolbar-tag {
+  height: 32px;
+  padding-inline: 12px;
+}
+
+.ui-toolbar-select {
+  width: 160px;
+}
+
+.ui-toolbar-select-wide {
+  width: 220px;
+}
+
+.ui-toolbar-input {
+  width: 300px;
+  max-width: 100%;
+}
+
+.ui-toolbar-date {
+  width: 260px;
+  max-width: 100%;
+}
+
+.ui-toolbar-actions {
+  display: flex;
+  gap: 12px;
   flex-wrap: wrap;
 }
 
@@ -154,157 +150,19 @@ body {
   flex: 1 1 auto;
 }
 
-.ui-toolbar-select {
-  width: 150px;
-}
-
-.ui-toolbar-select-wide {
-  width: 200px;
-}
-
-.ui-toolbar-input {
-  width: 280px;
-  max-width: 100%;
-}
-
-.ui-toolbar-date {
-  width: 250px;
-  max-width: 100%;
-}
-
-/* 基础控件宽度 */
-.ui-toolbar-control,
-.ui-toolbar-control.el-date-editor,
-.ui-toolbar-control .el-input__wrapper,
-.ui-toolbar-control .el-select__wrapper {
-  width: 100%;
-  box-sizing: border-box;
-}
-
-/* Element Plus 输入控件压缩 */
-.ui-toolbar .el-input__wrapper,
-.ui-toolbar .el-select__wrapper,
-.ui-toolbar .el-range-editor.el-input__wrapper {
-  min-height: 36px;
-  padding: 0 10px;
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px var(--el-border-color) inset;
-}
-
-.ui-toolbar .el-input__inner,
-.ui-toolbar .el-select__placeholder,
-.ui-toolbar .el-range-input,
-.ui-toolbar .el-textarea__inner {
-  font-size: 14px;
-}
-
-.ui-toolbar .el-range-separator {
-  font-size: 13px;
-  color: #909399;
-}
-
-.ui-toolbar .el-input__prefix,
-.ui-toolbar .el-input__suffix,
-.ui-toolbar .el-range__icon,
-.ui-toolbar .el-range__close-icon {
-  font-size: 14px;
-}
-
-/* 标签/提示块 */
-.ui-toolbar-tag {
-  height: 36px;
-  padding: 0 12px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: flex-start;
-  border-radius: 10px;
-  font-size: 13px;
-  font-weight: 500;
-  line-height: 1;
-  box-sizing: border-box;
-}
-
-.ui-toolbar-tag--warning {
-  color: #e6a23c;
-  background: #fdf6ec;
-  border: 1px solid #f5dab1;
-}
-
-/* 查询/重置按钮区域 */
-.ui-toolbar-actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 10px;
-}
-
-.ui-toolbar-actions .el-button {
-  width: 100%;
-  min-height: 36px;
-  height: 36px;
-  padding: 0 12px;
-  margin-left: 0;
-  font-size: 14px;
-  border-radius: 10px;
-}
-
-/* 更紧凑的查询/重置按钮 */
-.ui-toolbar-actions-compact {
-  display: grid;
-  grid-template-columns: 132px 132px;
-  gap: 10px;
-  justify-content: start;
-}
-
-.ui-toolbar-actions-compact .el-button {
-  width: 132px;
-  min-height: 36px;
-  height: 36px;
-  padding: 0 12px;
-  margin-left: 0;
-  font-size: 14px;
-  border-radius: 10px;
-}
-
-/* 快捷工具固定两列 */
 .ui-toolbar-tool-grid {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
+  grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
   gap: 10px;
-  align-items: stretch;
 }
 
 .ui-toolbar-tool-grid .el-button,
 .ui-toolbar-tool-grid .el-upload,
 .ui-toolbar-tool-grid .el-upload .el-button {
   width: 100%;
-  min-height: 36px;
-  height: 36px;
-  padding: 0 12px;
   margin-left: 0;
-  font-size: 14px;
-  border-radius: 10px;
-  box-sizing: border-box;
 }
 
-.ui-toolbar-tool-grid .el-upload {
-  display: block;
-}
-
-.ui-toolbar-tool-grid .el-upload .el-button {
-  width: 100%;
-}
-
-/* 避免按钮文字太长把整体撑大 */
-.ui-toolbar-actions .el-button span,
-.ui-toolbar-actions-compact .el-button span,
-.ui-toolbar-tool-grid .el-button span,
-.ui-toolbar-tool-grid .el-upload .el-button span {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-/* 链接式操作组 */
 .ui-link-group {
   display: flex;
   flex-wrap: wrap;
@@ -319,66 +177,28 @@ body {
   font-weight: 600;
 }
 
-/* 统一按钮颜色微调 */
-.ui-toolbar .el-button--primary {
-  --el-button-hover-bg-color: #5aa2f8;
-  --el-button-active-bg-color: #3d8eea;
-}
-
-.ui-toolbar .el-button--danger.is-plain,
-.ui-toolbar .el-button--danger.is-disabled,
-.ui-toolbar .el-button--danger.is-disabled:hover {
-  border-radius: 10px;
-}
-
-.ui-toolbar .el-button.is-plain {
-  border-radius: 10px;
-}
-
-/* 页面内部如果有老的工具栏 flex 样式，统一清掉滚动问题 */
-.toolbar-tool-row,
-.asset-toolbar-actions,
-.asset-toolbar-tools {
-  overflow: visible !important;
-}
-
-/* 响应式：中屏开始上下堆叠 */
-@media (max-width: 1400px) {
+@media (max-width: 1100px) {
   .ui-toolbar {
     grid-template-columns: 1fr;
   }
-
-  .ui-toolbar-block {
-    min-height: auto;
-  }
 }
 
-/* 小屏进一步压缩 */
-@media (max-width: 992px) {
-  .ui-toolbar-grid-2,
-  .ui-toolbar-grid-3,
-  .ui-toolbar-tool-grid,
-  .ui-toolbar-actions {
-    grid-template-columns: 1fr;
-  }
-
-  .ui-toolbar-span-2,
-  .ui-toolbar-span-3 {
-    grid-column: auto;
-  }
-
-  .ui-toolbar-actions-compact {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .ui-toolbar-actions-compact .el-button {
-    width: 100%;
+@media (max-width: 768px) {
+  .ui-toolbar-block {
+    padding: 12px;
+    border-radius: 14px;
   }
 
   .ui-toolbar-select,
   .ui-toolbar-select-wide,
   .ui-toolbar-input,
-  .ui-toolbar-date {
+  .ui-toolbar-date,
+  .ui-toolbar-actions,
+  .ui-toolbar-actions .el-button,
+  .ui-toolbar-tool-grid,
+  .ui-toolbar-tool-grid .el-button,
+  .ui-toolbar-tool-grid .el-upload,
+  .ui-toolbar-tool-grid .el-upload .el-button {
     width: 100%;
   }
 }

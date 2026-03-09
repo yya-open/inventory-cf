@@ -5,35 +5,34 @@
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
-            <div class="ui-toolbar-form">
-              <div class="ui-toolbar-grid-2">
-                <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-control" @change="onSearch">
-                  <el-option label="在位(OK)" value="OK" />
-                  <el-option label="异常(ISSUE)" value="ISSUE" />
-                </el-select>
+            <div class="ui-toolbar-row">
+              <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-select" @change="onSearch">
+                <el-option label="在位(OK)" value="OK" />
+                <el-option label="异常(ISSUE)" value="ISSUE" />
+              </el-select>
 
-                <el-select v-model="issueType" placeholder="异常类型" clearable class="ui-toolbar-control" @change="onSearch">
-                  <el-option label="找不到显示器" value="NOT_FOUND" />
-                  <el-option label="位置不符" value="WRONG_LOCATION" />
-                  <el-option label="二维码不符" value="WRONG_QR" />
-                  <el-option label="台账状态不符" value="WRONG_STATUS" />
-                  <el-option label="设备缺失" value="MISSING" />
-                  <el-option label="其他原因" value="OTHER" />
-                </el-select>
-              </div>
-              <div class="ui-toolbar-grid-2">
-                <el-input v-model="keyword" placeholder="关键词（资产编号/SN/品牌/型号/员工/备注…）" clearable class="ui-toolbar-control" @keyup.enter="onSearch" />
-                <el-date-picker
-                  v-model="dateRange"
-                  type="daterange"
-                  range-separator="-"
-                  start-placeholder="开始日期"
-                  end-placeholder="结束日期"
-                  value-format="YYYY-MM-DD"
-                  class="ui-toolbar-control"
-                  @change="onSearch"
-                />
-              </div>
+              <el-select v-model="issueType" placeholder="异常类型" clearable class="ui-toolbar-select-wide" @change="onSearch">
+                <el-option label="找不到显示器" value="NOT_FOUND" />
+                <el-option label="位置不符" value="WRONG_LOCATION" />
+                <el-option label="二维码不符" value="WRONG_QR" />
+                <el-option label="台账状态不符" value="WRONG_STATUS" />
+                <el-option label="设备缺失" value="MISSING" />
+                <el-option label="其他原因" value="OTHER" />
+              </el-select>
+
+              <el-input v-model="keyword" placeholder="关键词（资产编号/SN/品牌/型号/员工/备注…）" clearable class="ui-toolbar-input" @keyup.enter="onSearch" />
+
+              <el-date-picker
+                v-model="dateRange"
+                type="daterange"
+                range-separator="-"
+                start-placeholder="开始日期"
+                end-placeholder="结束日期"
+                value-format="YYYY-MM-DD"
+                class="ui-toolbar-date"
+                @change="onSearch"
+              />
+
               <div class="ui-toolbar-actions">
                 <el-button type="primary" @click="onSearch">查询</el-button>
                 <el-button @click="reset">重置</el-button>

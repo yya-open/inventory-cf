@@ -5,22 +5,22 @@
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
-            <div class="ui-toolbar-form">
-              <div class="ui-toolbar-grid-2">
-                <el-select v-model="q.type" placeholder="动作" clearable class="ui-toolbar-control" @change="reload()">
-                  <el-option label="入库" value="IN" />
-                  <el-option label="出库" value="OUT" />
-                  <el-option label="归还" value="RETURN" />
-                  <el-option label="调拨" value="TRANSFER" />
-                  <el-option label="报废" value="SCRAP" />
-                  <el-option label="调整" value="ADJUST" />
-                </el-select>
-                <el-date-picker v-model="q.dates" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" class="ui-toolbar-control" @change="reload()" />
-              </div>
-              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable class="ui-toolbar-control" @keyup.enter="reload()" />
+            <div class="ui-toolbar-row">
+              <el-select v-model="q.type" placeholder="动作" clearable class="ui-toolbar-select" @change="reload()">
+                <el-option label="入库" value="IN" />
+                <el-option label="出库" value="OUT" />
+                <el-option label="归还" value="RETURN" />
+                <el-option label="调拨" value="TRANSFER" />
+                <el-option label="报废" value="SCRAP" />
+                <el-option label="调整" value="ADJUST" />
+              </el-select>
+
+              <el-date-picker v-model="q.dates" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" class="ui-toolbar-date" @change="reload()" />
+
+              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable class="ui-toolbar-input" @keyup.enter="reload()" />
+
               <div class="ui-toolbar-actions">
                 <el-button type="primary" @click="reload()">查询</el-button>
-                <el-button @click="resetFilters">重置</el-button>
               </div>
             </div>
           </div>
@@ -146,13 +146,6 @@ async function loadList() {
 function reload() {
   page.value = 1;
   loadList();
-}
-
-function resetFilters() {
-  q.type = "";
-  q.keyword = "";
-  q.dates = [];
-  reload();
 }
 
 function onPage(p: number) {
