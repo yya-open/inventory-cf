@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "vite",
     "build": "vite build",
+    "check:conflicts": "bash -lc 'if rg -n \"^(<<<<<<<|=======|>>>>>>>)\" --glob \"!node_modules/**\" --glob \"!.git/**\" .; then echo \"Merge conflict markers found\"; exit 1; else echo \"No merge conflict markers\"; fi'",
     "preview": "vite preview"
   },
   "dependencies": {
