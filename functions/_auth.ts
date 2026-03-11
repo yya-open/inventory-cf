@@ -52,17 +52,30 @@ export async function signJwt(payload: any, secret: string, expSeconds: number) 
 }
 
 export async function verifyJwt(token: string, secret: string) {
-  const parts = token.split(".");
-  if (parts.length !== 3) return null;
-  const [h, p, s] = parts;
-  const data = `${h}.${p}`;
-  const key = await importHmacKey(secret);
-  const ok = await crypto.subtle.verify("HMAC", key, b64uDecode(s), new TextEncoder().encode(data));
-  if (!ok) return null;
-  const payload = JSON.parse(new TextDecoder().decode(b64uDecode(p)));
-  const now = Math.floor(Date.now() / 1000);
-  if (payload.exp && now > payload.exp) return null;
-  return payload;
+  try {
+    const parts = token.split(".");
+    if (parts.length !== 3) return null;
+    const [h, p, s] = parts;
+    const data = `${h}.${p}`;
+    const key = await importHmacKey(secret);
+    const ok = await crypto.subtle.verify("HMAC", key, b64uDecode(s), new TextEncoder().encode(data));
+    if (!ok) return null;
+    const payload = JSON.parse(new TextDecoder().decode(b64uDecode(p)));
+    if (!payload || typeof payload !== "object" || Array.isArray(payload)) return null;
+
+    const now = Math.floor(Date.now() / 1000);
+    const expRaw = (payload as any).exp;
+    if (expRaw !== undefined) {
+      // exp must be a finite numeric timestamp (seconds); JWT is invalid otherwise.
+      if (typeof expRaw !== "number" || !Number.isFinite(expRaw)) return null;
+      // JWT exp is exclusive: token must be rejected once current time reaches exp.
+      if (now >= expRaw) return null;
+    }
+    return payload;
+  } catch {
+    // Treat malformed JWT as unauthenticated instead of throwing 500.
+    return null;
+  }
 }
 
 export function roleLevel(role: Role) {
