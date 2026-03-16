@@ -4,53 +4,47 @@ type Env = { DB: D1Database; JWT_SECRET: string };
 
 function getClientIp(request: Request) {
   const h = request.headers;
-  return (
-    h.get("CF-Connecting-IP") ||
-    h.get("X-Forwarded-For")?.split(",")[0]?.trim() ||
-    ""
-  );
+  return h.get("CF-Connecting-IP") || h.get("X-Forwarded-For")?.split(",")[0]?.trim() || "";
 }
 
-async function rateLimit(env: Env, request: Request, route: string, limitPerMinute: number) {
+async function rateLimit(env: Env, request: Request, route: string, subject: string, limitPerMinute: number) {
   const ip = getClientIp(request) || "unknown";
   const minuteBucket = Math.floor(Date.now() / 60000);
-  const k = `${route}|${ip}|${minuteBucket}`;
+  const key = `${route}|${subject}|${ip}|${minuteBucket}`;
 
-  // best-effort cleanup (avoid table growth)
   if ((Date.now() & 63) === 0) {
-    await env.DB.prepare(
-      "DELETE FROM public_api_throttle WHERE updated_at < datetime('now','+8 hours', '-2 hours')"
-    ).run();
+    await env.DB.prepare("DELETE FROM public_api_throttle WHERE updated_at < datetime('now','+8 hours', '-2 hours')").run();
   }
 
   await env.DB.prepare(
     "INSERT INTO public_api_throttle (k, count) VALUES (?, 1) ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = datetime('now','+8 hours')"
-  )
-    .bind(k)
-    .run();
+  ).bind(key).run();
 
-  const row = await env.DB.prepare("SELECT count FROM public_api_throttle WHERE k=?")
-    .bind(k)
-    .first<any>();
-  const c = Number(row?.count || 0);
-  if (c > limitPerMinute) {
+  const row = await env.DB.prepare("SELECT count FROM public_api_throttle WHERE k=?").bind(key).first<any>();
+  if (Number(row?.count || 0) > limitPerMinute) {
     throw Object.assign(new Error("访问过于频繁，请稍后再试"), { status: 429 });
   }
 }
 
-// 公开（无需登录）接口：扫码查看电脑信息
-// 支持两种方式：
-// 1) 新版可控长期码：GET /api/public/pc-asset?id=1&key=xxxx   （推荐）
-//    - key 来自 pc_assets.qr_key，可随时重置作废旧码
-//    - 不依赖 JWT_SECRET
-// 2) 旧版 token 码（兼容）：GET /api/public/pc-asset?token=...
+function sanitizePcAsset(asset: any) {
+  return {
+    id: asset.id,
+    brand: asset.brand || null,
+    model: asset.model || null,
+    serial_no: asset.serial_no || null,
+    status: asset.status || null,
+    remark: asset.remark || null,
+    last_employee_no: asset.last_employee_no || null,
+    last_employee_name: asset.last_employee_name || null,
+    last_department: asset.last_department || null,
+    last_config_date: asset.last_config_date || null,
+    last_recycle_date: asset.last_recycle_date || null,
+  };
+}
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-
-    // 限流：公开扫码查询
-    await rateLimit(env, request, "public_pc_asset", 30);
 
     const url = new URL(request.url);
     const idParam = (url.searchParams.get("id") || "").trim();
@@ -58,21 +52,20 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const token = (url.searchParams.get("token") || "").trim();
 
     let id = 0;
-    let key = "";
+    let subject = token ? `token:${token.slice(0, 12)}` : `id:${idParam || 'missing'}`;
 
     if (idParam && keyParam) {
       id = Number(idParam || 0);
-      key = keyParam;
-      if (!id || !key) throw Object.assign(new Error("二维码参数无效"), { status: 400 });
-
-      // 校验 key 是否匹配（为空视为未启用二维码/未迁移）
+      subject = `id:${id}`;
+      await rateLimit(env, request, "public_pc_asset", subject, 20);
+      if (!id || !keyParam) throw Object.assign(new Error("二维码参数无效"), { status: 400 });
       const r = await env.DB.prepare("SELECT id, qr_key FROM pc_assets WHERE id=?").bind(id).first<any>();
       if (!r) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
       const dbKey = (r.qr_key || "").trim();
       if (!dbKey) throw Object.assign(new Error("该电脑尚未启用二维码（请先在系统里生成一次二维码）"), { status: 400 });
-      if (dbKey !== key) throw Object.assign(new Error("二维码已失效（可能已被重置）"), { status: 401 });
+      if (dbKey !== keyParam) throw Object.assign(new Error("二维码已失效（可能已被重置）"), { status: 401 });
     } else if (token) {
-      // 旧版 token 兼容
+      await rateLimit(env, request, "public_pc_asset", subject, 10);
       if (!env.JWT_SECRET) throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
       const payload = await verifyJwt(token, env.JWT_SECRET);
       if (!payload) throw Object.assign(new Error("二维码已失效"), { status: 401 });
@@ -83,7 +76,6 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
       throw Object.assign(new Error("缺少二维码参数"), { status: 400 });
     }
 
-    // 取资产 + 最近一次领用/回收信息（与列表页保持一致）
     const asset = await env.DB.prepare(
       `
       WITH latest_out AS (
@@ -99,12 +91,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
         GROUP BY asset_id
       )
       SELECT
-        a.*,
-        o.employee_no   AS last_employee_no,
+        a.id, a.brand, a.serial_no, a.model, a.remark, a.status,
+        o.employee_no AS last_employee_no,
         o.employee_name AS last_employee_name,
-        o.department    AS last_department,
-        o.config_date   AS last_config_date,
-        r.recycle_date  AS last_recycle_date
+        o.department AS last_department,
+        o.config_date AS last_config_date,
+        r.recycle_date AS last_recycle_date
       FROM pc_assets a
       LEFT JOIN latest_out lo ON lo.asset_id = a.id
       LEFT JOIN pc_out o ON o.id = lo.max_id
@@ -113,12 +105,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
       WHERE a.id=?
       LIMIT 1
       `
-    )
-      .bind(id, id, id)
-      .first<any>();
+    ).bind(id, id, id).first<any>();
 
     if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
-    return Response.json({ ok: true, data: asset });
+    return Response.json({ ok: true, data: sanitizePcAsset(asset) });
   } catch (e: any) {
     return errorResponse(e);
   }

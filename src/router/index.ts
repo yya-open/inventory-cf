@@ -108,15 +108,13 @@ const router = createRouter({
 router.beforeEach(async (to) => {
   if ((to.meta as any)?.public) return true;
   const auth = useAuth();
-  if (!auth.token) return { path: "/login", query: { redirect: to.fullPath } };
 
   if (!auth.user) {
     try {
       await fetchMe();
     } catch (e: any) {
-      auth.token = "";
-      localStorage.removeItem("token");
-      return { path: "/login" };
+      auth.user = null;
+      return { path: "/login", query: { redirect: to.fullPath } };
     }
   }
 

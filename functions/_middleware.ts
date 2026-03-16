@@ -1,12 +1,7 @@
 import { createTiming } from "./api/_timing";
-
-// Global middleware for Cloudflare Pages Functions
-// - Adds Server-Timing to all /api responses
-// - Wraps D1 so all queries are accumulated into `sql` timing bucket
-// - Logs slow requests (best-effort) into D1
+import { buildAuthCookie, buildClearAuthCookie } from "./_auth";
 
 function wrapD1(db: D1Database, t: ReturnType<typeof createTiming>): D1Database {
-  // Wrap statement methods to accumulate sql time.
   function wrapStmt(stmt: any) {
     if (!stmt) return stmt;
     return new Proxy(stmt, {
@@ -23,68 +18,95 @@ function wrapD1(db: D1Database, t: ReturnType<typeof createTiming>): D1Database 
             }
           };
         }
+        if (prop === "bind") {
+          return (...args: any[]) => wrapStmt(v.apply(target, args));
+        }
         return v.bind(target);
       },
-    });
+    }) as any;
   }
 
-  return new Proxy(db as any, {
+  return new Proxy(db, {
     get(target, prop, receiver) {
       const v = Reflect.get(target, prop, receiver);
-      if (prop === "prepare" && typeof v === "function") {
-        return (sql: string) => wrapStmt(v.call(target, sql));
+      if (typeof v !== "function") return v;
+      if (prop === "prepare") {
+        return (...args: any[]) => wrapStmt(v.apply(target, args));
       }
-      return v;
+      if (prop === "batch") {
+        return async (stmts: any[]) => {
+          const s = Date.now();
+          try {
+            return await v.apply(target, [stmts]);
+          } finally {
+            t.add("sql", Date.now() - s);
+          }
+        };
+      }
+      if (prop === "exec") {
+        return async (...args: any[]) => {
+          const s = Date.now();
+          try {
+            return await v.apply(target, args);
+          } finally {
+            t.add("sql", Date.now() - s);
+          }
+        };
+      }
+      return v.bind(target);
     },
   }) as any;
 }
 
-async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, response: Response) {
+async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, res: Response) {
   try {
-    const env = context.env as any;
-    const db: D1Database | undefined = env?.DB;
+    const total = t.total();
+    const thresholdMs = Number((context.env as any)?.SLOW_REQUEST_MS || 1200);
+    if (!Number.isFinite(total) || total < thresholdMs) return;
+    const db = (context.env as any)?.DB as D1Database | undefined;
     if (!db) return;
 
-    const threshold = Number(env.SLOW_REQUEST_MS || 800);
-    const total = t.totalMs();
-    if (!(total >= threshold)) return;
-
     const url = new URL(context.request.url);
-    const path = url.pathname;
-    if (!path.startsWith("/api/")) return;
-
-    // best-effort user id
-    const userId = (() => {
-      const u = (context.data && (context.data as any).user) || null;
-      const id = u?.id;
-      return id ? Number(id) : null;
-    })();
-
     const method = context.request.method;
-    const status = response.status;
-    const colo = context?.cf?.colo || null;
-    const country = context?.cf?.country || null;
-
-    const authMs = Number((t.parts as any).auth || 0);
-    const sqlMs = Number((t.parts as any).sql || 0);
-
-    const q = url.search;
+    const path = url.pathname + (url.search || "");
+    const status = res.status;
+    const sqlMs = Math.round(t.get("sql") || 0);
+    const authMs = Math.round(t.get("auth") || 0);
+    const totalMs = Math.round(total);
 
     const doInsert = async () => {
-      await db
-        .prepare(
-          `INSERT INTO api_slow_requests (method, path, query, status, dur_ms, auth_ms, sql_ms, colo, country, user_id)
-           VALUES (?,?,?,?,?,?,?,?,?,?)`
+      try {
+        await db.prepare(
+          `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now','+8 hours'))`
         )
-        .bind(method, path, q || null, status, total, authMs, sqlMs, colo, country, userId)
-        .run();
+          .bind(method, path, status, totalMs, sqlMs, authMs)
+          .run();
+      } catch {
+        await db.prepare(
+          `CREATE TABLE IF NOT EXISTS slow_request_log (
+             id INTEGER PRIMARY KEY AUTOINCREMENT,
+             method TEXT,
+             path TEXT,
+             status INTEGER,
+             total_ms INTEGER,
+             sql_ms INTEGER,
+             auth_ms INTEGER,
+             created_at TEXT DEFAULT (datetime('now','+8 hours'))
+           )`
+        ).run();
+        await db.prepare(
+          `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
+           VALUES (?, ?, ?, ?, ?, ?, datetime('now','+8 hours'))`
+        )
+          .bind(method, path, status, totalMs, sqlMs, authMs)
+          .run();
+      }
     };
 
     if (typeof context.waitUntil === "function") context.waitUntil(doInsert());
     else await doInsert();
-  } catch {
-    // never block response
-  }
+  } catch {}
 }
 
 export async function onRequest(context: any) {
@@ -92,11 +114,10 @@ export async function onRequest(context: any) {
   const isApi = url.pathname.startsWith("/api/");
 
   const t = createTiming();
-  // expose timing to helpers (e.g. requireAuth)
   const envAny = context.env as any;
   envAny.__timing = t;
-  // 每次请求清空一次（避免跨请求残留）
   envAny.__refresh_token = null;
+  envAny.__clear_auth_cookie = false;
   if (isApi && envAny.DB) {
     envAny.DB = wrapD1(envAny.DB, t);
   }
@@ -104,18 +125,18 @@ export async function onRequest(context: any) {
   let res: Response;
   try {
     res = await context.next();
-  } finally {
-    // noop
-  }
+  } finally {}
 
   if (isApi) {
     const headers = new Headers(res.headers);
     headers.set("Server-Timing", t.header());
 
-    // 滑动续期：requireAuth 成功时会把新 token 写到 env.__refresh_token
     const newToken = envAny.__refresh_token;
     if (newToken && res.status !== 401) {
-      headers.set("X-Auth-Token", String(newToken));
+      headers.append("Set-Cookie", buildAuthCookie(String(newToken)));
+    }
+    if (envAny.__clear_auth_cookie || res.status === 401) {
+      headers.append("Set-Cookie", buildClearAuthCookie());
     }
 
     res = new Response(res.body, { status: res.status, statusText: res.statusText, headers });

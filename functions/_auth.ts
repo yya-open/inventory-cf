@@ -1,12 +1,8 @@
 type Role = "admin" | "operator" | "viewer";
 
-// 登录态有效期（秒）：1 天。
-// 配合滑动续期：只要有接口调用通过鉴权，就会刷新 token。
 export const JWT_TTL_SECONDS = 24 * 3600;
-
-// 续期节流阈值（秒）：当 token 剩余时间小于该值时才刷新。
-// 建议设置为 TTL 的一半左右。这里取 12 小时。
 export const REFRESH_THRESHOLD_SECONDS = 12 * 3600;
+export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number };
 
@@ -67,14 +63,11 @@ export async function verifyJwt(token: string, secret: string) {
     const expRaw = (payload as any).exp;
     if (expRaw !== undefined) {
       const exp = Number(expRaw);
-      // exp must be a finite timestamp (seconds); JWT is invalid otherwise.
       if (!Number.isFinite(exp)) return null;
-      // JWT exp is exclusive: token must be rejected once current time reaches exp.
       if (now >= exp) return null;
     }
     return payload;
   } catch {
-    // Treat malformed JWT as unauthenticated instead of throwing 500.
     return null;
   }
 }
@@ -83,10 +76,43 @@ export function roleLevel(role: Role) {
   return role === "admin" ? 3 : role === "operator" ? 2 : 1;
 }
 
+function getCookie(request: Request, name: string) {
+  const cookie = request.headers.get("cookie") || "";
+  const parts = cookie.split(/;\s*/);
+  for (const part of parts) {
+    const idx = part.indexOf("=");
+    if (idx <= 0) continue;
+    const k = part.slice(0, idx).trim();
+    if (k !== name) continue;
+    return decodeURIComponent(part.slice(idx + 1));
+  }
+  return null;
+}
+
 export function getBearer(request: Request) {
   const h = request.headers.get("authorization") || request.headers.get("Authorization") || "";
   const m = h.match(/^Bearer\s+(.+)$/i);
   return m ? m[1].trim() : null;
+}
+
+export function getAuthToken(request: Request) {
+  return getCookie(request, AUTH_COOKIE_NAME) || getBearer(request);
+}
+
+export function buildAuthCookie(token: string, maxAgeSeconds = JWT_TTL_SECONDS) {
+  const attrs = [
+    `${AUTH_COOKIE_NAME}=${encodeURIComponent(token)}`,
+    "Path=/",
+    "HttpOnly",
+    "Secure",
+    "SameSite=Lax",
+    `Max-Age=${Math.max(0, Math.trunc(maxAgeSeconds))}`,
+  ];
+  return attrs.join("; ");
+}
+
+export function buildClearAuthCookie() {
+  return `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }
 
 export async function requireAuth(
@@ -108,7 +134,7 @@ async function requireAuthInternal(
 ): Promise<AuthUser> {
   const secret = env.JWT_SECRET;
   if (!secret) throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
-  const token = getBearer(request);
+  const token = getAuthToken(request);
   if (!token) throw Object.assign(new Error("未登录"), { status: 401 });
 
   const payload = await verifyJwt(token, secret);
@@ -122,7 +148,6 @@ async function requireAuthInternal(
       .bind(userId)
       .first<any>();
   } catch (e: any) {
-    // Backward compatible: older DB may not have token_version column yet.
     if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
       u = await env.DB
         .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
@@ -136,15 +161,12 @@ async function requireAuthInternal(
   if (!u || Number(u.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });
 
   const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password };
-  // Token version check: invalidate old JWT immediately after password change / forced logout
   const tv = Number((payload as any)?.tv || 0);
   const dbTv = Number((u as any).token_version || 0);
   if (tv !== dbTv) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });
 
   if (roleLevel(user.role) < roleLevel(minRole)) throw Object.assign(new Error("权限不足"), { status: 403 });
 
-  // 滑动续期（带节流）：只有当 token 剩余时间较短时才刷新，避免每次请求都下发新 token。
-  // 全局 middleware 会把它写入响应头，前端收到后更新 localStorage。
   try {
     const nowSec = Math.floor(Date.now() / 1000);
     const exp = Number(payload?.exp || 0);
@@ -156,16 +178,13 @@ async function requireAuthInternal(
         JWT_TTL_SECONDS
       );
     }
-  } catch {
-    // 不影响正常请求
-  }
+  } catch {}
   return user;
 }
 
 export function json(ok: boolean, data?: any, message?: string, status = 200) {
   return Response.json({ ok, data, message }, { status });
 }
-
 
 export function errorResponse(e: any) {
   const status = Number(e?.status || 500);

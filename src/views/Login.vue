@@ -132,8 +132,8 @@ async function changePassword() {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
     showChange.value = false;
     ElMessage.success("密码已更新，请重新登录");
-    auth.token = "";
-    localStorage.removeItem("token");
+    auth.user = null;
+    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
     router.replace("/login");
   } catch (e: any) {
     ElMessage.error(e.message || "修改失败");

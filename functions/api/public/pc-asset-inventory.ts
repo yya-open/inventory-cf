@@ -10,7 +10,8 @@ function getClientIp(request: Request) {
 async function rateLimit(env: Env, request: Request, route: string, limitPerMinute: number) {
   const ip = getClientIp(request) || "unknown";
   const minuteBucket = Math.floor(Date.now() / 60000);
-  const k = `${route}|${ip}|${minuteBucket}`;
+  const subject = new URL(request.url).searchParams.get("id") || new URL(request.url).searchParams.get("token")?.slice(0,12) || "unknown";
+  const k = `${route}|${subject}|${ip}|${minuteBucket}`;
 
   // best-effort cleanup (avoid table growth)
   if ((Date.now() & 63) === 0) {
@@ -69,7 +70,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     // 限流：盘点提交（更严格）
-    await rateLimit(env, request, "public_pc_inventory", 10);
+    await rateLimit(env, request, "public_pc_inventory", 8);
 
     const assetId = await resolvePcAssetId(env, request);
 

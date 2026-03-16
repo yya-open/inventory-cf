@@ -1,8 +1,7 @@
-import { json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
+import { buildAuthCookie, json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword } from "../../_password";
 
 function getClientIp(request: Request) {
-  // Cloudflare will set CF-Connecting-IP in production.
   const ip =
     request.headers.get("CF-Connecting-IP") ||
     request.headers.get("x-forwarded-for")?.split(",")[0]?.trim() ||
@@ -16,15 +15,12 @@ function clampInt(v: any, def: number, min: number, max: number) {
   return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
-
 function datetimeTextToMsBj(dt: string | null) {
   if (!dt) return null;
-  // DB stores Beijing time (UTC+8) as 'YYYY-MM-DD HH:MM:SS'. Convert to ISO with explicit offset.
-  const iso = dt.replace(' ', 'T') + '+08:00';
+  const iso = dt.replace(" ", "T") + "+08:00";
   const ms = Date.parse(iso);
   return Number.isFinite(ms) ? ms : null;
 }
-
 
 async function getRecentFailCount(env: any, ip: string, username: string, windowMin: number) {
   try {
@@ -36,7 +32,6 @@ async function getRecentFailCount(env: any, ip: string, username: string, window
     if (!r) return 0;
     const last = r.last_fail_at as string | null;
     if (!last) return 0;
-    // If last_fail_at is older than the window, treat as 0.
     const ms = datetimeTextToMsBj(last);
     if (!Number.isFinite(ms)) return 0;
     if (Date.now() - ms > windowMin * 60_000) return 0;
@@ -63,8 +58,6 @@ async function verifyTurnstile(secret: string, token: string, ip?: string) {
 function datetimeToMsBj(dt: string | null) {
   if (!dt) return null;
   const ms = datetimeTextToMsBj(dt);
-  // DB stores Beijing time, so this returns a Beijing-based timestamp.
-
   return Number.isFinite(ms) ? ms : null;
 }
 async function checkLocked(env: any, ip: string, username: string) {
@@ -83,7 +76,6 @@ async function checkLocked(env: any, ip: string, username: string) {
     const locked_until = r?.locked_until as string | null;
     return locked_until || null;
   } catch (e: any) {
-    // If not migrated yet, don't block login.
     if (String(e?.message || "").includes("no such table")) return null;
     throw e;
   }
@@ -153,8 +145,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!u || !p) return json(false, null, "请输入账号和密码", 400);
 
     const ip = getClientIp(request);
-
-    // 可选配置（Pages 环境变量）：AUTH_MAX_FAILS / AUTH_WINDOW_MIN / AUTH_LOCK_MIN
     const maxFails = clampInt((env as any).AUTH_MAX_FAILS, 5, 3, 20);
     const windowMin = clampInt((env as any).AUTH_WINDOW_MIN, 15, 1, 120);
     const lockMin = clampInt((env as any).AUTH_LOCK_MIN, 15, 1, 240);
@@ -162,7 +152,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const captchaAfter = clampInt((env as any).AUTH_CAPTCHA_AFTER, 3, 1, 50);
     const turnstileSecret = String((env as any).TURNSTILE_SECRET || "");
 
-    // Determine whether captcha is required for this (ip, username) within the sliding window.
     const userFails = await getRecentFailCount(env as any, ip, u, windowMin);
     const ipFails = await getRecentFailCount(env as any, ip, "*", windowMin);
     const needCaptcha = !!turnstileSecret && Math.max(userFails, ipFails) >= captchaAfter;
@@ -178,7 +167,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
       const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
       if (!okCaptcha) {
-        // Captcha failed: count towards lock.
         await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, true);
         await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, true);
         return json(false, { require_captcha: true }, "验证码验证失败", 403);
@@ -192,7 +180,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         .bind(u)
         .first<any>();
     } catch (e: any) {
-      // Backward compatible: older DB may not have token_version column yet.
       if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
         row = await env.DB
           .prepare("SELECT id, username, password_hash, role, is_active, must_change_password FROM users WHERE username=?")
@@ -204,7 +191,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
-    // 统一错误信息，避免枚举账号
     if (!row || Number(row.is_active) !== 1) {
       await bumpFail(env as any, ip, u, maxFails, windowMin, lockMin, !needCaptcha);
       await bumpFail(env as any, ip, "*", maxFails, windowMin, lockMin, !needCaptcha);
@@ -218,14 +204,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return json(false, null, "账号或密码错误", 401);
     }
 
-    // success: clear throttle
     await clearFail(env as any, ip, u);
 
-    const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: (row.token_version||0) }, env.JWT_SECRET, JWT_TTL_SECONDS);
-    return json(true, {
-      token,
+    const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, JWT_TTL_SECONDS);
+    const res = json(true, {
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password },
     });
+    res.headers.append("Set-Cookie", buildAuthCookie(token));
+    return res;
   } catch (e: any) {
     return errorResponse(e);
   }

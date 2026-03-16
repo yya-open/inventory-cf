@@ -11,7 +11,8 @@ function getClientIp(request: Request) {
 async function rateLimit(env: Env, request: Request, route: string, limitPerMinute: number) {
   const ip = getClientIp(request) || "unknown";
   const minuteBucket = Math.floor(Date.now() / 60000);
-  const k = `${route}|${ip}|${minuteBucket}`;
+  const subject = new URL(request.url).searchParams.get("id") || new URL(request.url).searchParams.get("token")?.slice(0,12) || "unknown";
+  const k = `${route}|${subject}|${ip}|${minuteBucket}`;
 
   // ensure throttle table exists (best-effort)
   try {
@@ -86,7 +87,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
-    await rateLimit(env, request, "public_monitor_inventory", 10);
+    await rateLimit(env, request, "public_monitor_inventory", 8);
 
     const assetId = await resolveMonitorAssetId(env, request);
 
