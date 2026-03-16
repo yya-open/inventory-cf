@@ -32,6 +32,10 @@ function sanitizePcAsset(asset: any) {
     brand: asset.brand || null,
     model: asset.model || null,
     serial_no: asset.serial_no || null,
+    manufacture_date: asset.manufacture_date || null,
+    warranty_end: asset.warranty_end || null,
+    disk_capacity: asset.disk_capacity || null,
+    memory_size: asset.memory_size || null,
     status: asset.status || null,
     remark: asset.remark || null,
     last_employee_no: asset.last_employee_no || null,
@@ -91,7 +95,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
         GROUP BY asset_id
       )
       SELECT
-        a.id, a.brand, a.serial_no, a.model, a.remark, a.status,
+        a.id, a.brand, a.serial_no, a.model,
+        a.manufacture_date, a.warranty_end, a.disk_capacity, a.memory_size,
+        a.remark, a.status,
         o.employee_no AS last_employee_no,
         o.employee_name AS last_employee_name,
         o.department AS last_department,
