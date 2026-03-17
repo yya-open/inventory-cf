@@ -1,16 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
-import { ensureMonitorSchemaIfAllowed, ensureMonitorQrColumns } from "./_monitor";
+import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { getOrCreateAssetQr } from "./services/asset-qr";
 
-function genKey() {
-  const bytes = crypto.getRandomValues(new Uint8Array(20));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-// GET /api/monitor-asset-qr-token?id=123
-// 生成“扫码查看显示器信息”的长期二维码（可控可撤销，机制同电脑二维码：id + qr_key）
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "viewer");
@@ -22,26 +13,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
     else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
     await ensureMonitorQrColumns(env.DB);
-
     const id = Number(url.searchParams.get("id") || 0);
-    if (!id) throw Object.assign(new Error("缺少资产ID"), { status: 400 });
+    const result = await getOrCreateAssetQr(env.DB, {
+      assetTable: "monitor_assets",
+      notFoundMessage: "显示器台账不存在或已删除",
+      publicPath: "/public/monitor-asset",
+    }, id, url.origin);
 
-    const row = await env.DB.prepare("SELECT id, qr_key FROM monitor_assets WHERE id=?").bind(id).first<any>();
-    if (!row) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
-
-    let key = (row.qr_key || "").trim();
-    if (!key) {
-      key = genKey();
-      await env.DB
-        .prepare("UPDATE monitor_assets SET qr_key=?, qr_updated_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?")
-        .bind(key, id)
-        .run();
-    }
-
-    const origin = url.origin;
-    const viewUrl = `${origin}/public/monitor-asset?id=${encodeURIComponent(String(id))}&key=${encodeURIComponent(key)}`;
-
-    return Response.json({ ok: true, id, key, url: viewUrl });
+    return Response.json({ ok: true, ...result });
   } catch (e: any) {
     return errorResponse(e);
   }

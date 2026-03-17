@@ -1,5 +1,7 @@
-export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number|string)[]) {
-  const ids = [...new Set(assetIds.map(v => Number(v)).filter(v => Number.isFinite(v) && v > 0))];
+import { sqlNowStored } from "../_time";
+
+export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number | string)[]) {
+  const ids = [...new Set(assetIds.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
   for (const assetId of ids) {
     const latest = await db.prepare(`
       SELECT evt_type, created_at, rid FROM (
@@ -15,13 +17,13 @@ export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number|st
       LIMIT 1
     `).bind(assetId, assetId, assetId, assetId).first<any>();
 
-    let status = 'IN_STOCK';
-    const t = String(latest?.evt_type || '').toUpperCase();
-    if (t === 'OUT') status = 'ASSIGNED';
-    else if (t === 'RECYCLE') status = 'RECYCLED';
-    else if (t === 'SCRAP') status = 'SCRAPPED';
-    else if (t === 'RETURN' || t === 'IN') status = 'IN_STOCK';
+    let status = "IN_STOCK";
+    const t = String(latest?.evt_type || "").toUpperCase();
+    if (t === "OUT") status = "ASSIGNED";
+    else if (t === "RECYCLE") status = "RECYCLED";
+    else if (t === "SCRAP") status = "SCRAPPED";
+    else if (t === "RETURN" || t === "IN") status = "IN_STOCK";
 
-    await db.prepare(`UPDATE pc_assets SET status=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(status, assetId).run();
+    await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(status, assetId).run();
   }
 }

@@ -1,16 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
-import { ensureMonitorSchemaIfAllowed, ensureMonitorQrColumns } from "./_monitor";
+import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { resetAssetQr } from "./services/asset-qr";
 
-function genKey() {
-  const bytes = crypto.getRandomValues(new Uint8Array(20));
-  return btoa(String.fromCharCode(...bytes))
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_")
-    .replace(/=+$/g, "");
-}
-
-// POST /api/monitor-assets-reset-qr?id=123
-// 管理员重置二维码：生成新 qr_key，使旧二维码立即失效
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, "admin");
@@ -22,23 +13,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
     await ensureMonitorQrColumns(env.DB);
-
     const id = Number(url.searchParams.get("id") || 0);
-    if (!id) throw Object.assign(new Error("缺少资产ID"), { status: 400 });
+    const result = await resetAssetQr(env.DB, {
+      assetTable: "monitor_assets",
+      notFoundMessage: "显示器台账不存在或已删除",
+      publicPath: "/public/monitor-asset",
+    }, id, url.origin);
 
-    const asset = await env.DB.prepare("SELECT id FROM monitor_assets WHERE id=?").bind(id).first<any>();
-    if (!asset) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
-
-    const key = genKey();
-    await env.DB
-      .prepare("UPDATE monitor_assets SET qr_key=?, qr_updated_at=datetime('now','+8 hours'), updated_at=datetime('now','+8 hours') WHERE id=?")
-      .bind(key, id)
-      .run();
-
-    const origin = url.origin;
-    const viewUrl = `${origin}/public/monitor-asset?id=${encodeURIComponent(String(id))}&key=${encodeURIComponent(key)}`;
-
-    return Response.json({ ok: true, id, key, url: viewUrl });
+    return Response.json({ ok: true, ...result });
   } catch (e: any) {
     return errorResponse(e);
   }
