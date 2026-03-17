@@ -1,5 +1,6 @@
 import { buildAuthCookie, json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword } from "../../_password";
+import { sqlNowStored, sqlStoredMinutesAgo, sqlStoredMinutesFromNow } from "../_time";
 
 function getClientIp(request: Request) {
   const ip =
@@ -68,7 +69,7 @@ async function checkLocked(env: any, ip: string, username: string) {
        WHERE ip=?
          AND (username=? OR username='*')
          AND locked_until IS NOT NULL
-         AND locked_until > datetime('now','+8 hours')`
+         AND locked_until > ${sqlNowStored()}`
     )
       .bind(ip, username)
       .first<any>();
@@ -84,36 +85,36 @@ async function checkLocked(env: any, ip: string, username: string) {
 async function bumpFail(env: any, ip: string, username: string, maxFails: number, windowMin: number, lockMin: number, lockEnabled: boolean = true) {
   const sql = `
     INSERT INTO auth_login_throttle (ip, username, fail_count, first_fail_at, last_fail_at, locked_until, updated_at)
-    VALUES (?, ?, 1, datetime('now','+8 hours'), datetime('now','+8 hours'),
-            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN datetime('now','+8 hours', '+${lockMin} minutes') ELSE NULL END,
-            datetime('now','+8 hours'))
+    VALUES (?, ?, 1, ${sqlNowStored()}, ${sqlNowStored()},
+            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN ${sqlStoredMinutesFromNow(lockMin)} ELSE NULL END,
+            ${sqlNowStored()})
     ON CONFLICT(ip, username) DO UPDATE SET
       fail_count = CASE
         WHEN auth_login_throttle.last_fail_at IS NULL
-          OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
+          OR auth_login_throttle.last_fail_at < ${sqlStoredMinutesAgo(windowMin)}
         THEN 1
         ELSE auth_login_throttle.fail_count + 1
       END,
       first_fail_at = CASE
         WHEN auth_login_throttle.last_fail_at IS NULL
-          OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
-        THEN datetime('now','+8 hours')
+          OR auth_login_throttle.last_fail_at < ${sqlStoredMinutesAgo(windowMin)}
+        THEN ${sqlNowStored()}
         ELSE auth_login_throttle.first_fail_at
       END,
-      last_fail_at = datetime('now','+8 hours'),
+      last_fail_at = ${sqlNowStored()},
       locked_until = CASE
         WHEN (
           CASE
             WHEN auth_login_throttle.last_fail_at IS NULL
-              OR auth_login_throttle.last_fail_at < datetime('now','+8 hours', '-${windowMin} minutes')
+              OR auth_login_throttle.last_fail_at < ${sqlStoredMinutesAgo(windowMin)}
             THEN 1
             ELSE auth_login_throttle.fail_count + 1
           END
         ) >= ${maxFails} AND ${lockEnabled ? 1 : 0}=1
-        THEN datetime('now','+8 hours', '+${lockMin} minutes')
+        THEN ${sqlStoredMinutesFromNow(lockMin)}
         ELSE NULL
       END,
-      updated_at = datetime('now','+8 hours');
+      updated_at = ${sqlNowStored()};
   `;
 
   try {

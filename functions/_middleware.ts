@@ -1,3 +1,4 @@
+import { sqlNowStored } from "./api/_time";
 import { createTiming } from "./api/_timing";
 import { buildAuthCookie, buildClearAuthCookie } from "./_auth";
 
@@ -78,7 +79,7 @@ async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, 
       try {
         await db.prepare(
           `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, datetime('now','+8 hours'))`
+           VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
         )
           .bind(method, path, status, totalMs, sqlMs, authMs)
           .run();
@@ -92,12 +93,12 @@ async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, 
              total_ms INTEGER,
              sql_ms INTEGER,
              auth_ms INTEGER,
-             created_at TEXT DEFAULT (datetime('now','+8 hours'))
+             created_at TEXT DEFAULT (${sqlNowStored()})
            )`
         ).run();
         await db.prepare(
           `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
-           VALUES (?, ?, ?, ?, ?, ?, datetime('now','+8 hours'))`
+           VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
         )
           .bind(method, path, status, totalMs, sqlMs, authMs)
           .run();

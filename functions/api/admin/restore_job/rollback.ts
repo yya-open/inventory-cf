@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
 import { ensureCoreSchema } from '../../_schema';
 import { logAudit } from '../../_audit';
+import { sqlNowStored } from '../../_time';
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 
@@ -27,7 +28,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     await env.DB.prepare(
       `INSERT INTO restore_job (id, status, stage, mode, file_key, filename, created_by, cursor_json, per_table_json, replaced_done, total_rows, processed_rows, snapshot_status, restore_points_json, created_at, updated_at)
-       VALUES (?, 'QUEUED', 'SCAN', 'replace', ?, ?, ?, '{}', '{}', 0, 0, 0, 'REUSED', '[]', datetime('now','+8 hours'), datetime('now','+8 hours'))`
+       VALUES (?, 'QUEUED', 'SCAN', 'replace', ?, ?, ?, '{}', '{}', 0, 0, 0, 'REUSED', '[]', ${sqlNowStored()}, ${sqlNowStored()})`
     ).bind(rollbackId, key, `rollback_of_${id}.json`, actor.username).run();
 
     waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_ROLLBACK_CREATE', 'restore_job', rollbackId, { source_job_id: id, snapshot_key: job.snapshot_key }).catch(() => {}));

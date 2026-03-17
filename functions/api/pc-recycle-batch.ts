@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from "./_pc";
+import { applyPcRecycle, pcRecycleAuditAction } from "./services/asset-write";
 
 function assertAssigned(status: any) {
   return String(status) === "ASSIGNED";
@@ -9,8 +10,8 @@ function assertAssigned(status: any) {
 function normalizeAction(v: any) {
   const t = normalizeText(v, 20);
   const u = t.toUpperCase();
-  if (u === "RETURN" || t === "归还") return "RETURN";
-  if (u === "RECYCLE" || t === "回收") return "RECYCLE";
+  if (u === "RETURN" || t === "归还") return "RETURN" as const;
+  if (u === "RECYCLE" || t === "回收") return "RECYCLE" as const;
   const err: any = new Error("动作(action) 必须是 RETURN(归还) 或 RECYCLE(回收)");
   err.status = 400;
   throw err;
@@ -42,58 +43,35 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const it: any = items[i] || {};
         const asset = await getPcAssetByIdOrSerial(env.DB, it?.asset_id, it?.serial_no);
         if (!asset) throw new Error("未找到该电脑资产（请检查序列号/asset_id）");
-
-        if (!assertAssigned(asset.status)) {
-          throw new Error("该电脑当前不是“已领用”，无法回收/归还");
-        }
+        if (!assertAssigned(asset.status)) throw new Error("该电脑当前不是“已领用”，无法回收/归还");
 
         const action = normalizeAction(it?.action);
         const recycle_date = must(it?.recycle_date, "回收/归还日期", 40);
         const remark = optional(it?.remark, 2000);
-
         const lastOut = await env.DB.prepare(
           `SELECT employee_no, department, employee_name, is_employed
-           FROM pc_out
-           WHERE asset_id=?
-           ORDER BY id DESC
-           LIMIT 1`
+           FROM pc_out WHERE asset_id=? ORDER BY id DESC LIMIT 1`
         ).bind(asset.id).first<any>();
 
-        const afterStatus = action === "RETURN" ? "IN_STOCK" : "RECYCLED";
         const no = pcRecycleNo();
+        const afterStatus = await applyPcRecycle({
+          db: env.DB,
+          recycleNo: no,
+          action,
+          asset,
+          lastOut,
+          recycleDate: recycle_date,
+          remark,
+          createdBy: user.username,
+        });
 
-        await env.DB.batch([
-          env.DB.prepare(
-            `INSERT INTO pc_recycle (
-              recycle_no, action, asset_id,
-              employee_no, department, employee_name, is_employed,
-              brand, serial_no, model,
-              recycle_date, remark, created_by
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-          ).bind(
-            no,
-            action,
-            asset.id,
-            lastOut?.employee_no || "",
-            lastOut?.department || "",
-            lastOut?.employee_name || "",
-            lastOut?.is_employed || "",
-            asset.brand,
-            asset.serial_no,
-            asset.model,
-            recycle_date,
-            remark,
-            user?.id || ""
-          ),
-
-          env.DB.prepare(
-            `UPDATE pc_assets
-             SET status=?, updated_at=datetime('now','+8 hours')
-             WHERE id=?`
-          ).bind(afterStatus, asset.id),
-        ]);
-
-        waitUntil(logAudit(env.DB, user, "pc_recycle_batch", `电脑批量回收/归还：${asset.serial_no}`, { serial_no: asset.serial_no, action }));
+        waitUntil(logAudit(env.DB, request, user, `${pcRecycleAuditAction(action)}_BATCH`, "pc_recycle", no, {
+          asset_id: asset.id,
+          serial_no: asset.serial_no,
+          action,
+          recycle_date,
+          status_after: afterStatus,
+        }).catch(() => {}));
         success++;
       } catch (e: any) {
         errors.push({ row: i + 2, message: e?.message || "导入失败" });

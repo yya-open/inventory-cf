@@ -3,6 +3,7 @@ import { logAudit } from '../../_audit';
 import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
 import { buildBackupPayload } from '../_backup_helpers';
 import { finalizeRestoreState } from '../_restore_finalize';
+import { sqlNowStored } from '../../_time';
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 type RestoreMode = 'merge' | 'merge_upsert' | 'replace';
@@ -18,7 +19,7 @@ async function createSnapshot(env: Env, actor: string, jobId: string) {
   const restorePoints = [{ key: snapshotKey, filename: snapshotFilename, created_at: new Date().toISOString(), type: 'pre_restore' }];
   await env.DB.prepare(
     `UPDATE restore_job
-     SET snapshot_key=?, snapshot_filename=?, snapshot_status='DONE', snapshot_created_at=datetime('now','+8 hours'), restore_points_json=?, stage='SCAN', updated_at=datetime('now','+8 hours')
+     SET snapshot_key=?, snapshot_filename=?, snapshot_status='DONE', snapshot_created_at=${sqlNowStored()}, restore_points_json=?, stage='SCAN', updated_at=${sqlNowStored()}
      WHERE id=?`
   ).bind(snapshotKey, snapshotFilename, JSON.stringify(restorePoints), jobId).run();
   return { snapshotKey, snapshotFilename };
@@ -45,32 +46,32 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     if (job.status === 'DONE') return json(true, { id: jobId, status: 'DONE', stage: job.stage, more: false });
     if (job.status === 'FAILED') return json(true, { id: jobId, status: 'FAILED', stage: job.stage, more: false, last_error: job.last_error || null });
 
-    await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
+    await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
 
     if (job.stage === 'SNAPSHOT') {
       try {
         if (job.mode !== 'replace') {
           await env.DB.prepare(
             `UPDATE restore_job
-             SET snapshot_status='SKIPPED', stage='SCAN', updated_at=datetime('now','+8 hours')
+             SET snapshot_status='SKIPPED', stage='SCAN', updated_at=${sqlNowStored()}
              WHERE id=?`
           ).bind(jobId).run();
           waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_SKIPPED', 'restore_job', jobId, { mode: job.mode || 'merge' }).catch(() => {}));
           return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'SKIPPED', more: true });
         }
-        await env.DB.prepare(`UPDATE restore_job SET snapshot_status='RUNNING', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET snapshot_status='RUNNING', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
         const snap = await createSnapshot(env, actor.username, jobId);
         waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_DONE', 'restore_job', jobId, snap).catch(() => {}));
         return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'DONE', more: true });
       } catch (e: any) {
-        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', snapshot_status='FAILED', last_error=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(String(e?.message || e), jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', snapshot_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
         return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
       }
     }
 
     const obj = await env.BACKUP_BUCKET.get(job.file_key);
     if (!obj?.body) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', last_error=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind('R2 文件不存在或已被删除', jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind('R2 文件不存在或已被删除', jobId).run();
       return Response.json({ ok: false, message: 'R2 文件不存在或已被删除' }, { status: 500 });
     }
 
@@ -92,7 +93,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       for (const t of Object.keys(TABLE_COLUMNS)) perTable[t] = counts[t] || 0;
       const order: string[] = perTable.__order__;
       const cursor = order.length ? { table: order[0], row: 0 } : { table: '', row: 0 };
-      await env.DB.prepare(`UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, updated_at=datetime('now','+8 hours') WHERE id=?`)
+      await env.DB.prepare(`UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, updated_at=${sqlNowStored()} WHERE id=?`)
         .bind(total, JSON.stringify(perTable), JSON.stringify(cursor), cursor.table || null, jobId).run();
       waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SCAN_DONE', 'restore_job', jobId, { total_rows: total }).catch(() => {}));
       return json(true, { id: jobId, status: 'RUNNING', stage: 'RESTORE', total_rows: total, processed_rows: Number(job.processed_rows || 0), more: true });
@@ -102,7 +103,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     if (mode === 'replace' && Number(job.replaced_done || 0) === 0) {
       const stmts = DELETE_ORDER.map((t) => env.DB.prepare(`DELETE FROM ${t}`));
       await env.DB.batch(stmts);
-      await env.DB.prepare(`UPDATE restore_job SET replaced_done=1, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET replaced_done=1, updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
     }
 
     const cursor = parseJsonSafe(job.cursor_json || '{}', { table: '', row: 0 });
@@ -217,12 +218,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       const currentTableForSave = done ? null : (nextCursor.table || null);
       const cursorForSave = done ? { table: '', row: 0 } : nextCursor;
 
-      await env.DB.prepare(`UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=datetime('now','+8 hours') WHERE id=?`)
+      await env.DB.prepare(`UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=${sqlNowStored()} WHERE id=?`)
         .bind(processedRowsNew, currentTableForSave, JSON.stringify(cursorForSave), JSON.stringify(perTable), jobId).run();
 
       if (done) {
         await finalizeRestoreState(env.DB);
-        await env.DB.prepare(`UPDATE restore_job SET status='DONE', completed_at=datetime('now','+8 hours'), current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=datetime('now','+8 hours') WHERE id=?`).bind(jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET status='DONE', completed_at=${sqlNowStored()}, current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
         waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_DONE', 'restore_job', jobId, { processed_rows: processedRowsNew, total_rows: totalRows }).catch(() => {}));
       }
 
@@ -238,7 +239,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         more: !done,
       });
     } catch (e: any) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(String(e?.message || e), jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
       return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
     }
   } catch (e: any) {

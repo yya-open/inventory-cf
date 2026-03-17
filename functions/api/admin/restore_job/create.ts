@@ -2,6 +2,7 @@ import { requireAuth, errorResponse, json } from '../../../_auth';
 import { logAudit } from '../../_audit';
 import { ensureCoreSchema } from '../../_schema';
 import { nowIso } from './_util';
+import { sqlNowStored } from '../../_time';
 
 type RestoreMode = 'merge' | 'merge_upsert' | 'replace';
 
@@ -45,7 +46,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     await env.DB.prepare(
       `INSERT INTO restore_job
        (id, status, stage, mode, file_key, filename, created_by, cursor_json, per_table_json, replaced_done, total_rows, processed_rows, snapshot_status, restore_points_json, created_at, updated_at)
-       VALUES (?, 'QUEUED', 'SNAPSHOT', ?, ?, ?, ?, '{}', '{}', 0, 0, 0, 'PENDING', '[]', datetime('now','+8 hours'), datetime('now','+8 hours'))`
+       VALUES (?, 'QUEUED', 'SNAPSHOT', ?, ?, ?, ?, '{}', '{}', 0, 0, 0, 'PENDING', '[]', ${sqlNowStored()}, ${sqlNowStored()})`
     ).bind(jobId, mode, key, file.name || null, actor.username).run();
 
     waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_CREATE', 'restore_job', jobId, {

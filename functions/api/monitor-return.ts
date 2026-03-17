@@ -2,6 +2,13 @@ import { requireAuth, errorResponse } from "../_auth";
 import { ensureMonitorSchemaIfAllowed, monitorTxNo } from "./_monitor";
 import { optional, normalizeText } from "./_pc";
 import { logAudit } from "./_audit";
+import {
+  applyMonitorMovement,
+  assertMonitorMovementAllowed,
+  getMonitorAssetByIdOrCode,
+  getRequestClientMeta,
+  monitorMovementAuditAction,
+} from "./services/asset-write";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -18,56 +25,25 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const to_location_id = Number(body?.location_id || body?.to_location_id || 0) || null;
     const remark = optional(body?.remark, 1000);
 
-    const asset = asset_id
-      ? await env.DB.prepare("SELECT * FROM monitor_assets WHERE id=?").bind(asset_id).first<any>()
-      : await env.DB.prepare("SELECT * FROM monitor_assets WHERE asset_code=?").bind(asset_code).first<any>();
-    if (!asset) throw Object.assign(new Error("显示器台账不存在"), { status: 404 });
-    if (String(asset.status) === "SCRAPPED") throw Object.assign(new Error("该资产已报废，无法归还"), { status: 400 });
-    if (String(asset.status) !== "ASSIGNED") throw Object.assign(new Error("该资产当前不是已领用状态，无需归还"), { status: 400 });
-
+    const asset = await getMonitorAssetByIdOrCode(env.DB, asset_id, asset_code);
+    assertMonitorMovementAllowed(asset, 'RETURN');
     const tx_no = monitorTxNo("MONRET");
-    const ip = request.headers.get("cf-connecting-ip") || request.headers.get("x-forwarded-for") || "";
-    const ua = request.headers.get("user-agent") || "";
+    await applyMonitorMovement({
+      db: env.DB,
+      asset,
+      txNo: tx_no,
+      type: 'RETURN',
+      userName: user.username,
+      clientMeta: getRequestClientMeta(request),
+      toLocationId: to_location_id,
+      employeeNo: asset.employee_no,
+      department: asset.department,
+      employeeName: asset.employee_name,
+      isEmployed: asset.is_employed,
+      remark,
+    });
 
-    await env.DB.batch([
-      env.DB
-        .prepare(
-          `INSERT INTO monitor_tx
-            (tx_no, tx_type, asset_id, asset_code, sn, brand, model, size_inch, from_location_id, to_location_id,
-             employee_no, department, employee_name, is_employed, remark, created_by, ip, ua)
-           VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
-        )
-        .bind(
-          tx_no,
-          "RETURN",
-          asset.id,
-          asset.asset_code,
-          asset.sn,
-          asset.brand,
-          asset.model,
-          asset.size_inch,
-          asset.location_id,
-          to_location_id,
-          asset.employee_no,
-          asset.department,
-          asset.employee_name,
-          asset.is_employed,
-          remark,
-          user.username,
-          ip,
-          ua
-        ),
-      env.DB
-        .prepare(
-          `UPDATE monitor_assets
-           SET status='IN_STOCK', location_id=?, employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
-               updated_at=datetime('now','+8 hours')
-           WHERE id=?`
-        )
-        .bind(to_location_id, asset.id),
-    ]);
-
-    await logAudit(env.DB, request, user, "monitor_return", "monitor_assets", asset.id, { tx_no, to_location_id, remark });
+    await logAudit(env.DB, request, user, monitorMovementAuditAction('RETURN'), "monitor_assets", asset.id, { tx_no, to_location_id, remark });
     return Response.json({ ok: true, message: "归还成功", data: { tx_no } });
   } catch (e: any) {
     return errorResponse(e);

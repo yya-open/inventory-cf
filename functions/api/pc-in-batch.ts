@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, pcInNo } from "./_pc";
+import { createPcAssetAndInRecord } from "./services/asset-write";
 
 type Item = {
   brand: string;
@@ -26,7 +27,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     let success = 0;
     const errors: { row: number; message: string }[] = [];
-
     const seenSerial = new Set<string>();
 
     for (let i = 0; i < items.length; i++) {
@@ -35,14 +35,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const brand = must(it?.brand, "品牌", 120);
         const serial_no = must(it?.serial_no, "序列号", 120);
         const model = must(it?.model, "型号", 160);
+        const snKey = String(serial_no || "").trim();
+        if (seenSerial.has(snKey)) throw new Error(`序列号重复：${snKey}`);
+        seenSerial.add(snKey);
 
-const snKey = String(serial_no || "").trim();
-if (seenSerial.has(snKey)) {
-  throw new Error(`序列号重复：${snKey}`);
-}
-seenSerial.add(snKey);
-
-        // 出厂时间：必填（用于 5 年预警等规则）
         const manufacture_date = must(it?.manufacture_date, "出厂时间", 40);
         const warranty_end = optional(it?.warranty_end, 40);
         const disk_capacity = optional(it?.disk_capacity, 40);
@@ -50,50 +46,35 @@ seenSerial.add(snKey);
         const remark = optional(it?.remark, 2000);
 
         const exist = await env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no).first<any>();
-        const no = pcInNo();
-
         if (exist?.id) {
-  throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
-} else {
-
-          const rs: any = await env.DB.batch([
-            env.DB.prepare(
-              `INSERT INTO pc_assets (
-                brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at
-              ) VALUES (?,?,?,?,?,?,?,?, 'IN_STOCK', datetime('now','+8 hours'), datetime('now','+8 hours'))`
-            ).bind(brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark),
-
-            env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no),
-          ]);
-
-          const assetId = Number(rs?.[1]?.results?.[0]?.id || rs?.[1]?.results?.id || 0);
-          if (!assetId) {
-            const q = await env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no).first<any>();
-            if (!q?.id) throw new Error("写入资产失败");
-            await env.DB.prepare(
-              `INSERT INTO pc_in (
-                in_no, asset_id,
-                brand, serial_no, model,
-                manufacture_date, warranty_end, disk_capacity, memory_size,
-                remark, created_by, created_at
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
-            ).bind(no, Number(q.id), brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
-          } else {
-            await env.DB.prepare(
-              `INSERT INTO pc_in (
-                in_no, asset_id,
-                brand, serial_no, model,
-                manufacture_date, warranty_end, disk_capacity, memory_size,
-                remark, created_by, created_at
-              ) VALUES (?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
-            ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user?.id || "").run();
-          }
+          throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
         }
 
-        waitUntil(logAudit(env.DB, user, "pc_in_batch", `电脑批量入库：${serial_no}`, { serial_no, brand, model }));
+        const no = pcInNo();
+        const assetId = await createPcAssetAndInRecord({
+          db: env.DB,
+          inNo: no,
+          brand,
+          serialNo: serial_no,
+          model,
+          manufactureDate: manufacture_date,
+          warrantyEnd: warranty_end,
+          diskCapacity: disk_capacity,
+          memorySize: memory_size,
+          remark,
+          createdBy: user.username,
+        });
+
+        waitUntil(logAudit(env.DB, request, user, "PC_IN_BATCH", "pc_in", no, {
+          asset_id: assetId,
+          brand,
+          serial_no,
+          model,
+          manufacture_date,
+        }).catch(() => {}));
         success++;
       } catch (e: any) {
-        errors.push({ row: i + 2, message: e?.message || "导入失败" }); // +2: header row + 1-based
+        errors.push({ row: i + 2, message: e?.message || "导入失败" });
       }
     }
 

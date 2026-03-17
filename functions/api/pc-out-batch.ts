@@ -9,6 +9,7 @@ import {
   isInStockStatus,
   toAssetStatusAfterOut,
 } from "./_pc";
+import { applyPcOut } from "./services/asset-write";
 
 type Item = {
   employee_no: string;
@@ -41,7 +42,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const department = must(it?.department, "部门", 120);
         const employee_name = must(it?.employee_name, "员工姓名", 120);
         const is_employed = optional(it?.is_employed, 40);
-
         const config_date = optional(it?.config_date, 40);
         const remark = optional(it?.remark, 2000);
 
@@ -49,46 +49,30 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         if (!asset) throw new Error("未找到该电脑资产（请检查序列号/asset_id）");
         if (!isInStockStatus(asset.status)) throw new Error("该电脑当前不是“在库”，无法出库");
 
-        const afterStatus = toAssetStatusAfterOut();
         const no = pcOutNo();
+        const afterStatus = toAssetStatusAfterOut();
+        await applyPcOut({
+          db: env.DB,
+          outNo: no,
+          asset,
+          employeeNo: employee_no,
+          department,
+          employeeName: employee_name,
+          isEmployed: is_employed,
+          configDate: config_date,
+          remark,
+          createdBy: user.username,
+          statusAfter: afterStatus,
+        });
 
-        await env.DB.batch([
-          env.DB.prepare(
-            `UPDATE pc_assets
-             SET status=?, updated_at=datetime('now','+8 hours')
-             WHERE id=?`
-          ).bind(afterStatus, asset.id),
-
-          env.DB.prepare(
-            `INSERT INTO pc_out (
-              out_no, asset_id,
-              employee_no, department, employee_name, is_employed,
-              brand, serial_no, model,
-              config_date,
-              manufacture_date, warranty_end, disk_capacity, memory_size,
-              remark, created_by, created_at
-            ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
-          ).bind(
-            no,
-            asset.id,
-            employee_no,
-            department,
-            employee_name,
-            is_employed,
-            asset.brand,
-            asset.serial_no,
-            asset.model,
-            config_date,
-            asset.manufacture_date || "",
-            asset.warranty_end || "",
-            asset.disk_capacity || "",
-            asset.memory_size || "",
-            remark,
-            user?.id || ""
-          ),
-        ]);
-
-        waitUntil(logAudit(env.DB, user, "pc_out_batch", `电脑批量出库：${asset.serial_no}`, { serial_no: asset.serial_no, employee_no }));
+        waitUntil(logAudit(env.DB, request, user, "PC_OUT_BATCH", "pc_out", no, {
+          asset_id: asset.id,
+          serial_no: asset.serial_no,
+          employee_no,
+          department,
+          employee_name,
+          status_after: afterStatus,
+        }).catch(() => {}));
         success++;
       } catch (e: any) {
         errors.push({ row: i + 2, message: e?.message || "导入失败" });

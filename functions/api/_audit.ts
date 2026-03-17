@@ -1,22 +1,14 @@
-import type { AuthUser } from "../_auth";
+import type { AuthUser } from '../_auth';
+import { sqlNowStored, sqlStoredDaysAgo } from './_time';
 
 const DEFAULT_RETENTION_DAYS = 180;
-const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000; // 12h
+const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
 async function ensureRetentionState(db: D1Database) {
-  // NOTE: runtime DDL is intentionally removed; schema must be created via migrations.
-  // If the table is missing, we fall back to defaults without blocking business flows.
   try {
-    const row = await db
-      .prepare("SELECT id, retention_days, last_cleanup_at FROM audit_retention_state WHERE id=1")
-      .first<any>();
+    const row = await db.prepare('SELECT id, retention_days, last_cleanup_at FROM audit_retention_state WHERE id=1').first<any>();
     if (!row) {
-      await db
-        .prepare(
-          "INSERT OR IGNORE INTO audit_retention_state (id, retention_days, last_cleanup_at) VALUES (1, ?, NULL)"
-        )
-        .bind(DEFAULT_RETENTION_DAYS)
-        .run();
+      await db.prepare('INSERT OR IGNORE INTO audit_retention_state (id, retention_days, last_cleanup_at) VALUES (1, ?, NULL)').bind(DEFAULT_RETENTION_DAYS).run();
       return { id: 1, retention_days: DEFAULT_RETENTION_DAYS, last_cleanup_at: null as string | null };
     }
     return row;
@@ -38,12 +30,8 @@ async function maybeCleanupAudit(db: D1Database) {
     const now = Date.now();
     if (lastMs && now - lastMs < CLEANUP_COOLDOWN_MS) return;
     const days = Math.max(1, Math.min(3650, Number(state.retention_days || DEFAULT_RETENTION_DAYS)));
-
-    // created_at is stored as Beijing time (UTC+8) text: 'YYYY-MM-DD HH:MM:SS'.
-    await db.prepare(
-      "DELETE FROM audit_log WHERE created_at < datetime('now','+8 hours', '-' || ? || ' days')"
-    ).bind(days).run();
-    await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now','+8 hours') WHERE id=1").run();
+    await db.prepare(`DELETE FROM audit_log WHERE created_at < ${sqlStoredDaysAgo(days)}`).run();
+    await db.prepare(`UPDATE audit_retention_state SET last_cleanup_at = ${sqlNowStored()} WHERE id=1`).run();
   } catch {
     // do not block business flows
   }
@@ -51,10 +39,10 @@ async function maybeCleanupAudit(db: D1Database) {
 
 function getIp(request: Request) {
   const h = request.headers;
-  const cf = h.get("CF-Connecting-IP") || h.get("cf-connecting-ip");
-  const xff = h.get("x-forwarded-for");
+  const cf = h.get('CF-Connecting-IP') || h.get('cf-connecting-ip');
+  const xff = h.get('x-forwarded-for');
   if (cf) return cf;
-  if (xff) return xff.split(",")[0].trim();
+  if (xff) return xff.split(',')[0].trim();
   return null;
 }
 
@@ -65,15 +53,15 @@ export async function logAudit(
   action: string,
   entity?: string | null,
   entity_id?: string | number | null,
-  payload?: any
+  payload?: any,
 ) {
   try {
     const ip = getIp(request);
-    const ua = request.headers.get("user-agent");
+    const ua = request.headers.get('user-agent');
     const payload_json = payload === undefined ? null : JSON.stringify(payload);
     await db.prepare(
       `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua, created_at)
-       VALUES (?,?,?,?,?,?,?,?, datetime('now','+8 hours'))`
+       VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
     ).bind(
       user?.id ?? null,
       user?.username ?? null,
@@ -82,10 +70,8 @@ export async function logAudit(
       entity_id === undefined || entity_id === null ? null : String(entity_id),
       payload_json,
       ip,
-      ua
+      ua,
     ).run();
-
-    // best-effort retention cleanup (low-frequency)
     await maybeCleanupAudit(db);
   } catch {
     // best-effort audit; do not block business flows
@@ -103,16 +89,14 @@ export async function getAuditRetention(db: D1Database) {
 export async function setAuditRetention(db: D1Database, retention_days: number) {
   await ensureRetentionState(db);
   const days = Math.max(1, Math.min(3650, Number(retention_days || DEFAULT_RETENTION_DAYS)));
-  await db.prepare("UPDATE audit_retention_state SET retention_days=? WHERE id=1").bind(days).run();
+  await db.prepare('UPDATE audit_retention_state SET retention_days=? WHERE id=1').bind(days).run();
   return days;
 }
 
 export async function runAuditCleanup(db: D1Database) {
   const st = await ensureRetentionState(db);
   const days = Math.max(1, Math.min(3650, Number(st?.retention_days || DEFAULT_RETENTION_DAYS)));
-  const res = await db.prepare(
-    "DELETE FROM audit_log WHERE created_at < datetime('now','+8 hours', '-' || ? || ' days')"
-  ).bind(days).run();
-  await db.prepare("UPDATE audit_retention_state SET last_cleanup_at = datetime('now','+8 hours') WHERE id=1").run();
+  const res = await db.prepare(`DELETE FROM audit_log WHERE created_at < ${sqlStoredDaysAgo(days)}`).run();
+  await db.prepare(`UPDATE audit_retention_state SET last_cleanup_at = ${sqlNowStored()} WHERE id=1`).run();
   return { days, deleted: Number((res as any)?.meta?.changes || 0) };
 }

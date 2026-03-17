@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse, json } from "../../../_auth";
 import { logAudit } from "../../_audit";
 import { ensureCoreSchema } from "../../_schema";
+import { sqlNowStored } from '../../_time';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
@@ -16,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (job.status === "DONE") return json(true, { id: jobId, status: "DONE" });
 
     // “取消”这里等同于暂停（可续跑）
-    await env.DB.prepare(`UPDATE restore_job SET status='PAUSED', updated_at=datetime('now','+8 hours') WHERE id=? AND status!='DONE'`)
+    await env.DB.prepare(`UPDATE restore_job SET status='PAUSED', updated_at=${sqlNowStored()} WHERE id=? AND status!='DONE'`)
       .bind(jobId)
       .run();
 

@@ -14,6 +14,12 @@ export const sqlStoredHoursAgo = (hours: number) => `datetime('now','${STORAGE_O
 /** Relative timestamp in the project's persisted timezone. Example: sqlStoredDaysAgo(30). */
 export const sqlStoredDaysAgo = (days: number) => `datetime('now','${STORAGE_OFFSET}','-${Math.max(0, days)} days')`;
 
+/** Relative timestamp in minutes. */
+export const sqlStoredMinutesAgo = (minutes: number) => `datetime('now','${STORAGE_OFFSET}','-${Math.max(0, minutes)} minutes')`;
+
+/** Relative future timestamp in minutes. */
+export const sqlStoredMinutesFromNow = (minutes: number) => `datetime('now','${STORAGE_OFFSET}','+${Math.max(0, minutes)} minutes')`;
+
 /** SQL expr helpers for already-persisted timestamps. */
 export const sqlBjDateTime = (expr: string) => `datetime(${expr})`;
 export const sqlBjDate = (expr: string) => `date(${expr})`;

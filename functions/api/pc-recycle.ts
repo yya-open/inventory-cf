@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from "./_pc";
+import { applyPcRecycle, pcRecycleAuditAction } from "./services/asset-write";
 
 function assertAssigned(status: any) {
   return String(status) === "ASSIGNED";
@@ -8,7 +9,7 @@ function assertAssigned(status: any) {
 
 function mustAction(v: any) {
   const a = normalizeText(v, 20).toUpperCase();
-  if (a != "RETURN" && a != "RECYCLE") {
+  if (a !== "RETURN" && a !== "RECYCLE") {
     const err: any = new Error("动作(action) 必须是 RETURN(归还) 或 RECYCLE(回收)");
     err.status = 400;
     throw err;
@@ -16,27 +17,20 @@ function mustAction(v: any) {
   return a as "RETURN" | "RECYCLE";
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({
-  env,
-  request,
-  waitUntil,
-}) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuth(env, request, "operator");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-
     await ensurePcSchema(env.DB);
 
     const body = await request.json<any>();
-
     const asset = await getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no);
     if (!asset) return Response.json({ ok: false, message: "未找到该电脑资产" }, { status: 404 });
-
     if (!assertAssigned(asset.status)) {
       return Response.json({ ok: false, message: "该电脑当前不是“已领用”，无法回收/归还" }, { status: 400 });
     }
 
-    const action = mustAction(body?.action); // RETURN / RECYCLE
+    const action = mustAction(body?.action);
     const recycle_date = must(body?.recycle_date, "回收/归还日期", 40);
     const remark = optional(body?.remark, 2000);
 
@@ -48,41 +42,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
        LIMIT 1`
     ).bind(asset.id).first<any>();
 
-    const afterStatus = action === "RETURN" ? "IN_STOCK" : "RECYCLED";
     const no = pcRecycleNo();
+    const afterStatus = await applyPcRecycle({
+      db: env.DB,
+      recycleNo: no,
+      action,
+      asset,
+      lastOut,
+      recycleDate: recycle_date,
+      remark,
+      createdBy: user.username,
+    });
 
-    await env.DB.batch([
-      env.DB.prepare(
-        `INSERT INTO pc_recycle (
-          recycle_no, action, asset_id,
-          employee_no, department, employee_name, is_employed,
-          brand, serial_no, model,
-          recycle_date, remark, created_by
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-      ).bind(
-        no,
-        action,
-        asset.id,
-        lastOut?.employee_no ?? null,
-        lastOut?.department ?? null,
-        lastOut?.employee_name ?? null,
-        lastOut?.is_employed ?? null,
-        asset.brand,
-        asset.serial_no,
-        asset.model,
-        recycle_date,
-        remark,
-        user.username,
-      ),
-      env.DB.prepare(
-        `UPDATE pc_assets
-         SET status=?, updated_at=datetime('now','+8 hours')
-         WHERE id=?`
-      ).bind(afterStatus, asset.id),
-    ]);
-
-    const auditAction = action === "RETURN" ? "PC_RETURN" : "PC_RECYCLE";
-    waitUntil(logAudit(env.DB, request, user, auditAction, "pc_recycle", no, {
+    waitUntil(logAudit(env.DB, request, user, pcRecycleAuditAction(action), "pc_recycle", no, {
       asset_id: asset.id,
       action,
       brand: asset.brand,

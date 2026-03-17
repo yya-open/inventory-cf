@@ -1,5 +1,6 @@
 import { json, requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
+import { sqlNowStored } from "./_time";
 import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
@@ -68,7 +69,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     let newId: number | null = null;
     try {
       const ins = await env.DB
-        .prepare("INSERT INTO users (username, password_hash, role, is_active, must_change_password, created_at) VALUES (?,?,?,?,1, datetime('now','+8 hours'))")
+        .prepare(`INSERT INTO users (username, password_hash, role, is_active, must_change_password, created_at) VALUES (?,?,?,?,1, ${sqlNowStored()})`)
         .bind(u, ph, r, 1)
         .run();
       newId = Number((ins as any)?.meta?.last_row_id || 0) || null;
