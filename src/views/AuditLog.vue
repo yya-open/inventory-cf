@@ -197,14 +197,6 @@
         </template>
       </el-table-column>
       <el-table-column
-        label="IP"
-        width="180"
-      >
-        <template #default="{ row }">
-          <span class="ip">{{ row.ip || '-' }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column
         label="操作"
         width="140"
         fixed="right"
@@ -343,40 +335,80 @@ const ACTION_LABEL: Record<string, string> = {
   STOCK_OUT: "出库",
   BATCH_IN: "批量入库",
   BATCH_OUT: "批量出库",
+  TX_EXPORT: "导出出入库流水",
+  TX_CLEAR: "清空出入库明细",
+
   STOCKTAKE_CREATE: "创建盘点单",
   STOCKTAKE_IMPORT: "导入盘点结果",
-  STOCKTAKE_APPLY: "盘点生效",
-  STOCKTAKE_ROLLBACK: "撤销盘点",
+  STOCKTAKE_APPLY: "应用盘点",
+  STOCKTAKE_ROLLBACK: "回滚盘点",
   STOCKTAKE_DELETE: "删除盘点单",
+
   ITEM_CREATE: "新增配件",
   ITEM_UPDATE: "修改配件",
   ITEM_DELETE: "删除配件",
+
   USER_CREATE: "新增用户",
   USER_UPDATE: "修改用户",
   USER_DELETE: "删除用户",
-  USER_RESET_PASSWORD: "重置密码",
-  TX_CLEAR: "清空出入库明细",
+  USER_RESET_PASSWORD: "重置用户密码",
+
   AUDIT_DELETE: "删除审计日志",
+
+  ADMIN_INIT_SCHEMA: "初始化系统结构",
   ADMIN_BACKUP: "导出备份",
-  ADMIN_RESTORE: "恢复备份（JSON）",
-  ADMIN_RESTORE_UPLOAD: "恢复备份（直导）",
-  ADMIN_RESTORE_JOB_CREATE: "恢复备份-创建任务",
-  ADMIN_RESTORE_JOB_SCAN_DONE: "恢复备份-扫描完成",
-  ADMIN_RESTORE_JOB_DONE: "恢复备份-完成",
-  ADMIN_RESTORE_JOB_FAILED: "恢复备份-失败",
-  ADMIN_RESTORE_JOB_PAUSED: "恢复备份-暂停",
-  ADMIN_RESTORE_JOB_CANCELED: "恢复备份-取消",
+  ADMIN_RESTORE: "恢复备份",
+  ADMIN_RESTORE_UPLOAD: "直传恢复备份",
+  ADMIN_RESTORE_JOB_CREATE: "创建恢复任务",
+  ADMIN_RESTORE_JOB_PAUSE: "暂停恢复任务",
+  ADMIN_RESTORE_JOB_CANCELED: "取消恢复任务",
+  ADMIN_RESTORE_JOB_SCAN_DONE: "恢复任务扫描完成",
+  ADMIN_RESTORE_JOB_SNAPSHOT_SKIPPED: "恢复任务跳过快照",
+  ADMIN_RESTORE_JOB_SNAPSHOT_DONE: "恢复任务快照完成",
+  ADMIN_RESTORE_JOB_DONE: "恢复任务完成",
+  ADMIN_RESTORE_JOB_FAILED: "恢复任务失败",
+  ADMIN_RESTORE_JOB_ROLLBACK_CREATE: "创建恢复回滚任务",
+
   PC_IN: "电脑入库",
+  PC_IN_BATCH: "批量电脑入库",
   PC_OUT: "电脑出库",
+  PC_OUT_BATCH: "批量电脑出库",
   PC_RETURN: "电脑归还",
+  PC_RETURN_BATCH: "批量电脑归还",
   PC_RECYCLE: "电脑回收",
+  PC_RECYCLE_BATCH: "批量电脑回收",
   PC_SCRAP: "电脑报废",
+  PC_ASSET_UPDATE: "修改电脑台账",
+  PC_ASSET_DELETE: "删除电脑台账",
+  PC_TX_DELETE: "删除电脑事务",
+  PC_TX_CLEAR: "清空电脑事务",
+  PC_LOCATION_CREATE: "新增电脑位置",
+  PC_LOCATION_UPDATE: "修改电脑位置",
+  PC_LOCATION_DELETE: "删除电脑位置",
+  PC_INVENTORY_LOG_DELETE: "删除电脑盘点记录",
+  PC_INVENTORY_LOG_EXPORT: "导出电脑盘点记录",
+
+  MONITOR_SCHEMA_INIT: "初始化显示器模块",
+  MONITOR_ASSET_CREATE: "新增显示器台账",
+  MONITOR_ASSET_UPDATE: "修改显示器台账",
+  MONITOR_ASSET_DELETE: "删除显示器台账",
+  MONITOR_IN: "显示器入库",
+  MONITOR_OUT: "显示器出库",
+  MONITOR_RETURN: "显示器归还",
+  MONITOR_TRANSFER: "显示器调拨",
+  MONITOR_SCRAP: "显示器报废",
+  MONITOR_TX_DELETE: "删除显示器事务",
+  MONITOR_TX_EXPORT: "导出显示器事务",
+  MONITOR_INVENTORY_LOG_DELETE: "删除显示器盘点记录",
+  MONITOR_INVENTORY_LOG_EXPORT: "导出显示器盘点记录",
+
   pc_asset_update: "修改电脑台账",
   pc_asset_delete: "删除电脑台账",
-  PC_TX_DELETE: "删除电脑出入库明细",
-  PC_TX_CLEAR: "清空电脑出入库明细",
-  pc_tx_delete: "删除电脑出入库明细",
-  pc_tx_clear: "清空电脑出入库明细",
+  pc_tx_delete: "删除电脑事务",
+  pc_tx_clear: "清空电脑事务",
+  monitor_asset_create: "新增显示器台账",
+  monitor_asset_update: "修改显示器台账",
+  monitor_asset_delete: "删除显示器台账",
 };
 
 const ENTITY_LABEL: Record<string, string> = {
@@ -390,22 +422,34 @@ const ENTITY_LABEL: Record<string, string> = {
   warehouses: "仓库",
   backup: "备份",
   restore_job: "恢复任务",
+  schema: "系统结构",
   pc_assets: "电脑台账",
   pc_in: "电脑入库记录",
   pc_out: "电脑出库记录",
-  pc_recycle: "电脑回收/归还记录",
+  pc_recycle: "电脑回收记录",
   pc_scrap: "电脑报废记录",
-  pc_tx: "电脑出入库明细",
-  pc_tx_detail: "电脑出入库明细",
+  pc_tx: "电脑事务",
+  pc_tx_detail: "电脑事务明细",
+  pc_locations: "电脑位置",
+  pc_inventory_log: "电脑盘点记录",
+  monitor_assets: "显示器台账",
+  monitor_tx: "显示器事务",
+  monitor_inventory_log: "显示器盘点记录",
 };
 
-function actionLabel(a: string) {
-  return ACTION_LABEL[a] || a;
-}
-function entityLabel(e: string) {
-  return ENTITY_LABEL[e] || e;
+function prettifyCodeLabel(value: string) {
+  return String(value || "")
+    .replace(/[._-]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
+function actionLabel(a: string) {
+  return ACTION_LABEL[a] || prettifyCodeLabel(a) || "-";
+}
+function entityLabel(e: string) {
+  return ENTITY_LABEL[e] || prettifyCodeLabel(e) || "-";
+}
 
 
 function formatTime(s?: string) {
@@ -434,15 +478,15 @@ const prettyMode = ref(true);
 const actionFilterOptions = computed(() => {
   const keys = Object.keys(ACTION_LABEL);
   return keys
-    .sort((a, b) => (ACTION_LABEL[a] || a).localeCompare(ACTION_LABEL[b] || b, "zh-CN"))
-    .map((k) => ({ value: k, label: `${ACTION_LABEL[k] || k} (${k})` }));
+    .sort((a, b) => actionLabel(a).localeCompare(actionLabel(b), "zh-CN"))
+    .map((k) => ({ value: k, label: actionLabel(k) }));
 });
 
 const entityFilterOptions = computed(() => {
   const keys = Object.keys(ENTITY_LABEL);
   return keys
-    .sort((a, b) => (ENTITY_LABEL[a] || a).localeCompare(ENTITY_LABEL[b] || b, "zh-CN"))
-    .map((k) => ({ value: k, label: `${ENTITY_LABEL[k] || k} (${k})` }));
+    .sort((a, b) => entityLabel(a).localeCompare(entityLabel(b), "zh-CN"))
+    .map((k) => ({ value: k, label: entityLabel(k) }));
 });
 
 const displayPayload = computed(() => {
@@ -675,7 +719,6 @@ onMounted(load);
 .entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
 .entity-name{font-weight:600}
 .entity-meta{font-size:12px;color:#909399}
-.ip{word-break:break-all}
 .payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
 .payload-box{border:1px solid var(--el-border-color);border-radius:10px}
 .payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
