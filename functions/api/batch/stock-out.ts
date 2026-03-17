@@ -1,6 +1,7 @@
 import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "../_audit";
 import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
+import { sqlNowStored } from "../_time";
 
 function batchNo() {
   const d = new Date();
@@ -135,7 +136,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       stmts.push(
         env.DB.prepare(
           `UPDATE stock
-           SET qty = qty - ?, updated_at=datetime('now','+8 hours')
+           SET qty = qty - ?, updated_at=${sqlNowStored()}
            WHERE item_id=? AND warehouse_id=? AND qty >= ?
              AND (SELECT changes()) > 0`
         ).bind(l.qty, item_id, warehouse_id, l.qty)

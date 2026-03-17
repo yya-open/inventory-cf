@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../../_auth";
+import { requireAuth, errorResponse } from '../../_auth';
+import { getStockForItem } from '../services/inventory';
 
 /**
  * GET /api/stock/one?item_id=1&warehouse_id=1
@@ -7,32 +8,17 @@ import { requireAuth, errorResponse } from "../../_auth";
  */
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    await requireAuth(env, request, 'viewer');
 
     const url = new URL(request.url);
-    const item_id = Number(url.searchParams.get("item_id") || 0);
-    const warehouse_id = Number(url.searchParams.get("warehouse_id") || 1);
+    const item_id = Number(url.searchParams.get('item_id') || 0);
+    const warehouse_id = Number(url.searchParams.get('warehouse_id') || 1);
 
     if (!item_id) {
-      return Response.json({ ok: false, message: "缺少 item_id" }, { status: 400 });
+      return Response.json({ ok: false, message: '缺少 item_id' }, { status: 400 });
     }
 
-    const row = await env.DB.prepare(
-      `
-      SELECT
-        i.id as item_id,
-        i.warning_qty as warning_qty,
-        COALESCE(s.qty, 0) as qty
-      FROM items i
-      LEFT JOIN stock s ON s.item_id = i.id AND s.warehouse_id = ?
-      WHERE i.id = ? AND i.enabled = 1
-      LIMIT 1
-    `
-    )
-      .bind(warehouse_id, item_id)
-      .first<any>();
-
-    return Response.json({ ok: true, data: row || { item_id, warning_qty: 0, qty: 0 } });
+    return Response.json({ ok: true, data: await getStockForItem(env.DB, item_id, warehouse_id) });
   } catch (e: any) {
     return errorResponse(e);
   }
