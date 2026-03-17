@@ -1,39 +1,624 @@
-<template><div><MonitorAssetsToolbar v-model:status="status" v-model:location-id="locationId" v-model:keyword="keyword" :location-options="locationOptions" :can-operator="canOperator" :is-admin="isAdmin" @search="reloadList" @export="exportExcel" @download-template="downloadMonitorTemplate" @import-file="onImportMonitorFile" @open-create="openCreate" @toolbar-more="handleToolbarMore" /><MonitorAssetsTable :rows="rows" :loading="loading" :total="total" :page="page" :page-size="pageSize" :can-operator="canOperator" :is-admin="isAdmin" :status-text="statusText" :location-text="locationText" @in="openIn" @out="openOut" @row-more="handleRowMore" @page-change="(value) => onPageChange(currentFilters(), value)" @size-change="(value) => onPageSizeChange(currentFilters(), value)" /><MonitorAssetFormDialog v-model:visible="dlgAsset.show" :mode="dlgAsset.mode" :form="dlgAsset.form" :location-options="locationOptions" @save="saveAsset" /><MonitorAssetOperationDialog v-model:visible="dlgOp.show" :title="dlgOp.title" :kind="dlgOp.kind" :asset="dlgOp.asset" :form="dlgOp.form" :location-options="locationOptions" @submit="submitOp" /><MonitorAssetQrDialog v-model:visible="qrVisible" :loading="qrLoading" :row="qrRow" :link="qrLink" :data-url="qrDataUrl" :is-admin="isAdmin" :status-text="statusText" @download="downloadQr" @open-link="openQrInNewTab" @copy-link="copyQrLink" @reset="resetQr" /><MonitorLocationManagerDialog v-model:visible="dlgLoc.show" v-model:new-name="dlgLoc.newName" v-model:parent-id="dlgLoc.parentId" :rows="dlgLoc.rows" :location-parent-options="locationParentOptions" :is-admin="isAdmin" :build-loc-label="buildLocLabel" @create="createLocation" @update-location="updateLocation" @delete-location="deleteLocation" /></div></template>
+<template>
+  <div>
+    <MonitorAssetsToolbar
+      v-model:status="status"
+      v-model:location-id="locationId"
+      v-model:keyword="keyword"
+      :location-options="locationOptions"
+      :can-operator="canOperator"
+      :is-admin="isAdmin"
+      @search="reloadList"
+      @export="exportExcel"
+      @download-template="downloadMonitorTemplate"
+      @import-file="onImportMonitorFile"
+      @open-create="openCreate"
+      @toolbar-more="handleToolbarMore"
+    />
+
+    <MonitorAssetsTable
+      :rows="rows"
+      :loading="loading"
+      :total="total"
+      :page="page"
+      :page-size="pageSize"
+      :can-operator="canOperator"
+      :is-admin="isAdmin"
+      :status-text="assetStatusText"
+      :location-text="locationText"
+      @in="openIn"
+      @out="openOut"
+      @row-more="handleRowMore"
+      @page-change="(value) => onPageChange(currentFilters(), value)"
+      @size-change="(value) => onPageSizeChange(currentFilters(), value)"
+    />
+
+    <MonitorAssetFormDialog
+      v-model:visible="dlgAsset.show"
+      :mode="dlgAsset.mode"
+      :form="dlgAsset.form"
+      :location-options="locationOptions"
+      @save="saveAsset"
+    />
+
+    <MonitorAssetOperationDialog
+      v-model:visible="dlgOp.show"
+      :title="dlgOp.title"
+      :kind="dlgOp.kind"
+      :asset="dlgOp.asset"
+      :form="dlgOp.form"
+      :location-options="locationOptions"
+      @submit="submitOp"
+    />
+
+    <MonitorAssetQrDialog
+      v-model:visible="qrVisible"
+      :loading="qrLoading"
+      :row="qrRow"
+      :link="qrLink"
+      :data-url="qrDataUrl"
+      :is-admin="isAdmin"
+      :status-text="assetStatusText"
+      @download="downloadQr"
+      @open-link="openQrInNewTab"
+      @copy-link="copyQrLink"
+      @reset="resetQr"
+    />
+
+    <MonitorLocationManagerDialog
+      v-model:visible="dlgLoc.show"
+      v-model:new-name="dlgLoc.newName"
+      v-model:parent-id="dlgLoc.parentId"
+      :rows="dlgLoc.rows"
+      :location-parent-options="locationParentOptions"
+      :is-admin="isAdmin"
+      :build-loc-label="buildLocLabel"
+      @create="createLocation"
+      @update-location="updateLocation"
+      @delete-location="deleteLocation"
+    />
+  </div>
+</template>
+
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
-import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { usePagedAssetList } from '../composables/usePagedAssetList';
-import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
-import { can } from '../store/auth';
 import QRCode from 'qrcode';
+import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
+import { countMonitorAssets, listAllLocations, listEnabledLocations, listMonitorAssets } from '../api/assetLedgers';
+import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
+import { can } from '../store/auth';
+import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
+import { assetStatusText } from '../types/assets';
+import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import MonitorAssetFormDialog from '../components/assets/MonitorAssetFormDialog.vue';
 import MonitorAssetOperationDialog from '../components/assets/MonitorAssetOperationDialog.vue';
 import MonitorAssetQrDialog from '../components/assets/MonitorAssetQrDialog.vue';
 import MonitorLocationManagerDialog from '../components/assets/MonitorLocationManagerDialog.vue';
-type Loc = { id:number; name:string; parent_id:number|null; enabled:number; created_at?:string }; type MonitorFilters = { status:string; locationId:string; keyword:string }; type MonitorAsset = Record<string, any>;
-const status=ref(''); const locationId=ref(''); const keyword=ref(''); const locations=ref<Loc[]>([]); const canOperator=computed(()=>can('operator')); const isAdmin=computed(()=>can('admin')); const currentFilters=():MonitorFilters=>({ status:status.value||'', locationId:String(locationId.value||''), keyword:keyword.value||'' });
-function statusText(v:string){ const s=String(v||''); if(s==='IN_STOCK') return '在库'; if(s==='ASSIGNED') return '已领用'; if(s==='RECYCLED') return '已回收'; if(s==='SCRAPPED') return '已报废'; return s||'-'; }
-const locationText=(row:MonitorAsset)=>[row.parent_location_name,row.location_name].filter(Boolean).join('/')||'-';
-const locationOptions=computed(()=>{ const mp=new Map<number,Loc>(); locations.value.forEach((l)=>mp.set(l.id,l)); const label=(l:Loc)=>{ const p=l.parent_id?mp.get(Number(l.parent_id)):null; return [p?.name,l.name].filter(Boolean).join('/'); }; return locations.value.filter((x)=>x.enabled===1).map((x)=>({ value:x.id, label:label(x) })).sort((a,b)=>a.label.localeCompare(b.label)); });
-const locationParentOptions=computed(()=>locations.value.filter((x)=>x.enabled===1).map((x)=>({ value:x.id, label:x.name })).sort((a,b)=>a.label.localeCompare(b.label)));
-async function handleMaybeMissingSchema(e:any){ const msg=String(e?.message||''); const missing=msg.includes('no such table: monitor_assets')||msg.includes('no such table: pc_locations')||msg.includes('no such table: monitor_tx'); if(!missing) throw e; if(!can('admin')){ ElMessage.error('显示器模块数据库表尚未初始化，请联系管理员执行初始化'); throw e; } await ElMessageBox.confirm('检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）','需要初始化',{type:'warning',confirmButtonText:'初始化',cancelButtonText:'取消'}); await apiPost('/api/monitor-init',{ confirm:'初始化' }); ElMessage.success('初始化完成，请重试操作'); }
-async function loadLocations(){ try{ const r:any=await apiGet('/api/pc-locations?enabled=1'); locations.value=(r.data||[]) as Loc[]; }catch(e:any){ await handleMaybeMissingSchema(e); } }
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange } = usePagedAssetList<MonitorFilters,MonitorAsset>({ createFilterKey:(f)=>`status=${f.status}&location=${f.locationId}&keyword=${f.keyword}`, fetchPage: async ({ filters,page,pageSize,fast })=>{ const qs=new URLSearchParams(); if(fast) qs.set('fast','1'); qs.set('page',String(page)); qs.set('page_size',String(pageSize)); if(filters.status) qs.set('status',filters.status); if(filters.locationId) qs.set('location_id',filters.locationId); if(filters.keyword) qs.set('keyword',filters.keyword); try{ const r:any=await apiGet(`/api/monitor-assets?${qs.toString()}`); return { rows:r.data||[], total: typeof r.total === 'number' ? Number(r.total) : null }; }catch(e:any){ await handleMaybeMissingSchema(e); const r:any=await apiGet(`/api/monitor-assets?${qs.toString()}`); return { rows:r.data||[], total: typeof r.total === 'number' ? Number(r.total) : null }; } }, fetchTotal: async (filters)=>{ const qs=new URLSearchParams(); if(filters.status) qs.set('status',filters.status); if(filters.locationId) qs.set('location_id',filters.locationId); if(filters.keyword) qs.set('keyword',filters.keyword); try{ const r:any=await apiGet(`/api/monitor-assets-count?${qs.toString()}`); return Number(r.data?.total||0); }catch(e:any){ await handleMaybeMissingSchema(e); const r:any=await apiGet(`/api/monitor-assets-count?${qs.toString()}`); return Number(r.data?.total||0); } } });
-const reloadList=()=>reload(currentFilters()); function handleToolbarMore(command:string){ if(command==='location') return openLocationMgr(); if(command==='initQr') return initQrKeys(); } function handleRowMore(command:string,row:MonitorAsset){ if(command==='edit') return openEdit(row); if(command==='qr') return openQr(row); if(command==='return') return openReturn(row); if(command==='transfer') return openTransfer(row); if(command==='delete') return removeAsset(row); }
-async function fetchAll(){ const all:MonitorAsset[]=[]; let p=1; let totalLocal=0; do{ const qs=new URLSearchParams(); qs.set('page',String(p)); qs.set('page_size','200'); if(status.value) qs.set('status',status.value); if(locationId.value) qs.set('location_id',String(locationId.value)); if(keyword.value) qs.set('keyword',keyword.value); const r:any=await apiGet(`/api/monitor-assets?${qs.toString()}`); all.push(...(r.data||[])); const c:any=await apiGet(`/api/monitor-assets-count?${qs.toString()}`); totalLocal=Number(c.data?.total||0); p+=1; if(all.length>=totalLocal) break; }while(p<999); return all; }
-async function exportExcel(){ try{ loading.value=true; const all=await fetchAll(); exportToXlsx({ filename:'显示器台账.xlsx', sheetName:'显示器台账', headers:[{key:'id',title:'ID'},{key:'asset_code',title:'资产编号'},{key:'sn',title:'SN'},{key:'brand',title:'品牌'},{key:'model',title:'型号'},{key:'size_inch',title:'尺寸'},{key:'status',title:'状态'},{key:'location_text',title:'位置'},{key:'employee_name',title:'领用人'},{key:'employee_no',title:'员工工号'},{key:'department',title:'部门'},{key:'remark',title:'备注'},{key:'updated_at',title:'更新时间'}], rows: all.map((r)=>({ ...r, status: statusText(r.status), location_text: locationText(r) })) }); }catch(e:any){ ElMessage.error(e?.message||'导出失败'); }finally{ loading.value=false; } }
-function downloadMonitorTemplate(){ downloadTemplate({ filename:'显示器台账导入模板.xlsx', headers:[{title:'资产编号'},{title:'SN'},{title:'品牌'},{title:'型号'},{title:'尺寸'},{title:'位置'},{title:'备注'}], exampleRows:[{资产编号:'MON-001',SN:'SN123456',品牌:'Dell',型号:'P2724H',尺寸:'27',位置:'总仓/办公区',备注:'示例，可删除该行'}] }); }
-async function onImportMonitorFile(uploadFile:any){ const file:File=uploadFile?.raw; if(!file) return; try{ const rows=await parseXlsx(file); if(!rows.length) return ElMessage.warning('Excel里没有可导入的数据'); const locMap=new Map<string,number>(); locationOptions.value.forEach((x)=>{ locMap.set(String(x.label||'').trim(), Number(x.value)); const tail=String(x.label||'').split('/').pop()?.trim(); if(tail && !locMap.has(tail)) locMap.set(tail, Number(x.value)); }); let okSum=0; let failSum=0; const errors:any[]=[]; for(let i=0;i<rows.length;i+=1){ const r:any=rows[i]; const locationRaw=String(r['位置']??r.location??'').trim(); const payload={ asset_code:String(r['资产编号']??r.asset_code??'').trim(), sn:String(r.SN??r.sn??'').trim(), brand:String(r['品牌']??r.brand??'').trim(), model:String(r['型号']??r.model??'').trim(), size_inch:String(r['尺寸']??r.size_inch??'').trim(), location_id: locationRaw ? (locMap.get(locationRaw) || null) : null, remark:String(r['备注']??r.remark??'').trim() }; if(!payload.asset_code) continue; try{ await apiPost('/api/monitor-assets', payload); okSum+=1; }catch(e:any){ failSum+=1; errors.push({ row:i+2, msg:e?.message||'导入失败' }); } } if(okSum===0 && failSum===0) return ElMessage.warning('Excel里没有可导入的数据'); if(failSum>0){ console.warn('monitor-assets import errors', errors); ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台）`); }else{ ElMessage.success(`导入完成：成功 ${okSum} 条`); } await load(currentFilters(),{ keepPage:true }); }catch(e:any){ ElMessage.error(e?.message||'导入失败'); } }
-const dlgAsset=reactive({ show:false, mode:'create' as 'create'|'edit', form:{ id:0, asset_code:'', sn:'', brand:'', model:'', size_inch:'', remark:'', location_id:'' as any } }); function openCreate(){ dlgAsset.mode='create'; dlgAsset.form={ id:0, asset_code:'', sn:'', brand:'', model:'', size_inch:'', remark:'', location_id:'' as any }; dlgAsset.show=true; } function openEdit(row:MonitorAsset){ dlgAsset.mode='edit'; dlgAsset.form={ id:row.id, asset_code:row.asset_code||'', sn:row.sn||'', brand:row.brand||'', model:row.model||'', size_inch:row.size_inch||'', remark:row.remark||'', location_id:row.location_id||'' } as any; dlgAsset.show=true; }
-async function saveAsset(){ try{ if(dlgAsset.mode==='create'){ await apiPost('/api/monitor-assets', dlgAsset.form); ElMessage.success('新增成功'); }else{ await apiPut('/api/monitor-assets', dlgAsset.form); ElMessage.success('保存成功'); } dlgAsset.show=false; await load(currentFilters(),{ keepPage:true }); }catch(e:any){ try{ await handleMaybeMissingSchema(e); if(dlgAsset.mode==='create'){ await apiPost('/api/monitor-assets', dlgAsset.form); ElMessage.success('新增成功'); }else{ await apiPut('/api/monitor-assets', dlgAsset.form); ElMessage.success('保存成功'); } dlgAsset.show=false; await load(currentFilters(),{ keepPage:true }); }catch(e2:any){ ElMessage.error(e2.message || '操作失败'); } } }
-async function removeAsset(row:MonitorAsset){ try{ await ElMessageBox.confirm(`确认删除显示器台账：${[row.brand,row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code||'-'}）？`,'删除确认',{ type:'warning', confirmButtonText:'确认删除', cancelButtonText:'取消' }); loading.value=true; await apiDelete('/api/monitor-assets',{ id:row.id }); ElMessage.success('删除成功'); if(rows.value.length===1 && page.value>1) page.value-=1; await load(currentFilters(),{ keepPage:true }); }catch(e:any){ if(e==='cancel' || e==='close') return; ElMessage.error(e?.message||'删除失败'); }finally{ loading.value=false; } }
-const dlgOp=reactive({ show:false, kind:'in' as 'in'|'out'|'return'|'transfer', title:'', asset:null as MonitorAsset|null, form:{ location_id:'' as any, employee_no:'', employee_name:'', department:'', remark:'' } }); function openIn(row:MonitorAsset){ dlgOp.kind='in'; dlgOp.title='显示器入库'; dlgOp.asset=row; dlgOp.form={ location_id:row.location_id||'', employee_no:'', employee_name:'', department:'', remark:'' }; dlgOp.show=true; } function openOut(row:MonitorAsset){ dlgOp.kind='out'; dlgOp.title='显示器出库（领用）'; dlgOp.asset=row; dlgOp.form={ location_id:row.location_id||'', employee_no:'', employee_name:'', department:'', remark:'' }; dlgOp.show=true; } function openReturn(row:MonitorAsset){ dlgOp.kind='return'; dlgOp.title='显示器归还'; dlgOp.asset=row; dlgOp.form={ location_id:row.location_id||'', employee_no:'', employee_name:'', department:'', remark:'' }; dlgOp.show=true; } function openTransfer(row:MonitorAsset){ dlgOp.kind='transfer'; dlgOp.title='显示器调拨'; dlgOp.asset=row; dlgOp.form={ location_id:row.location_id||'', employee_no:'', employee_name:'', department:'', remark:'' }; dlgOp.show=true; }
-async function submitOp(){ const a=dlgOp.asset; if(!a) return; try{ if(dlgOp.kind==='in'){ await apiPost('/api/monitor-in',{ asset_id:a.id, location_id:dlgOp.form.location_id||null, remark:dlgOp.form.remark }); ElMessage.success('入库成功'); }else if(dlgOp.kind==='out'){ await apiPost('/api/monitor-out',{ asset_id:a.id, location_id:dlgOp.form.location_id||null, employee_no:dlgOp.form.employee_no, employee_name:dlgOp.form.employee_name, department:dlgOp.form.department, remark:dlgOp.form.remark }); ElMessage.success('出库成功'); }else if(dlgOp.kind==='return'){ await apiPost('/api/monitor-return',{ asset_id:a.id, location_id:dlgOp.form.location_id||null, remark:dlgOp.form.remark }); ElMessage.success('归还成功'); }else if(dlgOp.kind==='transfer'){ await apiPost('/api/monitor-transfer',{ asset_id:a.id, to_location_id:dlgOp.form.location_id, remark:dlgOp.form.remark }); ElMessage.success('调拨成功'); } dlgOp.show=false; await load(currentFilters(),{ keepPage:true }); }catch(e:any){ ElMessage.error(e?.message||'操作失败'); } }
-const qrVisible=ref(false); const qrLoading=ref(false); const qrRow=ref<MonitorAsset|null>(null); const qrLink=ref(''); const qrDataUrl=ref(''); async function openQr(row:MonitorAsset){ qrVisible.value=true; qrRow.value={...row}; qrLink.value=''; qrDataUrl.value=''; qrLoading.value=true; try{ const id=Number(row?.id||0); if(!id) throw new Error('缺少资产ID'); const r:any=await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`); const link=String(r?.url||''); qrLink.value=link; if(link) qrDataUrl.value=await QRCode.toDataURL(link,{ margin:1, width:360 }); }catch(e:any){ ElMessage.error(e?.message||'生成二维码失败'); }finally{ qrLoading.value=false; } } function downloadQr(){ if(!qrDataUrl.value) return; const a=document.createElement('a'); a.href=qrDataUrl.value; a.download=`显示器二维码_${qrRow.value?.asset_code||'monitor'}.png`; a.click(); } async function copyQrLink(){ try{ await navigator.clipboard.writeText(qrLink.value||''); ElMessage.success('已复制'); }catch{ ElMessage.warning('复制失败，请手动复制'); } } const openQrInNewTab=()=>{ if(qrLink.value) window.open(qrLink.value,'_blank'); }; async function resetQr(){ try{ const id=Number(qrRow.value?.id||0); if(!id) return; await ElMessageBox.confirm('重置后旧二维码将立即失效，确认继续？','重置二维码',{ type:'warning', confirmButtonText:'重置', cancelButtonText:'取消' }); qrLoading.value=true; const r:any=await apiPost(`/api/monitor-assets-reset-qr?id=${id}`,{}); const link=String(r?.url||''); qrLink.value=link; if(link) qrDataUrl.value=await QRCode.toDataURL(link,{ margin:1, width:360 }); ElMessage.success('已重置'); }catch(e:any){ if(e==='cancel' || e==='close') return; ElMessage.error(e?.message||'重置失败'); }finally{ qrLoading.value=false; } }
-async function initQrKeys(){ try{ await ElMessageBox.confirm('将为所有缺少二维码Key的显示器批量生成Key（分批执行）。继续？','初始化二维码Key',{ type:'warning', confirmButtonText:'继续', cancelButtonText:'取消' }); let totalUpdated=0; for(let i=0;i<20;i+=1){ const r:any=await apiPost('/api/monitor-assets-init-qr-keys',{ batch_size:50 }); const updated=Number(r?.updated||0); totalUpdated+=updated; if(updated<=0) break; } ElMessage.success(totalUpdated?`已补齐 ${totalUpdated} 条`:'无需补齐（都已存在）'); }catch(e:any){ if(e==='cancel' || e==='close') return; ElMessage.error(e?.message||'初始化失败'); } }
-const dlgLoc=reactive({ show:false, rows:[] as MonitorAsset[], newName:'', parentId:'' as any }); function buildLocLabel(row:MonitorAsset){ const p=locations.value.find((x)=>x.id===row.parent_id); return [p?.name,row.name].filter(Boolean).join('/'); } async function openLocationMgr(){ dlgLoc.show=true; await refreshLocationMgr(); } async function refreshLocationMgr(){ const r:any=await apiGet('/api/pc-locations'); dlgLoc.rows=(r.data||[]).map((x:MonitorAsset)=>({ ...x })); locations.value=dlgLoc.rows as any; } async function createLocation(){ try{ if(!dlgLoc.newName.trim()) return ElMessage.warning('请输入位置名称'); await apiPost('/api/pc-locations',{ name:dlgLoc.newName.trim(), parent_id:dlgLoc.parentId||null }); dlgLoc.newName=''; dlgLoc.parentId=''; await refreshLocationMgr(); ElMessage.success('新增成功'); }catch(e:any){ ElMessage.error(e.message||'新增失败'); } } async function updateLocation(row:MonitorAsset){ try{ await apiPut('/api/pc-locations',{ id:row.id, name:row.name, parent_id:row.parent_id, enabled:row.enabled }); await refreshLocationMgr(); ElMessage.success('保存成功'); }catch(e:any){ ElMessage.error(e.message||'保存失败'); } } async function deleteLocation(row:MonitorAsset){ try{ await ElMessageBox.confirm('删除位置后无法恢复，确认继续？','提示',{ type:'warning' }); await apiDelete('/api/pc-locations',{ id:row.id, confirm:'删除' }); await refreshLocationMgr(); ElMessage.success('删除成功'); }catch(e:any){ if(e?.message) ElMessage.error(e.message); } }
-onMounted(async()=>{ await loadLocations(); await load(currentFilters()); });
+
+const status = ref('');
+const locationId = ref('');
+const keyword = ref('');
+const locations = ref<LocationRow[]>([]);
+const canOperator = computed(() => can('operator'));
+const isAdmin = computed(() => can('admin'));
+
+const currentFilters = (): MonitorFilters => ({
+  status: status.value || '',
+  locationId: String(locationId.value || ''),
+  keyword: keyword.value || '',
+});
+
+const locationText = (row: MonitorAsset) => [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-';
+
+const locationOptions = computed(() => {
+  const locationMap = new Map<number, LocationRow>();
+  locations.value.forEach((location) => locationMap.set(location.id, location));
+  const labelOf = (location: LocationRow) => {
+    const parent = location.parent_id ? locationMap.get(Number(location.parent_id)) : null;
+    return [parent?.name, location.name].filter(Boolean).join('/');
+  };
+  return locations.value
+    .filter((location) => location.enabled === 1)
+    .map((location) => ({ value: location.id, label: labelOf(location) }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+});
+
+const locationParentOptions = computed(() => {
+  return locations.value
+    .filter((location) => location.enabled === 1)
+    .map((location) => ({ value: location.id, label: location.name }))
+    .sort((a, b) => a.label.localeCompare(b.label));
+});
+
+async function handleMaybeMissingSchema(error: any) {
+  const message = String(error?.message || '');
+  const missing =
+    message.includes('no such table: monitor_assets') ||
+    message.includes('no such table: pc_locations') ||
+    message.includes('no such table: monitor_tx');
+  if (!missing) throw error;
+  if (!can('admin')) {
+    ElMessage.error('显示器模块数据库表尚未初始化，请联系管理员执行初始化');
+    throw error;
+  }
+  await ElMessageBox.confirm(
+    '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
+    '需要初始化',
+    {
+      type: 'warning',
+      confirmButtonText: '初始化',
+      cancelButtonText: '取消',
+    }
+  );
+  await apiPost('/api/monitor-init', { confirm: '初始化' });
+  ElMessage.success('初始化完成，请重试操作');
+}
+
+async function loadLocations() {
+  try {
+    locations.value = await listEnabledLocations();
+  } catch (error: any) {
+    await handleMaybeMissingSchema(error);
+  }
+}
+
+const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}`,
+  fetchPage: async (filters, currentPage, currentPageSize, fast) => {
+    try {
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
+    } catch (error: any) {
+      await handleMaybeMissingSchema(error);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
+    }
+  },
+  fetchTotal: async (filters) => {
+    try {
+      return await countMonitorAssets(filters);
+    } catch (error: any) {
+      await handleMaybeMissingSchema(error);
+      return await countMonitorAssets(filters);
+    }
+  },
+});
+
+const reloadList = () => reload(currentFilters());
+
+function handleToolbarMore(command: string) {
+  if (command === 'location') return openLocationMgr();
+  if (command === 'initQr') return initQrKeys();
+}
+
+function handleRowMore(command: string, row: MonitorAsset) {
+  if (command === 'edit') return openEdit(row);
+  if (command === 'qr') return openQr(row);
+  if (command === 'return') return openReturn(row);
+  if (command === 'transfer') return openTransfer(row);
+  if (command === 'delete') return removeAsset(row);
+}
+
+async function exportExcel() {
+  try {
+    loading.value = true;
+    const all = await fetchAll(currentFilters());
+    exportToXlsx({
+      filename: '显示器台账.xlsx',
+      sheetName: '显示器台账',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'asset_code', title: '资产编号' },
+        { key: 'sn', title: 'SN' },
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'size_inch', title: '尺寸' },
+        { key: 'status', title: '状态' },
+        { key: 'location_text', title: '位置' },
+        { key: 'employee_name', title: '领用人' },
+        { key: 'employee_no', title: '员工工号' },
+        { key: 'department', title: '部门' },
+        { key: 'remark', title: '备注' },
+        { key: 'updated_at', title: '更新时间' },
+      ],
+      rows: all.map((row) => ({
+        ...row,
+        status: assetStatusText(row.status),
+        location_text: locationText(row),
+      })),
+    });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+function downloadMonitorTemplate() {
+  downloadTemplate({
+    filename: '显示器台账导入模板.xlsx',
+    headers: [
+      { title: '资产编号' },
+      { title: 'SN' },
+      { title: '品牌' },
+      { title: '型号' },
+      { title: '尺寸' },
+      { title: '位置' },
+      { title: '备注' },
+    ],
+    exampleRows: [
+      {
+        资产编号: 'MON-001',
+        SN: 'SN123456',
+        品牌: 'Dell',
+        型号: 'P2724H',
+        尺寸: '27',
+        位置: '总仓/办公区',
+        备注: '示例，可删除该行',
+      },
+    ],
+  });
+}
+
+async function onImportMonitorFile(uploadFile: any) {
+  const file: File = uploadFile?.raw;
+  if (!file) return;
+  try {
+    const excelRows = await parseXlsx(file);
+    if (!excelRows.length) return ElMessage.warning('Excel里没有可导入的数据');
+
+    const locationMap = new Map<string, number>();
+    locationOptions.value.forEach((item) => {
+      locationMap.set(String(item.label || '').trim(), Number(item.value));
+      const tail = String(item.label || '').split('/').pop()?.trim();
+      if (tail && !locationMap.has(tail)) locationMap.set(tail, Number(item.value));
+    });
+
+    let success = 0;
+    let failed = 0;
+    const errors: Array<{ row: number; msg: string }> = [];
+
+    for (let index = 0; index < excelRows.length; index += 1) {
+      const row: any = excelRows[index];
+      const locationRaw = String(row['位置'] ?? row.location ?? '').trim();
+      const payload = {
+        asset_code: String(row['资产编号'] ?? row.asset_code ?? '').trim(),
+        sn: String(row.SN ?? row.sn ?? '').trim(),
+        brand: String(row['品牌'] ?? row.brand ?? '').trim(),
+        model: String(row['型号'] ?? row.model ?? '').trim(),
+        size_inch: String(row['尺寸'] ?? row.size_inch ?? '').trim(),
+        location_id: locationRaw ? locationMap.get(locationRaw) || null : null,
+        remark: String(row['备注'] ?? row.remark ?? '').trim(),
+      };
+      if (!payload.asset_code) continue;
+      try {
+        await apiPost('/api/monitor-assets', payload);
+        success += 1;
+      } catch (error: any) {
+        failed += 1;
+        errors.push({ row: index + 2, msg: error?.message || '导入失败' });
+      }
+    }
+
+    if (success === 0 && failed === 0) return ElMessage.warning('Excel里没有可导入的数据');
+    if (failed > 0) {
+      console.warn('monitor-assets import errors', errors);
+      ElMessage.warning(`导入完成：成功 ${success} 条，失败 ${failed} 条（详情见控制台）`);
+    } else {
+      ElMessage.success(`导入完成：成功 ${success} 条`);
+    }
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导入失败');
+  }
+}
+
+const dlgAsset = reactive({
+  show: false,
+  mode: 'create' as 'create' | 'edit',
+  form: {
+    id: 0,
+    asset_code: '',
+    sn: '',
+    brand: '',
+    model: '',
+    size_inch: '',
+    remark: '',
+    location_id: '' as any,
+  },
+});
+
+function openCreate() {
+  dlgAsset.mode = 'create';
+  dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
+  dlgAsset.show = true;
+}
+
+function openEdit(row: MonitorAsset) {
+  dlgAsset.mode = 'edit';
+  dlgAsset.form = {
+    id: row.id,
+    asset_code: row.asset_code || '',
+    sn: row.sn || '',
+    brand: row.brand || '',
+    model: row.model || '',
+    size_inch: row.size_inch || '',
+    remark: row.remark || '',
+    location_id: row.location_id || '',
+  } as any;
+  dlgAsset.show = true;
+}
+
+async function saveAsset() {
+  try {
+    if (dlgAsset.mode === 'create') {
+      await apiPost('/api/monitor-assets', dlgAsset.form);
+      ElMessage.success('新增成功');
+    } else {
+      await apiPut('/api/monitor-assets', dlgAsset.form);
+      ElMessage.success('保存成功');
+    }
+    dlgAsset.show = false;
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    try {
+      await handleMaybeMissingSchema(error);
+      if (dlgAsset.mode === 'create') {
+        await apiPost('/api/monitor-assets', dlgAsset.form);
+        ElMessage.success('新增成功');
+      } else {
+        await apiPut('/api/monitor-assets', dlgAsset.form);
+        ElMessage.success('保存成功');
+      }
+      dlgAsset.show = false;
+      await load(currentFilters(), { keepPage: true });
+    } catch (nextError: any) {
+      ElMessage.error(nextError.message || '操作失败');
+    }
+  }
+}
+
+async function removeAsset(row: MonitorAsset) {
+  try {
+    await ElMessageBox.confirm(`确认删除显示器台账：${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）？`, '删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    });
+    loading.value = true;
+    await apiDelete('/api/monitor-assets', { id: row.id });
+    ElMessage.success('删除成功');
+    if (rows.value.length === 1 && page.value > 1) page.value -= 1;
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '删除失败');
+  } finally {
+    loading.value = false;
+  }
+}
+
+const dlgOp = reactive({
+  show: false,
+  kind: 'in' as 'in' | 'out' | 'return' | 'transfer',
+  title: '',
+  asset: null as MonitorAsset | null,
+  form: {
+    location_id: '' as any,
+    employee_no: '',
+    employee_name: '',
+    department: '',
+    remark: '',
+  },
+});
+
+function openIn(row: MonitorAsset) {
+  dlgOp.kind = 'in';
+  dlgOp.title = '显示器入库';
+  dlgOp.asset = row;
+  dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  dlgOp.show = true;
+}
+
+function openOut(row: MonitorAsset) {
+  dlgOp.kind = 'out';
+  dlgOp.title = '显示器出库（领用）';
+  dlgOp.asset = row;
+  dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  dlgOp.show = true;
+}
+
+function openReturn(row: MonitorAsset) {
+  dlgOp.kind = 'return';
+  dlgOp.title = '显示器归还';
+  dlgOp.asset = row;
+  dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  dlgOp.show = true;
+}
+
+function openTransfer(row: MonitorAsset) {
+  dlgOp.kind = 'transfer';
+  dlgOp.title = '显示器调拨';
+  dlgOp.asset = row;
+  dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  dlgOp.show = true;
+}
+
+async function submitOp() {
+  const asset = dlgOp.asset;
+  if (!asset) return;
+  try {
+    if (dlgOp.kind === 'in') {
+      await apiPost('/api/monitor-in', { asset_id: asset.id, location_id: dlgOp.form.location_id || null, remark: dlgOp.form.remark });
+      ElMessage.success('入库成功');
+    } else if (dlgOp.kind === 'out') {
+      await apiPost('/api/monitor-out', {
+        asset_id: asset.id,
+        location_id: dlgOp.form.location_id || null,
+        employee_no: dlgOp.form.employee_no,
+        employee_name: dlgOp.form.employee_name,
+        department: dlgOp.form.department,
+        remark: dlgOp.form.remark,
+      });
+      ElMessage.success('出库成功');
+    } else if (dlgOp.kind === 'return') {
+      await apiPost('/api/monitor-return', { asset_id: asset.id, location_id: dlgOp.form.location_id || null, remark: dlgOp.form.remark });
+      ElMessage.success('归还成功');
+    } else if (dlgOp.kind === 'transfer') {
+      await apiPost('/api/monitor-transfer', { asset_id: asset.id, to_location_id: dlgOp.form.location_id, remark: dlgOp.form.remark });
+      ElMessage.success('调拨成功');
+    }
+    dlgOp.show = false;
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '操作失败');
+  }
+}
+
+const qrVisible = ref(false);
+const qrLoading = ref(false);
+const qrRow = ref<MonitorAsset | null>(null);
+const qrLink = ref('');
+const qrDataUrl = ref('');
+
+async function openQr(row: MonitorAsset) {
+  qrVisible.value = true;
+  qrRow.value = { ...row };
+  qrLink.value = '';
+  qrDataUrl.value = '';
+  qrLoading.value = true;
+  try {
+    const id = Number(row?.id || 0);
+    if (!id) throw new Error('缺少资产ID');
+    const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`);
+    const link = String(result?.url || '');
+    qrLink.value = link;
+    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '生成二维码失败');
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+function downloadQr() {
+  if (!qrDataUrl.value) return;
+  const link = document.createElement('a');
+  link.href = qrDataUrl.value;
+  link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.png`;
+  link.click();
+}
+
+async function copyQrLink() {
+  try {
+    await navigator.clipboard.writeText(qrLink.value || '');
+    ElMessage.success('已复制');
+  } catch {
+    ElMessage.warning('复制失败，请手动复制');
+  }
+}
+
+const openQrInNewTab = () => {
+  if (qrLink.value) window.open(qrLink.value, '_blank');
+};
+
+async function resetQr() {
+  try {
+    const id = Number(qrRow.value?.id || 0);
+    if (!id) return;
+    await ElMessageBox.confirm('重置后旧二维码将立即失效，确认继续？', '重置二维码', {
+      type: 'warning',
+      confirmButtonText: '重置',
+      cancelButtonText: '取消',
+    });
+    qrLoading.value = true;
+    const result: any = await apiPost(`/api/monitor-assets-reset-qr?id=${id}`, {});
+    const link = String(result?.url || '');
+    qrLink.value = link;
+    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    ElMessage.success('已重置');
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '重置失败');
+  } finally {
+    qrLoading.value = false;
+  }
+}
+
+async function initQrKeys() {
+  try {
+    await ElMessageBox.confirm('将为所有缺少二维码Key的显示器批量生成Key（分批执行）。继续？', '初始化二维码Key', {
+      type: 'warning',
+      confirmButtonText: '继续',
+      cancelButtonText: '取消',
+    });
+    let totalUpdated = 0;
+    for (let index = 0; index < 20; index += 1) {
+      const result: any = await apiPost('/api/monitor-assets-init-qr-keys', { batch_size: 50 });
+      const updated = Number(result?.updated || 0);
+      totalUpdated += updated;
+      if (updated <= 0) break;
+    }
+    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 条` : '无需补齐（都已存在）');
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '初始化失败');
+  }
+}
+
+const dlgLoc = reactive({ show: false, rows: [] as MonitorAsset[], newName: '', parentId: '' as any });
+
+function buildLocLabel(row: MonitorAsset) {
+  const parent = locations.value.find((item) => item.id === row.parent_id);
+  return [parent?.name, row.name].filter(Boolean).join('/');
+}
+
+async function openLocationMgr() {
+  dlgLoc.show = true;
+  await refreshLocationMgr();
+}
+
+async function refreshLocationMgr() {
+  dlgLoc.rows = (await listAllLocations()).map((item) => ({ ...item })) as MonitorAsset[];
+  locations.value = dlgLoc.rows as any;
+}
+
+async function createLocation() {
+  try {
+    if (!dlgLoc.newName.trim()) return ElMessage.warning('请输入位置名称');
+    await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
+    dlgLoc.newName = '';
+    dlgLoc.parentId = '';
+    await refreshLocationMgr();
+    ElMessage.success('新增成功');
+  } catch (error: any) {
+    ElMessage.error(error.message || '新增失败');
+  }
+}
+
+async function updateLocation(row: MonitorAsset) {
+  try {
+    await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
+    await refreshLocationMgr();
+    ElMessage.success('保存成功');
+  } catch (error: any) {
+    ElMessage.error(error.message || '保存失败');
+  }
+}
+
+async function deleteLocation(row: MonitorAsset) {
+  try {
+    await ElMessageBox.confirm('删除位置后无法恢复，确认继续？', '提示', { type: 'warning' });
+    await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
+    await refreshLocationMgr();
+    ElMessage.success('删除成功');
+  } catch (error: any) {
+    if (error?.message) ElMessage.error(error.message);
+  }
+}
+
+onMounted(async () => {
+  await loadLocations();
+  await load(currentFilters());
+});
 </script>

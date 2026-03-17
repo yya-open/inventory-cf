@@ -1,7 +1,18 @@
-export type KeywordMode = "none" | "exact" | "prefix" | "contains";
+export type KeywordMode = 'none' | 'exact' | 'prefix' | 'contains';
 
 function isDigits(s: string) {
   return /^\d+$/.test(s);
+}
+
+function normalizeKeyword(input: string) {
+  return String(input || '')
+    .replace(/\u3000/g, ' ')
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
+function escapeLike(input: string) {
+  return String(input || '').replace(/[\\%_]/g, '\\$&');
 }
 
 export type KeywordFields = {
@@ -15,51 +26,72 @@ export type KeywordFields = {
   numericId?: string;
 };
 
+function buildLikeClauses(columns: string[], pattern: string) {
+  const clauses = columns.map((column) => `${column} LIKE ? ESCAPE '\\'`);
+  const binds = columns.map(() => pattern);
+  return { clauses, binds };
+}
+
 export function buildKeywordWhere(keywordRaw: string, fields: KeywordFields) {
-  const keyword = (keywordRaw || "").trim();
-  if (!keyword) return { sql: "", binds: [] as any[], mode: "none" as KeywordMode };
+  const keyword = normalizeKeyword(keywordRaw);
+  if (!keyword) return { sql: '', binds: [] as any[], mode: 'none' as KeywordMode };
 
-  const parts: string[] = [];
-  const binds: any[] = [];
-
-  // 1) digits-only: try numericId and exact matches first
+  // 单个纯数字关键词：优先 exact。
   if (isDigits(keyword)) {
+    const exactClauses: string[] = [];
+    const exactBinds: any[] = [];
     if (fields.numericId) {
-      parts.push(`${fields.numericId} = ?`);
-      binds.push(Number(keyword));
+      exactClauses.push(`${fields.numericId} = ?`);
+      exactBinds.push(Number(keyword));
     }
-    for (const col of fields.exact || []) {
-      parts.push(`${col} = ?`);
-      binds.push(keyword);
+    for (const column of fields.exact || []) {
+      exactClauses.push(`${column} = ?`);
+      exactBinds.push(keyword);
     }
-    if (parts.length) {
-      return { sql: `(${parts.join(" OR ")})`, binds, mode: "exact" as KeywordMode };
+    if (exactClauses.length) {
+      return { sql: `(${exactClauses.join(' OR ')})`, binds: exactBinds, mode: 'exact' as KeywordMode };
     }
   }
 
-  // 2) short keywords: prefix-only to avoid full scans
-  if (keyword.length <= 2) {
-    const p2: string[] = [];
-    for (const col of fields.prefix || []) {
-      p2.push(`${col} LIKE ?`);
-      binds.push(`${keyword}%`);
+  const tokens = keyword.split(' ').filter(Boolean);
+  const clauseGroups: string[] = [];
+  const binds: any[] = [];
+  let hasContains = false;
+
+  for (const token of tokens) {
+    const escaped = escapeLike(token);
+    const parts: string[] = [];
+
+    const prefix = buildLikeClauses(fields.prefix || [], `${escaped}%`);
+    if (prefix.clauses.length) {
+      parts.push(...prefix.clauses);
+      binds.push(...prefix.binds);
     }
-    if (p2.length) return { sql: `(${p2.join(" OR ")})`, binds, mode: "prefix" as KeywordMode };
-    return { sql: "", binds: [], mode: "none" as KeywordMode };
+
+    // 短关键词只走 prefix，避免 contains 全表扫。
+    if (token.length > 2) {
+      const contains = buildLikeClauses(fields.contains || [], `%${escaped}%`);
+      if (contains.clauses.length) {
+        hasContains = true;
+        parts.push(...contains.clauses);
+        binds.push(...contains.binds);
+      }
+    }
+
+    // 多词情况下也允许 exact 列参与匹配，如 SN / 资产编号。
+    for (const column of fields.exact || []) {
+      parts.push(`${column} = ?`);
+      binds.push(token);
+    }
+
+    if (!parts.length) continue;
+    clauseGroups.push(`(${parts.join(' OR ')})`);
   }
 
-  // 3) normal: prefix + limited contains
-  const p3: string[] = [];
-  for (const col of fields.prefix || []) {
-    p3.push(`${col} LIKE ?`);
-    binds.push(`${keyword}%`);
-  }
-  const c3: string[] = [];
-  for (const col of fields.contains || []) {
-    c3.push(`${col} LIKE ?`);
-    binds.push(`%${keyword}%`);
-  }
-  const all = [...p3, ...c3];
-  if (!all.length) return { sql: "", binds: [], mode: "none" as KeywordMode };
-  return { sql: `(${all.join(" OR ")})`, binds, mode: (c3.length ? "contains" : "prefix") as KeywordMode };
+  if (!clauseGroups.length) return { sql: '', binds: [], mode: 'none' as KeywordMode };
+  return {
+    sql: clauseGroups.length === 1 ? clauseGroups[0] : `(${clauseGroups.join(' AND ')})`,
+    binds,
+    mode: (hasContains ? 'contains' : 'prefix') as KeywordMode,
+  };
 }
