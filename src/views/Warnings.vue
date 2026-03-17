@@ -277,7 +277,7 @@ async function exportCsv() {
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
 
-    await apiDownload(`/api/warnings/export?` + qs.toString(), "warnings.csv");
+    await apiDownload(`/api/warnings/export?${qs.toString()}`, "warnings.csv");
     ElMessage.success("已导出 CSV");
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");

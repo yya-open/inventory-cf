@@ -136,7 +136,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
 export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, "admin");
+    const user = await requireAuth(env, request, "operator");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
     const url = new URL(request.url);
     const t = (env as any).__timing;

@@ -1,8 +1,4 @@
 import { createRouter, createWebHistory } from "vue-router";
-import { fetchMe, useAuth, can } from "../store/auth";
-import { useWarehouse, setWarehouse } from "../store/warehouse";
-import { ElMessage } from "element-plus";
-
 const StockQuery = () => import("../views/StockQuery.vue");
 const StockIn = () => import("../views/StockIn.vue");
 const StockOut = () => import("../views/StockOut.vue");
@@ -33,6 +29,9 @@ const SystemHome = () => import("../views/SystemHome.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
+import { fetchMe, useAuth, can } from "../store/auth";
+import { useWarehouse, setWarehouse } from "../store/warehouse";
+import { ElMessage } from "element-plus";
 
 const router = createRouter({
   history: createWebHistory(),

@@ -182,7 +182,6 @@ async function onImportFile(uploadFile: any) {
       ElMessage.success(`导入完成：成功 ${res.success} 条`);
     }
 
-    await loadAssets();
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
   }

@@ -154,7 +154,7 @@ onMounted(async () => {
       return;
     }
 
-    const j = await apiGetPublic<{ ok: boolean; data: any }>(apiUrl);
+    const j: any = await apiGetPublic(apiUrl);
     row.value = j.data;
   } catch (e: any) {
     error.value = e?.message || "获取失败";
@@ -182,7 +182,7 @@ async function submitOk() {
     const apiUrl = inventoryApiUrl();
     if (!apiUrl) throw new Error("缺少二维码参数");
     submittingOk.value = true;
-    await apiPostPublic<{ ok: boolean }>(apiUrl, { action: "OK" });
+    await apiPostPublic(apiUrl, { action: "OK" });
     ElMessage.success("已记录：盘点通过");
     startCooldown(30);
   } catch (e: any) {
@@ -198,11 +198,7 @@ async function submitIssue() {
     if (!apiUrl) throw new Error("缺少二维码参数");
     if (!issueForm.value.issue_type) throw new Error("请选择异常类型");
     submittingIssue.value = true;
-    await apiPostPublic<{ ok: boolean }>(apiUrl, {
-      action: "ISSUE",
-      issue_type: issueForm.value.issue_type,
-      remark: issueForm.value.remark,
-    });
+    await apiPostPublic(apiUrl, { action: "ISSUE", issue_type: issueForm.value.issue_type, remark: issueForm.value.remark });
     ElMessage.success("已提交：异常");
     issueVisible.value = false;
     issueForm.value = { issue_type: "", remark: "" };
