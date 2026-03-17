@@ -135,16 +135,14 @@
 <script setup lang="ts">
 import { ref, reactive, onMounted, computed } from "vue";
 import { ElMessage } from "element-plus";
-import { apiGet, apiPost } from "../api/client";
+import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
-import { useAuth } from "../store/auth";
 import * as XLSX from "xlsx";
 import { formatBeijingDateTime, beijingTodayCompact } from "../utils/datetime";
 
 const router = useRouter();
 const warehouseId = useFixedWarehouseId();
-const { token } = useAuth();
 
 const tableRef = ref<any>(null);
 const rows = ref<any[]>([]);
@@ -279,29 +277,7 @@ async function exportCsv() {
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
 
-    const r = await fetch(`/api/warnings/export?` + qs.toString(), {
-      method: "GET",
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-    });
-
-    if (!r.ok) {
-      const t = await r.text();
-      throw new Error(t || "导出失败");
-    }
-
-    const blob = await r.blob();
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-
-    const cd = r.headers.get("content-disposition") || "";
-    const m = cd.match(/filename="([^"]+)"/);
-    a.download = m?.[1] || "warnings.csv";
-
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    URL.revokeObjectURL(url);
+    await apiDownload(`/api/warnings/export?` + qs.toString(), "warnings.csv");
     ElMessage.success("已导出 CSV");
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");

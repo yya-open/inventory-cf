@@ -1,8 +1,19 @@
 import { reactive } from "vue";
-import { apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost, apiRequestJson } from "../api/client";
 
 export type Role = "admin" | "operator" | "viewer";
 export type User = { id: number; username: string; role: Role; must_change_password?: number };
+
+type LoginResponse = {
+  ok: boolean;
+  data: {
+    user: User;
+    require_captcha?: boolean;
+    locked_until_ms?: number;
+    locked_until?: string;
+  };
+  message?: string;
+};
 
 const state = reactive<{
   user: User | null;
@@ -37,27 +48,26 @@ export async function login(username: string, password: string) {
 }
 
 export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
-  const r = await fetch("/api/auth/login", {
-    method: "POST",
-    headers: { "content-type": "application/json" },
-    credentials: "include",
-    body: JSON.stringify({ username, password, turnstile_token }),
-  });
+  try {
+    const r = await apiRequestJson<LoginResponse>(
+      "/api/auth/login",
+      {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ username, password, turnstile_token }),
+      },
+      { handleUnauthorized: false }
+    );
 
-  const t = await r.text();
-  let j: any = null;
-  try { j = JSON.parse(t); } catch { j = { ok: false, message: t || "登录失败" }; }
-
-  if (!r.ok || !j?.ok) {
-    const err: any = new Error(j?.message || "登录失败");
-    if (j?.data?.require_captcha) err.require_captcha = true;
-    if (j?.data?.locked_until_ms != null) err.locked_until_ms = j.data.locked_until_ms;
-    if (j?.data?.locked_until) err.locked_until = j.data.locked_until;
-    throw err;
+    state.user = r.data.user;
+    return r.data.user;
+  } catch (e: any) {
+    const response = e?.response;
+    if (response?.data?.require_captcha) e.require_captcha = true;
+    if (response?.data?.locked_until_ms != null) e.locked_until_ms = response.data.locked_until_ms;
+    if (response?.data?.locked_until) e.locked_until = response.data.locked_until;
+    throw e;
   }
-
-  state.user = j.data.user;
-  return j.data.user as User;
 }
 
 export function logout() {

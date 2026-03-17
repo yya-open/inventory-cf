@@ -133,7 +133,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       const pv = validatePassword(newP);
       if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
       const ph = await hashPassword(pv.password);
-      await env.DB.prepare("UPDATE users SET password_hash=?, must_change_password=1 WHERE id=?").bind(ph, uid).run();
+      await env.DB.prepare("UPDATE users SET password_hash=?, must_change_password=1, token_version=COALESCE(token_version, 0) + 1 WHERE id=?").bind(ph, uid).run();
       changes.reset_password = true;
       changes.must_change_password = 1;
     }

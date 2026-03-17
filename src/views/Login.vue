@@ -133,7 +133,7 @@ async function changePassword() {
     showChange.value = false;
     ElMessage.success("密码已更新，请重新登录");
     auth.user = null;
-    await fetch("/api/auth/logout", { method: "POST", credentials: "include" }).catch(() => {});
+    await apiPost<any>("/api/auth/logout", {}).catch(() => {});
     router.replace("/login");
   } catch (e: any) {
     ElMessage.error(e.message || "修改失败");

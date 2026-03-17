@@ -1,6 +1,16 @@
 import { useAuth } from "../store/auth";
 
-function handleUnauthorized(message?: string) {
+type RequestOptions = {
+  handleUnauthorized?: boolean;
+  credentials?: RequestCredentials;
+};
+
+type ApiError = Error & {
+  status?: number;
+  response?: any;
+};
+
+function handleUnauthorized(message?: string): never {
   const auth = useAuth();
   auth.user = null as any;
 
@@ -15,29 +25,43 @@ function handleUnauthorized(message?: string) {
 
 async function parseJson(r: Response) {
   const t = await r.text();
-  try { return JSON.parse(t); } catch { return { ok: false, message: t || "请求失败" }; }
+  try {
+    return JSON.parse(t);
+  } catch {
+    return { ok: false, message: t || "请求失败" };
+  }
 }
 
-async function requestJson<T>(path: string, init: RequestInit) {
+function buildError(message: string, status: number, response: any): ApiError {
+  const err = new Error(message) as ApiError;
+  err.status = status;
+  err.response = response;
+  return err;
+}
+
+export async function apiRequestJson<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
+  const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
   const r = await fetch(path, {
-    credentials: "include",
+    credentials,
     ...init,
     headers: {
       ...(init.headers || {}),
     },
   });
   const j = await parseJson(r);
-  if (r.status === 401) return handleUnauthorized(j?.message);
-  if (!r.ok || !j.ok) throw new Error(j.message || "请求失败");
+  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
+  if (!r.ok || !j?.ok) {
+    throw buildError(j?.message || "请求失败", r.status, j);
+  }
   return j as T;
 }
 
 export async function apiGet<T>(path: string) {
-  return requestJson<T>(path, { method: "GET" });
+  return apiRequestJson<T>(path, { method: "GET" });
 }
 
 export async function apiPost<T>(path: string, body: any) {
-  return requestJson<T>(path, {
+  return apiRequestJson<T>(path, {
     method: "POST",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -45,7 +69,7 @@ export async function apiPost<T>(path: string, body: any) {
 }
 
 export async function apiPut<T>(path: string, body: any) {
-  return requestJson<T>(path, {
+  return apiRequestJson<T>(path, {
     method: "PUT",
     headers: { "content-type": "application/json" },
     body: JSON.stringify(body),
@@ -53,7 +77,7 @@ export async function apiPut<T>(path: string, body: any) {
 }
 
 export async function apiDelete<T>(path: string, body?: any) {
-  return requestJson<T>(path, {
+  return apiRequestJson<T>(path, {
     method: "DELETE",
     headers: { "content-type": "application/json" },
     body: body === undefined ? undefined : JSON.stringify(body),
@@ -61,21 +85,49 @@ export async function apiDelete<T>(path: string, body?: any) {
 }
 
 export async function apiPostForm<T>(path: string, form: FormData) {
-  return requestJson<T>(path, {
+  return apiRequestJson<T>(path, {
     method: "POST",
     body: form,
   });
 }
 
-export async function apiDownload(path: string, filename: string) {
-  const r = await fetch(path, { method: "GET", credentials: "include" });
-  if (r.status === 401) {
+export async function apiGetPublic<T>(path: string) {
+  return apiRequestJson<T>(path, { method: "GET" }, { handleUnauthorized: false });
+}
+
+export async function apiPostPublic<T>(path: string, body: any) {
+  return apiRequestJson<T>(path, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify(body),
+  }, { handleUnauthorized: false });
+}
+
+function getDownloadFilename(path: string, r: Response, fallback?: string) {
+  if (fallback) return fallback;
+
+  const cd = r.headers.get("content-disposition") || "";
+  const utf8Match = cd.match(/filename\*=UTF-8''([^;]+)/i);
+  if (utf8Match?.[1]) return decodeURIComponent(utf8Match[1]);
+
+  const plainMatch = cd.match(/filename="?([^";]+)"?/i);
+  if (plainMatch?.[1]) return plainMatch[1];
+
+  const pathname = new URL(path, window.location.origin).pathname;
+  const lastSegment = pathname.split("/").filter(Boolean).pop();
+  return lastSegment || "download";
+}
+
+export async function apiDownload(path: string, filename?: string, options: RequestOptions = {}) {
+  const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
+  const r = await fetch(path, { method: "GET", credentials });
+  if (r.status === 401 && shouldHandleUnauthorized) {
     const j = await parseJson(r);
     return handleUnauthorized(j?.message);
   }
   if (!r.ok) {
     const j = await parseJson(r);
-    throw new Error(j.message || "下载失败");
+    throw buildError(j?.message || "下载失败", r.status, j);
   }
 
   const blob = await r.blob();
@@ -83,7 +135,7 @@ export async function apiDownload(path: string, filename: string) {
   try {
     const a = document.createElement("a");
     a.href = url;
-    a.download = filename;
+    a.download = getDownloadFilename(path, r, filename);
     document.body.appendChild(a);
     a.click();
     a.remove();
