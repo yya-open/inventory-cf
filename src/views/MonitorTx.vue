@@ -1,26 +1,76 @@
 <template>
   <div>
-    <el-card shadow="never" class="ui-page-card mb12">
+    <el-card
+      shadow="never"
+      class="ui-page-card mb12"
+    >
       <div class="ui-toolbar">
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
-            <div class="ui-toolbar-title">筛选查询</div>
+            <div class="ui-toolbar-title">
+              筛选查询
+            </div>
             <div class="ui-toolbar-row">
-              <el-select v-model="q.type" placeholder="动作" clearable class="ui-toolbar-select" @change="reload()">
-                <el-option label="入库" value="IN" />
-                <el-option label="出库" value="OUT" />
-                <el-option label="归还" value="RETURN" />
-                <el-option label="调拨" value="TRANSFER" />
-                <el-option label="报废" value="SCRAP" />
-                <el-option label="调整" value="ADJUST" />
+              <el-select
+                v-model="q.type"
+                placeholder="动作"
+                clearable
+                class="ui-toolbar-select"
+                @change="reload()"
+              >
+                <el-option
+                  label="入库"
+                  value="IN"
+                />
+                <el-option
+                  label="出库"
+                  value="OUT"
+                />
+                <el-option
+                  label="归还"
+                  value="RETURN"
+                />
+                <el-option
+                  label="调拨"
+                  value="TRANSFER"
+                />
+                <el-option
+                  label="报废"
+                  value="SCRAP"
+                />
+                <el-option
+                  label="调整"
+                  value="ADJUST"
+                />
               </el-select>
 
-              <el-date-picker v-model="q.dates" type="daterange" unlink-panels range-separator="-" start-placeholder="开始" end-placeholder="结束" value-format="YYYY-MM-DD" class="ui-toolbar-date" @change="reload()" />
+              <el-date-picker
+                v-model="q.dates"
+                type="daterange"
+                unlink-panels
+                range-separator="-"
+                start-placeholder="开始"
+                end-placeholder="结束"
+                value-format="YYYY-MM-DD"
+                class="ui-toolbar-date"
+                @change="reload()"
+              />
 
-              <el-input v-model="q.keyword" placeholder="关键词：资产编号/SN/员工/备注" clearable class="ui-toolbar-input" @keyup.enter="reload()" />
+              <el-input
+                v-model="q.keyword"
+                placeholder="关键词：资产编号/SN/员工/备注"
+                clearable
+                class="ui-toolbar-input"
+                @keyup.enter="reload()"
+              />
 
               <div class="ui-toolbar-actions">
-                <el-button type="primary" @click="reload()">查询</el-button>
+                <el-button
+                  type="primary"
+                  @click="reload()"
+                >
+                  查询
+                </el-button>
               </div>
             </div>
           </div>
@@ -28,10 +78,22 @@
 
         <div class="ui-toolbar-side">
           <div class="ui-toolbar-block">
-            <div class="ui-toolbar-title">快捷工具</div>
+            <div class="ui-toolbar-title">
+              快捷工具
+            </div>
             <div class="ui-toolbar-tool-grid">
-              <el-button @click="doExport">导出</el-button>
-              <el-button v-if="can('admin')" type="danger" plain :disabled="!selected.length" @click="doDelete">删除</el-button>
+              <el-button @click="doExport">
+                导出
+              </el-button>
+              <el-button
+                v-if="can('admin')"
+                type="danger"
+                plain
+                :disabled="!selected.length"
+                @click="doDelete"
+              >
+                删除
+              </el-button>
             </div>
           </div>
         </div>
@@ -39,19 +101,57 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table :data="rows" v-loading="loading" size="small" border @selection-change="onSel">
-        <el-table-column type="selection" width="44" />
-        <el-table-column prop="created_at" label="时间" min-width="170" />
-        <el-table-column label="动作" width="100">
-          <template #default="{ row }">{{ typeText(row.tx_type) }}</template>
+      <el-table
+        v-loading="loading"
+        :data="rows"
+        size="small"
+        border
+        @selection-change="onSel"
+      >
+        <el-table-column
+          type="selection"
+          width="44"
+        />
+        <el-table-column
+          prop="created_at"
+          label="时间"
+          min-width="170"
+        />
+        <el-table-column
+          label="动作"
+          width="100"
+        >
+          <template #default="{ row }">
+            {{ typeText(row.tx_type) }}
+          </template>
         </el-table-column>
-        <el-table-column prop="asset_code" label="资产编号" min-width="160" />
-        <el-table-column prop="sn" label="SN" min-width="140" />
-        <el-table-column label="型号" min-width="200">
-          <template #default="{ row }">{{ [row.brand, row.model].filter(Boolean).join(' ') }}</template>
+        <el-table-column
+          prop="asset_code"
+          label="资产编号"
+          min-width="160"
+        />
+        <el-table-column
+          prop="sn"
+          label="SN"
+          min-width="140"
+        />
+        <el-table-column
+          label="型号"
+          min-width="200"
+        >
+          <template #default="{ row }">
+            {{ [row.brand, row.model].filter(Boolean).join(' ') }}
+          </template>
         </el-table-column>
-        <el-table-column prop="size_inch" label="尺寸" width="90" />
-        <el-table-column label="位置" min-width="220">
+        <el-table-column
+          prop="size_inch"
+          label="尺寸"
+          width="90"
+        />
+        <el-table-column
+          label="位置"
+          min-width="220"
+        >
           <template #default="{ row }">
             <div v-if="row.from_location_name || row.to_location_name">
               <span v-if="row.from_location_name">{{ locLabel(row.from_parent_location_name, row.from_location_name) }}</span>
@@ -61,15 +161,30 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column label="员工" min-width="200">
+        <el-table-column
+          label="员工"
+          min-width="200"
+        >
           <template #default="{ row }">
             <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column prop="department" label="部门" min-width="140" />
-        <el-table-column prop="remark" label="备注" min-width="220" />
-        <el-table-column prop="created_by" label="操作人" width="120" />
+        <el-table-column
+          prop="department"
+          label="部门"
+          min-width="140"
+        />
+        <el-table-column
+          prop="remark"
+          label="备注"
+          min-width="220"
+        />
+        <el-table-column
+          prop="created_by"
+          label="操作人"
+          width="120"
+        />
       </el-table>
 
       <div style="margin-top:12px; display:flex; justify-content:flex-end">

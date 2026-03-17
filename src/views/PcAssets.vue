@@ -29,8 +29,16 @@
       @page-size-change="(value) => onPageSizeChange(currentFilters(), value)"
     />
 
-    <PcAssetEditDialog v-model:visible="editVisible" :form="editForm" :saving="saving" @save="saveEdit" />
-    <PcAssetInfoDialog v-model:visible="infoVisible" :row="infoRow" />
+    <PcAssetEditDialog
+      v-model:visible="editVisible"
+      :form="editForm"
+      :saving="saving"
+      @save="saveEdit"
+    />
+    <PcAssetInfoDialog
+      v-model:visible="infoVisible"
+      :row="infoRow"
+    />
     <PcAssetQrDialog
       v-model:visible="qrVisible"
       :loading="qrLoading"

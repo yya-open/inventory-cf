@@ -1,47 +1,107 @@
 <template>
   <div class="public-wrap">
-    <el-card class="public-card" shadow="always">
+    <el-card
+      class="public-card"
+      shadow="always"
+    >
       <template #header>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <div style="font-weight:700">电脑信息</div>
-          <el-tag v-if="row" :type="statusTagType(row.status)">{{ statusText(row.status) }}</el-tag>
+          <div style="font-weight:700">
+            电脑信息
+          </div>
+          <el-tag
+            v-if="row"
+            :type="statusTagType(row.status)"
+          >
+            {{ statusText(row.status) }}
+          </el-tag>
         </div>
       </template>
 
-      <div v-if="loading" style="padding:18px 0">
-        <el-skeleton :rows="6" animated />
+      <div
+        v-if="loading"
+        style="padding:18px 0"
+      >
+        <el-skeleton
+          :rows="6"
+          animated
+        />
       </div>
 
-      <el-alert v-else-if="error" :title="error" type="error" show-icon />
+      <el-alert
+        v-else-if="error"
+        :title="error"
+        type="error"
+        show-icon
+      />
 
-      <el-descriptions v-else :column="2" border>
-        <el-descriptions-item label="品牌">{{ row?.brand || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="型号">{{ row?.model || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="序列号">{{ row?.serial_no || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="状态">{{ statusText(row?.status) }}</el-descriptions-item>
+      <el-descriptions
+        v-else
+        :column="2"
+        border
+      >
+        <el-descriptions-item label="品牌">
+          {{ row?.brand || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="型号">
+          {{ row?.model || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="序列号">
+          {{ row?.serial_no || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="状态">
+          {{ statusText(row?.status) }}
+        </el-descriptions-item>
 
-        <el-descriptions-item label="出厂日期">{{ row?.manufacture_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="保修到期">{{ row?.warranty_end || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="硬盘容量">{{ row?.disk_capacity || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="内存大小">{{ row?.memory_size || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="出厂日期">
+          {{ row?.manufacture_date || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="保修到期">
+          {{ row?.warranty_end || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="硬盘容量">
+          {{ row?.disk_capacity || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="内存大小">
+          {{ row?.memory_size || '-' }}
+        </el-descriptions-item>
 
-        <el-descriptions-item label="配置日期">{{ row?.last_config_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="回收日期">{{ row?.last_recycle_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="配置日期">
+          {{ row?.last_config_date || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="回收日期">
+          {{ row?.last_recycle_date || '-' }}
+        </el-descriptions-item>
 
-        <el-descriptions-item label="当前领用人" :span="2">
+        <el-descriptions-item
+          label="当前领用人"
+          :span="2"
+        >
           <div v-if="row?.status==='ASSIGNED'">
-            <div style="font-weight:600">{{ row?.last_employee_name || '-' }}</div>
-            <div style="color:#999;font-size:12px">{{ row?.last_employee_no || '-' }} · {{ row?.last_department || '-' }}</div>
+            <div style="font-weight:600">
+              {{ row?.last_employee_name || '-' }}
+            </div>
+            <div style="color:#999;font-size:12px">
+              {{ row?.last_employee_no || '-' }} · {{ row?.last_department || '-' }}
+            </div>
           </div>
           <span v-else>-</span>
         </el-descriptions-item>
 
-        <el-descriptions-item label="备注" :span="2">
-          <div style="white-space:pre-wrap">{{ row?.remark || '-' }}</div>
+        <el-descriptions-item
+          label="备注"
+          :span="2"
+        >
+          <div style="white-space:pre-wrap">
+            {{ row?.remark || '-' }}
+          </div>
         </el-descriptions-item>
       </el-descriptions>
 
-      <div v-if="!loading && !error" class="public-actions">
+      <div
+        v-if="!loading && !error"
+        class="public-actions"
+      >
         <el-button
           type="success"
           :loading="submittingOk"
@@ -59,29 +119,81 @@
           报异常
         </el-button>
 
-        <div v-if="cooldownLeft > 0" class="cooldown">已记录，{{ cooldownLeft }}s 后可再次提交</div>
+        <div
+          v-if="cooldownLeft > 0"
+          class="cooldown"
+        >
+          已记录，{{ cooldownLeft }}s 后可再次提交
+        </div>
       </div>
     </el-card>
 
-    <el-dialog v-model="issueVisible" title="报异常" width="520px" destroy-on-close>
-      <el-form :model="issueForm" label-width="86px">
-        <el-form-item label="异常类型" required>
-          <el-select v-model="issueForm.issue_type" placeholder="请选择" style="width:100%">
-            <el-option label="不在位" value="NOT_FOUND" />
-            <el-option label="位置不对" value="WRONG_LOCATION" />
-            <el-option label="贴错码" value="WRONG_QR" />
-            <el-option label="状态不对" value="WRONG_STATUS" />
-            <el-option label="疑似丢失" value="MISSING" />
-            <el-option label="其他" value="OTHER" />
+    <el-dialog
+      v-model="issueVisible"
+      title="报异常"
+      width="520px"
+      destroy-on-close
+    >
+      <el-form
+        :model="issueForm"
+        label-width="86px"
+      >
+        <el-form-item
+          label="异常类型"
+          required
+        >
+          <el-select
+            v-model="issueForm.issue_type"
+            placeholder="请选择"
+            style="width:100%"
+          >
+            <el-option
+              label="不在位"
+              value="NOT_FOUND"
+            />
+            <el-option
+              label="位置不对"
+              value="WRONG_LOCATION"
+            />
+            <el-option
+              label="贴错码"
+              value="WRONG_QR"
+            />
+            <el-option
+              label="状态不对"
+              value="WRONG_STATUS"
+            />
+            <el-option
+              label="疑似丢失"
+              value="MISSING"
+            />
+            <el-option
+              label="其他"
+              value="OTHER"
+            />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
-          <el-input v-model="issueForm.remark" type="textarea" :rows="3" placeholder="可选：补充说明" />
+          <el-input
+            v-model="issueForm.remark"
+            type="textarea"
+            :rows="3"
+            placeholder="可选：补充说明"
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="issueVisible=false">取消</el-button>
-        <el-button type="primary" :loading="submittingIssue" :disabled="cooldownLeft > 0" @click="submitIssue">提交</el-button>
+        <el-button @click="issueVisible=false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submittingIssue"
+          :disabled="cooldownLeft > 0"
+          @click="submitIssue"
+        >
+          提交
+        </el-button>
       </template>
     </el-dialog>
   </div>

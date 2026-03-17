@@ -1,31 +1,86 @@
 <template>
   <div>
-    <el-card shadow="never" class="ui-page-card" style="margin-bottom: 12px">
+    <el-card
+      shadow="never"
+      class="ui-page-card"
+      style="margin-bottom: 12px"
+    >
       <div class="ui-toolbar">
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
-            <div class="ui-toolbar-title">筛选查询</div>
+            <div class="ui-toolbar-title">
+              筛选查询
+            </div>
             <div class="ui-toolbar-row">
-              <el-select v-model="action" placeholder="动作" clearable class="ui-toolbar-select" @change="onSearch">
-                <el-option label="在位(OK)" value="OK" />
-                <el-option label="异常(ISSUE)" value="ISSUE" />
+              <el-select
+                v-model="action"
+                placeholder="动作"
+                clearable
+                class="ui-toolbar-select"
+                @change="onSearch"
+              >
+                <el-option
+                  label="在位(OK)"
+                  value="OK"
+                />
+                <el-option
+                  label="异常(ISSUE)"
+                  value="ISSUE"
+                />
               </el-select>
 
-              <el-select v-model="issueType" placeholder="异常类型" clearable class="ui-toolbar-select-wide" @change="onSearch">
-                <el-option label="找不到显示器" value="NOT_FOUND" />
-                <el-option label="位置不符" value="WRONG_LOCATION" />
-                <el-option label="二维码不符" value="WRONG_QR" />
-                <el-option label="台账状态不符" value="WRONG_STATUS" />
-                <el-option label="设备缺失" value="MISSING" />
-                <el-option label="其他原因" value="OTHER" />
+              <el-select
+                v-model="issueType"
+                placeholder="异常类型"
+                clearable
+                class="ui-toolbar-select-wide"
+                @change="onSearch"
+              >
+                <el-option
+                  label="找不到显示器"
+                  value="NOT_FOUND"
+                />
+                <el-option
+                  label="位置不符"
+                  value="WRONG_LOCATION"
+                />
+                <el-option
+                  label="二维码不符"
+                  value="WRONG_QR"
+                />
+                <el-option
+                  label="台账状态不符"
+                  value="WRONG_STATUS"
+                />
+                <el-option
+                  label="设备缺失"
+                  value="MISSING"
+                />
+                <el-option
+                  label="其他原因"
+                  value="OTHER"
+                />
               </el-select>
 
               <div class="ui-toolbar-actions ui-toolbar-actions-inline">
-                <el-button type="primary" @click="onSearch">查询</el-button>
-                <el-button @click="reset">重置</el-button>
+                <el-button
+                  type="primary"
+                  @click="onSearch"
+                >
+                  查询
+                </el-button>
+                <el-button @click="reset">
+                  重置
+                </el-button>
               </div>
 
-              <el-input v-model="keyword" placeholder="关键词（资产编号/SN/品牌/型号/员工/备注…）" clearable class="ui-toolbar-input" @keyup.enter="onSearch" />
+              <el-input
+                v-model="keyword"
+                placeholder="关键词（资产编号/SN/品牌/型号/员工/备注…）"
+                clearable
+                class="ui-toolbar-input"
+                @keyup.enter="onSearch"
+              />
 
               <el-date-picker
                 v-model="dateRange"
@@ -37,17 +92,31 @@
                 class="ui-toolbar-date"
                 @change="onSearch"
               />
-
             </div>
           </div>
         </div>
 
         <div class="ui-toolbar-side">
           <div class="ui-toolbar-block">
-            <div class="ui-toolbar-title">快捷工具</div>
+            <div class="ui-toolbar-title">
+              快捷工具
+            </div>
             <div class="ui-toolbar-tool-grid">
-              <el-button :disabled="loading" @click="exportCsv">导出</el-button>
-              <el-button v-if="isAdmin" type="danger" plain :disabled="loading" @click="deleteSelected">删除选中</el-button>
+              <el-button
+                :disabled="loading"
+                @click="exportCsv"
+              >
+                导出
+              </el-button>
+              <el-button
+                v-if="isAdmin"
+                type="danger"
+                plain
+                :disabled="loading"
+                @click="deleteSelected"
+              >
+                删除选中
+              </el-button>
             </div>
           </div>
         </div>
@@ -56,46 +125,95 @@
 
     <el-card shadow="never">
       <el-table
-        :data="rows"
         v-loading="loading"
+        :data="rows"
         border
         style="width: 100%"
         @selection-change="onSelectionChange"
       >
-        <el-table-column type="selection" width="45" />
-        <el-table-column prop="created_at" label="时间" width="170" />
+        <el-table-column
+          type="selection"
+          width="45"
+        />
+        <el-table-column
+          prop="created_at"
+          label="时间"
+          width="170"
+        />
 
-        <el-table-column label="结果" width="100">
+        <el-table-column
+          label="结果"
+          width="100"
+        >
           <template #default="{ row }">
-            <el-tag v-if="row.action === 'OK'" type="success">在位</el-tag>
-            <el-tag v-else type="danger">异常</el-tag>
+            <el-tag
+              v-if="row.action === 'OK'"
+              type="success"
+            >
+              在位
+            </el-tag>
+            <el-tag
+              v-else
+              type="danger"
+            >
+              异常
+            </el-tag>
           </template>
         </el-table-column>
 
-        <el-table-column label="异常类型" width="140">
+        <el-table-column
+          label="异常类型"
+          width="140"
+        >
           <template #default="{ row }">
             {{ issueTypeText(String(row.issue_type || '')) }}
           </template>
         </el-table-column>
 
-        <el-table-column prop="asset_code" label="资产编号" width="130" show-overflow-tooltip />
-        <el-table-column prop="sn" label="SN" width="150" show-overflow-tooltip />
+        <el-table-column
+          prop="asset_code"
+          label="资产编号"
+          width="130"
+          show-overflow-tooltip
+        />
+        <el-table-column
+          prop="sn"
+          label="SN"
+          width="150"
+          show-overflow-tooltip
+        />
 
-        <el-table-column label="显示器" min-width="220" show-overflow-tooltip>
+        <el-table-column
+          label="显示器"
+          min-width="220"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             {{ row.brand }} {{ row.model }} <span v-if="row.size_inch">/ {{ row.size_inch }}</span>
           </template>
         </el-table-column>
 
-        <el-table-column label="台账状态" width="110">
+        <el-table-column
+          label="台账状态"
+          width="110"
+        >
           <template #default="{ row }">
             {{ statusText(String(row.status || '')) }}
           </template>
         </el-table-column>
 
-        <el-table-column prop="location_name" label="位置" width="160" show-overflow-tooltip />
+        <el-table-column
+          prop="location_name"
+          label="位置"
+          width="160"
+          show-overflow-tooltip
+        />
 
-        <el-table-column label="领用信息" min-width="220" show-overflow-tooltip>
+        <el-table-column
+          label="领用信息"
+          min-width="220"
+          show-overflow-tooltip
+        >
           <template #default="{ row }">
             <span v-if="row.employee_no || row.employee_name || row.department">
               {{ row.employee_no || '-' }} / {{ row.employee_name || '-' }} / {{ row.department || '-' }}
@@ -104,17 +222,35 @@
           </template>
         </el-table-column>
 
-        <el-table-column prop="remark" label="备注" min-width="240" show-overflow-tooltip />
+        <el-table-column
+          prop="remark"
+          label="备注"
+          min-width="240"
+          show-overflow-tooltip
+        />
 
-        <el-table-column v-if="isAdmin" label="操作" width="110" fixed="right">
+        <el-table-column
+          v-if="isAdmin"
+          label="操作"
+          width="110"
+          fixed="right"
+        >
           <template #default="{ row }">
-            <el-button type="danger" link @click="deleteOne(row)">删除</el-button>
+            <el-button
+              type="danger"
+              link
+              @click="deleteOne(row)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
 
       <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 12px">
-        <div style="color:#666">共 {{ total }} 条</div>
+        <div style="color:#666">
+          共 {{ total }} 条
+        </div>
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"

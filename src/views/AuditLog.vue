@@ -2,23 +2,60 @@
   <el-card class="audit-card">
     <template #header>
       <div class="audit-header">
-        <div class="title">审计日志</div>
+        <div class="title">
+          审计日志
+        </div>
         <div class="tools">
-          <el-button type="primary" @click="onSearch">查询</el-button>
-          <el-button @click="reset">重置</el-button>
-          <el-button type="info" plain @click="openRetention">保留策略</el-button>
-          <el-button v-if="isAdmin" type="danger" plain :disabled="selectedIds.length===0" @click="deleteSelected">
+          <el-button
+            type="primary"
+            @click="onSearch"
+          >
+            查询
+          </el-button>
+          <el-button @click="reset">
+            重置
+          </el-button>
+          <el-button
+            type="info"
+            plain
+            @click="openRetention"
+          >
+            保留策略
+          </el-button>
+          <el-button
+            v-if="isAdmin"
+            type="danger"
+            plain
+            :disabled="selectedIds.length===0"
+            @click="deleteSelected"
+          >
             删除选中 ({{ selectedIds.length }})
           </el-button>
         </div>
       </div>
 
-      <el-form class="audit-filters" :inline="true" @submit.prevent>
+      <el-form
+        class="audit-filters"
+        :inline="true"
+        @submit.prevent
+      >
         <el-form-item>
-          <el-input v-model="keyword" placeholder="搜索：用户/动作/实体/ID" clearable style="width: 240px" />
+          <el-input
+            v-model="keyword"
+            placeholder="搜索：用户/动作/实体/ID"
+            clearable
+            style="width: 240px"
+          />
         </el-form-item>
         <el-form-item>
-          <el-select v-model="action" placeholder="动作" clearable filterable style="width: 190px" @change="onSearch">
+          <el-select
+            v-model="action"
+            placeholder="动作"
+            clearable
+            filterable
+            style="width: 190px"
+            @change="onSearch"
+          >
             <el-option
               v-for="opt in actionFilterOptions"
               :key="opt.value"
@@ -28,7 +65,14 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-select v-model="entity" placeholder="实体" clearable filterable style="width: 190px" @change="onSearch">
+          <el-select
+            v-model="entity"
+            placeholder="实体"
+            clearable
+            filterable
+            style="width: 190px"
+            @change="onSearch"
+          >
             <el-option
               v-for="opt in entityFilterOptions"
               :key="opt.value"
@@ -38,7 +82,12 @@
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-input v-model="user" placeholder="用户（如 admin）" clearable style="width: 150px" />
+          <el-input
+            v-model="user"
+            placeholder="用户（如 admin）"
+            clearable
+            style="width: 150px"
+          />
         </el-form-item>
         <el-form-item>
           <el-date-picker
@@ -50,61 +99,136 @@
           />
         </el-form-item>
         <el-form-item>
-          <el-select v-model="sortBy" placeholder="排序字段" style="width: 140px" @change="onSearch">            <el-option label="时间" value="created_at" />
+          <el-select
+            v-model="sortBy"
+            placeholder="排序字段"
+            style="width: 140px"
+            @change="onSearch"
+          >
+            <el-option
+              label="时间"
+              value="created_at"
+            />
           </el-select>
         </el-form-item>
         <el-form-item>
-          <el-select v-model="sortDir" placeholder="方向" style="width: 120px" @change="onSearch">
-            <el-option label="倒序" value="desc" />
-            <el-option label="正序" value="asc" />
+          <el-select
+            v-model="sortDir"
+            placeholder="方向"
+            style="width: 120px"
+            @change="onSearch"
+          >
+            <el-option
+              label="倒序"
+              value="desc"
+            />
+            <el-option
+              label="正序"
+              value="asc"
+            />
           </el-select>
         </el-form-item>
       </el-form>
     </template>
 
     <el-table
-      :data="rows"
       v-loading="loading"
+      :data="rows"
       border
       style="width:100%"
       @selection-change="onSelect"
     >
-      <el-table-column v-if="isAdmin" type="selection" width="48" />
-      <el-table-column label="#" width="80">
+      <el-table-column
+        v-if="isAdmin"
+        type="selection"
+        width="48"
+      />
+      <el-table-column
+        label="#"
+        width="80"
+      >
         <template #default="{ $index }">
           {{ (page - 1) * pageSize + $index + 1 }}
         </template>
       </el-table-column>
-      <el-table-column label="时间" min-width="170">
+      <el-table-column
+        label="时间"
+        min-width="170"
+      >
         <template #default="{ row }">
           {{ formatTime(row.created_at) }}
         </template>
       </el-table-column>
-      <el-table-column prop="username" label="用户" width="130" />
-      <el-table-column label="动作" min-width="160">
+      <el-table-column
+        prop="username"
+        label="用户"
+        width="130"
+      />
+      <el-table-column
+        label="动作"
+        min-width="160"
+      >
         <template #default="{ row }">
-          <el-tag :title="row.action" :type="tagType(row.action)" effect="light">{{ actionLabel(row.action) }}</el-tag>
+          <el-tag
+            :title="row.action"
+            :type="tagType(row.action)"
+            effect="light"
+          >
+            {{ actionLabel(row.action) }}
+          </el-tag>
         </template>
       </el-table-column>
-      <el-table-column label="实体" min-width="180">
+      <el-table-column
+        label="实体"
+        min-width="180"
+      >
         <template #default="{ row }">
           <div class="entity-cell">
-            <div class="entity-name">{{ row.item_name || row.user_name || entityLabel(row.entity) || "-" }}</div>
-            <div class="entity-meta" v-if="row.item_name || row.user_name">{{ entityLabel(row.entity) }}</div>
+            <div class="entity-name">
+              {{ row.item_name || row.user_name || entityLabel(row.entity) || "-" }}
+            </div>
+            <div
+              v-if="row.item_name || row.user_name"
+              class="entity-meta"
+            >
+              {{ entityLabel(row.entity) }}
+            </div>
           </div>
         </template>
       </el-table-column>
-      <el-table-column label="IP" width="180">
+      <el-table-column
+        label="IP"
+        width="180"
+      >
         <template #default="{ row }">
           <span class="ip">{{ row.ip || '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" width="140" fixed="right">
+      <el-table-column
+        label="操作"
+        width="140"
+        fixed="right"
+      >
         <template #default="{ row }">
-          <el-button link type="primary" @click="openPayload(row)">查看</el-button>
-          <el-popconfirm v-if="isAdmin" title="确认删除该审计日志？" @confirm="deleteOne(row.id)">
+          <el-button
+            link
+            type="primary"
+            @click="openPayload(row)"
+          >
+            查看
+          </el-button>
+          <el-popconfirm
+            v-if="isAdmin"
+            title="确认删除该审计日志？"
+            @confirm="deleteOne(row.id)"
+          >
             <template #reference>
-              <el-button link type="danger">删除</el-button>
+              <el-button
+                link
+                type="danger"
+              >
+                删除
+              </el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -124,42 +248,85 @@
       />
     </div>
 
-    <el-dialog v-model="showPayload" title="详情" width="760px">
+    <el-dialog
+      v-model="showPayload"
+      title="详情"
+      width="760px"
+    >
       <div class="payload-toolbar">
-        <el-switch v-model="prettyMode" active-text="格式化" inactive-text="原始" />
-        <el-button @click="copyPayload" :disabled="!payloadToCopy">复制</el-button>
+        <el-switch
+          v-model="prettyMode"
+          active-text="格式化"
+          inactive-text="原始"
+        />
+        <el-button
+          :disabled="!payloadToCopy"
+          @click="copyPayload"
+        >
+          复制
+        </el-button>
       </div>
 
-      <el-scrollbar height="420px" class="payload-box">
+      <el-scrollbar
+        height="420px"
+        class="payload-box"
+      >
         <pre class="payload-pre">{{ displayPayload }}</pre>
       </el-scrollbar>
 
       <template #footer>
-        <el-button @click="showPayload=false">关闭</el-button>
+        <el-button @click="showPayload=false">
+          关闭
+        </el-button>
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showRetention" title="审计保留策略" width="520px">
+    <el-dialog
+      v-model="showRetention"
+      title="审计保留策略"
+      width="520px"
+    >
       <div style="color:#606266; margin-bottom:10px">
         当前策略：保留近 <b>{{ retentionDays }}</b> 天；上次清理：{{ retentionLast || "-" }}
       </div>
       <el-form label-width="110px">
         <el-form-item label="保留天数">
-          <el-input-number v-model="retentionDaysEdit" :min="1" :max="3650" controls-position="right" />
+          <el-input-number
+            v-model="retentionDaysEdit"
+            :min="1"
+            :max="3650"
+            controls-position="right"
+          />
         </el-form-item>
         <el-form-item label="立即清理">
-          <el-switch v-model="runCleanup" active-text="是" inactive-text="否" />
+          <el-switch
+            v-model="runCleanup"
+            active-text="是"
+            inactive-text="否"
+          />
         </el-form-item>
-        <el-alert v-if="runCleanup" type="warning" show-icon :closable="false">
+        <el-alert
+          v-if="runCleanup"
+          type="warning"
+          show-icon
+          :closable="false"
+        >
           将删除早于保留天数的审计日志。确认后不可恢复。
         </el-alert>
       </el-form>
       <template #footer>
-        <el-button @click="showRetention=false">取消</el-button>
-        <el-button type="primary" :loading="retentionSaving" @click="saveRetention">保存</el-button>
+        <el-button @click="showRetention=false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="retentionSaving"
+          @click="saveRetention"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
-
   </el-card>
 </template>
 

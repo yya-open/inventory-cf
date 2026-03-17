@@ -1,6 +1,13 @@
 <template>
   <el-card>
-    <el-form ref="formRef" class="pc-recycle-form" :model="form" :rules="rules" label-width="110px" style="max-width: 760px">
+    <el-form
+      ref="formRef"
+      class="pc-recycle-form"
+      :model="form"
+      :rules="rules"
+      label-width="110px"
+      style="max-width: 760px"
+    >
       <el-alert
         title="电脑回收/归还（仓库2：电脑仓）"
         type="info"
@@ -10,7 +17,12 @@
       />
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-        <el-button size="small" @click="downloadRecycleTemplate">下载导入模板</el-button>
+        <el-button
+          size="small"
+          @click="downloadRecycleTemplate"
+        >
+          下载导入模板
+        </el-button>
 
         <el-upload
           :show-file-list="false"
@@ -18,7 +30,12 @@
           accept=".xlsx,.xls"
           :on-change="onImportRecycleFile"
         >
-          <el-button size="small" type="primary">Excel导入（批量回收/归还）</el-button>
+          <el-button
+            size="small"
+            type="primary"
+          >
+            Excel导入（批量回收/归还）
+          </el-button>
         </el-upload>
       </div>
 
@@ -28,19 +45,23 @@
         Element Plus 的 el-form-item 会生成带 for 的 label；需要确保能匹配到表单控件的 id。
       -->
 
-      <el-form-item label="选择电脑" prop="asset_id" label-for="pc-recycle-asset">
+      <el-form-item
+        label="选择电脑"
+        prop="asset_id"
+        label-for="pc-recycle-asset"
+      >
         <el-select
+          id="pc-recycle-asset"
           v-model="form.asset_id"
           filterable
           remote
           :remote-method="remoteSearch"
           :loading="assetLoading"
           placeholder="输入序列号/品牌/型号搜索（仅显示已领用）"
-          id="pc-recycle-asset"
           name="asset_id"
           style="width: 100%"
-          @change="onPickAsset"
           clearable
+          @change="onPickAsset"
         >
           <el-option
             v-for="a in assetOptions"
@@ -54,51 +75,118 @@
         </div>
       </el-form-item>
 
-      <el-divider content-position="left">动作</el-divider>
+      <el-divider content-position="left">
+        动作
+      </el-divider>
 
-      <el-form-item label="回收/归还" prop="action">
+      <el-form-item
+        label="回收/归还"
+        prop="action"
+      >
         <el-radio-group v-model="form.action">
-          <el-radio-button label="RETURN">归还（回到在库）</el-radio-button>
-          <el-radio-button label="RECYCLE">回收（状态=已回收）</el-radio-button>
+          <el-radio-button label="RETURN">
+            归还（回到在库）
+          </el-radio-button>
+          <el-radio-button label="RECYCLE">
+            回收（状态=已回收）
+          </el-radio-button>
         </el-radio-group>
       </el-form-item>
 
-      <el-divider content-position="left">电脑与领用信息</el-divider>
+      <el-divider content-position="left">
+        电脑与领用信息
+      </el-divider>
 
-      <el-descriptions v-if="pickedAsset" :column="2" border style="margin-bottom:12px">
-        <el-descriptions-item label="品牌">{{ pickedAsset.brand }}</el-descriptions-item>
-        <el-descriptions-item label="型号">{{ pickedAsset.model }}</el-descriptions-item>
-        <el-descriptions-item label="序列号">{{ pickedAsset.serial_no }}</el-descriptions-item>
-        <el-descriptions-item label="当前状态">
-          <el-tag type="warning" v-if="pickedAsset.status==='ASSIGNED'">已领用</el-tag>
-          <el-tag type="success" v-else-if="pickedAsset.status==='IN_STOCK'">在库</el-tag>
-          <el-tag type="info" v-else>已回收</el-tag>
+      <el-descriptions
+        v-if="pickedAsset"
+        :column="2"
+        border
+        style="margin-bottom:12px"
+      >
+        <el-descriptions-item label="品牌">
+          {{ pickedAsset.brand }}
         </el-descriptions-item>
-        <el-descriptions-item label="领用人">{{ pickedAsset.last_employee_name || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="工号/部门">{{ pickedAsset.last_employee_no || '-' }} · {{ pickedAsset.last_department || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="配置日期">{{ pickedAsset.last_config_date || '-' }}</el-descriptions-item>
-        <el-descriptions-item label="预计回收">{{ pickedAsset.last_recycle_date || '-' }}</el-descriptions-item>
+        <el-descriptions-item label="型号">
+          {{ pickedAsset.model }}
+        </el-descriptions-item>
+        <el-descriptions-item label="序列号">
+          {{ pickedAsset.serial_no }}
+        </el-descriptions-item>
+        <el-descriptions-item label="当前状态">
+          <el-tag
+            v-if="pickedAsset.status==='ASSIGNED'"
+            type="warning"
+          >
+            已领用
+          </el-tag>
+          <el-tag
+            v-else-if="pickedAsset.status==='IN_STOCK'"
+            type="success"
+          >
+            在库
+          </el-tag>
+          <el-tag
+            v-else
+            type="info"
+          >
+            已回收
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="领用人">
+          {{ pickedAsset.last_employee_name || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="工号/部门">
+          {{ pickedAsset.last_employee_no || '-' }} · {{ pickedAsset.last_department || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="配置日期">
+          {{ pickedAsset.last_config_date || '-' }}
+        </el-descriptions-item>
+        <el-descriptions-item label="预计回收">
+          {{ pickedAsset.last_recycle_date || '-' }}
+        </el-descriptions-item>
       </el-descriptions>
 
-      <el-form-item label="回收/归还日期" prop="recycle_date" label-for="pc-recycle-date">
+      <el-form-item
+        label="回收/归还日期"
+        prop="recycle_date"
+        label-for="pc-recycle-date"
+      >
         <el-date-picker
+          id="pc-recycle-date"
           v-model="form.recycle_date"
           type="date"
           value-format="YYYY-MM-DD"
           placeholder="选择日期"
-          id="pc-recycle-date"
           name="recycle_date"
           style="width: 100%"
         />
       </el-form-item>
 
-      <el-form-item label="备注" label-for="pc-recycle-remark">
-        <el-input v-model="form.remark" type="textarea" :rows="3" input-id="pc-recycle-remark" name="remark" />
+      <el-form-item
+        label="备注"
+        label-for="pc-recycle-remark"
+      >
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+          :rows="3"
+          input-id="pc-recycle-remark"
+          name="remark"
+        />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">提交</el-button>
-        <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
+        <el-button
+          type="primary"
+          :disabled="!canSubmit"
+          :loading="submitting"
+          @click="submit"
+        >
+          提交
+        </el-button>
+        <el-button @click="$router.push('/pc/assets')">
+          返回台账
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>

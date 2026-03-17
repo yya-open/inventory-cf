@@ -1,11 +1,28 @@
 <template>
   <el-card>
     <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px">
-      <el-select v-model="filters.category" clearable style="width:180px" placeholder="分类" @change="load">
-        <el-option v-for="c in categories" :key="c" :label="c" :value="c" />
+      <el-select
+        v-model="filters.category"
+        clearable
+        style="width:180px"
+        placeholder="分类"
+        @change="load"
+      >
+        <el-option
+          v-for="c in categories"
+          :key="c"
+          :label="c"
+          :value="c"
+        />
       </el-select>
 
-      <el-input v-model="filters.keyword" style="width:240px" clearable placeholder="搜索：名称/SKU/品牌/型号" @keyup.enter="load" />
+      <el-input
+        v-model="filters.keyword"
+        style="width:240px"
+        clearable
+        placeholder="搜索：名称/SKU/品牌/型号"
+        @keyup.enter="load"
+      />
 
       <el-switch
         v-model="filters.only_alert"
@@ -14,35 +31,102 @@
         @change="load"
       />
 
-      <el-select v-model="filters.sort" style="width:200px" @change="load">
-        <el-option label="缺口从大到小" value="gap_desc" />
-        <el-option label="缺口从小到大" value="gap_asc" />
-        <el-option label="库存从小到大" value="qty_asc" />
-        <el-option label="SKU A→Z" value="sku_asc" />
-        <el-option label="名称 A→Z" value="name_asc" />
+      <el-select
+        v-model="filters.sort"
+        style="width:200px"
+        @change="load"
+      >
+        <el-option
+          label="缺口从大到小"
+          value="gap_desc"
+        />
+        <el-option
+          label="缺口从小到大"
+          value="gap_asc"
+        />
+        <el-option
+          label="库存从小到大"
+          value="qty_asc"
+        />
+        <el-option
+          label="SKU A→Z"
+          value="sku_asc"
+        />
+        <el-option
+          label="名称 A→Z"
+          value="name_asc"
+        />
       </el-select>
 
-      <el-button type="primary" @click="load">查询</el-button>
-      <el-button @click="reset">重置</el-button>
+      <el-button
+        type="primary"
+        @click="load"
+      >
+        查询
+      </el-button>
+      <el-button @click="reset">
+        重置
+      </el-button>
 
-      <el-button type="warning" plain :loading="exportingCsv" @click="exportCsv">导出 CSV</el-button>
-      <el-button type="success" plain :loading="exportingXlsx" @click="exportXlsx">导出 Excel</el-button>
+      <el-button
+        type="warning"
+        plain
+        :loading="exportingCsv"
+        @click="exportCsv"
+      >
+        导出 CSV
+      </el-button>
+      <el-button
+        type="success"
+        plain
+        :loading="exportingXlsx"
+        @click="exportXlsx"
+      >
+        导出 Excel
+      </el-button>
 
       <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
-        <el-tag v-if="total" type="danger">
+        <el-tag
+          v-if="total"
+          type="danger"
+        >
           {{ filters.only_alert ? "预警" : "列表" }}：{{ total }} 条
         </el-tag>
-        <el-button size="small" type="info" plain @click="$router.push('/stock')">去库存查询</el-button>
+        <el-button
+          size="small"
+          type="info"
+          plain
+          @click="$router.push('/stock')"
+        >
+          去库存查询
+        </el-button>
       </div>
     </div>
 
-    <div v-if="selectedIds.length" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px">
-      <el-tag type="info">已选 {{ selectedIds.length }} 条</el-tag>
+    <div
+      v-if="selectedIds.length"
+      style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px"
+    >
+      <el-tag type="info">
+        已选 {{ selectedIds.length }} 条
+      </el-tag>
 
-      <el-select v-model="bulkMode" style="width:220px">
-        <el-option label="统一设置预警值" value="set" />
-        <el-option label="在原预警值基础上 +X" value="add" />
-        <el-option label="设置为当前库存 +X" value="qty_plus" />
+      <el-select
+        v-model="bulkMode"
+        style="width:220px"
+      >
+        <el-option
+          label="统一设置预警值"
+          value="set"
+        />
+        <el-option
+          label="在原预警值基础上 +X"
+          value="add"
+        />
+        <el-option
+          label="设置为当前库存 +X"
+          value="qty_plus"
+        />
       </el-select>
 
       <el-input-number
@@ -61,39 +145,99 @@
       />
 
       <el-button-group v-if="bulkMode !== 'set'">
-        <el-button size="small" @click="bulkDelta += 1">+1</el-button>
-        <el-button size="small" @click="bulkDelta += 5">+5</el-button>
-        <el-button size="small" @click="bulkDelta += 10">+10</el-button>
+        <el-button
+          size="small"
+          @click="bulkDelta += 1"
+        >
+          +1
+        </el-button>
+        <el-button
+          size="small"
+          @click="bulkDelta += 5"
+        >
+          +5
+        </el-button>
+        <el-button
+          size="small"
+          @click="bulkDelta += 10"
+        >
+          +10
+        </el-button>
       </el-button-group>
 
-      <el-button type="primary" :loading="bulkSaving" @click="applyBulkWarning">应用到已选</el-button>
-      <el-button @click="clearSelection">清空选择</el-button>
-      <div style="color:#909399">（批量设置预警值仅管理员可用）</div>
+      <el-button
+        type="primary"
+        :loading="bulkSaving"
+        @click="applyBulkWarning"
+      >
+        应用到已选
+      </el-button>
+      <el-button @click="clearSelection">
+        清空选择
+      </el-button>
+      <div style="color:#909399">
+        （批量设置预警值仅管理员可用）
+      </div>
     </div>
 
     <el-table
       ref="tableRef"
-      :data="rows"
       v-loading="loading"
+      :data="rows"
       stripe
-      @selection-change="onSelectionChange"
       row-key="item_id"
+      @selection-change="onSelectionChange"
     >
-      <el-table-column type="selection" width="46" />
-      <el-table-column prop="sku" label="SKU" width="160" />
-      <el-table-column prop="name" label="名称" min-width="180" />
-      <el-table-column prop="brand" label="品牌" width="120" />
-      <el-table-column prop="model" label="型号" width="140" />
-      <el-table-column prop="category" label="分类" width="120" />
-      <el-table-column prop="qty" label="库存" width="90">
+      <el-table-column
+        type="selection"
+        width="46"
+      />
+      <el-table-column
+        prop="sku"
+        label="SKU"
+        width="160"
+      />
+      <el-table-column
+        prop="name"
+        label="名称"
+        min-width="180"
+      />
+      <el-table-column
+        prop="brand"
+        label="品牌"
+        width="120"
+      />
+      <el-table-column
+        prop="model"
+        label="型号"
+        width="140"
+      />
+      <el-table-column
+        prop="category"
+        label="分类"
+        width="120"
+      />
+      <el-table-column
+        prop="qty"
+        label="库存"
+        width="90"
+      >
         <template #default="{ row }">
           <span :style="{ color: row.qty <= row.warning_qty ? '#d93025' : '#1f883d', fontWeight: '600' }">
             {{ row.qty }}
           </span>
         </template>
       </el-table-column>
-      <el-table-column prop="warning_qty" label="预警值" width="90" />
-      <el-table-column prop="gap" label="缺口" width="90">
+      <el-table-column
+        prop="warning_qty"
+        label="预警值"
+        width="90"
+      />
+      <el-table-column
+        prop="gap"
+        label="缺口"
+        width="90"
+      >
         <template #default="{ row }">
           <span :style="{ color: row.gap >= 0 ? '#d93025' : '#606266', fontWeight: '600' }">
             {{ row.gap }}
@@ -101,21 +245,46 @@
         </template>
       </el-table-column>
 
-      <el-table-column prop="last_tx_at" label="最后变动" width="170">
+      <el-table-column
+        prop="last_tx_at"
+        label="最后变动"
+        width="170"
+      >
         <template #default="{ row }">
           <span style="color:#606266">{{ formatTime(row.last_tx_at) }}</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="操作" width="190" fixed="right">
+      <el-table-column
+        label="操作"
+        width="190"
+        fixed="right"
+      >
         <template #default="{ row }">
-          <el-button size="small" type="primary" plain @click="goIn(row.item_id)">入库</el-button>
-          <el-button size="small" type="info" plain @click="goTx(row.item_id)">看明细</el-button>
+          <el-button
+            size="small"
+            type="primary"
+            plain
+            @click="goIn(row.item_id)"
+          >
+            入库
+          </el-button>
+          <el-button
+            size="small"
+            type="info"
+            plain
+            @click="goTx(row.item_id)"
+          >
+            看明细
+          </el-button>
         </template>
       </el-table-column>
     </el-table>
 
-    <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div
+      v-if="total"
+      style="display:flex; justify-content:flex-end; margin-top:12px"
+    >
       <el-pagination
         background
         layout="total, sizes, prev, pager, next, jumper"
@@ -128,7 +297,10 @@
       />
     </div>
 
-    <el-empty v-if="!loading && rows.length===0" description="暂无数据" />
+    <el-empty
+      v-if="!loading && rows.length===0"
+      description="暂无数据"
+    />
   </el-card>
 </template>
 

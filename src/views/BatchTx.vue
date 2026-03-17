@@ -3,28 +3,72 @@
     <el-card>
       <template #header>
         <div style="display:flex; align-items:center; justify-content:space-between;">
-          <div style="font-weight:700">批量出入库</div>
+          <div style="font-weight:700">
+            批量出入库
+          </div>
           <div style="display:flex; gap:10px; align-items:center;">
-            <el-button @click="downloadTemplate">下载模板</el-button>
-            <el-upload :show-file-list="false" accept=".xlsx,.xls" :before-upload="beforeUpload">
-              <el-button type="primary">导入 Excel</el-button>
+            <el-button @click="downloadTemplate">
+              下载模板
+            </el-button>
+            <el-upload
+              :show-file-list="false"
+              accept=".xlsx,.xls"
+              :before-upload="beforeUpload"
+            >
+              <el-button type="primary">
+                导入 Excel
+              </el-button>
             </el-upload>
           </div>
         </div>
       </template>
 
       <el-tabs v-model="mode">
-        <el-tab-pane label="入库" name="IN" />
-        <el-tab-pane label="出库" name="OUT" />
+        <el-tab-pane
+          label="入库"
+          name="IN"
+        />
+        <el-tab-pane
+          label="出库"
+          name="OUT"
+        />
       </el-tabs>
 
       <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
-        <el-input v-if="mode==='IN'" v-model="headerSource" placeholder="来源（可选）" style="width:220px" />
-        <el-input v-if="mode==='OUT'" v-model="headerTarget" placeholder="领用人/去向（必填，可被每行覆盖）" style="width:260px" />
-        <el-input v-model="headerRemark" placeholder="备注（可选）" style="width:320px" />
-        <el-button @click="addRow">新增一行</el-button>
-        <el-button type="danger" plain @click="clearRows">清空</el-button>
-        <el-button type="primary" :loading="submitting" @click="submit">提交</el-button>
+        <el-input
+          v-if="mode==='IN'"
+          v-model="headerSource"
+          placeholder="来源（可选）"
+          style="width:220px"
+        />
+        <el-input
+          v-if="mode==='OUT'"
+          v-model="headerTarget"
+          placeholder="领用人/去向（必填，可被每行覆盖）"
+          style="width:260px"
+        />
+        <el-input
+          v-model="headerRemark"
+          placeholder="备注（可选）"
+          style="width:320px"
+        />
+        <el-button @click="addRow">
+          新增一行
+        </el-button>
+        <el-button
+          type="danger"
+          plain
+          @click="clearRows"
+        >
+          清空
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="submitting"
+          @click="submit"
+        >
+          提交
+        </el-button>
       </div>
 
       <el-table
@@ -34,50 +78,109 @@
         :row-class-name="rowClass"
         :cell-class-name="cellClass"
       >
-        <el-table-column type="index" width="55" />
-        <el-table-column label="SKU" min-width="160">
+        <el-table-column
+          type="index"
+          width="55"
+        />
+        <el-table-column
+          label="SKU"
+          min-width="160"
+        >
           <template #default="{ row }">
-            <el-input v-model="row.sku" placeholder="例如: CPU-001" />
+            <el-input
+              v-model="row.sku"
+              placeholder="例如: CPU-001"
+            />
           </template>
         </el-table-column>
-        <el-table-column label="数量" width="140">
+        <el-table-column
+          label="数量"
+          width="140"
+        >
           <template #default="{ row }">
-            <el-input-number v-model="row.qty" :min="1" :controls="true" />
-          </template>
-        </el-table-column>
-
-        <el-table-column v-if="mode==='IN'" label="单价" width="160">
-          <template #default="{ row }">
-            <el-input-number v-model="row.unit_price" :min="0" :step="0.1" :controls="true" />
-          </template>
-        </el-table-column>
-
-        <el-table-column v-if="mode==='IN'" label="来源(覆盖)" min-width="160">
-          <template #default="{ row }">
-            <el-input v-model="row.source" placeholder="可不填" />
-          </template>
-        </el-table-column>
-
-        <el-table-column v-if="mode==='OUT'" label="领用人(覆盖)" min-width="160">
-          <template #default="{ row }">
-            <el-input v-model="row.target" placeholder="不填则使用上方领用人" />
-          </template>
-        </el-table-column>
-
-        <el-table-column label="备注(覆盖)" min-width="180">
-          <template #default="{ row }">
-            <el-input v-model="row.remark" placeholder="可不填" />
+            <el-input-number
+              v-model="row.qty"
+              :min="1"
+              :controls="true"
+            />
           </template>
         </el-table-column>
 
-        <el-table-column label="操作" width="110" fixed="right">
+        <el-table-column
+          v-if="mode==='IN'"
+          label="单价"
+          width="160"
+        >
+          <template #default="{ row }">
+            <el-input-number
+              v-model="row.unit_price"
+              :min="0"
+              :step="0.1"
+              :controls="true"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          v-if="mode==='IN'"
+          label="来源(覆盖)"
+          min-width="160"
+        >
+          <template #default="{ row }">
+            <el-input
+              v-model="row.source"
+              placeholder="可不填"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          v-if="mode==='OUT'"
+          label="领用人(覆盖)"
+          min-width="160"
+        >
+          <template #default="{ row }">
+            <el-input
+              v-model="row.target"
+              placeholder="不填则使用上方领用人"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          label="备注(覆盖)"
+          min-width="180"
+        >
+          <template #default="{ row }">
+            <el-input
+              v-model="row.remark"
+              placeholder="可不填"
+            />
+          </template>
+        </el-table-column>
+
+        <el-table-column
+          label="操作"
+          width="110"
+          fixed="right"
+        >
           <template #default="{ $index }">
-            <el-button size="small" type="danger" plain @click="rows.splice($index,1)">删除</el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click="rows.splice($index,1)"
+            >
+              删除
+            </el-button>
           </template>
         </el-table-column>
       </el-table>
 
-      <div v-if="invalidCount" style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
+      <div
+        v-if="invalidCount"
+        style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;"
+      >
         <el-alert
           type="warning"
           :closable="false"
@@ -85,7 +188,12 @@
           style="flex:1; min-width:320px;"
           :title="`当前有 ${invalidCount} 行缺少必填字段，已标红（可直接在表格里补全或删除该行）。`"
         />
-        <el-button size="small" @click="keepValidOnly">只保留有效行</el-button>
+        <el-button
+          size="small"
+          @click="keepValidOnly"
+        >
+          只保留有效行
+        </el-button>
       </div>
 
       <div style="margin-top:12px; color:#999; font-size:12px;">

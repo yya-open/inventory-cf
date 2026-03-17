@@ -1,33 +1,82 @@
 <template>
   <el-card>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-      <el-form-item label="配件" prop="item_id">
-        <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%" @change="loadQty">
-          <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="90px"
+      style="max-width: 560px"
+    >
+      <el-form-item
+        label="配件"
+        prop="item_id"
+      >
+        <el-select
+          v-model="form.item_id"
+          filterable
+          placeholder="输入搜索 SKU/名称"
+          style="width: 100%"
+          @change="loadQty"
+        >
+          <el-option
+            v-for="it in items"
+            :key="it.id"
+            :label="`${it.sku} · ${it.name}`"
+            :value="it.id"
+          />
         </el-select>
       </el-form-item>
 
       <el-form-item label="可用库存">
-        <el-tag :type="available <= warning ? 'danger' : 'success'">{{ available }}</el-tag>
+        <el-tag :type="available <= warning ? 'danger' : 'success'">
+          {{ available }}
+        </el-tag>
         <span style="margin-left: 10px; color: #888">（预警值：{{ warning }}）</span>
       </el-form-item>
 
-      <el-form-item label="数量" prop="qty">
-        <el-input-number v-model="form.qty" :min="1" />
-        <span v-if="form.qty > available" style="margin-left: 10px; color: #d93026; font-weight: 600">库存不足</span>
+      <el-form-item
+        label="数量"
+        prop="qty"
+      >
+        <el-input-number
+          v-model="form.qty"
+          :min="1"
+        />
+        <span
+          v-if="form.qty > available"
+          style="margin-left: 10px; color: #d93026; font-weight: 600"
+        >库存不足</span>
       </el-form-item>
 
-      <el-form-item label="领用人" prop="target">
-        <el-input v-model="form.target" placeholder="姓名/部门" />
+      <el-form-item
+        label="领用人"
+        prop="target"
+      >
+        <el-input
+          v-model="form.target"
+          placeholder="姓名/部门"
+        />
       </el-form-item>
 
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" />
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+        />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">出库</el-button>
-        <el-button @click="$router.push('/stock')">返回库存</el-button>
+        <el-button
+          type="primary"
+          :disabled="!canSubmit"
+          :loading="submitting"
+          @click="submit"
+        >
+          出库
+        </el-button>
+        <el-button @click="$router.push('/stock')">
+          返回库存
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>

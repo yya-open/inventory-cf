@@ -2,31 +2,89 @@
   <div class="asset-toolbar">
     <div class="toolbar-left">
       <div class="toolbar-block toolbar-search">
-        <div class="toolbar-block-title">筛选查询</div>
+        <div class="toolbar-block-title">
+          筛选查询
+        </div>
         <div class="toolbar-row">
-          <el-select :model-value="status" placeholder="状态" clearable class="toolbar-select" @update:model-value="emit('update:status', $event || '')" @change="emit('search')">
-            <el-option label="在库" value="IN_STOCK" />
-            <el-option label="已领用" value="ASSIGNED" />
-            <el-option label="已回收" value="RECYCLED" />
-            <el-option label="已报废" value="SCRAPPED" />
+          <el-select
+            :model-value="status"
+            placeholder="状态"
+            clearable
+            class="toolbar-select"
+            @update:model-value="emit('update:status', $event || '')"
+            @change="emit('search')"
+          >
+            <el-option
+              label="在库"
+              value="IN_STOCK"
+            />
+            <el-option
+              label="已领用"
+              value="ASSIGNED"
+            />
+            <el-option
+              label="已回收"
+              value="RECYCLED"
+            />
+            <el-option
+              label="已报废"
+              value="SCRAPPED"
+            />
           </el-select>
-          <el-input :model-value="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="toolbar-input" @update:model-value="emit('update:keyword', $event || '')" @keyup.enter="emit('search')" />
+          <el-input
+            :model-value="keyword"
+            clearable
+            placeholder="关键词：序列号/品牌/型号/备注"
+            class="toolbar-input"
+            @update:model-value="emit('update:keyword', $event || '')"
+            @keyup.enter="emit('search')"
+          />
           <div class="toolbar-actions-inline">
-            <el-button type="primary" @click="emit('search')">查询</el-button>
-            <el-button @click="emit('reset')">重置</el-button>
+            <el-button
+              type="primary"
+              @click="emit('search')"
+            >
+              查询
+            </el-button>
+            <el-button @click="emit('reset')">
+              重置
+            </el-button>
           </div>
         </div>
       </div>
     </div>
     <div class="toolbar-right">
       <div class="toolbar-block toolbar-tools">
-        <div class="toolbar-block-title">快捷工具</div>
+        <div class="toolbar-block-title">
+          快捷工具
+        </div>
         <div class="toolbar-tool-grid">
-          <el-button @click="emit('export')">导出Excel</el-button>
-          <el-button v-if="isAdmin" @click="emit('init-qr')">初始化二维码Key</el-button>
-          <el-button v-if="canOperator" @click="emit('download-template')">下载导入模板</el-button>
-          <el-upload v-if="canOperator" class="toolbar-upload" :show-file-list="false" :auto-upload="false" accept=".xlsx,.xls" :on-change="(file: unknown) => emit('import-file', file)">
-            <el-button type="primary">Excel导入（批量入库）</el-button>
+          <el-button @click="emit('export')">
+            导出Excel
+          </el-button>
+          <el-button
+            v-if="isAdmin"
+            @click="emit('init-qr')"
+          >
+            初始化二维码Key
+          </el-button>
+          <el-button
+            v-if="canOperator"
+            @click="emit('download-template')"
+          >
+            下载导入模板
+          </el-button>
+          <el-upload
+            v-if="canOperator"
+            class="toolbar-upload"
+            :show-file-list="false"
+            :auto-upload="false"
+            accept=".xlsx,.xls"
+            :on-change="(file: unknown) => emit('import-file', file)"
+          >
+            <el-button type="primary">
+              Excel导入（批量入库）
+            </el-button>
           </el-upload>
         </div>
       </div>

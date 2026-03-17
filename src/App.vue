@@ -3,104 +3,259 @@
   <router-view v-if="simpleLayout" />
 
   <!-- 主布局 -->
-  <div v-else class="app-root">
-    <div class="app-bg"></div>
+  <div
+    v-else
+    class="app-root"
+  >
+    <div class="app-bg" />
     <el-container class="app-layout">
-    <el-aside width="220px" class="app-aside">
-      <div style="padding: 14px; font-weight: 700">出入库管理</div>
-
-      <!-- 系统菜单（二级菜单） -->
-      <el-menu v-if="isSystem" router :default-active="activeMenu">
-        <el-menu-item index="/system/home">系统首页</el-menu-item>
-        <el-menu-item index="/system/dashboard">报表与看板</el-menu-item>
-        <el-menu-item index="/system/backup">备份/恢复</el-menu-item>
-        <el-menu-item index="/system/audit">审计日志</el-menu-item>
-        <el-menu-item index="/system/users">用户管理</el-menu-item>
-      </el-menu>
-
-      <!-- 配件仓菜单 -->
-      <el-menu v-else-if="warehouse.active === 'parts'" router :default-active="activeMenu">
-        <el-menu-item index="/stock">库存查询</el-menu-item>
-        <el-menu-item index="/tx">出入库明细</el-menu-item>
-        <el-menu-item index="/warnings">预警中心</el-menu-item>
-
-        <el-menu-item v-if="can('operator')" index="/in">入库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/out">出库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/batch">批量出入库</el-menu-item>
-
-        <el-menu-item v-if="can('admin')" index="/items">配件管理</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/import/items">Excel 导入配件</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/stocktake">库存盘点</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
-      </el-menu>
-
-      <!-- 电脑仓菜单（布局与配件仓一致，只是菜单项不同） -->
-      <el-menu v-else router :default-active="activeMenu">
-        <el-menu-item index="/pc/assets">电脑台账</el-menu-item>
-        <el-menu-item index="/pc/age-warnings">报废预警</el-menu-item>
-        <el-menu-item index="/pc/tx">电脑出入库明细</el-menu-item>
-        <el-menu-item index="/pc/inventory-logs">盘点记录</el-menu-item>
-        <el-menu-item index="/pc/monitors">显示器台账</el-menu-item>
-        <el-menu-item index="/pc/monitor-tx">显示器出入库明细</el-menu-item>
-        <el-menu-item index="/pc/monitor-inventory-logs">显示器盘点记录</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/in">电脑入库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/out">电脑出库</el-menu-item>
-        <el-menu-item v-if="can('operator')" index="/pc/recycle">电脑回收/归还</el-menu-item>
-        <el-menu-item v-if="can('admin')" index="/system/home">系统</el-menu-item>
-      </el-menu>
-
-      <div style="padding: 12px; color: #999; font-size: 12px">
-        当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? "电脑仓" : "配件仓") }}
-      </div>
-    </el-aside>
-
-    <el-container class="app-content">
-      <el-header class="app-header">
-        <div style="display:flex; align-items:center; gap:10px">
-          <div style="font-weight: 700">{{ title }}</div>
-
-          <el-button-group>
-            <el-button size="small" :type="currentArea==='parts' ? 'primary' : 'default'" @click="switchTo('parts')">
-              配件仓
-            </el-button>
-            <el-button size="small" :type="currentArea==='pc' ? 'primary' : 'default'" @click="switchTo('pc')">
-              电脑仓
-            </el-button>
-            <el-button size="small" :type="currentArea==='system' ? 'primary' : 'default'" v-if="can('admin')" @click="switchToSystem">
-              系统
-            </el-button>
-          </el-button-group>
+      <el-aside
+        width="220px"
+        class="app-aside"
+      >
+        <div style="padding: 14px; font-weight: 700">
+          出入库管理
         </div>
 
-        <div style="display: flex; gap: 8px; align-items: center">
-          <div v-if="auth.user" style="color: #666">
-            {{ auth.user.username }}（{{ roleText(auth.user.role) }}）
+        <!-- 系统菜单（二级菜单） -->
+        <el-menu
+          v-if="isSystem"
+          router
+          :default-active="activeMenu"
+        >
+          <el-menu-item index="/system/home">
+            系统首页
+          </el-menu-item>
+          <el-menu-item index="/system/dashboard">
+            报表与看板
+          </el-menu-item>
+          <el-menu-item index="/system/backup">
+            备份/恢复
+          </el-menu-item>
+          <el-menu-item index="/system/audit">
+            审计日志
+          </el-menu-item>
+          <el-menu-item index="/system/users">
+            用户管理
+          </el-menu-item>
+        </el-menu>
+
+        <!-- 配件仓菜单 -->
+        <el-menu
+          v-else-if="warehouse.active === 'parts'"
+          router
+          :default-active="activeMenu"
+        >
+          <el-menu-item index="/stock">
+            库存查询
+          </el-menu-item>
+          <el-menu-item index="/tx">
+            出入库明细
+          </el-menu-item>
+          <el-menu-item index="/warnings">
+            预警中心
+          </el-menu-item>
+
+          <el-menu-item
+            v-if="can('operator')"
+            index="/in"
+          >
+            入库
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('operator')"
+            index="/out"
+          >
+            出库
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('operator')"
+            index="/batch"
+          >
+            批量出入库
+          </el-menu-item>
+
+          <el-menu-item
+            v-if="can('admin')"
+            index="/items"
+          >
+            配件管理
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('admin')"
+            index="/import/items"
+          >
+            Excel 导入配件
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('admin')"
+            index="/stocktake"
+          >
+            库存盘点
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('admin')"
+            index="/system/home"
+          >
+            系统
+          </el-menu-item>
+        </el-menu>
+
+        <!-- 电脑仓菜单（布局与配件仓一致，只是菜单项不同） -->
+        <el-menu
+          v-else
+          router
+          :default-active="activeMenu"
+        >
+          <el-menu-item index="/pc/assets">
+            电脑台账
+          </el-menu-item>
+          <el-menu-item index="/pc/age-warnings">
+            报废预警
+          </el-menu-item>
+          <el-menu-item index="/pc/tx">
+            电脑出入库明细
+          </el-menu-item>
+          <el-menu-item index="/pc/inventory-logs">
+            盘点记录
+          </el-menu-item>
+          <el-menu-item index="/pc/monitors">
+            显示器台账
+          </el-menu-item>
+          <el-menu-item index="/pc/monitor-tx">
+            显示器出入库明细
+          </el-menu-item>
+          <el-menu-item index="/pc/monitor-inventory-logs">
+            显示器盘点记录
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('operator')"
+            index="/pc/in"
+          >
+            电脑入库
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('operator')"
+            index="/pc/out"
+          >
+            电脑出库
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('operator')"
+            index="/pc/recycle"
+          >
+            电脑回收/归还
+          </el-menu-item>
+          <el-menu-item
+            v-if="can('admin')"
+            index="/system/home"
+          >
+            系统
+          </el-menu-item>
+        </el-menu>
+
+        <div style="padding: 12px; color: #999; font-size: 12px">
+          当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? "电脑仓" : "配件仓") }}
+        </div>
+      </el-aside>
+
+      <el-container class="app-content">
+        <el-header class="app-header">
+          <div style="display:flex; align-items:center; gap:10px">
+            <div style="font-weight: 700">
+              {{ title }}
+            </div>
+
+            <el-button-group>
+              <el-button
+                size="small"
+                :type="currentArea==='parts' ? 'primary' : 'default'"
+                @click="switchTo('parts')"
+              >
+                配件仓
+              </el-button>
+              <el-button
+                size="small"
+                :type="currentArea==='pc' ? 'primary' : 'default'"
+                @click="switchTo('pc')"
+              >
+                电脑仓
+              </el-button>
+              <el-button
+                v-if="can('admin')"
+                size="small"
+                :type="currentArea==='system' ? 'primary' : 'default'"
+                @click="switchToSystem"
+              >
+                系统
+              </el-button>
+            </el-button-group>
           </div>
-          <el-button size="small" @click="goChangePwd">改密码</el-button>
-          <el-button size="small" type="danger" plain @click="doLogout">退出</el-button>
-        </div>
-      </el-header>
 
-      <el-main class="app-main">
-        <div class="page-wrap">
-          <router-view />
-        </div>
-      </el-main>
+          <div style="display: flex; gap: 8px; align-items: center">
+            <div
+              v-if="auth.user"
+              style="color: #666"
+            >
+              {{ auth.user.username }}（{{ roleText(auth.user.role) }}）
+            </div>
+            <el-button
+              size="small"
+              @click="goChangePwd"
+            >
+              改密码
+            </el-button>
+            <el-button
+              size="small"
+              type="danger"
+              plain
+              @click="doLogout"
+            >
+              退出
+            </el-button>
+          </div>
+        </el-header>
+
+        <el-main class="app-main">
+          <div class="page-wrap">
+            <router-view />
+          </div>
+        </el-main>
+      </el-container>
     </el-container>
-  </el-container>
 
-    <el-dialog v-model="showChange" title="修改密码" width="420px">
+    <el-dialog
+      v-model="showChange"
+      title="修改密码"
+      width="420px"
+    >
       <el-form>
         <el-form-item label="旧密码">
-          <el-input v-model="oldP" type="password" show-password />
+          <el-input
+            v-model="oldP"
+            type="password"
+            show-password
+          />
         </el-form-item>
         <el-form-item label="新密码">
-          <el-input v-model="newP" type="password" show-password />
+          <el-input
+            v-model="newP"
+            type="password"
+            show-password
+          />
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showChange = false">取消</el-button>
-        <el-button type="primary" :loading="changing" @click="changePwd">确定</el-button>
+        <el-button @click="showChange = false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="changing"
+          @click="changePwd"
+        >
+          确定
+        </el-button>
       </template>
     </el-dialog>
   </div>

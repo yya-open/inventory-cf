@@ -1,31 +1,75 @@
 <template>
   <el-card>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 560px">
-      <el-form-item label="配件" prop="item_id">
-        <el-select v-model="form.item_id" filterable placeholder="输入搜索 SKU/名称" style="width: 100%">
-          <el-option v-for="it in items" :key="it.id" :label="`${it.sku} · ${it.name}`" :value="it.id" />
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="90px"
+      style="max-width: 560px"
+    >
+      <el-form-item
+        label="配件"
+        prop="item_id"
+      >
+        <el-select
+          v-model="form.item_id"
+          filterable
+          placeholder="输入搜索 SKU/名称"
+          style="width: 100%"
+        >
+          <el-option
+            v-for="it in items"
+            :key="it.id"
+            :label="`${it.sku} · ${it.name}`"
+            :value="it.id"
+          />
         </el-select>
       </el-form-item>
 
-      <el-form-item label="数量" prop="qty">
-        <el-input-number v-model="form.qty" :min="1" />
+      <el-form-item
+        label="数量"
+        prop="qty"
+      >
+        <el-input-number
+          v-model="form.qty"
+          :min="1"
+        />
       </el-form-item>
 
       <el-form-item label="单价">
-        <el-input-number v-model="form.unit_price" :min="0" :step="1" />
+        <el-input-number
+          v-model="form.unit_price"
+          :min="0"
+          :step="1"
+        />
       </el-form-item>
 
       <el-form-item label="来源">
-        <el-input v-model="form.source" placeholder="供应商/采购渠道" />
+        <el-input
+          v-model="form.source"
+          placeholder="供应商/采购渠道"
+        />
       </el-form-item>
 
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" />
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+        />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">入库</el-button>
-        <el-button @click="$router.push('/stock')">返回库存</el-button>
+        <el-button
+          type="primary"
+          :disabled="!canSubmit"
+          :loading="submitting"
+          @click="submit"
+        >
+          入库
+        </el-button>
+        <el-button @click="$router.push('/stock')">
+          返回库存
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>

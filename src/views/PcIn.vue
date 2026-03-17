@@ -1,6 +1,12 @@
 <template>
   <el-card>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 620px">
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="90px"
+      style="max-width: 620px"
+    >
       <el-alert
         title="电脑入库（仓库2：电脑仓）"
         type="info"
@@ -10,7 +16,12 @@
       />
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-        <el-button size="small" @click="downloadInTemplate">下载导入模板</el-button>
+        <el-button
+          size="small"
+          @click="downloadInTemplate"
+        >
+          下载导入模板
+        </el-button>
 
         <el-upload
           :show-file-list="false"
@@ -18,46 +29,103 @@
           accept=".xlsx,.xls"
           :on-change="onImportFile"
         >
-          <el-button size="small" type="primary">Excel导入（批量入库）</el-button>
+          <el-button
+            size="small"
+            type="primary"
+          >
+            Excel导入（批量入库）
+          </el-button>
         </el-upload>
       </div>
 
 
-      <el-form-item label="品牌" prop="brand">
-        <el-input v-model="form.brand" placeholder="例如：Lenovo / Dell / HP" />
+      <el-form-item
+        label="品牌"
+        prop="brand"
+      >
+        <el-input
+          v-model="form.brand"
+          placeholder="例如：Lenovo / Dell / HP"
+        />
       </el-form-item>
 
-      <el-form-item label="序列号" prop="serial_no">
-        <el-input v-model="form.serial_no" placeholder="SN / 序列号（唯一）" />
+      <el-form-item
+        label="序列号"
+        prop="serial_no"
+      >
+        <el-input
+          v-model="form.serial_no"
+          placeholder="SN / 序列号（唯一）"
+        />
       </el-form-item>
 
-      <el-form-item label="型号" prop="model">
-        <el-input v-model="form.model" placeholder="例如：ThinkPad T14 Gen 4" />
+      <el-form-item
+        label="型号"
+        prop="model"
+      >
+        <el-input
+          v-model="form.model"
+          placeholder="例如：ThinkPad T14 Gen 4"
+        />
       </el-form-item>
 
-      <el-form-item label="出厂时间" prop="manufacture_date">
-        <el-date-picker v-model="form.manufacture_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+      <el-form-item
+        label="出厂时间"
+        prop="manufacture_date"
+      >
+        <el-date-picker
+          v-model="form.manufacture_date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="选择日期"
+          style="width: 100%"
+        />
       </el-form-item>
 
       <el-form-item label="保修到期">
-        <el-date-picker v-model="form.warranty_end" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+        <el-date-picker
+          v-model="form.warranty_end"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="选择日期"
+          style="width: 100%"
+        />
       </el-form-item>
 
       <el-form-item label="硬盘容量">
-        <el-input v-model="form.disk_capacity" placeholder="例如：512G / 1T" />
+        <el-input
+          v-model="form.disk_capacity"
+          placeholder="例如：512G / 1T"
+        />
       </el-form-item>
 
       <el-form-item label="内存大小">
-        <el-input v-model="form.memory_size" placeholder="例如：16G / 32G" />
+        <el-input
+          v-model="form.memory_size"
+          placeholder="例如：16G / 32G"
+        />
       </el-form-item>
 
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" :rows="3" />
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+          :rows="3"
+        />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">入库</el-button>
-        <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
+        <el-button
+          type="primary"
+          :disabled="!canSubmit"
+          :loading="submitting"
+          @click="submit"
+        >
+          入库
+        </el-button>
+        <el-button @click="$router.push('/pc/assets')">
+          返回台账
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>

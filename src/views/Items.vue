@@ -1,40 +1,150 @@
 <template>
   <el-card>
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
-      <el-input v-model="keyword" placeholder="搜索：名称/SKU/品牌/型号" style="max-width: 360px" clearable />
-      <el-select v-model="sortBy" style="width: 170px" @change="onSearch">        <el-option label="SKU" value="sku" />
-        <el-option label="名称" value="name" />
-        <el-option label="品牌" value="brand" />
-        <el-option label="型号" value="model" />
-        <el-option label="分类" value="category" />
-        <el-option label="预警值" value="warning_qty" />
-        <el-option label="创建时间" value="created_at" />
+      <el-input
+        v-model="keyword"
+        placeholder="搜索：名称/SKU/品牌/型号"
+        style="max-width: 360px"
+        clearable
+      />
+      <el-select
+        v-model="sortBy"
+        style="width: 170px"
+        @change="onSearch"
+      >
+        <el-option
+          label="SKU"
+          value="sku"
+        />
+        <el-option
+          label="名称"
+          value="name"
+        />
+        <el-option
+          label="品牌"
+          value="brand"
+        />
+        <el-option
+          label="型号"
+          value="model"
+        />
+        <el-option
+          label="分类"
+          value="category"
+        />
+        <el-option
+          label="预警值"
+          value="warning_qty"
+        />
+        <el-option
+          label="创建时间"
+          value="created_at"
+        />
       </el-select>
-      <el-select v-model="sortDir" style="width: 120px" @change="onSearch">
-        <el-option label="降序" value="desc" />
-        <el-option label="升序" value="asc" />
+      <el-select
+        v-model="sortDir"
+        style="width: 120px"
+        @change="onSearch"
+      >
+        <el-option
+          label="降序"
+          value="desc"
+        />
+        <el-option
+          label="升序"
+          value="asc"
+        />
       </el-select>
-      <el-button type="primary" @click="onSearch">查询</el-button>
-      <el-button @click="onReset">重置</el-button>
-      <el-button type="success" @click="openCreate">新增配件</el-button>
-      <el-button @click="$router.push('/import/items')">Excel 导入</el-button>
+      <el-button
+        type="primary"
+        @click="onSearch"
+      >
+        查询
+      </el-button>
+      <el-button @click="onReset">
+        重置
+      </el-button>
+      <el-button
+        type="success"
+        @click="openCreate"
+      >
+        新增配件
+      </el-button>
+      <el-button @click="$router.push('/import/items')">
+        Excel 导入
+      </el-button>
     </div>
 
-    <el-table :data="rows" border v-loading="loading">
-      <el-table-column prop="sku" label="SKU" width="220" />
-      <el-table-column prop="name" label="名称" min-width="220" />
-      <el-table-column prop="brand" label="品牌" width="140" />
-      <el-table-column prop="model" label="型号" width="160" />
-      <el-table-column prop="category" label="分类" width="120" />
-      <el-table-column prop="unit" label="单位" width="80" />
-      <el-table-column prop="warning_qty" label="预警值" width="90" />
-      <el-table-column label="操作" width="260">
+    <el-table
+      v-loading="loading"
+      :data="rows"
+      border
+    >
+      <el-table-column
+        prop="sku"
+        label="SKU"
+        width="220"
+      />
+      <el-table-column
+        prop="name"
+        label="名称"
+        min-width="220"
+      />
+      <el-table-column
+        prop="brand"
+        label="品牌"
+        width="140"
+      />
+      <el-table-column
+        prop="model"
+        label="型号"
+        width="160"
+      />
+      <el-table-column
+        prop="category"
+        label="分类"
+        width="120"
+      />
+      <el-table-column
+        prop="unit"
+        label="单位"
+        width="80"
+      />
+      <el-table-column
+        prop="warning_qty"
+        label="预警值"
+        width="90"
+      />
+      <el-table-column
+        label="操作"
+        width="260"
+      >
         <template #default="{row}">
-          <el-button size="small" @click="openEdit(row)">编辑</el-button>
-          <el-button size="small" type="info" plain @click="goTx(row.id)">明细</el-button>
+          <el-button
+            size="small"
+            @click="openEdit(row)"
+          >
+            编辑
+          </el-button>
+          <el-button
+            size="small"
+            type="info"
+            plain
+            @click="goTx(row.id)"
+          >
+            明细
+          </el-button>
         
-          <el-button v-if="isAdmin" size="small" type="danger" plain @click="onDelete(row)">删除</el-button>
-</template>
+          <el-button
+            v-if="isAdmin"
+            size="small"
+            type="danger"
+            plain
+            @click="onDelete(row)"
+          >
+            删除
+          </el-button>
+        </template>
       </el-table-column>
     </el-table>
 
@@ -51,13 +161,29 @@
       />
     </div>
 
-    <el-dialog v-model="dlgVisible" :title="dlgTitle" width="560px">
+    <el-dialog
+      v-model="dlgVisible"
+      :title="dlgTitle"
+      width="560px"
+    >
       <el-form label-width="90px">
-        <el-form-item label="SKU" required>
-          <el-input v-model="form.sku" placeholder="如：SSD-1T-NVME" />
+        <el-form-item
+          label="SKU"
+          required
+        >
+          <el-input
+            v-model="form.sku"
+            placeholder="如：SSD-1T-NVME"
+          />
         </el-form-item>
-        <el-form-item label="名称" required>
-          <el-input v-model="form.name" placeholder="如：NVMe SSD 1TB" />
+        <el-form-item
+          label="名称"
+          required
+        >
+          <el-input
+            v-model="form.name"
+            placeholder="如：NVMe SSD 1TB"
+          />
         </el-form-item>
         <el-form-item label="品牌">
           <el-input v-model="form.brand" />
@@ -66,22 +192,38 @@
           <el-input v-model="form.model" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-input v-model="form.category" placeholder="如：硬盘/内存/显卡..." />
+          <el-input
+            v-model="form.category"
+            placeholder="如：硬盘/内存/显卡..."
+          />
         </el-form-item>
         <el-form-item label="单位">
-          <el-input v-model="form.unit" placeholder="个/条/块/盒..." />
+          <el-input
+            v-model="form.unit"
+            placeholder="个/条/块/盒..."
+          />
         </el-form-item>
         <el-form-item label="预警值">
-          <el-input-number v-model="form.warning_qty" :min="0" />
+          <el-input-number
+            v-model="form.warning_qty"
+            :min="0"
+          />
         </el-form-item>
       </el-form>
 
       <template #footer>
-        <el-button @click="dlgVisible=false">取消</el-button>
-        <el-button type="primary" @click="save" :loading="saving">保存</el-button>
+        <el-button @click="dlgVisible=false">
+          取消
+        </el-button>
+        <el-button
+          type="primary"
+          :loading="saving"
+          @click="save"
+        >
+          保存
+        </el-button>
       </template>
     </el-dialog>
-
   </el-card>
 </template>
 

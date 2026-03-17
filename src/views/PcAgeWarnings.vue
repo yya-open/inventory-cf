@@ -3,21 +3,56 @@
     <div class="ui-toolbar">
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
-          <div class="ui-toolbar-title">筛选查询</div>
+          <div class="ui-toolbar-title">
+            筛选查询
+          </div>
           <div class="ui-toolbar-row">
-            <el-tag type="warning" class="ui-toolbar-tag">报废预警：出厂时间超过 {{ ageYears }} 年</el-tag>
+            <el-tag
+              type="warning"
+              class="ui-toolbar-tag"
+            >
+              报废预警：出厂时间超过 {{ ageYears }} 年
+            </el-tag>
 
-            <el-select v-model="status" placeholder="状态" clearable class="ui-toolbar-select" @change="onSearch">
-              <el-option label="在库" value="IN_STOCK" />
-              <el-option label="已领用" value="ASSIGNED" />
-              <el-option label="已回收" value="RECYCLED" />
+            <el-select
+              v-model="status"
+              placeholder="状态"
+              clearable
+              class="ui-toolbar-select"
+              @change="onSearch"
+            >
+              <el-option
+                label="在库"
+                value="IN_STOCK"
+              />
+              <el-option
+                label="已领用"
+                value="ASSIGNED"
+              />
+              <el-option
+                label="已回收"
+                value="RECYCLED"
+              />
             </el-select>
 
-            <el-input v-model="keyword" clearable placeholder="关键词：序列号/品牌/型号/备注" class="ui-toolbar-input" @keyup.enter="onSearch" />
+            <el-input
+              v-model="keyword"
+              clearable
+              placeholder="关键词：序列号/品牌/型号/备注"
+              class="ui-toolbar-input"
+              @keyup.enter="onSearch"
+            />
 
             <div class="ui-toolbar-actions">
-              <el-button type="primary" @click="onSearch">查询</el-button>
-              <el-button @click="reset">重置</el-button>
+              <el-button
+                type="primary"
+                @click="onSearch"
+              >
+                查询
+              </el-button>
+              <el-button @click="reset">
+                重置
+              </el-button>
             </div>
           </div>
         </div>
@@ -25,64 +60,155 @@
 
       <div class="ui-toolbar-side">
         <div class="ui-toolbar-block">
-          <div class="ui-toolbar-title">快捷工具</div>
+          <div class="ui-toolbar-title">
+            快捷工具
+          </div>
           <div class="ui-toolbar-tool-grid">
-            <el-button type="danger" :loading="scrapLoading" :disabled="selectedIds.length===0" @click="createScrap()">生成报废单（选中）</el-button>
-            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
-            <el-button type="success" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
-            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
+            <el-button
+              type="danger"
+              :loading="scrapLoading"
+              :disabled="selectedIds.length===0"
+              @click="createScrap()"
+            >
+              生成报废单（选中）
+            </el-button>
+            <el-button
+              type="success"
+              plain
+              :loading="exporting"
+              @click="exportExcel(false)"
+            >
+              导出Excel（当前页）
+            </el-button>
+            <el-button
+              type="success"
+              :loading="exportingAll"
+              @click="exportExcel(true)"
+            >
+              导出Excel（全部）
+            </el-button>
+            <el-button
+              type="info"
+              plain
+              @click="$router.push('/pc/assets')"
+            >
+              返回台账
+            </el-button>
           </div>
         </div>
       </div>
     </div>
 
-    <el-table :data="rows" border v-loading="loading" @selection-change="onSelectionChange">
-      <el-table-column type="selection" width="48" />
-      <el-table-column prop="id" label="ID" width="80" />
-      <el-table-column label="电脑" min-width="260">
+    <el-table
+      v-loading="loading"
+      :data="rows"
+      border
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column
+        type="selection"
+        width="48"
+      />
+      <el-table-column
+        prop="id"
+        label="ID"
+        width="80"
+      />
+      <el-table-column
+        label="电脑"
+        min-width="260"
+      >
         <template #default="{row}">
-          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
-          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
+          <div style="font-weight:600">
+            {{ row.brand }} · {{ row.model }}
+          </div>
+          <div style="color:#999;font-size:12px">
+            SN：{{ row.serial_no }}
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="出厂时间" width="140">
+      <el-table-column
+        label="出厂时间"
+        width="140"
+      >
         <template #default="{row}">
           <span style="font-weight:600">{{ row.manufacture_date || '-' }}</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="机龄" width="110">
+      <el-table-column
+        label="机龄"
+        width="110"
+      >
         <template #default="{row}">
-          <el-tag type="danger" effect="dark">{{ calcAgeYears(row.manufacture_date) }} 年</el-tag>
+          <el-tag
+            type="danger"
+            effect="dark"
+          >
+            {{ calcAgeYears(row.manufacture_date) }} 年
+          </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column label="保修" width="140">
+      <el-table-column
+        label="保修"
+        width="140"
+      >
         <template #default="{row}">
           <span>{{ row.warranty_end || '-' }}</span>
         </template>
       </el-table-column>
 
-      <el-table-column label="状态" width="120">
+      <el-table-column
+        label="状态"
+        width="120"
+      >
         <template #default="{row}">
-          <el-tag v-if="row.status==='IN_STOCK'" type="success">在库</el-tag>
-          <el-tag v-else-if="row.status==='ASSIGNED'" type="warning">已领用</el-tag>
-          <el-tag v-else type="info">已回收</el-tag>
+          <el-tag
+            v-if="row.status==='IN_STOCK'"
+            type="success"
+          >
+            在库
+          </el-tag>
+          <el-tag
+            v-else-if="row.status==='ASSIGNED'"
+            type="warning"
+          >
+            已领用
+          </el-tag>
+          <el-tag
+            v-else
+            type="info"
+          >
+            已回收
+          </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column label="当前领用人" width="220">
+      <el-table-column
+        label="当前领用人"
+        width="220"
+      >
         <template #default="{row}">
           <div v-if="row.status==='ASSIGNED'">
-            <div style="font-weight:600">{{ row.last_employee_name || '-' }}</div>
-            <div style="color:#999;font-size:12px">{{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}</div>
+            <div style="font-weight:600">
+              {{ row.last_employee_name || '-' }}
+            </div>
+            <div style="color:#999;font-size:12px">
+              {{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}
+            </div>
           </div>
           <span v-else>-</span>
         </template>
       </el-table-column>
 
-      <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
+      <el-table-column
+        prop="remark"
+        label="备注"
+        min-width="220"
+        show-overflow-tooltip
+      />
     </el-table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px">

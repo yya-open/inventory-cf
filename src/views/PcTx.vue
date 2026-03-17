@@ -3,13 +3,33 @@
     <div class="ui-toolbar">
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
-          <div class="ui-toolbar-title">筛选查询</div>
+          <div class="ui-toolbar-title">
+            筛选查询
+          </div>
           <div class="ui-toolbar-row">
-            <el-select v-model="type" placeholder="类型" clearable class="ui-toolbar-select" @change="onSearch">
-              <el-option label="入库(IN)" value="IN" />
-              <el-option label="出库(OUT)" value="OUT" />
-              <el-option label="归还(RETURN)" value="RETURN" />
-              <el-option label="回收(RECYCLE)" value="RECYCLE" />
+            <el-select
+              v-model="type"
+              placeholder="类型"
+              clearable
+              class="ui-toolbar-select"
+              @change="onSearch"
+            >
+              <el-option
+                label="入库(IN)"
+                value="IN"
+              />
+              <el-option
+                label="出库(OUT)"
+                value="OUT"
+              />
+              <el-option
+                label="归还(RETURN)"
+                value="RETURN"
+              />
+              <el-option
+                label="回收(RECYCLE)"
+                value="RECYCLE"
+              />
             </el-select>
 
             <el-date-picker
@@ -22,11 +42,24 @@
               class="ui-toolbar-date"
             />
 
-            <el-input v-model="keyword" clearable placeholder="关键词：单号/序列号/员工/部门/品牌/型号" class="ui-toolbar-input" @keyup.enter="onSearch" />
+            <el-input
+              v-model="keyword"
+              clearable
+              placeholder="关键词：单号/序列号/员工/部门/品牌/型号"
+              class="ui-toolbar-input"
+              @keyup.enter="onSearch"
+            />
 
             <div class="ui-toolbar-actions">
-              <el-button type="primary" @click="onSearch">查询</el-button>
-              <el-button @click="reset">重置</el-button>
+              <el-button
+                type="primary"
+                @click="onSearch"
+              >
+                查询
+              </el-button>
+              <el-button @click="reset">
+                重置
+              </el-button>
             </div>
           </div>
         </div>
@@ -34,10 +67,19 @@
 
       <div class="ui-toolbar-side">
         <div class="ui-toolbar-block">
-          <div class="ui-toolbar-title">快捷工具</div>
+          <div class="ui-toolbar-title">
+            快捷工具
+          </div>
           <div class="ui-toolbar-tool-grid">
-            <el-button @click="exportExcel">导出Excel</el-button>
-            <el-button v-if="canOperator" @click="downloadTxTemplate">下载导入模板</el-button>
+            <el-button @click="exportExcel">
+              导出Excel
+            </el-button>
+            <el-button
+              v-if="canOperator"
+              @click="downloadTxTemplate"
+            >
+              下载导入模板
+            </el-button>
             <el-upload
               v-if="canOperator"
               :show-file-list="false"
@@ -45,52 +87,150 @@
               accept=".xlsx,.xls"
               :on-change="onImportTxFile"
             >
-              <el-button type="primary">Excel导入（按类型写入记录）</el-button>
+              <el-button type="primary">
+                Excel导入（按类型写入记录）
+              </el-button>
             </el-upload>
-            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
-            <el-button v-if="isAdmin" type="danger" plain :disabled="selectedRows.length===0 || loading" @click="deleteSelected">删除选中</el-button>
-            <el-button v-if="isAdmin" type="danger" :disabled="loading" @click="clearPcTx">清空记录</el-button>
+            <el-button
+              type="info"
+              plain
+              @click="$router.push('/pc/assets')"
+            >
+              返回台账
+            </el-button>
+            <el-button
+              v-if="isAdmin"
+              type="danger"
+              plain
+              :disabled="selectedRows.length===0 || loading"
+              @click="deleteSelected"
+            >
+              删除选中
+            </el-button>
+            <el-button
+              v-if="isAdmin"
+              type="danger"
+              :disabled="loading"
+              @click="clearPcTx"
+            >
+              清空记录
+            </el-button>
           </div>
         </div>
       </div>
     </div>
 
-    <el-table :data="rows" border v-loading="loading" row-key="__rowKey" @selection-change="onSelectionChange">
-      <el-table-column v-if="isAdmin" type="selection" width="46" />
-      <el-table-column label="时间" width="170">
-        <template #default="{row}">{{ formatBjTime(row.created_at, row) }}</template>
-      </el-table-column>
-      <el-table-column prop="tx_no" label="单号" width="210" />
-      <el-table-column prop="type" label="类型" width="110">
+    <el-table
+      v-loading="loading"
+      :data="rows"
+      border
+      row-key="__rowKey"
+      @selection-change="onSelectionChange"
+    >
+      <el-table-column
+        v-if="isAdmin"
+        type="selection"
+        width="46"
+      />
+      <el-table-column
+        label="时间"
+        width="170"
+      >
         <template #default="{row}">
-          <el-tag v-if="row.type==='IN'" type="success">入库</el-tag>
-          <el-tag v-else-if="row.type==='OUT'" type="danger">出库</el-tag>
-          <el-tag v-else-if="row.type==='RETURN'" type="warning">归还</el-tag>
-          <el-tag v-else-if="row.type==='SCRAP'" type="danger">报废</el-tag>
-          <el-tag v-else type="info">回收</el-tag>
+          {{ formatBjTime(row.created_at, row) }}
+        </template>
+      </el-table-column>
+      <el-table-column
+        prop="tx_no"
+        label="单号"
+        width="210"
+      />
+      <el-table-column
+        prop="type"
+        label="类型"
+        width="110"
+      >
+        <template #default="{row}">
+          <el-tag
+            v-if="row.type==='IN'"
+            type="success"
+          >
+            入库
+          </el-tag>
+          <el-tag
+            v-else-if="row.type==='OUT'"
+            type="danger"
+          >
+            出库
+          </el-tag>
+          <el-tag
+            v-else-if="row.type==='RETURN'"
+            type="warning"
+          >
+            归还
+          </el-tag>
+          <el-tag
+            v-else-if="row.type==='SCRAP'"
+            type="danger"
+          >
+            报废
+          </el-tag>
+          <el-tag
+            v-else
+            type="info"
+          >
+            回收
+          </el-tag>
         </template>
       </el-table-column>
 
-      <el-table-column label="电脑" min-width="260">
+      <el-table-column
+        label="电脑"
+        min-width="260"
+      >
         <template #default="{row}">
-          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
-          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
+          <div style="font-weight:600">
+            {{ row.brand }} · {{ row.model }}
+          </div>
+          <div style="color:#999;font-size:12px">
+            SN：{{ row.serial_no }}
+          </div>
         </template>
       </el-table-column>
 
-      <el-table-column label="员工" width="220">
+      <el-table-column
+        label="员工"
+        width="220"
+      >
         <template #default="{row}">
           <div v-if="row.type!=='IN'">
-            <div style="font-weight:600">{{ row.employee_name || "-" }}</div>
-            <div style="color:#999;font-size:12px">{{ row.employee_no || "-" }} · {{ row.department || "-" }}</div>
+            <div style="font-weight:600">
+              {{ row.employee_name || "-" }}
+            </div>
+            <div style="color:#999;font-size:12px">
+              {{ row.employee_no || "-" }} · {{ row.department || "-" }}
+            </div>
           </div>
           <span v-else>-</span>
         </template>
       </el-table-column>
 
-      <el-table-column prop="config_date" label="配置日期" width="130" />
-      <el-table-column prop="recycle_date" label="回收/归还日期" width="130" />
-      <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
+      <el-table-column
+        prop="config_date"
+        label="配置日期"
+        width="130"
+      />
+      <el-table-column
+        prop="recycle_date"
+        label="回收/归还日期"
+        width="130"
+      />
+      <el-table-column
+        prop="remark"
+        label="备注"
+        min-width="220"
+        show-overflow-tooltip
+      />
     </el-table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px">

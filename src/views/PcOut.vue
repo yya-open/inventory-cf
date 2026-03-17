@@ -1,6 +1,12 @@
 <template>
   <el-card>
-    <el-form ref="formRef" :model="form" :rules="rules" label-width="90px" style="max-width: 760px">
+    <el-form
+      ref="formRef"
+      :model="form"
+      :rules="rules"
+      label-width="90px"
+      style="max-width: 760px"
+    >
       <el-alert
         title="电脑出库（仓库2：电脑仓）"
         type="warning"
@@ -10,7 +16,12 @@
       />
 
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-        <el-button size="small" @click="downloadOutTemplate">下载导入模板</el-button>
+        <el-button
+          size="small"
+          @click="downloadOutTemplate"
+        >
+          下载导入模板
+        </el-button>
 
         <el-upload
           :show-file-list="false"
@@ -18,12 +29,20 @@
           accept=".xlsx,.xls"
           :on-change="onImportOutFile"
         >
-          <el-button size="small" type="primary">Excel导入（批量出库）</el-button>
+          <el-button
+            size="small"
+            type="primary"
+          >
+            Excel导入（批量出库）
+          </el-button>
         </el-upload>
       </div>
 
 
-      <el-form-item label="选择电脑" prop="asset_id">
+      <el-form-item
+        label="选择电脑"
+        prop="asset_id"
+      >
         <el-select
           v-model="form.asset_id"
           filterable
@@ -32,8 +51,8 @@
           :loading="assetLoading"
           placeholder="输入序列号/品牌/型号搜索（仅显示在库）"
           style="width: 100%"
-          @change="onPickAsset"
           clearable
+          @change="onPickAsset"
         >
           <el-option
             v-for="a in assetOptions"
@@ -47,54 +66,123 @@
         </div>
       </el-form-item>
 
-      <el-divider content-position="left">员工信息</el-divider>
+      <el-divider content-position="left">
+        员工信息
+      </el-divider>
 
-      <el-form-item label="员工工号" prop="employee_no">
+      <el-form-item
+        label="员工工号"
+        prop="employee_no"
+      >
         <el-input v-model="form.employee_no" />
       </el-form-item>
 
-      <el-form-item label="部门" prop="department">
+      <el-form-item
+        label="部门"
+        prop="department"
+      >
         <el-input v-model="form.department" />
       </el-form-item>
 
-      <el-form-item label="员工姓名" prop="employee_name">
+      <el-form-item
+        label="员工姓名"
+        prop="employee_name"
+      >
         <el-input v-model="form.employee_name" />
       </el-form-item>
 
-      <el-form-item label="是否在职" prop="is_employed">
+      <el-form-item
+        label="是否在职"
+        prop="is_employed"
+      >
         <el-radio-group v-model="form.is_employed">
           <el-radio-button label="在职" />
           <el-radio-button label="离职" />
         </el-radio-group>
       </el-form-item>
 
-      <el-divider content-position="left">电脑信息（自动带出，可修改备注/日期）</el-divider>
+      <el-divider content-position="left">
+        电脑信息（自动带出，可修改备注/日期）
+      </el-divider>
 
-      <el-descriptions v-if="pickedAsset" :column="2" border style="margin-bottom:12px">
-        <el-descriptions-item label="品牌">{{ pickedAsset.brand }}</el-descriptions-item>
-        <el-descriptions-item label="型号">{{ pickedAsset.model }}</el-descriptions-item>
-        <el-descriptions-item label="序列号">{{ pickedAsset.serial_no }}</el-descriptions-item>
-        <el-descriptions-item label="当前状态">
-          <el-tag type="success" v-if="pickedAsset.status==='IN_STOCK'">在库</el-tag>
-          <el-tag type="warning" v-else-if="pickedAsset.status==='ASSIGNED'">已领用</el-tag>
-          <el-tag type="info" v-else>已回收</el-tag>
+      <el-descriptions
+        v-if="pickedAsset"
+        :column="2"
+        border
+        style="margin-bottom:12px"
+      >
+        <el-descriptions-item label="品牌">
+          {{ pickedAsset.brand }}
         </el-descriptions-item>
-        <el-descriptions-item label="出厂时间">{{ pickedAsset.manufacture_date || "-" }}</el-descriptions-item>
-        <el-descriptions-item label="保修到期">{{ pickedAsset.warranty_end || "-" }}</el-descriptions-item>
-        <el-descriptions-item label="硬盘容量">{{ pickedAsset.disk_capacity || "-" }}</el-descriptions-item>
-        <el-descriptions-item label="内存大小">{{ pickedAsset.memory_size || "-" }}</el-descriptions-item>
+        <el-descriptions-item label="型号">
+          {{ pickedAsset.model }}
+        </el-descriptions-item>
+        <el-descriptions-item label="序列号">
+          {{ pickedAsset.serial_no }}
+        </el-descriptions-item>
+        <el-descriptions-item label="当前状态">
+          <el-tag
+            v-if="pickedAsset.status==='IN_STOCK'"
+            type="success"
+          >
+            在库
+          </el-tag>
+          <el-tag
+            v-else-if="pickedAsset.status==='ASSIGNED'"
+            type="warning"
+          >
+            已领用
+          </el-tag>
+          <el-tag
+            v-else
+            type="info"
+          >
+            已回收
+          </el-tag>
+        </el-descriptions-item>
+        <el-descriptions-item label="出厂时间">
+          {{ pickedAsset.manufacture_date || "-" }}
+        </el-descriptions-item>
+        <el-descriptions-item label="保修到期">
+          {{ pickedAsset.warranty_end || "-" }}
+        </el-descriptions-item>
+        <el-descriptions-item label="硬盘容量">
+          {{ pickedAsset.disk_capacity || "-" }}
+        </el-descriptions-item>
+        <el-descriptions-item label="内存大小">
+          {{ pickedAsset.memory_size || "-" }}
+        </el-descriptions-item>
       </el-descriptions>
 
       <el-form-item label="配置日期">
-        <el-date-picker v-model="form.config_date" type="date" value-format="YYYY-MM-DD" placeholder="选择日期" style="width: 100%" />
+        <el-date-picker
+          v-model="form.config_date"
+          type="date"
+          value-format="YYYY-MM-DD"
+          placeholder="选择日期"
+          style="width: 100%"
+        />
       </el-form-item>
       <el-form-item label="备注">
-        <el-input v-model="form.remark" type="textarea" :rows="3" />
+        <el-input
+          v-model="form.remark"
+          type="textarea"
+          :rows="3"
+        />
       </el-form-item>
 
       <el-form-item>
-        <el-button type="primary" :disabled="!canSubmit" @click="submit" :loading="submitting">出库</el-button>
-        <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
+        <el-button
+          type="primary"
+          :disabled="!canSubmit"
+          :loading="submitting"
+          @click="submit"
+        >
+          出库
+        </el-button>
+        <el-button @click="$router.push('/pc/assets')">
+          返回台账
+        </el-button>
       </el-form-item>
     </el-form>
   </el-card>

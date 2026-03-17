@@ -3,9 +3,17 @@
     <el-card class="stocktake-card">
       <template #header>
         <div class="page-header">
-          <div class="title">库存盘点</div>
+          <div class="title">
+            库存盘点
+          </div>
           <div class="actions">
-            <el-button type="primary" @click="createStocktake" :loading="creating">新建盘点单</el-button>
+            <el-button
+              type="primary"
+              :loading="creating"
+              @click="createStocktake"
+            >
+              新建盘点单
+            </el-button>
           </div>
         </div>
       </template>
@@ -14,19 +22,63 @@
         <!-- Left: list -->
         <div class="panel left">
           <div class="panel-header">
-            <div class="panel-title">盘点单列表</div>
+            <div class="panel-title">
+              盘点单列表
+            </div>
             <div class="panel-tools">
-              <el-input v-model="listKeyword" size="small" clearable placeholder="搜索 ID / 单号 / 状态" style="width: 190px;" />
-              <el-select v-model="listSortBy" size="small" style="width: 120px" @change="onListSortChange">                <el-option label="创建时间" value="created_at" />
-                <el-option label="状态" value="status" />
-                <el-option label="单号" value="st_no" />
+              <el-input
+                v-model="listKeyword"
+                size="small"
+                clearable
+                placeholder="搜索 ID / 单号 / 状态"
+                style="width: 190px;"
+              />
+              <el-select
+                v-model="listSortBy"
+                size="small"
+                style="width: 120px"
+                @change="onListSortChange"
+              >
+                <el-option
+                  label="创建时间"
+                  value="created_at"
+                />
+                <el-option
+                  label="状态"
+                  value="status"
+                />
+                <el-option
+                  label="单号"
+                  value="st_no"
+                />
               </el-select>
-              <el-select v-model="listSortDir" size="small" style="width: 95px" @change="onListSortChange">
-                <el-option label="升序" value="asc" />
-                <el-option label="降序" value="desc" />
+              <el-select
+                v-model="listSortDir"
+                size="small"
+                style="width: 95px"
+                @change="onListSortChange"
+              >
+                <el-option
+                  label="升序"
+                  value="asc"
+                />
+                <el-option
+                  label="降序"
+                  value="desc"
+                />
               </el-select>
-              <el-button size="small" @click="loadList">刷新</el-button>
-              <el-button size="small" @click="toggleList">{{ listCollapsed ? "展开" : "收起" }}</el-button>
+              <el-button
+                size="small"
+                @click="loadList"
+              >
+                刷新
+              </el-button>
+              <el-button
+                size="small"
+                @click="toggleList"
+              >
+                {{ listCollapsed ? "展开" : "收起" }}
+              </el-button>
             </div>
           </div>
 
@@ -39,31 +91,72 @@
             :row-class-name="rowClassName"
             @row-click="openStocktake"
           >
-	            <!-- 显示序号（避免删除导致 ID 断号带来的困惑），真实 id 仍保留在 row.id 供接口使用 -->
-	            <el-table-column label="序号" width="70">
-	              <template #default="scope">{{ (listPage-1)*listPageSize + scope.$index + 1 }}</template>
-	            </el-table-column>
-	            <el-table-column label="盘点单号" min-width="190">
-	              <template #default="{ row }">
-	                <span class="mono">{{ row.st_no }}</span>
-	                <span class="muted" style="margin-left:6px;">#{{ row.id }}</span>
-	              </template>
-	            </el-table-column>
-            <el-table-column label="状态" width="110">
-              <template #default="{ row }">
-                <el-tag :type="row.status==='DRAFT' ? 'info' : ((row.status==='APPLYING' || row.status==='ROLLING') ? 'warning' : 'success')" size="small">{{ row.status }}</el-tag>
+            <!-- 显示序号（避免删除导致 ID 断号带来的困惑），真实 id 仍保留在 row.id 供接口使用 -->
+            <el-table-column
+              label="序号"
+              width="70"
+            >
+              <template #default="scope">
+                {{ (listPage-1)*listPageSize + scope.$index + 1 }}
               </template>
             </el-table-column>
-            <el-table-column label="创建时间" min-width="170">
-              <template #default="{ row }">{{ formatBeijingDateTime(row.created_at) }}</template>
+            <el-table-column
+              label="盘点单号"
+              min-width="190"
+            >
+              <template #default="{ row }">
+                <span class="mono">{{ row.st_no }}</span>
+                <span
+                  class="muted"
+                  style="margin-left:6px;"
+                >#{{ row.id }}</span>
+              </template>
             </el-table-column>
-            <el-table-column label="操作" width="90" fixed="right">
+            <el-table-column
+              label="状态"
+              width="110"
+            >
+              <template #default="{ row }">
+                <el-tag
+                  :type="row.status==='DRAFT' ? 'info' : ((row.status==='APPLYING' || row.status==='ROLLING') ? 'warning' : 'success')"
+                  size="small"
+                >
+                  {{ row.status }}
+                </el-tag>
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="创建时间"
+              min-width="170"
+            >
+              <template #default="{ row }">
+                {{ formatBeijingDateTime(row.created_at) }}
+              </template>
+            </el-table-column>
+            <el-table-column
+              label="操作"
+              width="90"
+              fixed="right"
+            >
               <template #default="{ row }">
                 <template v-if="row.status==='DRAFT'">
-                  <el-button v-if="isAdmin" type="danger" link @click.stop="deleteStocktake(row)">删除</el-button>
+                  <el-button
+                    v-if="isAdmin"
+                    type="danger"
+                    link
+                    @click.stop="deleteStocktake(row)"
+                  >
+                    删除
+                  </el-button>
                 </template>
                 <template v-else-if="row.status==='APPLIED'">
-                  <el-button type="warning" link @click.stop="rollbackStocktakeByRow(row)">撤销</el-button>
+                  <el-button
+                    type="warning"
+                    link
+                    @click.stop="rollbackStocktakeByRow(row)"
+                  >
+                    撤销
+                  </el-button>
                 </template>
                 <template v-else>
                   <span class="muted">-</span>
@@ -84,12 +177,14 @@
               @size-change="onListPageSizeChange"
             />
           </div>
-
         </div>
 
         <!-- Right: detail -->
         <div class="panel right">
-          <div v-if="!detail" class="empty">
+          <div
+            v-if="!detail"
+            class="empty"
+          >
             <el-empty description="点击左侧盘点单查看明细" />
           </div>
 
@@ -102,7 +197,10 @@
                   <span>{{ detail.stocktake.warehouse_name }}</span>
                 </div>
                 <div class="sub">
-                  <el-tag :type="detail.stocktake.status==='DRAFT' ? 'info' : ((detail.stocktake.status==='APPLYING' || detail.stocktake.status==='ROLLING') ? 'warning' : 'success')" size="small">
+                  <el-tag
+                    :type="detail.stocktake.status==='DRAFT' ? 'info' : ((detail.stocktake.status==='APPLYING' || detail.stocktake.status==='ROLLING') ? 'warning' : 'success')"
+                    size="small"
+                  >
                     {{ detail.stocktake.status }}
                   </el-tag>
                   <span class="muted">创建：{{ formatBeijingDateTime(detail.stocktake.created_at) }}</span>
@@ -110,40 +208,97 @@
               </div>
 
               <div class="detail-actions">
-                <el-button @click="downloadCountTemplate">下载盘点模板</el-button>
+                <el-button @click="downloadCountTemplate">
+                  下载盘点模板
+                </el-button>
                 <el-upload
                   :show-file-list="false"
                   accept=".xlsx,.xls"
                   :before-upload="beforeUpload"
                   :disabled="detail.stocktake.status!=='DRAFT'"
                 >
-                  <el-button :disabled="detail.stocktake.status!=='DRAFT'">导入盘点结果</el-button>
+                  <el-button :disabled="detail.stocktake.status!=='DRAFT'">
+                    导入盘点结果
+                  </el-button>
                 </el-upload>
-                <el-button type="primary" @click="saveLines" :loading="saving" :disabled="detail.stocktake.status!=='DRAFT'">保存</el-button>
-                <el-button type="success" @click="applyStocktake" :loading="applying" :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)">{{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}</el-button>
+                <el-button
+                  type="primary"
+                  :loading="saving"
+                  :disabled="detail.stocktake.status!=='DRAFT'"
+                  @click="saveLines"
+                >
+                  保存
+                </el-button>
+                <el-button
+                  type="success"
+                  :loading="applying"
+                  :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)"
+                  @click="applyStocktake"
+                >
+                  {{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}
+                </el-button>
                 <el-button
                   v-if="['APPLIED','ROLLING'].includes(detail.stocktake.status)"
                   type="warning"
                   plain
-                  @click="rollbackStocktake"
                   :loading="rolling"
-                >{{ detail.stocktake.status==='ROLLING' ? '继续撤销' : '撤销盘点' }}</el-button>
-                <el-button v-if="isAdmin" type="danger" plain @click="deleteStocktake(detail.stocktake)" :disabled="detail.stocktake.status!=='DRAFT'">删除盘点单</el-button>
+                  @click="rollbackStocktake"
+                >
+                  {{ detail.stocktake.status==='ROLLING' ? '继续撤销' : '撤销盘点' }}
+                </el-button>
+                <el-button
+                  v-if="isAdmin"
+                  type="danger"
+                  plain
+                  :disabled="detail.stocktake.status!=='DRAFT'"
+                  @click="deleteStocktake(detail.stocktake)"
+                >
+                  删除盘点单
+                </el-button>
               </div>
             </div>
 
             <div class="detail-tools">
-              <el-input v-model="lineKeyword" clearable placeholder="搜索 SKU / 名称" style="max-width: 260px;" />
-              <div class="muted" style="margin-left:auto;">
+              <el-input
+                v-model="lineKeyword"
+                clearable
+                placeholder="搜索 SKU / 名称"
+                style="max-width: 260px;"
+              />
+              <div
+                class="muted"
+                style="margin-left:auto;"
+              >
                 共 {{ filteredLines.length }} 条明细
               </div>
             </div>
 
-            <el-table :data="filteredLines" height="520" stripe size="small" border>
-              <el-table-column prop="sku" label="SKU" width="160" />
-              <el-table-column prop="name" label="名称" min-width="180" />
-              <el-table-column prop="system_qty" label="系统数量" width="110" />
-              <el-table-column label="盘点数量" width="130">
+            <el-table
+              :data="filteredLines"
+              height="520"
+              stripe
+              size="small"
+              border
+            >
+              <el-table-column
+                prop="sku"
+                label="SKU"
+                width="160"
+              />
+              <el-table-column
+                prop="name"
+                label="名称"
+                min-width="180"
+              />
+              <el-table-column
+                prop="system_qty"
+                label="系统数量"
+                width="110"
+              />
+              <el-table-column
+                label="盘点数量"
+                width="130"
+              >
                 <template #default="{ row }">
                   <el-input
                     v-model="row.counted_qty"
@@ -154,9 +309,18 @@
                   />
                 </template>
               </el-table-column>
-              <el-table-column prop="diff_qty" label="差异" width="90" />
-              <el-table-column label="更新时间" width="170">
-                <template #default="{ row }">{{ formatBeijingDateTime(row.updated_at) }}</template>
+              <el-table-column
+                prop="diff_qty"
+                label="差异"
+                width="90"
+              />
+              <el-table-column
+                label="更新时间"
+                width="170"
+              >
+                <template #default="{ row }">
+                  {{ formatBeijingDateTime(row.updated_at) }}
+                </template>
               </el-table-column>
             </el-table>
           </div>
@@ -165,33 +329,6 @@
     </el-card>
   </div>
 </template>
-
-<style scoped>
-.stocktake-page{ padding:16px; }
-.stocktake-card{ border-radius:12px; }
-.page-header{ display:flex; justify-content:space-between; align-items:center; }
-.title{ font-weight:800; font-size:16px; }
-.actions{ display:flex; gap:10px; align-items:center; }
-.wh-select{ width:180px; }
-.body{ display:flex; flex-direction:column; gap:16px; }
-.panel{ background: var(--el-bg-color); border:1px solid var(--el-border-color-light); border-radius:12px; overflow:hidden; }
-.left{ width:100%; }
-.right{ width:100%; padding:12px; min-height: 520px; }
-.panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
-.panel-title{ font-weight:700; }
-.panel-tools{ display:flex; gap:8px; align-items:center; }
-.empty{ padding:36px 0; }
-.detail-header{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
-.detail-title .main{ font-weight:800; font-size:14px; }
-.detail-title .sub{ display:flex; gap:10px; align-items:center; margin-top:6px; }
-.muted{ color: var(--el-text-color-secondary); font-size:12px; }
-.sep{ margin:0 6px; color: var(--el-text-color-secondary); }
-.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
-.detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
-.detail-tools{ display:flex; align-items:center; gap:10px; margin:10px 0; }
-.row-selected td{ background: var(--el-color-primary-light-9) !important; }
-</style>
-
 
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from "vue";
@@ -610,3 +747,30 @@ onMounted(async ()=>{
   await loadList();
 });
 </script>
+
+
+<style scoped>
+.stocktake-page{ padding:16px; }
+.stocktake-card{ border-radius:12px; }
+.page-header{ display:flex; justify-content:space-between; align-items:center; }
+.title{ font-weight:800; font-size:16px; }
+.actions{ display:flex; gap:10px; align-items:center; }
+.wh-select{ width:180px; }
+.body{ display:flex; flex-direction:column; gap:16px; }
+.panel{ background: var(--el-bg-color); border:1px solid var(--el-border-color-light); border-radius:12px; overflow:hidden; }
+.left{ width:100%; }
+.right{ width:100%; padding:12px; min-height: 520px; }
+.panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
+.panel-title{ font-weight:700; }
+.panel-tools{ display:flex; gap:8px; align-items:center; }
+.empty{ padding:36px 0; }
+.detail-header{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
+.detail-title .main{ font-weight:800; font-size:14px; }
+.detail-title .sub{ display:flex; gap:10px; align-items:center; margin-top:6px; }
+.muted{ color: var(--el-text-color-secondary); font-size:12px; }
+.sep{ margin:0 6px; color: var(--el-text-color-secondary); }
+.mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
+.detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.detail-tools{ display:flex; align-items:center; gap:10px; margin:10px 0; }
+.row-selected td{ background: var(--el-color-primary-light-9) !important; }
+</style>

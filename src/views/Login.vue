@@ -1,34 +1,82 @@
 <template>
   <div style="height:100vh; display:flex; align-items:center; justify-content:center; background:#f7f8fa">
     <el-card style="width: 420px">
-      <div style="font-size:18px; font-weight:700; margin-bottom:16px">登录</div>
-      <el-form @submit.prevent label-position="top">
+      <div style="font-size:18px; font-weight:700; margin-bottom:16px">
+        登录
+      </div>
+      <el-form
+        label-position="top"
+        @submit.prevent
+      >
         <el-form-item label="账号">
-          <el-input v-model="username" placeholder="请输入账号" />
+          <el-input
+            v-model="username"
+            placeholder="请输入账号"
+          />
         </el-form-item>
         <el-form-item label="密码">
-          <el-input v-model="password" type="password" show-password placeholder="请输入密码" />
+          <el-input
+            v-model="password"
+            type="password"
+            show-password
+            placeholder="请输入密码"
+          />
         </el-form-item>
         
-        <div v-show="siteKey && requireCaptcha" style="margin: 10px 0 16px; display:flex; justify-content:center">
-          <div ref="turnstileEl" style="min-height:65px"></div>
+        <div
+          v-show="siteKey && requireCaptcha"
+          style="margin: 10px 0 16px; display:flex; justify-content:center"
+        >
+          <div
+            ref="turnstileEl"
+            style="min-height:65px"
+          />
         </div>
-        <el-button type="primary" style="width:100%" :loading="loading" @click="doLogin">登录</el-button>
+        <el-button
+          type="primary"
+          style="width:100%"
+          :loading="loading"
+          @click="doLogin"
+        >
+          登录
+        </el-button>
       </el-form>
     </el-card>
 
-    <el-dialog v-model="showChange" title="请修改初始密码" width="420px" :close-on-click-modal="false" :show-close="false">
+    <el-dialog
+      v-model="showChange"
+      title="请修改初始密码"
+      width="420px"
+      :close-on-click-modal="false"
+      :show-close="false"
+    >
       <el-form>
         <el-form-item label="旧密码">
-          <el-input v-model="oldP" type="password" show-password />
+          <el-input
+            v-model="oldP"
+            type="password"
+            show-password
+          />
         </el-form-item>
         <el-form-item label="新密码">
-          <el-input v-model="newP" type="password" show-password />
-          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
+          <el-input
+            v-model="newP"
+            type="password"
+            show-password
+          />
+          <div style="color:#999; font-size:12px; margin-top:6px">
+            密码长度需为 6-64 位，且必须同时包含字母和数字
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button type="primary" :loading="changing" @click="changePassword">确认修改</el-button>
+        <el-button
+          type="primary"
+          :loading="changing"
+          @click="changePassword"
+        >
+          确认修改
+        </el-button>
       </template>
     </el-dialog>
   </div>

@@ -2,7 +2,9 @@
   <el-card>
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap">
       <div>
-        <div style="font-weight:700; font-size:16px">备份 / 恢复</div>
+        <div style="font-weight:700; font-size:16px">
+          备份 / 恢复
+        </div>
         <div style="color:#888; font-size:12px; margin-top:6px; line-height:1.5">
           备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。
           <b>恢复属于高风险操作</b>，请谨慎。
@@ -25,17 +27,30 @@
     <el-divider />
 
     <el-row :gutter="16">
-      <el-col :xs="24" :md="12">
-        <el-card shadow="never" style="border:1px solid #f0f0f0">
+      <el-col
+        :xs="24"
+        :md="12"
+      >
+        <el-card
+          shadow="never"
+          style="border:1px solid #f0f0f0"
+        >
           <template #header>
             <div style="display:flex; justify-content:space-between; align-items:center">
               <span style="font-weight:700">导出备份</span>
-              <el-tag type="success" effect="light">推荐</el-tag>
+              <el-tag
+                type="success"
+                effect="light"
+              >
+                推荐
+              </el-tag>
             </div>
           </template>
 
           <div style="display:flex; flex-direction:column; gap:10px">
-            <el-checkbox v-model="bk.include_tx">包含出入库明细（stock_tx，可能很大）</el-checkbox>
+            <el-checkbox v-model="bk.include_tx">
+              包含出入库明细（stock_tx，可能很大）
+            </el-checkbox>
             <div
               v-if="bk.include_tx"
               style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
@@ -53,8 +68,12 @@
               <span style="color:#999; font-size:12px">（为空则导出全部）</span>
             </div>
 
-            <el-checkbox v-model="bk.include_stocktake">包含盘点（stocktake / stocktake_line）</el-checkbox>
-            <el-checkbox v-model="bk.include_audit">包含审计日志（audit_log，可能很大）</el-checkbox>
+            <el-checkbox v-model="bk.include_stocktake">
+              包含盘点（stocktake / stocktake_line）
+            </el-checkbox>
+            <el-checkbox v-model="bk.include_audit">
+              包含审计日志（audit_log，可能很大）
+            </el-checkbox>
             <div
               v-if="bk.include_audit"
               style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
@@ -72,38 +91,81 @@
               <span style="color:#999; font-size:12px">（为空则导出全部）</span>
             </div>
 
-            <el-checkbox v-model="bk.include_throttle">包含登录限流（auth_login_throttle）</el-checkbox>
+            <el-checkbox v-model="bk.include_throttle">
+              包含登录限流（auth_login_throttle）
+            </el-checkbox>
 
             <el-divider style="margin:8px 0" />
 
             <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
-              <el-switch v-model="bk.gzip" active-text="gzip 压缩（推荐）" />
+              <el-switch
+                v-model="bk.gzip"
+                active-text="gzip 压缩（推荐）"
+              />
               <div style="display:flex; align-items:center; gap:8px">
                 <span style="color:#666; font-size:12px">分页大小</span>
-                <el-input-number v-model="bk.page_size" :min="200" :max="5000" :step="200" />
+                <el-input-number
+                  v-model="bk.page_size"
+                  :min="200"
+                  :max="5000"
+                  :step="200"
+                />
               </div>
               <span style="color:#999; font-size:12px">（大数据建议 1000～2000）</span>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :loading="downloading" @click="downloadBackup">下载完整备份</el-button>
-              <el-button :loading="downloading" @click="downloadTxOnly" plain>只下载明细</el-button>
-              <el-button :loading="downloading" @click="downloadAuditOnly" plain>只下载审计</el-button>
+              <el-button
+                type="primary"
+                :loading="downloading"
+                @click="downloadBackup"
+              >
+                下载完整备份
+              </el-button>
+              <el-button
+                :loading="downloading"
+                plain
+                @click="downloadTxOnly"
+              >
+                只下载明细
+              </el-button>
+              <el-button
+                :loading="downloading"
+                plain
+                @click="downloadAuditOnly"
+              >
+                只下载审计
+              </el-button>
             </div>
 
-            <el-alert type="info" show-icon :closable="false">
+            <el-alert
+              type="info"
+              show-icon
+              :closable="false"
+            >
               建议：明细/审计单独导出，配合时间范围与分页，避免文件过大。
             </el-alert>
           </div>
         </el-card>
       </el-col>
 
-      <el-col :xs="24" :md="12">
-        <el-card shadow="never" style="border:1px solid #f0f0f0">
+      <el-col
+        :xs="24"
+        :md="12"
+      >
+        <el-card
+          shadow="never"
+          style="border:1px solid #f0f0f0"
+        >
           <template #header>
             <div style="display:flex; justify-content:space-between; align-items:center">
               <span style="font-weight:700">从备份恢复</span>
-              <el-tag type="danger" effect="light">高风险</el-tag>
+              <el-tag
+                type="danger"
+                effect="light"
+              >
+                高风险
+              </el-tag>
             </div>
           </template>
 
@@ -127,14 +189,40 @@
               <el-button>选择备份（.json / .json.gz）</el-button>
             </el-upload>
 
-            <el-alert v-if="pickedInfo" type="success" show-icon :closable="false">
+            <el-alert
+              v-if="pickedInfo"
+              type="success"
+              show-icon
+              :closable="false"
+            >
               已选择：{{ pickedInfo }}
             </el-alert>
 
-            <div v-if="pickedInfo" style="margin-top:-4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap">
-              <el-button size="small" text type="primary" @click="clearPicked">重新选择</el-button>
-              <el-button size="small" text type="warning" :loading="validatingRestore" @click="validateRestoreFile">恢复前校验</el-button>
-              <span v-if="restoreValidateAt" style="color:#999; font-size:12px">最近校验：{{ restoreValidateAt }}</span>
+            <div
+              v-if="pickedInfo"
+              style="margin-top:-4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap"
+            >
+              <el-button
+                size="small"
+                text
+                type="primary"
+                @click="clearPicked"
+              >
+                重新选择
+              </el-button>
+              <el-button
+                size="small"
+                text
+                type="warning"
+                :loading="validatingRestore"
+                @click="validateRestoreFile"
+              >
+                恢复前校验
+              </el-button>
+              <span
+                v-if="restoreValidateAt"
+                style="color:#999; font-size:12px"
+              >最近校验：{{ restoreValidateAt }}</span>
             </div>
 
             <el-alert
@@ -148,171 +236,341 @@
                   校验结果：{{ restoreValidate.valid ? '通过' : '未通过' }}
                   <span style="color:#666">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
                 </div>
-                <div v-if="restoreValidatePreview.length" style="margin-top:6px; color:#666; line-height:1.6">
-                  <div v-for="(it,idx) in restoreValidatePreview" :key="idx">
+                <div
+                  v-if="restoreValidatePreview.length"
+                  style="margin-top:6px; color:#666; line-height:1.6"
+                >
+                  <div
+                    v-for="(it,idx) in restoreValidatePreview"
+                    :key="idx"
+                  >
                     • [{{ it.severity==='error' ? '错误' : (it.severity==='warn' ? '警告' : '提示') }}] {{ it.message }}
                   </div>
-                  <div v-if="(restoreValidate.issues?.length || 0) > restoreValidatePreview.length" style="color:#999">
+                  <div
+                    v-if="(restoreValidate.issues?.length || 0) > restoreValidatePreview.length"
+                    style="color:#999"
+                  >
                     仅显示前 {{ restoreValidatePreview.length }} 条，点击“查看校验明细”查看全部
                   </div>
                 </div>
                 <div style="margin-top:8px">
-                  <el-button size="small" plain @click="validateDlg=true">查看校验明细</el-button>
+                  <el-button
+                    size="small"
+                    plain
+                    @click="validateDlg=true"
+                  >
+                    查看校验明细
+                  </el-button>
                 </div>
               </div>
             </el-alert>
 
-            <el-radio-group v-model="mode" :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')">
-              <el-radio label="merge">合并导入（不覆盖）</el-radio>
-              <el-radio label="merge_upsert">合并覆盖（更新重复记录）</el-radio>
-              <el-radio label="replace">清空并恢复（危险）</el-radio>
+            <el-radio-group
+              v-model="mode"
+              :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')"
+            >
+              <el-radio label="merge">
+                合并导入（不覆盖）
+              </el-radio>
+              <el-radio label="merge_upsert">
+                合并覆盖（更新重复记录）
+              </el-radio>
+              <el-radio label="replace">
+                清空并恢复（危险）
+              </el-radio>
             </el-radio-group>
 
-            <el-alert type="warning" show-icon :closable="false">
+            <el-alert
+              type="warning"
+              show-icon
+              :closable="false"
+            >
               合并导入：尽量不覆盖现有数据（INSERT OR IGNORE）。
-              <br />
+              <br>
               合并覆盖：遇到重复主键/唯一键时更新已有记录（UPSERT，不会先删再插，较安全）。
-              <br />
+              <br>
               清空并恢复：会先创建恢复点快照，再清空库写入；如需回滚可用恢复点重建。
             </el-alert>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
-              <el-button type="primary" :disabled="!pickedFile || creatingJob" :loading="creatingJob" @click="createJob">
+              <el-button
+                type="primary"
+                :disabled="!pickedFile || creatingJob"
+                :loading="creatingJob"
+                @click="createJob"
+              >
                 创建恢复任务
               </el-button>
 
-              <el-button type="danger" :disabled="!jobId" :loading="running" @click="startOrResume">
+              <el-button
+                type="danger"
+                :disabled="!jobId"
+                :loading="running"
+                @click="startOrResume"
+              >
                 {{ jobStatus==='PAUSED' ? '继续恢复' : (jobStatus==='RUNNING' ? '恢复中...' : '开始恢复') }}
               </el-button>
 
-              <el-button :disabled="!jobId || jobStatus!=='RUNNING'" :loading="pausing" @click="pauseJob">
+              <el-button
+                :disabled="!jobId || jobStatus!=='RUNNING'"
+                :loading="pausing"
+                @click="pauseJob"
+              >
                 暂停
               </el-button>
 
-              <el-button :disabled="!jobId" @click="refreshStatus" plain>刷新状态</el-button>
+              <el-button
+                :disabled="!jobId"
+                plain
+                @click="refreshStatus"
+              >
+                刷新状态
+              </el-button>
             </div>
 
-            <el-alert v-if="jobId" type="info" show-icon :closable="false">
+            <el-alert
+              v-if="jobId"
+              type="info"
+              show-icon
+              :closable="false"
+            >
               任务：{{ jobId }}　状态：{{ jobStatus }}　阶段：{{ jobStage }}（SNAPSHOT→SCAN→RESTORE）
               <span v-if="jobCurrentTable">　当前表：{{ jobCurrentTable }}</span>
             </el-alert>
 
-            <div v-if="jobId" style="display:flex; flex-direction:column; gap:8px">
-              <el-progress :percentage="progressPercent" :status="progressStatus" />
+            <div
+              v-if="jobId"
+              style="display:flex; flex-direction:column; gap:8px"
+            >
+              <el-progress
+                :percentage="progressPercent"
+                :status="progressStatus"
+              />
               <div style="color:#666; font-size:12px; line-height:1.6">
                 已处理：{{ jobProcessed }} / {{ jobTotal || '计算中...' }} 行
-                <span v-if="jobLastError" style="color:#d33">　错误：{{ jobLastError }}</span>
+                <span
+                  v-if="jobLastError"
+                  style="color:#d33"
+                >　错误：{{ jobLastError }}</span>
               </div>
             </div>
 
-            <el-alert v-if="jobStatus==='DONE'" type="success" show-icon :closable="false">
+            <el-alert
+              v-if="jobStatus==='DONE'"
+              type="success"
+              show-icon
+              :closable="false"
+            >
               恢复完成 ✅
             </el-alert>
 
 
-	            <!-- 恢复完成后仅通过弹窗查看明细，避免页面内容过长且保持风格一致 -->
-	            <div v-if="jobStatus==='DONE' && restoreDetailRows.length" style="margin-top:10px">
-	              <el-button type="primary" plain size="small" @click="detailDlg=true">查看本次恢复明细</el-button>
-	            </div>
+            <!-- 恢复完成后仅通过弹窗查看明细，避免页面内容过长且保持风格一致 -->
+            <div
+              v-if="jobStatus==='DONE' && restoreDetailRows.length"
+              style="margin-top:10px"
+            >
+              <el-button
+                type="primary"
+                plain
+                size="small"
+                @click="detailDlg=true"
+              >
+                查看本次恢复明细
+              </el-button>
+            </div>
 
 
-            <el-alert v-if="jobStatus==='FAILED'" type="error" show-icon :closable="false">
+            <el-alert
+              v-if="jobStatus==='FAILED'"
+              type="error"
+              show-icon
+              :closable="false"
+            >
               恢复失败：{{ jobLastError || '未知错误' }}
             </el-alert>
           </div>
         
-    <el-dialog v-model="validateDlg" title="恢复前校验结果" width="980px" :append-to-body="true">
-      <div style="display:flex; flex-direction:column; gap:10px">
-        <el-alert
-          v-if="restoreValidate"
-          :type="restoreValidate.valid ? 'success' : 'error'"
-          show-icon
-          :closable="false"
-        >
-          错误：{{ restoreValidate.counts?.error || 0 }}，警告：{{ restoreValidate.counts?.warn || 0 }}，提示：{{ restoreValidate.counts?.info || 0 }}
-        </el-alert>
+          <el-dialog
+            v-model="validateDlg"
+            title="恢复前校验结果"
+            width="980px"
+            :append-to-body="true"
+          >
+            <div style="display:flex; flex-direction:column; gap:10px">
+              <el-alert
+                v-if="restoreValidate"
+                :type="restoreValidate.valid ? 'success' : 'error'"
+                show-icon
+                :closable="false"
+              >
+                错误：{{ restoreValidate.counts?.error || 0 }}，警告：{{ restoreValidate.counts?.warn || 0 }}，提示：{{ restoreValidate.counts?.info || 0 }}
+              </el-alert>
 
-        <div v-if="restoreValidateIssues.length" style="display:flex; flex-direction:column; gap:12px">
-          <div v-for="g in restoreValidateIssueGroups" :key="g.key" style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-              <div style="font-weight:600">{{ g.label }}</div>
-              <div style="color:#666; font-size:12px">
-                共 {{ g.rows.length }} 项 ｜ 错误 {{ g.countError }} ｜ 警告 {{ g.countWarn }} ｜ 提示 {{ g.countInfo }}
+              <div
+                v-if="restoreValidateIssues.length"
+                style="display:flex; flex-direction:column; gap:12px"
+              >
+                <div
+                  v-for="g in restoreValidateIssueGroups"
+                  :key="g.key"
+                  style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff"
+                >
+                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                    <div style="font-weight:600">
+                      {{ g.label }}
+                    </div>
+                    <div style="color:#666; font-size:12px">
+                      共 {{ g.rows.length }} 项 ｜ 错误 {{ g.countError }} ｜ 警告 {{ g.countWarn }} ｜ 提示 {{ g.countInfo }}
+                    </div>
+                  </div>
+                  <el-table
+                    :data="g.rows"
+                    size="small"
+                    border
+                    style="width:100%"
+                  >
+                    <el-table-column
+                      label="级别"
+                      width="80"
+                    >
+                      <template #default="{row}">
+                        <el-tag
+                          size="small"
+                          :type="row.severity==='error' ? 'danger' : (row.severity==='warn' ? 'warning' : 'info')"
+                        >
+                          {{ row.severity==='error' ? '错误' : (row.severity==='warn' ? '警告' : '提示') }}
+                        </el-tag>
+                      </template>
+                    </el-table-column>
+                    <el-table-column
+                      label="表"
+                      min-width="190"
+                    >
+                      <template #default="{row}">
+                        <div style="display:flex; flex-direction:column; line-height:1.2">
+                          <span style="font-weight:600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
+                          <span style="color:#999; font-size:12px">{{ row.table || '-' }}</span>
+                        </div>
+                      </template>
+                    </el-table-column>
+                    <el-table-column
+                      prop="column"
+                      label="字段"
+                      width="160"
+                    />
+                    <el-table-column
+                      prop="message"
+                      label="说明"
+                      min-width="360"
+                    />
+                  </el-table>
+                </div>
+              </div>
+
+              <el-alert
+                v-else
+                type="success"
+                :closable="false"
+                show-icon
+              >
+                未发现表/字段差异问题。
+              </el-alert>
+            </div>
+            <template #footer>
+              <el-button @click="validateDlg=false">
+                关闭
+              </el-button>
+            </template>
+          </el-dialog>
+
+          <el-dialog
+            v-model="detailDlg"
+            title="本次恢复明细"
+            width="860px"
+            :append-to-body="true"
+          >
+            <div style="color:#666; font-size:12px; margin-bottom:10px">
+              涉及表：{{ affectedTablesText }}
+            </div>
+            <div style="display:flex; flex-direction:column; gap:12px">
+              <div
+                v-for="g in restoreDetailGroups"
+                :key="g.key"
+                style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff"
+              >
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
+                  <div style="font-weight:600">
+                    {{ g.label }}
+                  </div>
+                  <div style="color:#666; font-size:12px">
+                    表数 {{ g.rows.length }} ｜ 已处理 {{ g.sumProcessed }} ｜ 写入变更 {{ g.sumWritten }}
+                  </div>
+                </div>
+                <el-table
+                  :data="g.rows"
+                  size="small"
+                  border
+                  style="width:100%"
+                >
+                  <el-table-column
+                    label="表"
+                    min-width="220"
+                  >
+                    <template #default="{row}">
+                      <div style="display:flex; flex-direction:column; line-height:1.2">
+                        <span style="font-weight:600">{{ row.table_cn }}</span>
+                        <span style="color:#999; font-size:12px">{{ row.table }}</span>
+                      </div>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    label="备份行数"
+                    width="110"
+                  >
+                    <template #default="{row}">
+                      <span v-if="row.in_backup">{{ row.total }}</span>
+                      <span
+                        v-else
+                        style="color:#999"
+                      >—</span>
+                    </template>
+                  </el-table-column>
+                  <el-table-column
+                    prop="processed"
+                    label="已处理"
+                    width="90"
+                  />
+                  <el-table-column
+                    prop="written"
+                    label="写入变更"
+                    width="100"
+                  />
+                  <el-table-column
+                    prop="skipped"
+                    label="未写入(可能重复)"
+                    width="140"
+                  />
+                </el-table>
               </div>
             </div>
-            <el-table :data="g.rows" size="small" border style="width:100%">
-              <el-table-column label="级别" width="80">
-                <template #default="{row}">
-                  <el-tag size="small" :type="row.severity==='error' ? 'danger' : (row.severity==='warn' ? 'warning' : 'info')">
-                    {{ row.severity==='error' ? '错误' : (row.severity==='warn' ? '警告' : '提示') }}
-                  </el-tag>
-                </template>
-              </el-table-column>
-              <el-table-column label="表" min-width="190">
-                <template #default="{row}">
-                  <div style="display:flex; flex-direction:column; line-height:1.2">
-                    <span style="font-weight:600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
-                    <span style="color:#999; font-size:12px">{{ row.table || '-' }}</span>
-                  </div>
-                </template>
-              </el-table-column>
-              <el-table-column prop="column" label="字段" width="160" />
-              <el-table-column prop="message" label="说明" min-width="360" />
-            </el-table>
-          </div>
-        </div>
 
-        <el-alert v-else type="success" :closable="false" show-icon>未发现表/字段差异问题。</el-alert>
-      </div>
-      <template #footer>
-        <el-button @click="validateDlg=false">关闭</el-button>
-      </template>
-    </el-dialog>
+            <el-alert
+              type="info"
+              show-icon
+              :closable="false"
+              style="margin-top:12px"
+            >
+              说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
+            </el-alert>
 
-    <el-dialog v-model="detailDlg" title="本次恢复明细" width="860px" :append-to-body="true">
-      <div style="color:#666; font-size:12px; margin-bottom:10px">
-        涉及表：{{ affectedTablesText }}
-      </div>
-      <div style="display:flex; flex-direction:column; gap:12px">
-        <div v-for="g in restoreDetailGroups" :key="g.key" style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff">
-          <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-            <div style="font-weight:600">{{ g.label }}</div>
-            <div style="color:#666; font-size:12px">
-              表数 {{ g.rows.length }} ｜ 已处理 {{ g.sumProcessed }} ｜ 写入变更 {{ g.sumWritten }}
-            </div>
-          </div>
-          <el-table :data="g.rows" size="small" border style="width:100%">
-            <el-table-column label="表" min-width="220">
-              <template #default="{row}">
-                <div style="display:flex; flex-direction:column; line-height:1.2">
-                  <span style="font-weight:600">{{ row.table_cn }}</span>
-                  <span style="color:#999; font-size:12px">{{ row.table }}</span>
-                </div>
-              </template>
-            </el-table-column>
-            <el-table-column label="备份行数" width="110">
-              <template #default="{row}">
-                <span v-if="row.in_backup">{{ row.total }}</span>
-                <span v-else style="color:#999">—</span>
-              </template>
-            </el-table-column>
-            <el-table-column prop="processed" label="已处理" width="90" />
-            <el-table-column prop="written" label="写入变更" width="100" />
-            <el-table-column prop="skipped" label="未写入(可能重复)" width="140" />
-          </el-table>
-        </div>
-      </div>
-
-      <el-alert type="info" show-icon :closable="false" style="margin-top:12px">
-        说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
-      </el-alert>
-
-      <template #footer>
-        <el-button @click="detailDlg=false">关闭</el-button>
-      </template>
-    </el-dialog>
-
-</el-card>
+            <template #footer>
+              <el-button @click="detailDlg=false">
+                关闭
+              </el-button>
+            </template>
+          </el-dialog>
+        </el-card>
       </el-col>
     </el-row>
   </el-card>
