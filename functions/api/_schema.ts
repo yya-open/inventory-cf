@@ -1,3 +1,5 @@
+import { SQL_STORED_NOW_DEFAULT } from './_time';
+
 // Core schema bootstrapper for non-PC warehouses.
 // We avoid depending on filesystem SQL migrations at runtime.
 // This is used by admin restore flows to auto-create missing tables/columns.
@@ -10,7 +12,7 @@ export async function ensureCoreSchema(db: D1Database) {
     `CREATE TABLE IF NOT EXISTS warehouses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       name TEXT NOT NULL UNIQUE,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
 
     // Items
@@ -24,7 +26,7 @@ export async function ensureCoreSchema(db: D1Database) {
       unit TEXT NOT NULL DEFAULT '个',
       warning_qty INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_items_category ON items(category)",
 
@@ -34,7 +36,7 @@ export async function ensureCoreSchema(db: D1Database) {
       item_id INTEGER NOT NULL,
       warehouse_id INTEGER NOT NULL,
       qty INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       UNIQUE(item_id, warehouse_id),
       FOREIGN KEY(item_id) REFERENCES items(id),
       FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
@@ -57,7 +59,7 @@ export async function ensureCoreSchema(db: D1Database) {
       source TEXT,
       target TEXT,
       remark TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
       FOREIGN KEY(item_id) REFERENCES items(id),
       FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
@@ -78,7 +80,7 @@ export async function ensureCoreSchema(db: D1Database) {
       is_active INTEGER NOT NULL DEFAULT 1,
       must_change_password INTEGER NOT NULL DEFAULT 1,
       token_version INTEGER NOT NULL DEFAULT 0,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
 
@@ -91,7 +93,7 @@ export async function ensureCoreSchema(db: D1Database) {
       first_fail_at TEXT,
       last_fail_at TEXT,
       locked_until TEXT,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       UNIQUE(ip, username)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until)",
@@ -107,7 +109,7 @@ export async function ensureCoreSchema(db: D1Database) {
       payload_json TEXT,
       ip TEXT,
       ua TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id)",
@@ -119,7 +121,7 @@ export async function ensureCoreSchema(db: D1Database) {
       st_no TEXT NOT NULL UNIQUE,
       warehouse_id INTEGER NOT NULL,
       status TEXT NOT NULL CHECK(status IN ('DRAFT','APPLYING','APPLIED','ROLLING')) DEFAULT 'DRAFT',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
       applied_at TEXT,
       FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
@@ -132,7 +134,7 @@ export async function ensureCoreSchema(db: D1Database) {
       system_qty INTEGER NOT NULL DEFAULT 0,
       counted_qty INTEGER,
       diff_qty INTEGER,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       UNIQUE(stocktake_id, item_id),
       FOREIGN KEY(stocktake_id) REFERENCES stocktake(id),
       FOREIGN KEY(item_id) REFERENCES items(id)
@@ -143,7 +145,7 @@ export async function ensureCoreSchema(db: D1Database) {
     `CREATE TABLE IF NOT EXISTS public_api_throttle (
       k TEXT PRIMARY KEY,
       count INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
 
     // Restore jobs (admin progress restore)
@@ -169,8 +171,8 @@ export async function ensureCoreSchema(db: D1Database) {
       snapshot_created_at TEXT,
       restore_points_json TEXT NOT NULL DEFAULT '[]',
       completed_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_restore_job_status ON restore_job(status)",
   ];

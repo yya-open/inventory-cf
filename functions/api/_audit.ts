@@ -37,6 +37,19 @@ async function maybeCleanupAudit(db: D1Database) {
   }
 }
 
+function normalizeAuditActionPart(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/[^a-zA-Z0-9]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '');
+}
+
+export function normalizeAuditAction(action: string) {
+  const normalized = normalizeAuditActionPart(action).toUpperCase();
+  return normalized || 'UNKNOWN';
+}
+
 function getIp(request: Request) {
   const h = request.headers;
   const cf = h.get('CF-Connecting-IP') || h.get('cf-connecting-ip');
@@ -65,7 +78,7 @@ export async function logAudit(
     ).bind(
       user?.id ?? null,
       user?.username ?? null,
-      action,
+      normalizeAuditAction(action),
       entity ?? null,
       entity_id === undefined || entity_id === null ? null : String(entity_id),
       payload_json,

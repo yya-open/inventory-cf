@@ -69,7 +69,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       )
       .run();
 
-    await logAudit(env.DB, request, user, 'pc_asset_update', 'pc_assets', id, {
+    await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
       before: {
         brand: old.brand,
         serial_no: old.serial_no,
@@ -123,7 +123,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     await env.DB.batch([env.DB.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id), env.DB.prepare('DELETE FROM pc_assets WHERE id=?').bind(id)]);
-    await logAudit(env.DB, request, user, 'pc_asset_delete', 'pc_assets', id, {
+    await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,
       model: asset.model,

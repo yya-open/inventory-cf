@@ -18,7 +18,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const pageSize = 1000;
 
     waitUntil(
-      logAudit(env.DB, request, actor, 'monitor_tx_export', 'monitor_tx', null, {
+      logAudit(env.DB, request, actor, 'MONITOR_TX_EXPORT', 'monitor_tx', null, {
         type: query.type || null,
         keyword: (url.searchParams.get('keyword') || '').trim() || null,
         date_from: date_from || null,

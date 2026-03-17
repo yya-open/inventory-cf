@@ -1,3 +1,5 @@
+import { SQL_STORED_NOW_DEFAULT } from './_time';
+
 /**
  * PC warehouse (仓库2：电脑仓) - self-healing schema helper
  * We keep this idempotent so deployments won't break if migrations weren't run yet.
@@ -50,8 +52,8 @@ export async function ensurePcSchema(db: D1Database) {
       memory_size TEXT,
       remark TEXT,
       status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )
   `).run();
 
@@ -79,8 +81,8 @@ try {
           memory_size TEXT,
           remark TEXT,
           status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
-          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+          created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
         )
       `),
       db.prepare(`
@@ -114,7 +116,7 @@ await db.prepare(`
     remark TEXT,
     scrap_date TEXT NOT NULL,
     reason TEXT,
-    created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+    created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
     created_by TEXT,
     FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
   )
@@ -135,7 +137,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       disk_capacity TEXT,
       memory_size TEXT,
       remark TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
       FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
     )
@@ -166,7 +168,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       memory_size TEXT,
       remark TEXT,
       recycle_date TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
       FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
     )
@@ -195,7 +197,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       model TEXT NOT NULL,
       recycle_date TEXT NOT NULL,
       remark TEXT,
-      created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
       FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
     )

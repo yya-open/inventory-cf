@@ -45,7 +45,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .run();
 
     const id = Number(result.meta.last_row_id || 0);
-    await logAudit(env.DB, request, user, 'monitor_asset_create', 'monitor_assets', id, payload);
+    await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);
     return Response.json({ ok: true, message: '新增成功' });
   } catch (error: any) {
     return errorResponse(error);
@@ -75,7 +75,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       .bind(payload.asset_code, payload.sn, payload.brand, payload.model, payload.size_inch, payload.remark, payload.location_id, id)
       .run();
 
-    await logAudit(env.DB, request, user, 'monitor_asset_update', 'monitor_assets', id, {
+    await logAudit(env.DB, request, user, 'MONITOR_ASSET_UPDATE', 'monitor_assets', id, {
       before: {
         asset_code: old.asset_code,
         sn: old.sn,
@@ -114,7 +114,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     await env.DB.prepare('DELETE FROM monitor_assets WHERE id=?').bind(id).run();
-    await logAudit(env.DB, request, user, 'monitor_asset_delete', 'monitor_assets', id, { asset_code: asset.asset_code });
+    await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, { asset_code: asset.asset_code });
     return Response.json({ ok: true, message: '删除成功' });
   } catch (error: any) {
     return errorResponse(error);

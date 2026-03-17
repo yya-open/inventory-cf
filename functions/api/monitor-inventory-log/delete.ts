@@ -26,7 +26,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const r = await env.DB.prepare(`DELETE FROM monitor_inventory_log WHERE id IN (${placeholders})`).bind(...ids).run();
     const deleted = Number((r as any)?.meta?.changes ?? 0);
 
-    await logAudit(env.DB, request, actor, "monitor_inventory_log_delete", "monitor_inventory_log", null, { ids, deleted });
+    await logAudit(env.DB, request, actor, "MONITOR_INVENTORY_LOG_DELETE", "monitor_inventory_log", null, { ids, deleted });
     return Response.json({ ok: true, data: { deleted } });
   } catch (e: any) {
     return errorResponse(e);

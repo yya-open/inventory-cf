@@ -30,7 +30,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const deleted = Number((r as any)?.meta?.changes ?? (r as any)?.changes ?? 0);
 
     waitUntil(
-      logAudit(env.DB, request, actor, "pc_inventory_log_delete", "pc_inventory_log", null, {
+      logAudit(env.DB, request, actor, "PC_INVENTORY_LOG_DELETE", "pc_inventory_log", null, {
         ids,
         deleted,
       }).catch(() => {})

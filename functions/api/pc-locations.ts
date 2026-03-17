@@ -49,7 +49,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .bind(name, parent_id)
       .run();
 
-    await logAudit(env.DB, request, user, "pc_location_create", "pc_locations", Number(res.meta.last_row_id || 0), { name, parent_id });
+    await logAudit(env.DB, request, user, "PC_LOCATION_CREATE", "pc_locations", Number(res.meta.last_row_id || 0), { name, parent_id });
     return Response.json({ ok: true, message: "新增成功" });
   } catch (e: any) {
     return errorResponse(e);
@@ -82,7 +82,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (dup) throw Object.assign(new Error("该位置已存在"), { status: 400 });
 
     await env.DB.prepare("UPDATE pc_locations SET name=?, parent_id=?, enabled=? WHERE id=?").bind(name, parent_id, enabled, id).run();
-    await logAudit(env.DB, request, user, "pc_location_update", "pc_locations", id, { before: { name: old.name, parent_id: old.parent_id, enabled: old.enabled }, after: { name, parent_id, enabled } });
+    await logAudit(env.DB, request, user, "PC_LOCATION_UPDATE", "pc_locations", id, { before: { name: old.name, parent_id: old.parent_id, enabled: old.enabled }, after: { name, parent_id, enabled } });
     return Response.json({ ok: true, message: "修改成功" });
   } catch (e: any) {
     return errorResponse(e);
@@ -119,7 +119,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (!old) throw Object.assign(new Error("位置不存在"), { status: 404 });
 
     await env.DB.prepare("DELETE FROM pc_locations WHERE id=?").bind(id).run();
-    await logAudit(env.DB, request, user, "pc_location_delete", "pc_locations", id, { name: old.name, parent_id: old.parent_id });
+    await logAudit(env.DB, request, user, "PC_LOCATION_DELETE", "pc_locations", id, { name: old.name, parent_id: old.parent_id });
     return Response.json({ ok: true, message: "删除成功" });
   } catch (e: any) {
     return errorResponse(e);

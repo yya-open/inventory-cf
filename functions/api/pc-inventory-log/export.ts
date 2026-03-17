@@ -19,7 +19,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const pageSize = 1000;
 
     waitUntil(
-      logAudit(env.DB, request, actor, 'pc_inventory_log_export', 'pc_inventory_log', null, {
+      logAudit(env.DB, request, actor, 'PC_INVENTORY_LOG_EXPORT', 'pc_inventory_log', null, {
         action: query.action || null,
         issue_type: query.issue_type || null,
         keyword: (url.searchParams.get('keyword') || '').trim() || null,

@@ -1,3 +1,6 @@
+-- Timestamp defaults in SQL schema files should stay aligned with
+-- functions/api/_time.ts: SQL_STORED_NOW_DEFAULT (stored Beijing text time).
+
 PRAGMA foreign_keys = ON;
 
 CREATE TABLE IF NOT EXISTS warehouses (

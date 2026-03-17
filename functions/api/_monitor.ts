@@ -1,3 +1,5 @@
+import { SQL_STORED_NOW_DEFAULT } from './_time';
+
 /**
  * Monitor warehouse (仓库2：显示器) - optional runtime schema helper
  * Prefer explicit migrations in /sql.
@@ -32,7 +34,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           name TEXT NOT NULL,
           parent_id INTEGER,
           enabled INTEGER NOT NULL DEFAULT 1,
-          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+          created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           UNIQUE(name, parent_id),
           FOREIGN KEY(parent_id) REFERENCES pc_locations(id)
         )
@@ -60,8 +62,8 @@ export async function ensureMonitorSchema(db: D1Database) {
           department TEXT,
           employee_name TEXT,
           is_employed TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-          updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+          created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           FOREIGN KEY(location_id) REFERENCES pc_locations(id)
         )
       `)
@@ -108,7 +110,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           employee_name TEXT,
           is_employed TEXT,
           remark TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+          created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           created_by TEXT,
           ip TEXT,
           ua TEXT,
@@ -133,7 +135,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           remark TEXT,
           ip TEXT,
           ua TEXT,
-          created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+          created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           FOREIGN KEY(asset_id) REFERENCES monitor_assets(id)
         )
       `)
@@ -146,7 +148,7 @@ export async function ensureMonitorSchema(db: D1Database) {
         CREATE TABLE IF NOT EXISTS public_api_throttle (
           k TEXT PRIMARY KEY,
           count INTEGER NOT NULL DEFAULT 0,
-          updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
         )
       `)
       .run();

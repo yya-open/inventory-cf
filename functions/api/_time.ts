@@ -5,6 +5,9 @@
 
 const STORAGE_OFFSET = '+8 hours';
 
+/** Reusable DDL default expression for timestamps stored as Beijing text time. */
+export const SQL_STORED_NOW_DEFAULT = `(datetime('now','${STORAGE_OFFSET}'))`;
+
 /** Current timestamp in the project's persisted timezone (Asia/Shanghai text time). */
 export const sqlNowStored = () => `datetime('now','${STORAGE_OFFSET}')`;
 

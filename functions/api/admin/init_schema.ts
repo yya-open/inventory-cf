@@ -20,16 +20,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await ensureMonitorSchema(env.DB);
 
     waitUntil(
-      logAudit(env.DB, {
-        user_id: actor.id,
-        username: actor.username,
-        action: "admin.init_schema",
-        entity: "schema",
-        entity_id: "all",
-        payload_json: JSON.stringify({ ok: true }),
-        ip: actor.ip,
-        ua: actor.ua,
-      }).catch(() => {})
+      logAudit(env.DB, request, actor, "ADMIN_INIT_SCHEMA", "schema", "all", { ok: true }).catch(() => {})
     );
 
     return json(true, { ok: true });

@@ -17,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     await ensureMonitorSchema(env.DB);
-    await logAudit(env.DB, request, user, "monitor_schema_init", "schema", "monitor", { ok: true });
+    await logAudit(env.DB, request, user, "MONITOR_SCHEMA_INIT", "schema", "monitor", { ok: true });
     return Response.json({ ok: true, message: "初始化完成" });
   } catch (e: any) {
     return errorResponse(e);
