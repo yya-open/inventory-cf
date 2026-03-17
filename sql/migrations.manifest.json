@@ -1,0 +1,19 @@
+[
+  {"id":"202603170001_schema_migrations","file":"sql/migrate_schema_migrations.sql","description":"create schema_migrations registry table"},
+  {"id":"202603170010_auth_token_version","file":"sql/migrate_auth_token_version.sql","description":"add token_version for immediate auth invalidation"},
+  {"id":"202603170020_audit_throttle","file":"sql/migrate_audit_throttle.sql","description":"add delta_qty and login throttle structures"},
+  {"id":"202603170030_trace_audit","file":"sql/migrate_trace_audit.sql","description":"add trace columns and audit log table"},
+  {"id":"202603170040_restore_job","file":"sql/migrate_restore_job.sql","description":"restore job task tables"},
+  {"id":"202603170050_public_qr_and_pc_inventory","file":"sql/migrate_public_qr_throttle_and_pc_inventory.sql","description":"public QR throttle and pc inventory log tables"},
+  {"id":"202603170060_stocktake","file":"sql/migrate_stocktake.sql","description":"stocktake tables"},
+  {"id":"202603170070_stocktake_status_extend","file":"sql/migrate_stocktake_status_extend.sql","description":"extend stocktake status values"},
+  {"id":"202603170080_pc_qr_key","file":"sql/migrate_pc_qr_key.sql","description":"pc asset qr keys"},
+  {"id":"202603170090_pc_scrap_safe","file":"sql/migrate_pc_scrap_safe.sql","description":"safe pc scrap migration"},
+  {"id":"202603170100_pc_warehouse","file":"sql/migrate_pc_warehouse.sql","description":"pc warehouse tables"},
+  {"id":"202603170110_monitor_warehouse","file":"sql/migrate_monitor_warehouse.sql","description":"monitor warehouse tables"},
+  {"id":"202603170120_perf_indexes","file":"sql/migrate_perf_indexes.sql","description":"baseline performance indexes"},
+  {"id":"202603170130_audit_retention","file":"sql/migrate_audit_retention.sql","description":"audit retention state"},
+  {"id":"202603170140_slow_requests","file":"sql/migrate_slow_requests.sql","description":"slow request logging"},
+  {"id":"202603170150_audit_action_normalize","file":"sql/migrate_audit_action_normalize.sql","description":"normalize historical audit action names"},
+  {"id":"202603170160_query_perf_v2","file":"sql/migrate_query_perf_v2.sql","description":"covering indexes for tx, stocktake, assets, and throttle queries"}
+]

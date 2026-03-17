@@ -113,3 +113,47 @@ wrangler d1 execute <你的D1库名> --file=sql/migrate_auth_token_version.sql
 - 登录 token 内包含 tv（token_version）
 - 改密码 / 退出登录会 token_version+1，旧 token 立即 401
 
+
+
+## 测试与发布前检查
+```bash
+npm run test          # 单元 + 工作流级 E2E 风格测试
+npm run test:e2e      # 只跑关键业务流程测试
+npm run typecheck
+npm run lint
+npm run perf:explain  # 本地用 sqlite explain 检查关键查询是否命中索引
+```
+
+当前已覆盖的关键流程测试：
+- 登录 → 改密码 → 旧 token 失效 → 新 token 生效
+- 公开扫码查看 → 公开盘点提交 → 限流
+- 盘点创建 → 应用 → 回滚
+
+## 正式迁移流程（推荐）
+项目已引入正式迁移清单与 registry 表：`schema_migrations`。
+
+先验证迁移清单：
+```bash
+npm run migrate:verify
+npm run migrate:plan
+```
+
+查看某个 D1 的迁移状态：
+```bash
+npm run migrate:status -- --db inventory_db --remote
+```
+
+应用所有未执行迁移：
+```bash
+npm run migrate:apply -- --db inventory_db --remote
+```
+
+生成一个可审阅的 bundle SQL：
+```bash
+npm run migrate:bundle
+```
+
+说明：
+- 迁移清单位于 `sql/migrations.manifest.json`
+- 每次迁移执行后，都会写入 `schema_migrations`
+- 线上发布建议固定为：**先 migrate，再 deploy**

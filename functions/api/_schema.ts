@@ -8,6 +8,15 @@ export async function ensureCoreSchema(db: D1Database) {
   const stmts: string[] = [
     "PRAGMA foreign_keys = ON",
 
+    // Migration registry
+    `CREATE TABLE IF NOT EXISTS schema_migrations (
+      id TEXT PRIMARY KEY,
+      name TEXT NOT NULL,
+      checksum TEXT NOT NULL,
+      applied_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at)",
+
     // Warehouses
     `CREATE TABLE IF NOT EXISTS warehouses (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -68,6 +77,9 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_stock_tx_item ON stock_tx(item_id)",
     "CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_created_at ON stock_tx(warehouse_id, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_stock_tx_item_created_at ON stock_tx(item_id, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stock_tx_type_created_at ON stock_tx(type, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_type_created_at ON stock_tx(warehouse_id, type, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stock_tx_ref_type_ref_id_item_wh ON stock_tx(ref_type, ref_id, item_id, warehouse_id)",
     // idempotency index (safe even if ref_no is null)
     "CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_tx_ref_no_rid ON stock_tx(ref_no) WHERE ref_no LIKE 'rid:%'",
 
@@ -97,6 +109,7 @@ export async function ensureCoreSchema(db: D1Database) {
       UNIQUE(ip, username)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until)",
+    "CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_ip_username_locked ON auth_login_throttle(ip, username, locked_until)",
 
     // Audit
     `CREATE TABLE IF NOT EXISTS audit_log (
@@ -114,6 +127,7 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created_at ON audit_log(action, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(username, created_at)",
 
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (
@@ -127,6 +141,8 @@ export async function ensureCoreSchema(db: D1Database) {
       FOREIGN KEY(warehouse_id) REFERENCES warehouses(id)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_stocktake_created_at ON stocktake(created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stocktake_wh_status_created_at ON stocktake(warehouse_id, status, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_stocktake_status_created_at ON stocktake(status, created_at)",
     `CREATE TABLE IF NOT EXISTS stocktake_line (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
       stocktake_id INTEGER NOT NULL,
@@ -140,6 +156,7 @@ export async function ensureCoreSchema(db: D1Database) {
       FOREIGN KEY(item_id) REFERENCES items(id)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_stocktake_line_st ON stocktake_line(stocktake_id)",
+    "CREATE INDEX IF NOT EXISTS idx_stocktake_line_stocktake_counted ON stocktake_line(stocktake_id, counted_qty)",
 
     // Public API throttle (used by public QR pages)
     `CREATE TABLE IF NOT EXISTS public_api_throttle (
@@ -147,6 +164,7 @@ export async function ensureCoreSchema(db: D1Database) {
       count INTEGER NOT NULL DEFAULT 0,
       updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
+    "CREATE INDEX IF NOT EXISTS idx_public_api_throttle_updated_at ON public_api_throttle(updated_at)",
 
     // Restore jobs (admin progress restore)
     `CREATE TABLE IF NOT EXISTS restore_job (

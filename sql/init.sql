@@ -3,6 +3,14 @@
 
 PRAGMA foreign_keys = ON;
 
+CREATE TABLE IF NOT EXISTS schema_migrations (
+  id TEXT PRIMARY KEY,
+  name TEXT NOT NULL,
+  checksum TEXT NOT NULL,
+  applied_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations(applied_at);
+
 CREATE TABLE IF NOT EXISTS warehouses (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   name TEXT NOT NULL UNIQUE,
@@ -64,6 +72,9 @@ CREATE UNIQUE INDEX IF NOT EXISTS idx_stock_tx_ref_no_rid
 
 CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_created_at ON stock_tx(warehouse_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_item_created_at ON stock_tx(item_id, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_type_created_at ON stock_tx(type, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_type_created_at ON stock_tx(warehouse_id, type, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_ref_type_ref_id_item_wh ON stock_tx(ref_type, ref_id, item_id, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_stock_wh_item ON stock(warehouse_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
 
@@ -76,6 +87,7 @@ CREATE TABLE IF NOT EXISTS users (
   role TEXT NOT NULL CHECK(role IN ('admin','operator','viewer')) DEFAULT 'admin',
   is_active INTEGER NOT NULL DEFAULT 1,
   must_change_password INTEGER NOT NULL DEFAULT 1,
+  token_version INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
@@ -95,6 +107,7 @@ CREATE TABLE IF NOT EXISTS auth_login_throttle (
 );
 
 CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until);
+CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_ip_username_locked ON auth_login_throttle(ip, username, locked_until);
 
 
 
@@ -126,6 +139,7 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_action_created_at ON audit_log(action, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(username, created_at);
 
 -- =========================
 -- 仓库2：电脑仓（资产化管理）
@@ -162,6 +176,7 @@ CREATE TABLE IF NOT EXISTS pc_assets (
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -182,6 +197,7 @@ CREATE TABLE IF NOT EXISTS pc_in (
 
 CREATE INDEX IF NOT EXISTS idx_pc_in_created_at ON pc_in(created_at);
 CREATE INDEX IF NOT EXISTS idx_pc_in_serial ON pc_in(serial_no);
+CREATE INDEX IF NOT EXISTS idx_pc_in_asset_id_id ON pc_in(asset_id, id DESC);
 
 CREATE TABLE IF NOT EXISTS pc_out (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -209,6 +225,7 @@ CREATE TABLE IF NOT EXISTS pc_out (
 CREATE INDEX IF NOT EXISTS idx_pc_out_created_at ON pc_out(created_at);
 CREATE INDEX IF NOT EXISTS idx_pc_out_serial ON pc_out(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_out_employee ON pc_out(employee_no);
+CREATE INDEX IF NOT EXISTS idx_pc_out_asset_id_id ON pc_out(asset_id, id DESC);
 
 
 -- 报废单明细（电脑仓）
@@ -232,6 +249,7 @@ CREATE TABLE IF NOT EXISTS pc_scrap (
 );
 CREATE INDEX IF NOT EXISTS idx_pc_scrap_no ON pc_scrap(scrap_no);
 CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asset_id);
+CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset_created_at ON pc_scrap(asset_id, created_at);
 
 -- =========================
 -- 仓库2：显示器（资产化管理）
@@ -258,6 +276,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_asset_code ON monitor_assets(asset_code);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_assets(status, location_id, id);
 
 CREATE TABLE IF NOT EXISTS monitor_tx (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -287,3 +306,5 @@ CREATE TABLE IF NOT EXISTS monitor_tx (
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_created_at ON monitor_tx(created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_id ON monitor_tx(asset_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_type ON monitor_tx(tx_type);
+CREATE INDEX IF NOT EXISTS idx_monitor_tx_type_created_at ON monitor_tx(tx_type, created_at);
+CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_type_created_at ON monitor_tx(asset_id, tx_type, created_at);

@@ -9,7 +9,14 @@
     "preview": "vite preview",
     "lint": "eslint src tests eslint.config.js vite.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
-    "test": "vitest run --pool=threads --maxWorkers=1"
+    "test": "vitest run --pool=threads --maxWorkers=1",
+    "test:e2e": "vitest run tests/e2e.auth.test.ts tests/e2e.public.test.ts tests/e2e.stocktake.test.ts --pool=threads --maxWorkers=1",
+    "migrate:verify": "node scripts/migrations.mjs verify",
+    "migrate:plan": "node scripts/migrations.mjs plan",
+    "migrate:status": "node scripts/migrations.mjs status",
+    "migrate:apply": "node scripts/migrations.mjs apply",
+    "migrate:bundle": "node scripts/migrations.mjs bundle",
+    "perf:explain": "python3 scripts/explain_queries.py"
   },
   "dependencies": {
     "element-plus": "^2.7.8",
