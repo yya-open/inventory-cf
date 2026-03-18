@@ -298,7 +298,7 @@ function handleBatchCommand(command: string | number | object) {
   flex-wrap: wrap;
 }
 .toolbar-secondary-actions {
-  margin-left: auto;
+  justify-content: flex-start;
 }
 .toolbar-archive-checkbox {
   margin-right: 4px;
@@ -350,7 +350,7 @@ function handleBatchCommand(command: string | number | object) {
     grid-template-columns: 1fr;
   }
   .toolbar-secondary-actions {
-    margin-left: 0;
+    justify-content: flex-start;
   }
 }
 @media (max-width: 768px) {
@@ -374,7 +374,7 @@ function handleBatchCommand(command: string | number | object) {
     width: 100%;
   }
   .toolbar-secondary-actions {
-    margin-left: 0;
+    justify-content: flex-start;
   }
   .column-check-group {
     grid-template-columns: 1fr;
