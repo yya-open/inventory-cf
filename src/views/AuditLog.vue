@@ -242,8 +242,8 @@
 
     <el-dialog
       v-model="showPayload"
-      title="详情"
-      width="760px"
+      title="审计详情"
+      width="860px"
     >
       <div class="payload-toolbar">
         <el-switch
@@ -259,12 +259,63 @@
         </el-button>
       </div>
 
-      <el-scrollbar
-        height="420px"
-        class="payload-box"
-      >
-        <pre class="payload-pre">{{ displayPayload }}</pre>
-      </el-scrollbar>
+      <el-tabs v-model="activePayloadTab">
+        <el-tab-pane label="概要" name="summary">
+          <el-descriptions :column="2" border size="small" class="payload-summary-meta">
+            <el-descriptions-item label="动作">
+              {{ currentPayloadRow ? actionLabel(currentPayloadRow.action) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="实体">
+              {{ currentPayloadRow ? entityLabel(currentPayloadRow.entity) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="用户">
+              {{ currentPayloadRow?.username || '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="时间">
+              {{ currentPayloadRow ? formatTime(currentPayloadRow.created_at) : '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="实体ID">
+              {{ currentPayloadRow?.entity_id ?? '-' }}
+            </el-descriptions-item>
+            <el-descriptions-item label="对象名称">
+              {{ currentPayloadRow?.item_name || currentPayloadRow?.user_name || '-' }}
+            </el-descriptions-item>
+          </el-descriptions>
+          <div v-if="payloadSummaryEntries.length" class="payload-kv-grid">
+            <div v-for="item in payloadSummaryEntries" :key="item.key" class="payload-kv-item">
+              <div class="payload-kv-label">{{ item.label }}</div>
+              <div class="payload-kv-value">{{ item.value }}</div>
+            </div>
+          </div>
+          <el-empty v-else description="暂无结构化摘要" />
+        </el-tab-pane>
+        <el-tab-pane label="字段变更" name="diff">
+          <div v-if="payloadDiffEntries.length" class="payload-diff-list">
+            <div v-for="item in payloadDiffEntries" :key="item.key" class="payload-diff-item">
+              <div class="payload-diff-key">{{ item.label }}</div>
+              <div class="payload-diff-values">
+                <div class="payload-diff-cell before">
+                  <span class="payload-diff-caption">修改前</span>
+                  <div class="payload-diff-text">{{ item.before }}</div>
+                </div>
+                <div class="payload-diff-cell after">
+                  <span class="payload-diff-caption">修改后</span>
+                  <div class="payload-diff-text">{{ item.after }}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          <el-empty v-else description="当前审计记录没有字段差异" />
+        </el-tab-pane>
+        <el-tab-pane label="JSON" name="json">
+          <el-scrollbar
+            height="420px"
+            class="payload-box"
+          >
+            <pre class="payload-pre">{{ displayPayload }}</pre>
+          </el-scrollbar>
+        </el-tab-pane>
+      </el-tabs>
 
       <template #footer>
         <el-button @click="showPayload=false">
@@ -438,6 +489,38 @@ const ENTITY_LABEL: Record<string, string> = {
   monitor_inventory_log: "显示器盘点记录",
 };
 
+const FIELD_LABEL: Record<string, string> = {
+  id: 'ID',
+  brand: '品牌',
+  model: '型号',
+  serial_no: '序列号',
+  asset_code: '资产编号',
+  sn: 'SN',
+  status: '状态',
+  remark: '备注',
+  employee_no: '员工工号',
+  employee_name: '领用人',
+  department: '部门',
+  location_id: '位置ID',
+  location_name: '位置',
+  location_text: '位置',
+  size_inch: '尺寸',
+  disk_capacity: '硬盘容量',
+  memory_size: '内存大小',
+  manufacture_date: '出厂时间',
+  warranty_end: '保修到期',
+  retention_days: '保留天数',
+  confirm: '确认词',
+  reason: '原因',
+  created_by: '创建人',
+  updated_at: '更新时间',
+};
+const HIDDEN_PAYLOAD_KEYS = new Set(['password', 'new_password', 'old_password', 'confirm']);
+
+function fieldLabel(key: string) {
+  return FIELD_LABEL[key] || prettifyCodeLabel(key) || '-';
+}
+
 function prettifyCodeLabel(value: string) {
   return String(value || "")
     .replace(/[._-]+/g, " ")
@@ -489,6 +572,8 @@ const showPayload = ref(false);
 const rawPayload = ref("");
 const prettyPayload = ref("");
 const prettyMode = ref(true);
+const activePayloadTab = ref('summary');
+const currentPayloadRow = ref<any | null>(null);
 
 const actionFilterOptions = computed(() => {
   const keys = Object.keys(ACTION_LABEL);
@@ -509,6 +594,54 @@ const displayPayload = computed(() => {
   return prettyPayload.value || rawPayload.value || "";
 });
 const payloadToCopy = computed(() => displayPayload.value || "");
+const parsedPayload = computed(() => {
+  const pretty = tryPrettyJson(rawPayload.value);
+  if (!pretty) return null;
+  try {
+    return JSON.parse(pretty);
+  } catch {
+    return null;
+  }
+});
+
+function formatAuditValue(value: unknown): string {
+  if (value === null || value === undefined || value === '') return '-';
+  if (typeof value === 'boolean') return value ? '是' : '否';
+  if (Array.isArray(value)) return value.length ? value.map((item) => formatAuditValue(item)).join('、') : '-';
+  if (typeof value === 'object') {
+    try {
+      return JSON.stringify(value, null, 2);
+    } catch {
+      return '[对象]';
+    }
+  }
+  return String(value);
+}
+
+const payloadSummaryEntries = computed(() => {
+  const payload = parsedPayload.value;
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') return [] as Array<{ key: string; label: string; value: string }>;
+  if ('before' in payload || 'after' in payload) return [] as Array<{ key: string; label: string; value: string }>;
+  return Object.entries(payload)
+    .filter(([key]) => !HIDDEN_PAYLOAD_KEYS.has(key))
+    .slice(0, 16)
+    .map(([key, value]) => ({ key, label: fieldLabel(key), value: formatAuditValue(value) }));
+});
+
+const payloadDiffEntries = computed(() => {
+  const payload = parsedPayload.value as any;
+  const before = payload?.before;
+  const after = payload?.after;
+  if (!before || !after || typeof before !== 'object' || typeof after !== 'object') return [] as Array<{ key: string; label: string; before: string; after: string }>;
+  const keys = Array.from(new Set([...Object.keys(before), ...Object.keys(after)])).filter((key) => !HIDDEN_PAYLOAD_KEYS.has(key));
+  return keys
+    .map((key) => {
+      const beforeValue = formatAuditValue(before[key]);
+      const afterValue = formatAuditValue(after[key]);
+      return { key, label: fieldLabel(key), before: beforeValue, after: afterValue };
+    })
+    .filter((item) => item.before !== item.after);
+});
 
 // retention policy
 const showRetention = ref(false);
@@ -602,6 +735,11 @@ function persistState() {
 let suppressAutoSearch = false;
 let inputTimer: ReturnType<typeof setTimeout> | null = null;
 let loadSeq = 0;
+let loadController: AbortController | null = null;
+
+function isAbortError(error: unknown) {
+  return error instanceof DOMException && error.name === 'AbortError';
+}
 
 function clearInputTimer() {
   if (inputTimer) {
@@ -669,9 +807,11 @@ function tryPrettyJson(text: string){
 }
 
 function openPayload(row:any){
+  currentPayloadRow.value = row || null;
   rawPayload.value = String(row?.payload_json || "");
   prettyPayload.value = tryPrettyJson(rawPayload.value);
   prettyMode.value = true;
+  activePayloadTab.value = payloadDiffEntries.value.length ? 'diff' : 'summary';
   showPayload.value = true;
 }
 
@@ -704,6 +844,8 @@ async function copyPayload(){
 
 async function load(){
   const currentSeq = ++loadSeq;
+  loadController?.abort();
+  loadController = new AbortController();
   loading.value = true;
   try{
     const params = new URLSearchParams();
@@ -723,12 +865,12 @@ async function load(){
     if (sortBy.value) params.set("sort_by", sortBy.value);
     if (sortDir.value) params.set("sort_dir", sortDir.value);
 
-    const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
+    const j:any = await apiGet(`/api/audit/list?${params.toString()}`, { signal: loadController.signal });
     if (currentSeq !== loadSeq) return;
     rows.value = (j.data || []).map((r:any)=>({ ...r }));
     total.value = Number(j.total || 0);
   }catch(e:any){
-    if (currentSeq !== loadSeq) return;
+    if (currentSeq !== loadSeq || isAbortError(e)) return;
     ElMessage.error(e.message || "加载失败");
   }finally{
     if (currentSeq === loadSeq) loading.value = false;
@@ -796,8 +938,6 @@ onMounted(() => {
 .entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
 .entity-name{font-weight:600}
 .entity-meta{font-size:12px;color:#909399}
-.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}
-.payload-box{border:1px solid var(--el-border-color);border-radius:10px}
-.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}
+.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fafcff}.payload-kv-label{font-size:12px;color:#909399;margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fff}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:10px}.payload-diff-cell.before{background:#fff7ed}.payload-diff-cell.after{background:#ecfdf5}.payload-diff-caption{display:inline-block;font-size:12px;color:#606266;margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:10px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
 
 </style>

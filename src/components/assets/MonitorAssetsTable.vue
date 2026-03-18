@@ -33,6 +33,7 @@
           label="资产编号"
           :width="getColumnWidth('assetCode')"
           :min-width="160"
+          fixed="left"
         />
         <el-table-column
           v-else-if="key === 'sn'"
@@ -190,6 +191,9 @@
           </div>
         </template>
       </el-table-column>
+          <template #empty>
+        <el-empty description="暂无匹配数据" />
+      </template>
     </el-table>
     <div class="pager-wrap">
       <el-pagination

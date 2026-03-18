@@ -14,12 +14,12 @@ function toQueryString(params: Record<string, QueryValue>) {
   return qs.toString();
 }
 
-async function fetchPaged<T>(path: string, params: Record<string, QueryValue>, totalPath?: string) {
-  const listRes: any = await apiGet(`${path}?${toQueryString(params)}`);
+async function fetchPaged<T>(path: string, params: Record<string, QueryValue>, totalPath?: string, signal?: AbortSignal) {
+  const listRes: any = await apiGet(`${path}?${toQueryString(params)}`, { signal });
   if (!totalPath) {
     return { rows: listRes?.data || [], total: typeof listRes?.total === 'number' ? Number(listRes.total) : null } satisfies PagedResponse<T>;
   }
-  const totalRes: any = await apiGet(`${totalPath}?${toQueryString(params)}`);
+  const totalRes: any = await apiGet(`${totalPath}?${toQueryString(params)}`, { signal });
   const total = typeof totalRes?.total === 'number' ? Number(totalRes.total) : Number(totalRes?.data?.total || 0);
   return { rows: listRes?.data || [], total } satisfies PagedResponse<T>;
 }
@@ -38,22 +38,22 @@ export async function fetchAllPages<T>(loader: (page: number, pageSize: number) 
   return rows;
 }
 
-export function listPcAssets(filters: PcFilters, page: number, pageSize: number, fast = true) {
+export function listPcAssets(filters: PcFilters, page: number, pageSize: number, fast = true, signal?: AbortSignal) {
   return fetchPaged<PcAsset>('/api/pc-assets', {
     status: filters.status,
     keyword: filters.keyword,
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
-  });
+  }, undefined, signal);
 }
 
-export async function countPcAssets(filters: PcFilters) {
-  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword })}`);
+export async function countPcAssets(filters: PcFilters, signal?: AbortSignal) {
+  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword })}`, { signal });
   return Number(result?.total || 0);
 }
 
-export function listMonitorAssets(filters: MonitorFilters, page: number, pageSize: number, fast = true) {
+export function listMonitorAssets(filters: MonitorFilters, page: number, pageSize: number, fast = true, signal?: AbortSignal) {
   return fetchPaged<MonitorAsset>('/api/monitor-assets', {
     status: filters.status,
     location_id: filters.locationId,
@@ -61,20 +61,20 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
-  });
+  }, undefined, signal);
 }
 
-export async function countMonitorAssets(filters: MonitorFilters) {
-  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword })}`);
+export async function countMonitorAssets(filters: MonitorFilters, signal?: AbortSignal) {
+  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword })}`, { signal });
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 
-export async function listEnabledLocations() {
-  const result: any = await apiGet('/api/pc-locations?enabled=1');
+export async function listEnabledLocations(signal?: AbortSignal) {
+  const result: any = await apiGet('/api/pc-locations?enabled=1', { signal });
   return (result?.data || []) as LocationRow[];
 }
 
-export async function listAllLocations() {
-  const result: any = await apiGet('/api/pc-locations');
+export async function listAllLocations(signal?: AbortSignal) {
+  const result: any = await apiGet('/api/pc-locations', { signal });
   return (result?.data || []) as LocationRow[];
 }

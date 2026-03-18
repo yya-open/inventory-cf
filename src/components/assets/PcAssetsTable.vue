@@ -34,6 +34,7 @@
           label="电脑"
           :width="getColumnWidth('computer')"
           :min-width="260"
+          fixed="left"
         >
           <template #default="{ row }">
             <div
@@ -180,6 +181,9 @@
           </el-button>
         </template>
       </el-table-column>
+          <template #empty>
+        <el-empty description="暂无匹配数据" />
+      </template>
     </el-table>
     <div class="pager-wrap">
       <el-pagination

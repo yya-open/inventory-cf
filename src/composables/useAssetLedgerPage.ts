@@ -3,14 +3,14 @@ import type { PagedResponse } from '../api/assetLedgers';
 
 type AssetPageOptions<TFilters, TItem> = {
   createFilterKey: (filters: TFilters) => string;
-  fetchPage: (filters: TFilters, page: number, pageSize: number, fast: boolean) => Promise<PagedResponse<TItem>>;
-  fetchTotal: (filters: TFilters) => Promise<number>;
+  fetchPage: (filters: TFilters, page: number, pageSize: number, fast: boolean, signal?: AbortSignal) => Promise<PagedResponse<TItem>>;
+  fetchTotal: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
 };
 
 export function useAssetLedgerPage<TFilters, TItem>(options: AssetPageOptions<TFilters, TItem>) {
   const list = usePagedAssetList<TFilters, TItem>({
     createFilterKey: options.createFilterKey,
-    fetchPage: ({ filters, page, pageSize, fast }) => options.fetchPage(filters, page, pageSize, fast),
+    fetchPage: ({ filters, page, pageSize, fast, signal }) => options.fetchPage(filters, page, pageSize, fast, signal),
     fetchTotal: options.fetchTotal,
   });
 

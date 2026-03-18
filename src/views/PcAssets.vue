@@ -12,6 +12,7 @@
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
+      :batch-busy="batchBusy"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="onSearch"
@@ -19,6 +20,9 @@
       @export="exportExcel"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
+      @export-selected-qr="exportSelectedQrLinks"
+      @batch-delete="batchDeleteSelected"
+      @restore-columns="restoreDefaultColumns"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
       @import-file="onImportAssetsFile"
@@ -121,8 +125,8 @@ const currentFilters = (): PcFilters => ({
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<PcFilters, PcAsset>({
   createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}`,
-  fetchPage: (filters, currentPage, currentPageSize, fast) => listPcAssets(filters, currentPage, currentPageSize, fast),
-  fetchTotal: (filters) => countPcAssets(filters),
+  fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
+  fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
@@ -131,6 +135,7 @@ const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
+const batchBusy = ref(false);
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
 
@@ -193,6 +198,12 @@ const qrRow = ref<PcAsset | null>(null);
 
 function updateVisibleColumns(value: string[]) {
   visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, PC_COLUMN_KEYS), columnOrder.value);
+}
+
+function restoreDefaultColumns() {
+  columnOrder.value = [...PC_COLUMN_KEYS];
+  visibleColumns.value = [...PC_COLUMN_KEYS];
+  columnWidths.value = {};
 }
 
 function moveVisibleColumn(key: string, direction: 'up' | 'down') {
@@ -424,6 +435,78 @@ async function removeAsset(row: PcAsset) {
   }
 }
 
+async function exportSelectedQrLinks() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    batchBusy.value = true;
+    const linkRows = [];
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      linkRows.push({
+        id: row.id,
+        brand: row.brand,
+        model: row.model,
+        serial_no: row.serial_no,
+        status: assetStatusText(row.status),
+        url: result?.url || '',
+      });
+    }
+    exportToXlsx({
+      filename: `电脑二维码链接_${selectedCount.value}条.xlsx`,
+      sheetName: '二维码链接',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'serial_no', title: '序列号' },
+        { key: 'status', title: '状态' },
+        { key: 'url', title: '二维码链接' },
+      ],
+      rows: linkRows,
+    });
+    ElMessage.success('二维码链接已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码链接失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function batchDeleteSelected() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedCount.value} 台电脑？仅未产生领用/回收记录且非已领用状态的电脑可删除。`, '批量删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    let success = 0;
+    let failed = 0;
+    const failedMsgs: string[] = [];
+    for (const row of selectedRows.value.slice()) {
+      try {
+        await apiDelete('/api/pc-assets', { id: row.id });
+        success += 1;
+      } catch (error: any) {
+        failed += 1;
+        failedMsgs.push(`${row.brand || ''} ${row.model || ''}`.trim() || `ID ${row.id}`);
+      }
+    }
+    if (success) {
+      clearSelection();
+    }
+    if (success && !failed) ElMessage.success(`已删除 ${success} 台电脑`);
+    else if (success || failed) ElMessage.warning(`已删除 ${success} 台，失败 ${failed} 台${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '批量删除失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
 async function exportSelectedRows() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的电脑');
   try {
@@ -463,7 +546,8 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    const all = await fetchAll(currentFilters());
+    if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
+    const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
     exportToXlsx({
       filename: '电脑台账_仓库2.xlsx',
       sheetName: '台账',

@@ -14,12 +14,16 @@
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
+      :batch-busy="batchBusy"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="reloadList"
       @export="exportExcel"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
+      @export-selected-qr="exportSelectedQrLinks"
+      @batch-delete="batchDeleteSelected"
+      @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
@@ -230,6 +234,7 @@ const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
+const batchBusy = ref(false);
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
 const assetSaving = ref(false);
@@ -275,6 +280,12 @@ function updateVisibleColumns(value: string[]) {
   visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, MONITOR_COLUMN_KEYS), columnOrder.value);
 }
 
+function restoreDefaultColumns() {
+  columnOrder.value = [...MONITOR_COLUMN_KEYS];
+  visibleColumns.value = [...MONITOR_COLUMN_KEYS];
+  columnWidths.value = {};
+}
+
 function moveVisibleColumn(key: string, direction: 'up' | 'down') {
   columnOrder.value = moveColumnKey(columnOrder.value, key, direction);
   visibleColumns.value = orderVisibleColumns(visibleColumns.value, columnOrder.value);
@@ -301,6 +312,78 @@ function handleRowMore(command: string, row: MonitorAsset) {
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
   if (command === 'delete') return removeAsset(row);
+}
+
+async function exportSelectedQrLinks() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  try {
+    batchBusy.value = true;
+    const linkRows = [];
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      linkRows.push({
+        id: row.id,
+        asset_code: row.asset_code,
+        sn: row.sn,
+        brand: row.brand,
+        model: row.model,
+        status: assetStatusText(row.status),
+        url: result?.url || '',
+      });
+    }
+    exportToXlsx({
+      filename: `显示器二维码链接_${selectedCount.value}条.xlsx`,
+      sheetName: '二维码链接',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'asset_code', title: '资产编号' },
+        { key: 'sn', title: 'SN' },
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'status', title: '状态' },
+        { key: 'url', title: '二维码链接' },
+      ],
+      rows: linkRows,
+    });
+    ElMessage.success('二维码链接已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码链接失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function batchDeleteSelected() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  try {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedCount.value} 台显示器？仅未产生事务记录的资产可删除。`, '批量删除确认', {
+      type: 'warning',
+      confirmButtonText: '确认删除',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    let success = 0;
+    let failed = 0;
+    const failedMsgs: string[] = [];
+    for (const row of selectedRows.value.slice()) {
+      try {
+        await apiDelete('/api/monitor-assets', { id: row.id });
+        success += 1;
+      } catch (error: any) {
+        failed += 1;
+        failedMsgs.push(`${row.asset_code || ''}`.trim() || `ID ${row.id}`);
+      }
+    }
+    if (success) clearSelection();
+    if (success && !failed) ElMessage.success(`已删除 ${success} 台显示器`);
+    else if (success || failed) ElMessage.warning(`已删除 ${success} 台，失败 ${failed} 台${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '批量删除失败');
+  } finally {
+    batchBusy.value = false;
+  }
 }
 
 async function exportSelectedRows() {
@@ -342,7 +425,8 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    const all = await fetchAll(currentFilters());
+    if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
+    const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
     exportToXlsx({
       filename: '显示器台账.xlsx',
       sheetName: '显示器台账',
