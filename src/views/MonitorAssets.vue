@@ -4,6 +4,7 @@
       v-model:status="status"
       v-model:location-id="locationId"
       v-model:keyword="keyword"
+      v-model:archive-reason="archiveReason"
       v-model:show-archived="showArchived"
       :location-options="locationOptions"
       :can-operator="canOperator"
@@ -20,6 +21,7 @@
       @move-column="moveVisibleColumn"
       @search="reloadList"
       @export="exportExcel"
+      @export-archive="exportArchiveRecords"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
@@ -203,6 +205,7 @@ import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
+import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
@@ -225,11 +228,12 @@ const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const archiveReason = ref(String((persistedState as any).archiveReason || ''));
 const showArchived = ref(Boolean(persistedState.showArchived));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
@@ -242,6 +246,7 @@ const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
   locationId: String(locationId.value || ''),
   keyword: keyword.value || '',
+  archiveReason: showArchived.value ? (archiveReason.value || '') : '',
   showArchived: Boolean(showArchived.value),
 });
 
@@ -300,7 +305,7 @@ async function loadLocations() {
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archived=${filters.showArchived ? 1 : 0}`,
+  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}`,
   fetchPage: async (filters, currentPage, currentPageSize, fast) => {
     try {
       return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
@@ -346,6 +351,7 @@ function persistState() {
     locationId: String(locationId.value || ''),
     keyword: keyword.value || '',
     showArchived: Boolean(showArchived.value),
+    archiveReason: archiveReason.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
     columnOrder: columnOrder.value,
@@ -370,8 +376,12 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, locationId, keyword, archiveReason, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleKeywordSearch();
+});
+watch(archiveReason, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
@@ -712,6 +722,45 @@ async function exportExcel() {
     });
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
+
+async function exportArchiveRecords() {
+  if (exportBusy.value) return;
+  try {
+    exportBusy.value = true;
+    const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
+    const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
+    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档显示器记录');
+    exportToXlsx({
+      filename: `显示器归档记录_${rowsToExport.length}条.xlsx`,
+      sheetName: '显示器归档',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'asset_code', title: '资产编号' },
+        { key: 'sn', title: 'SN' },
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'status', title: '状态' },
+        { key: 'location_text', title: '位置' },
+        { key: 'archived_reason', title: '归档原因' },
+        { key: 'archived_note', title: '归档备注' },
+        { key: 'archived_by', title: '归档人' },
+        { key: 'archived_at', title: '归档时间' },
+      ],
+      rows: rowsToExport.map((row) => ({
+        ...row,
+        status: assetStatusText(row.status),
+        location_text: locationText(row),
+        archived_at: formatBeijingDateTime(row.archived_at),
+      })),
+    });
+    ElMessage.success('归档显示器记录已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }

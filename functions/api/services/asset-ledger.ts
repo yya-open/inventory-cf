@@ -39,6 +39,7 @@ export function buildPcAssetQuery(url: URL) {
   const status = (url.searchParams.get('status') || '').trim();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
+  const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const clauses: string[] = [];
@@ -63,6 +64,11 @@ export function buildPcAssetQuery(url: URL) {
     }
   }
 
+  if (archiveReason) {
+    clauses.push("COALESCE(a.archived_reason, '') LIKE ? ESCAPE '\\'");
+    binds.push(`%${archiveReason.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%`);
+  }
+
   if (ageYears > 0) {
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - ageYears);
@@ -84,6 +90,7 @@ export function buildMonitorAssetQuery(url: URL) {
   const status = (url.searchParams.get('status') || '').trim();
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
+  const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const clauses: string[] = [];
@@ -109,6 +116,10 @@ export function buildMonitorAssetQuery(url: URL) {
       clauses.push(kw.sql);
       binds.push(...kw.binds);
     }
+  }
+  if (archiveReason) {
+    clauses.push("COALESCE(a.archived_reason, '') LIKE ? ESCAPE '\\'");
+    binds.push(`%${archiveReason.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%`);
   }
 
   return {

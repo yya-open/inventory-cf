@@ -18,6 +18,9 @@
           <el-button @click="exportCurrentRows">
             导出当前页
           </el-button>
+          <el-button @click="exportFilteredRows">
+            导出筛选结果
+          </el-button>
           <el-button
             type="info"
             plain
@@ -919,6 +922,76 @@ async function copyPayload(){
   }
 }
 
+function buildAuditParams(targetPage: number, targetPageSize: number) {
+  const params = new URLSearchParams();
+  if (keyword.value) params.set('keyword', keyword.value);
+  if (action.value) params.set('action', action.value);
+  if (entity.value) params.set('entity', entity.value);
+  if (user.value) params.set('user', user.value);
+  if (range.value?.length === 2) {
+    const s = new Date(range.value[0]);
+    const e = new Date(range.value[1]);
+    params.set('date_from', s.toISOString().slice(0, 10));
+    params.set('date_to', e.toISOString().slice(0, 10));
+  }
+  params.set('page', String(targetPage));
+  params.set('page_size', String(targetPageSize));
+  if (sortBy.value) params.set('sort_by', sortBy.value);
+  if (sortDir.value) params.set('sort_dir', sortDir.value);
+  return params;
+}
+
+async function exportFilteredRows() {
+  try {
+    const pageSizeForExport = 200;
+    let currentPage = 1;
+    let totalCount = 0;
+    const merged: any[] = [];
+    do {
+      const params = buildAuditParams(currentPage, pageSizeForExport);
+      const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
+      const batch = (j.data || []).map((r:any) => ({ ...r }));
+      totalCount = Number(j.total || 0);
+      merged.push(...batch);
+      currentPage += 1;
+      if (!batch.length) break;
+    } while (merged.length < totalCount && currentPage < 999);
+
+    const rowsToExport = merged.filter((row) => {
+      if (moduleFilter.value && getModuleOf(row) !== moduleFilter.value) return false;
+      if (highRiskOnly.value && !isHighRiskRow(row)) return false;
+      return true;
+    });
+
+    if (!rowsToExport.length) return ElMessage.warning('当前筛选结果没有可导出的审计记录');
+    exportToXlsx({
+      filename: `审计日志_筛选结果_${rowsToExport.length}条.xlsx`,
+      sheetName: '审计日志',
+      headers: [
+        { key: 'created_at', title: '时间' },
+        { key: 'username', title: '用户' },
+        { key: 'module', title: '模块' },
+        { key: 'action_label', title: '动作' },
+        { key: 'entity_label', title: '实体' },
+        { key: 'entity_id', title: '实体ID' },
+        { key: 'object_name', title: '对象名称' },
+      ],
+      rows: rowsToExport.map((row: any) => ({
+        created_at: formatTime(row.created_at),
+        username: row.username || '-',
+        module: MODULE_LABEL[getModuleOf(row)] || '其他',
+        action_label: actionLabel(row.action),
+        entity_label: entityLabel(row.entity),
+        entity_id: row.entity_id ?? '-',
+        object_name: row.item_name || row.user_name || '-',
+      })),
+    });
+    ElMessage.success('筛选结果已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出筛选结果失败');
+  }
+}
+
 function exportCurrentRows() {
   if (!filteredRows.value.length) return ElMessage.warning('当前页没有可导出的审计记录');
   exportToXlsx({
@@ -952,22 +1025,7 @@ async function load(){
   loadController = new AbortController();
   loading.value = true;
   try{
-    const params = new URLSearchParams();
-    if (keyword.value) params.set("keyword", keyword.value);
-    if (action.value) params.set("action", action.value);
-    if (entity.value) params.set("entity", entity.value);
-    if (user.value) params.set("user", user.value);
-    if (range.value?.length === 2){
-      // ElementPlus gives Date objects
-      const s = new Date(range.value[0]);
-      const e = new Date(range.value[1]);
-      params.set("date_from", s.toISOString().slice(0,10));
-      params.set("date_to", e.toISOString().slice(0,10));
-    }
-    params.set("page", String(page.value));
-    params.set("page_size", String(pageSize.value));
-    if (sortBy.value) params.set("sort_by", sortBy.value);
-    if (sortDir.value) params.set("sort_dir", sortDir.value);
+    const params = buildAuditParams(page.value, pageSize.value);
 
     const j:any = await apiGet(`/api/audit/list?${params.toString()}`, { signal: loadController.signal });
     if (currentSeq !== loadSeq) return;

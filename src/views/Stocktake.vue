@@ -370,6 +370,7 @@
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import * as XLSX from "xlsx";
+import { exportToXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -607,6 +608,31 @@ async function createStocktake(){
   }finally{
     creating.value = false;
   }
+}
+
+function exportFilteredLines(){
+  if (!detail.value || !filteredLines.value.length) return ElMessage.warning('当前没有可导出的盘点明细');
+  const filterLabel = { all: '全部', changed: '差异', increase: '盘盈', decrease: '盘亏', pending: '未盘' }[lineFilter.value] || '全部';
+  exportToXlsx({
+    filename: `盘点明细_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}_${filterLabel}.xlsx`,
+    sheetName: '盘点明细',
+    headers: [
+      { key: 'sku', title: 'SKU' },
+      { key: 'name', title: '名称' },
+      { key: 'system_qty', title: '系统数量' },
+      { key: 'counted_qty_text', title: '盘点数量' },
+      { key: 'diff_type', title: '差异类型' },
+      { key: 'diff_qty', title: '差异数量' },
+      { key: 'updated_at_text', title: '更新时间' },
+    ],
+    rows: filteredLines.value.map((row:any) => ({
+      ...row,
+      counted_qty_text: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : row.counted_qty,
+      diff_type: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : Number(row.diff_qty || 0) > 0 ? '盘盈' : Number(row.diff_qty || 0) < 0 ? '盘亏' : '无差异',
+      updated_at_text: formatBeijingDateTime(row.updated_at),
+    })),
+  });
+  ElMessage.success('盘点明细已导出');
 }
 
 function downloadCountTemplate(){

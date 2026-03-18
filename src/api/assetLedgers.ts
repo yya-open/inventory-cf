@@ -42,6 +42,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
   return fetchPaged<PcAsset>('/api/pc-assets', {
     status: filters.status,
     keyword: filters.keyword,
+    archive_reason: filters.archiveReason,
     show_archived: filters.showArchived ? '1' : undefined,
     page,
     page_size: pageSize,
@@ -50,7 +51,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
 }
 
 export async function countPcAssets(filters: PcFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
   return Number(result?.total || 0);
 }
 
@@ -59,6 +60,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
     status: filters.status,
     location_id: filters.locationId,
     keyword: filters.keyword,
+    archive_reason: filters.archiveReason,
     show_archived: filters.showArchived ? '1' : undefined,
     page,
     page_size: pageSize,
@@ -67,7 +69,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
 }
 
 export async function countMonitorAssets(filters: MonitorFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 

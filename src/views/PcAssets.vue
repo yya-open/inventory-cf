@@ -3,6 +3,7 @@
     <PcAssetsToolbar
       v-model:status="status"
       v-model:keyword="keyword"
+      v-model:archive-reason="archiveReason"
       v-model:show-archived="showArchived"
       :is-admin="isAdmin"
       :can-operator="canOperator"
@@ -19,6 +20,7 @@
       @search="onSearch"
       @reset="reset"
       @export="exportExcel"
+      @export-archive="exportArchiveRecords"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
@@ -176,10 +178,11 @@ const PC_COLUMN_OPTIONS = [
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const archiveReason = ref(String((persistedState as any).archiveReason || ''));
 const showArchived = ref(Boolean(persistedState.showArchived));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
@@ -190,11 +193,12 @@ const isAdmin = computed(() => can('admin'));
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
   keyword: keyword.value || '',
+  archiveReason: showArchived.value ? (archiveReason.value || '') : '',
   showArchived: Boolean(showArchived.value),
 });
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<PcFilters, PcAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archived=${filters.showArchived ? 1 : 0}`,
+  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}`,
   fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
   fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
@@ -220,6 +224,7 @@ function persistState() {
     status: status.value || '',
     keyword: keyword.value || '',
     showArchived: Boolean(showArchived.value),
+    archiveReason: archiveReason.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
     columnOrder: columnOrder.value,
@@ -244,8 +249,12 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, keyword, archiveReason, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleKeywordSearch();
+});
+watch(archiveReason, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
@@ -302,6 +311,7 @@ const reset = () => {
   status.value = '';
   keyword.value = '';
   showArchived.value = false;
+  archiveReason.value = '';
   suppressAutoSearch = false;
   clearKeywordTimer();
   reload(currentFilters());
@@ -784,6 +794,42 @@ async function exportExcel() {
     });
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
+
+async function exportArchiveRecords() {
+  if (exportBusy.value) return;
+  try {
+    exportBusy.value = true;
+    const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
+    const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
+    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档电脑记录');
+    exportToXlsx({
+      filename: `电脑归档记录_${rowsToExport.length}条.xlsx`,
+      sheetName: '电脑归档',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'status', title: '状态' },
+        { key: 'brand', title: '品牌' },
+        { key: 'serial_no', title: '序列号' },
+        { key: 'model', title: '型号' },
+        { key: 'archived_reason', title: '归档原因' },
+        { key: 'archived_note', title: '归档备注' },
+        { key: 'archived_by', title: '归档人' },
+        { key: 'archived_at', title: '归档时间' },
+      ],
+      rows: rowsToExport.map((row) => ({
+        ...row,
+        status: assetStatusText(row.status),
+        archived_at: formatBeijingDateTime(row.archived_at),
+      })),
+    });
+    ElMessage.success('归档电脑记录已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }

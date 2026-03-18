@@ -25,6 +25,15 @@
             @update:model-value="emit('update:keyword', $event || '')"
             @keyup.enter="emit('search')"
           />
+          <el-input
+            v-if="showArchived"
+            :model-value="archiveReason"
+            clearable
+            placeholder="归档原因"
+            class="toolbar-archive-input"
+            @update:model-value="emit('update:archive-reason', $event || '')"
+            @keyup.enter="emit('search')"
+          />
           <el-checkbox
             :model-value="showArchived"
             class="toolbar-archive-checkbox"
@@ -110,6 +119,7 @@
               <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
+                  <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入（批量入库）</el-dropdown-item>
@@ -141,6 +151,7 @@ import { ArrowDown } from '@element-plus/icons-vue';
 const props = defineProps<{
   status: string;
   keyword: string;
+  archiveReason: string;
   showArchived: boolean;
   isAdmin: boolean;
   canOperator: boolean;
@@ -157,12 +168,14 @@ const props = defineProps<{
 const emit = defineEmits<{
   'update:status': [string];
   'update:keyword': [string];
+  'update:archive-reason': [string];
   'update:show-archived': [boolean];
   'update:visible-columns': [string[]];
   'move-column': [string, 'up' | 'down'];
   search: [];
   reset: [];
   export: [];
+  'export-archive': [];
   'export-selected': [];
   'export-selected-qr': [];
   'batch-delete': [];
@@ -203,6 +216,7 @@ function handleArchivedToggle(value: string | number | boolean) {
 function handleMoreCommand(command: string | number | object) {
   const value = String(command);
   if (value === 'export') return emit('export');
+  if (value === 'export-archive') return emit('export-archive');
   if (value === 'init-qr') return emit('init-qr');
   if (value === 'download-template') return emit('download-template');
   if (value === 'import') return openImportPicker();
@@ -270,6 +284,10 @@ function handleBatchCommand(command: string | number | object) {
 }
 .toolbar-input {
   width: 300px;
+  max-width: 100%;
+}
+.toolbar-archive-input {
+  width: 180px;
   max-width: 100%;
 }
 .toolbar-actions-inline {
