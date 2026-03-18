@@ -40,7 +40,7 @@ export function buildPcAssetQuery(url: URL) {
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
   const { page, pageSize, offset } = getPageParams(url);
-  const clauses: string[] = [];
+  const clauses: string[] = ['COALESCE(a.archived, 0)=0'];
   const binds: any[] = [];
 
   if (status) {
@@ -83,7 +83,7 @@ export function buildMonitorAssetQuery(url: URL) {
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
-  const clauses: string[] = [];
+  const clauses: string[] = ['COALESCE(a.archived, 0)=0'];
   const binds: any[] = [];
 
   if (status) {
@@ -218,25 +218,61 @@ export async function assertUnique(db: D1Database, sql: string, binds: any[], me
   if (row) throw Object.assign(new Error(message), { status: 400 });
 }
 
+export function pcAssetArchiveSql() {
+  return `
+    UPDATE pc_assets
+    SET archived=1, archived_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+export function monitorAssetArchiveSql() {
+  return `
+    UPDATE monitor_assets
+    SET archived=1, archived_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+export function pcAssetBulkStatusSql() {
+  return `UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`;
+}
+
+export function monitorAssetBulkStatusSql() {
+  return `
+    UPDATE monitor_assets
+    SET status=?, employee_no=CASE WHEN ?='ASSIGNED' THEN employee_no ELSE NULL END,
+        department=CASE WHEN ?='ASSIGNED' THEN department ELSE NULL END,
+        employee_name=CASE WHEN ?='ASSIGNED' THEN employee_name ELSE NULL END,
+        is_employed=CASE WHEN ?='ASSIGNED' THEN is_employed ELSE NULL END,
+        updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+export function monitorAssetBulkLocationSql() {
+  return `UPDATE monitor_assets SET location_id=?, updated_at=${sqlNowStored()} WHERE id=?`;
+}
+
 export function pcAssetUpdateSql() {
   return `
     UPDATE pc_assets
-    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, updated_at=${sqlNowStored()}
+    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, archived=0, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
 
 export function monitorAssetInsertSql() {
   return `
-    INSERT INTO monitor_assets (asset_code, sn, brand, model, size_inch, remark, status, location_id, created_at, updated_at)
-    VALUES (?,?,?,?,?,?, 'IN_STOCK', ?, ${sqlNowStored()}, ${sqlNowStored()})
+    INSERT INTO monitor_assets (asset_code, sn, brand, model, size_inch, remark, status, location_id, archived, created_at, updated_at)
+    VALUES (?,?,?,?,?,?, 'IN_STOCK', ?, 0, ${sqlNowStored()}, ${sqlNowStored()})
   `;
 }
 
 export function monitorAssetUpdateSql() {
   return `
     UPDATE monitor_assets
-    SET asset_code=?, sn=?, brand=?, model=?, size_inch=?, remark=?, location_id=?, updated_at=${sqlNowStored()}
+    SET asset_code=?, sn=?, brand=?, model=?, size_inch=?, remark=?, location_id=?, archived=0, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }

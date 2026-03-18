@@ -22,6 +22,8 @@
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
       @batch-delete="batchDeleteSelected"
+      @batch-status="openBatchStatusDialog"
+      @batch-archive="batchArchiveSelected"
       @restore-columns="restoreDefaultColumns"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
@@ -73,6 +75,27 @@
       @copy-link="copyQrLink"
       @reset-qr="resetQr"
     />
+
+    <el-dialog
+      v-model="batchStatusVisible"
+      title="批量修改电脑状态"
+      width="420px"
+    >
+      <el-form label-width="90px">
+        <el-form-item label="目标状态">
+          <el-select v-model="batchStatusValue" style="width:100%">
+            <el-option label="在库" value="IN_STOCK" />
+            <el-option label="已回收" value="RECYCLED" />
+            <el-option label="已报废" value="SCRAPPED" />
+          </el-select>
+        </el-form-item>
+        <div class="batch-help">将对当前已选 {{ selectedCount }} 台电脑生效。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchStatusVisible=false">取消</el-button>
+        <el-button type="primary" :loading="batchBusy" @click="submitBatchStatus">确认</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -136,6 +159,8 @@ const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
 const batchBusy = ref(false);
+const batchStatusVisible = ref(false);
+const batchStatusValue = ref('IN_STOCK');
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
 
@@ -423,8 +448,8 @@ async function removeAsset(row: PcAsset) {
       cancelButtonText: '取消',
     });
     loading.value = true;
-    await apiDelete('/api/pc-assets', { id: row.id });
-    ElMessage.success('删除成功');
+    const result: any = await apiDelete('/api/pc-assets', { id: row.id });
+    ElMessage.success(result?.message || '删除成功');
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
@@ -472,6 +497,57 @@ async function exportSelectedQrLinks() {
   }
 }
 
+
+function openBatchStatusDialog() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  batchStatusValue.value = 'IN_STOCK';
+  batchStatusVisible.value = true;
+}
+
+async function submitBatchStatus() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/pc-assets-bulk', {
+      action: 'status',
+      ids: selectedIds.value.map((id) => Number(id)),
+      status: batchStatusValue.value,
+    });
+    ElMessage.success(result?.message || '批量修改成功');
+    batchStatusVisible.value = false;
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量修改状态失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function batchArchiveSelected() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    await ElMessageBox.confirm(`确认归档选中的 ${selectedCount.value} 台电脑？归档后默认列表将不再显示。`, '批量归档确认', {
+      type: 'warning',
+      confirmButtonText: '确认归档',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/pc-assets-bulk', {
+      action: 'archive',
+      ids: selectedIds.value.map((id) => Number(id)),
+    });
+    ElMessage.success(result?.message || '批量归档成功');
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '批量归档失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
 async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
@@ -482,12 +558,14 @@ async function batchDeleteSelected() {
     });
     batchBusy.value = true;
     let success = 0;
+    let archived = 0;
     let failed = 0;
     const failedMsgs: string[] = [];
     for (const row of selectedRows.value.slice()) {
       try {
-        await apiDelete('/api/pc-assets', { id: row.id });
+        const result: any = await apiDelete('/api/pc-assets', { id: row.id });
         success += 1;
+        if (result?.archived) archived += 1;
       } catch (error: any) {
         failed += 1;
         failedMsgs.push(`${row.brand || ''} ${row.model || ''}`.trim() || `ID ${row.id}`);
@@ -496,8 +574,8 @@ async function batchDeleteSelected() {
     if (success) {
       clearSelection();
     }
-    if (success && !failed) ElMessage.success(`已删除 ${success} 台电脑`);
-    else if (success || failed) ElMessage.warning(`已删除 ${success} 台，失败 ${failed} 台${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台电脑（其中归档 ${archived} 台）` : `已删除 ${success} 台电脑`);
+    else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
@@ -668,5 +746,10 @@ onMounted(() => {
 <style scoped>
 .asset-page-card {
   border-radius: 18px;
+}
+.batch-help {
+  color: #909399;
+  font-size: 12px;
+  padding-left: 4px;
 }
 </style>

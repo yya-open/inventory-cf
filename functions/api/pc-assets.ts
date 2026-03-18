@@ -7,6 +7,7 @@ import {
   countByWhere,
   listPcAssets,
   parsePcAssetInput,
+  pcAssetArchiveSql,
   pcAssetUpdateSql,
 } from './services/asset-ledger';
 
@@ -119,11 +120,17 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       .bind(id, id, id)
       .first<any>();
 
-    if (Number(refs?.out_count || 0) > 0 || Number(refs?.recycle_count || 0) > 0) {
-      throw Object.assign(new Error('该电脑已有出库/回收记录，为避免影响台账追溯，暂不允许删除'), { status: 400 });
-    }
-    if (Number(refs?.inventory_log_count || 0) > 0) {
-      throw Object.assign(new Error('该电脑已有盘点记录，为避免影响台账追溯，暂不允许删除'), { status: 400 });
+    const hasRefs = Number(refs?.out_count || 0) > 0 || Number(refs?.recycle_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
+
+    if (hasRefs) {
+      await env.DB.prepare(pcAssetArchiveSql()).bind(id).run();
+      await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
+        brand: asset.brand,
+        serial_no: asset.serial_no,
+        model: asset.model,
+        status: asset.status,
+      });
+      return Response.json({ ok: true, archived: true, message: '该电脑已有历史记录，已自动归档' });
     }
 
     await env.DB.batch([env.DB.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id), env.DB.prepare('DELETE FROM pc_assets WHERE id=?').bind(id)]);

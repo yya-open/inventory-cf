@@ -64,6 +64,8 @@ export async function ensureMonitorSchema(db: D1Database) {
           is_employed TEXT,
           created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+          archived INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
           FOREIGN KEY(location_id) REFERENCES pc_locations(id)
         )
       `)
@@ -73,6 +75,7 @@ export async function ensureMonitorSchema(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
 
     // Backward compatibility: add employee fields if early versions created table without them.
     for (const ddl of [
@@ -82,6 +85,8 @@ export async function ensureMonitorSchema(db: D1Database) {
       "ALTER TABLE monitor_assets ADD COLUMN department TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN employee_name TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN is_employed TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+      "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
     ]) {
       try {
         await db.prepare(ddl).run();
@@ -148,7 +153,11 @@ export async function ensureMonitorSchema(db: D1Database) {
         CREATE TABLE IF NOT EXISTS public_api_throttle (
           k TEXT PRIMARY KEY,
           count INTEGER NOT NULL DEFAULT 0,
-          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+          archived INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT,
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT
         )
       `)
       .run();

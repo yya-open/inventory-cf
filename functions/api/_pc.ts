@@ -53,12 +53,24 @@ export async function ensurePcSchema(db: D1Database) {
       remark TEXT,
       status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
-      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      archived INTEGER NOT NULL DEFAULT 0,
+      archived_at TEXT
     )
   `).run();
 
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)").run();
+
+  for (const ddl of [
+    "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+    "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
+  ]) {
+    try {
+      await db.prepare(ddl).run();
+    } catch {}
+  }
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).
@@ -82,18 +94,21 @@ try {
           remark TEXT,
           status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
           created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
-          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+          archived INTEGER NOT NULL DEFAULT 0,
+          archived_at TEXT
         )
       `),
       db.prepare(`
-        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at)
-        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, archived, archived_at)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, 0, NULL
         FROM pc_assets
       `),
       db.prepare("DROP TABLE pc_assets"),
       db.prepare("ALTER TABLE pc_assets_v2 RENAME TO pc_assets"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)"),
     ]);
   }
 } catch {

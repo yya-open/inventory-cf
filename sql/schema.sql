@@ -161,12 +161,15 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   remark TEXT,
   status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
-  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  archived INTEGER NOT NULL DEFAULT 0,
+  archived_at TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -260,6 +263,8 @@ CREATE TABLE IF NOT EXISTS monitor_assets (
   is_employed TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  archived INTEGER NOT NULL DEFAULT 0,
+  archived_at TEXT,
   FOREIGN KEY(location_id) REFERENCES pc_locations(id)
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);
@@ -267,6 +272,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_asset_code ON monitor_assets(asset
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_assets(status, location_id, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id);
 
 CREATE TABLE IF NOT EXISTS monitor_tx (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

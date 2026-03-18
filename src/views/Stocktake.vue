@@ -386,6 +386,19 @@ const filteredLines = computed(()=>{
   );
 });
 
+const stocktakePreview = computed(() => {
+  const lines = detail.value?.lines || [];
+  const counted = lines.filter((line:any) => line.counted_qty !== null && line.counted_qty !== undefined && line.counted_qty !== '');
+  const changed = counted.filter((line:any) => Number(line.diff_qty || 0) !== 0);
+  return {
+    total: lines.length,
+    counted: counted.length,
+    changed: changed.length,
+    increase: changed.filter((line:any) => Number(line.diff_qty || 0) > 0).length,
+    decrease: changed.filter((line:any) => Number(line.diff_qty || 0) < 0).length,
+  };
+});
+
 
 
 function rowClassName({ row }: any){
@@ -686,12 +699,24 @@ function beforeUpload(file: File){
 async function applyStocktake(){
   if (!detail.value) return;
   const stStatus = String(detail.value.stocktake.status || "");
+  const preview = stocktakePreview.value;
   const confirmMsg = stStatus === "APPLYING"
     ? "检测到盘点单处于 APPLYING（上次应用可能中断）。点击“继续”将尝试补齐未完成的调整记录（幂等，不会重复生成已写入的调整流水）。"
-    : "将按盘点差异生成盘盈盘亏（ADJUST）并更新库存，且盘点单状态变为已应用，确认继续？";
+    : `
+      <div style="line-height:1.8">
+        <div>即将应用盘点结果，系统会按差异生成 <b>ADJUST</b> 调整流水并更新库存。</div>
+        <div style="margin-top:8px">本次预览：</div>
+        <ul style="margin:6px 0 0 18px; padding:0">
+          <li>盘点明细：<b>${preview.total}</b> 条</li>
+          <li>已录入盘点数量：<b>${preview.counted}</b> 条</li>
+          <li>存在差异：<b>${preview.changed}</b> 条</li>
+          <li>盘盈：<b>${preview.increase}</b> 条</li>
+          <li>盘亏：<b>${preview.decrease}</b> 条</li>
+        </ul>
+      </div>`;
 
   try{
-    await ElMessageBox.confirm(confirmMsg, stStatus === "APPLYING" ? "继续应用" : "确认应用", { type: "warning" });
+    await ElMessageBox.confirm(confirmMsg, stStatus === "APPLYING" ? "继续应用" : "确认应用盘点", { type: "warning", dangerouslyUseHTMLString: stStatus !== 'APPLYING', confirmButtonText: stStatus === 'APPLYING' ? '继续应用' : '确认应用', cancelButtonText: '取消' });
   }catch{ return; }
 
   applying.value = true;

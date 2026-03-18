@@ -7,6 +7,7 @@ import {
   countByWhere,
   listMonitorAssets,
   monitorAssetInsertSql,
+  monitorAssetArchiveSql,
   monitorAssetUpdateSql,
   parseMonitorAssetInput,
 } from './services/asset-ledger';
@@ -116,11 +117,12 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       `)
       .bind(id, id)
       .first<any>();
-    if (Number(refs?.tx_count || 0) > 0) {
-      throw Object.assign(new Error('该资产已有出入库记录，为避免影响追溯，暂不允许删除'), { status: 400 });
-    }
-    if (Number(refs?.inventory_log_count || 0) > 0) {
-      throw Object.assign(new Error('该资产已有盘点记录，为避免影响追溯，暂不允许删除'), { status: 400 });
+    const hasRefs = Number(refs?.tx_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
+
+    if (hasRefs) {
+      await env.DB.prepare(monitorAssetArchiveSql()).bind(id).run();
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status });
+      return Response.json({ ok: true, archived: true, message: '该资产已有历史记录，已自动归档' });
     }
 
     await env.DB.prepare('DELETE FROM monitor_assets WHERE id=?').bind(id).run();

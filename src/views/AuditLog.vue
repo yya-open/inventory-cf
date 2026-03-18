@@ -15,6 +15,9 @@
           <el-button @click="reset">
             重置
           </el-button>
+          <el-button @click="exportCurrentRows">
+            导出当前页
+          </el-button>
           <el-button
             type="info"
             plain
@@ -82,6 +85,20 @@
           </el-select>
         </el-form-item>
         <el-form-item>
+          <el-select
+            v-model="moduleFilter"
+            placeholder="模块"
+            clearable
+            style="width: 150px"
+            @change="onSearch"
+          >
+            <el-option v-for="opt in moduleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item>
+          <el-switch v-model="highRiskOnly" active-text="高风险" inactive-text="全部" @change="onSearch" />
+        </el-form-item>
+        <el-form-item>
           <el-input
             v-model="user"
             placeholder="用户（如 admin）"
@@ -133,7 +150,7 @@
 
     <el-table
       v-loading="loading"
-      :data="rows"
+      :data="filteredRows"
       border
       style="width:100%"
       @selection-change="onSelect"
@@ -379,6 +396,7 @@ import { apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatBeijingDateTime } from "../utils/datetime";
+import { exportToXlsx } from "../utils/excel";
 import { readJsonStorage, writeJsonStorage } from "../utils/storage";
 
 
@@ -444,6 +462,13 @@ const ACTION_LABEL: Record<string, string> = {
   MONITOR_ASSET_CREATE: "新增显示器台账",
   MONITOR_ASSET_UPDATE: "修改显示器台账",
   MONITOR_ASSET_DELETE: "删除显示器台账",
+  PC_ASSET_ARCHIVE: "归档电脑台账",
+  PC_ASSET_ARCHIVE_BATCH: "批量归档电脑台账",
+  PC_ASSET_STATUS_BATCH: "批量修改电脑状态",
+  MONITOR_ASSET_ARCHIVE: "归档显示器台账",
+  MONITOR_ASSET_ARCHIVE_BATCH: "批量归档显示器台账",
+  MONITOR_ASSET_STATUS_BATCH: "批量修改显示器状态",
+  MONITOR_ASSET_LOCATION_BATCH: "批量修改显示器位置",
   MONITOR_IN: "显示器入库",
   MONITOR_OUT: "显示器出库",
   MONITOR_RETURN: "显示器归还",
@@ -547,6 +572,8 @@ const persistedState = readJsonStorage(STORAGE_KEY, {
   action: '',
   entity: '',
   user: '',
+  moduleFilter: '',
+  highRiskOnly: false,
   range: null as [string, string] | null,
   pageSize: 50,
 });
@@ -560,6 +587,8 @@ const sortDir = ref<string>(String(persistedState.sortDir || "desc"));
 const action = ref(String(persistedState.action || ""));
 const entity = ref(String(persistedState.entity || ""));
 const user = ref(String(persistedState.user || ""));
+const moduleFilter = ref(String((persistedState as any).moduleFilter || ""));
+const highRiskOnly = ref(Boolean((persistedState as any).highRiskOnly || false));
 const range = ref<any>(Array.isArray(persistedState.range) && persistedState.range.length === 2
   ? persistedState.range.map((value) => new Date(value))
   : null);
@@ -587,6 +616,46 @@ const entityFilterOptions = computed(() => {
   return keys
     .sort((a, b) => entityLabel(a).localeCompare(entityLabel(b), "zh-CN"))
     .map((k) => ({ value: k, label: entityLabel(k) }));
+});
+const MODULE_LABEL: Record<string, string> = {
+  STOCK: '库存',
+  STOCKTAKE: '盘点',
+  ITEM: '配件',
+  USER: '用户',
+  AUDIT: '审计',
+  ADMIN: '系统管理',
+  PC: '电脑资产',
+  MONITOR: '显示器资产',
+  OTHER: '其他',
+};
+
+const moduleOptions = Object.entries(MODULE_LABEL).map(([value, label]) => ({ value, label }));
+
+function getModuleOf(row: any) {
+  const actionCode = String(row?.action || '').toUpperCase();
+  const entityCode = String(row?.entity || '').toLowerCase();
+  if (actionCode.startsWith('STOCKTAKE') || entityCode.includes('stocktake')) return 'STOCKTAKE';
+  if (actionCode.startsWith('STOCK_') || entityCode === 'stock' || entityCode === 'stock_tx') return 'STOCK';
+  if (actionCode.startsWith('ITEM_') || entityCode === 'items') return 'ITEM';
+  if (actionCode.startsWith('USER_') || entityCode === 'users') return 'USER';
+  if (actionCode.startsWith('AUDIT_') || entityCode === 'audit_log') return 'AUDIT';
+  if (actionCode.startsWith('ADMIN_') || entityCode === 'restore_job' || entityCode === 'backup' || entityCode === 'schema') return 'ADMIN';
+  if (actionCode.startsWith('PC_') || entityCode.startsWith('pc_')) return 'PC';
+  if (actionCode.startsWith('MONITOR_') || entityCode.startsWith('monitor_')) return 'MONITOR';
+  return 'OTHER';
+}
+
+function isHighRiskRow(row: any) {
+  const actionCode = String(row?.action || '').toUpperCase();
+  return ['DELETE', 'ARCHIVE', 'SCRAP', 'ROLLBACK', 'RESET_PASSWORD', 'RESTORE', 'CLEAR'].some((token) => actionCode.includes(token));
+}
+
+const filteredRows = computed(() => {
+  return rows.value.filter((row) => {
+    if (moduleFilter.value && getModuleOf(row) !== moduleFilter.value) return false;
+    if (highRiskOnly.value && !isHighRiskRow(row)) return false;
+    return true;
+  });
 });
 
 const displayPayload = computed(() => {
@@ -727,6 +796,8 @@ function persistState() {
     action: action.value || '',
     entity: entity.value || '',
     user: user.value || '',
+    moduleFilter: moduleFilter.value || '',
+    highRiskOnly: Boolean(highRiskOnly.value),
     range: serializeRange(),
     pageSize: Number(pageSize.value || 50),
   });
@@ -755,7 +826,7 @@ function scheduleSearch() {
   }, 320);
 }
 
-watch([keyword, action, entity, user, sortBy, sortDir, pageSize], persistState);
+watch([keyword, action, entity, user, moduleFilter, highRiskOnly, sortBy, sortDir, pageSize], persistState);
 watch(range, persistState, { deep: true });
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
@@ -785,6 +856,8 @@ function reset(){
   action.value = "";
   entity.value = "";
   user.value = "";
+  moduleFilter.value = "";
+  highRiskOnly.value = false;
   range.value = null;
   sortBy.value = "created_at";
   sortDir.value = "desc";
@@ -840,6 +913,33 @@ async function copyPayload(){
       document.body.removeChild(ta);
     }
   }
+}
+
+function exportCurrentRows() {
+  if (!filteredRows.value.length) return ElMessage.warning('当前页没有可导出的审计记录');
+  exportToXlsx({
+    filename: `审计日志_当前页_${filteredRows.value.length}条.xlsx`,
+    sheetName: '审计日志',
+    headers: [
+      { key: 'created_at', title: '时间' },
+      { key: 'username', title: '用户' },
+      { key: 'module', title: '模块' },
+      { key: 'action_label', title: '动作' },
+      { key: 'entity_label', title: '实体' },
+      { key: 'entity_id', title: '实体ID' },
+      { key: 'object_name', title: '对象名称' },
+    ],
+    rows: filteredRows.value.map((row: any) => ({
+      created_at: formatTime(row.created_at),
+      username: row.username || '-',
+      module: MODULE_LABEL[getModuleOf(row)] || '其他',
+      action_label: actionLabel(row.action),
+      entity_label: entityLabel(row.entity),
+      entity_id: row.entity_id ?? '-',
+      object_name: row.item_name || row.user_name || '-',
+    })),
+  });
+  ElMessage.success('当前页审计日志已导出');
 }
 
 async function load(){
