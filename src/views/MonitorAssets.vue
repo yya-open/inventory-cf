@@ -27,6 +27,7 @@
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
       @export-selected-qr-cards="exportSelectedQrCards"
+      @export-selected-qr-png="exportSelectedQrPng"
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
       @batch-location="openBatchLocationDialog"
@@ -197,6 +198,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -207,7 +209,7 @@ import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
-import { downloadQrCardsHtml } from '../utils/qrCards';
+import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
@@ -245,6 +247,7 @@ const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONI
 const locations = ref<LocationRow[]>([]);
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
+const router = useRouter();
 
 const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
@@ -1065,6 +1068,44 @@ const qrLoading = ref(false);
 const qrRow = ref<MonitorAsset | null>(null);
 const qrLink = ref('');
 const qrDataUrl = ref('');
+
+
+async function exportSelectedQrPng() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  try {
+    exportBusy.value = true;
+    const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      const link = String(result?.data?.url || result?.url || '').trim();
+      if (!link) continue;
+      records.push({
+        title: row.asset_code || `显示器 #${row.id}`,
+        subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
+        meta: [
+          { label: '状态', value: assetStatusText(row.status) },
+          { label: '位置', value: locationText(row) },
+          { label: '领用人', value: row.employee_name || '-' },
+          { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+        ],
+        url: link,
+      });
+    }
+    if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    await downloadQrCardsPng(`显示器二维码图版_${records.length}条`, '显示器二维码图版', records);
+    ElMessage.success('二维码图版(PNG)已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码图版失败');
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
+function openAuditHistory(row?: MonitorAsset | null) {
+  const id = Number(row?.id || 0);
+  if (!id) return;
+  router.push({ path: '/system/audit', query: { entity: 'monitor_assets', entity_id: String(id), module: 'MONITOR' } });
+}
 
 async function openQr(row: MonitorAsset) {
   qrVisible.value = true;

@@ -82,6 +82,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
                   <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
+                  <el-dropdown-item command="export-qr-png">导出二维码图版(PNG)</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="batch-location">批量修改位置</el-dropdown-item>
@@ -205,6 +206,7 @@ const emit = defineEmits<{
   'export-selected': [];
   'export-selected-qr': [];
   'export-selected-qr-cards': [];
+  'export-selected-qr-png': [];
   'batch-delete': [];
   'batch-status': [];
   'batch-location': [];
@@ -262,6 +264,7 @@ function handleMoreCommand(command: string | number | object) {
 function handleBatchCommand(command: string | number | object) {
   const value = String(command);
   if (value === 'export-qr') return emit('export-selected-qr');
+  if (value === 'export-qr-png') return emit('export-selected-qr-png');
   if (value === 'batch-status') return emit('batch-status');
   if (value === 'batch-location') return emit('batch-location');
   if (value === 'batch-owner') return emit('batch-owner');

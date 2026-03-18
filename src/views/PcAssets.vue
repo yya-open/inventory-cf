@@ -26,6 +26,7 @@
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
       @export-selected-qr-cards="exportSelectedQrCards"
+      @export-selected-qr-png="exportSelectedQrPng"
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
       @batch-owner="openBatchOwnerDialog"
@@ -68,6 +69,7 @@
     <PcAssetInfoDialog
       v-model:visible="infoVisible"
       :row="infoRow"
+      @view-audit="openAuditHistory"
     />
     <PcAssetQrDialog
       v-model:visible="qrVisible"
@@ -150,6 +152,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -159,7 +162,7 @@ import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
-import { downloadQrCardsHtml } from '../utils/qrCards';
+import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
@@ -193,6 +196,7 @@ const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persisted
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
+const router = useRouter();
 
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
@@ -347,6 +351,45 @@ async function initQrKeys() {
   } finally {
     initQrBusy.value = false;
   }
+}
+
+
+async function exportSelectedQrPng() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    exportBusy.value = true;
+    const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      const link = String(result?.data?.url || result?.url || '').trim();
+      if (!link) continue;
+      records.push({
+        title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
+        subtitle: `SN：${row.serial_no || '-'} · 状态：${assetStatusText(row.status)}`,
+        meta: [
+          { label: '领用人', value: row.last_employee_name || '-' },
+          { label: '工号', value: row.last_employee_no || '-' },
+          { label: '部门', value: row.last_department || '-' },
+          { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+        ],
+        url: link,
+      });
+    }
+    if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    await downloadQrCardsPng(`电脑二维码图版_${records.length}条`, '电脑二维码图版', records);
+    ElMessage.success('二维码图版(PNG)已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码图版失败');
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
+function openAuditHistory(row?: PcAsset | null) {
+  const id = Number(row?.id || infoRow.value?.id || 0);
+  if (!id) return;
+  infoVisible.value = false;
+  router.push({ path: '/system/audit', query: { entity: 'pc_assets', entity_id: String(id), module: 'PC' } });
 }
 
 async function openQr(row: PcAsset) {

@@ -81,6 +81,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item v-if="isAdmin" command="edit">编辑</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="qr">二维码</el-dropdown-item>
+                  <el-dropdown-item command="audit">审计历史</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="return">归还</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="transfer">调拨</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>

@@ -84,11 +84,14 @@
         </div>
       </el-descriptions-item>
     </el-descriptions><template #footer>
+      <el-button type="primary" plain @click="emit('view-audit')">
+        查看审计历史
+      </el-button>
       <el-button @click="emit('update:visible', false)">
         关闭
       </el-button>
     </template>
   </el-dialog>
 </template>
-<script setup lang="ts">defineProps<{ visible:boolean; row:Record<string,any>|null }>(); const emit = defineEmits<{ 'update:visible':[boolean] }>();</script>
+<script setup lang="ts">defineProps<{ visible:boolean; row:Record<string,any>|null }>(); const emit = defineEmits<{ 'update:visible':[boolean]; 'view-audit':[] }>();</script>
 <style scoped>.strong{font-weight:600}.subtle{color:#999;font-size:12px}.remark{white-space:pre-wrap}</style>

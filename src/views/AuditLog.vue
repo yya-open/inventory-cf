@@ -405,6 +405,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed, watch } from "vue";
+import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 import { ElMessage, ElMessageBox } from "element-plus";
@@ -788,6 +789,7 @@ async function saveRetention() {
 
 const selectedIds = ref<number[]>([]);
 const isAdmin = computed(() => can("admin"));
+const route = useRoute();
 
 function onSelect(list: any[]) {
   selectedIds.value = (list || []).map(r => Number(r.id)).filter(n => Number.isFinite(n));
@@ -865,6 +867,25 @@ watch(range, (_value, oldValue) => {
   clearInputTimer();
   onSearch();
 }, { deep: true });
+
+
+function applyRouteQuery(loadAfter = true) {
+  const query = route.query || {};
+  const hasRouteFilters = ['keyword', 'action', 'entity', 'entity_id', 'user', 'module', 'high_risk'].some((key) => query[key] != null && String(query[key]).trim() !== '');
+  if (!hasRouteFilters) return;
+  suppressAutoSearch = true;
+  if (query.keyword != null) keyword.value = String(query.keyword || '');
+  if (query.action != null) action.value = String(query.action || '');
+  if (query.entity != null) entity.value = String(query.entity || '');
+  if (query.entity_id != null) entityId.value = String(query.entity_id || '');
+  if (query.user != null) user.value = String(query.user || '');
+  if (query.module != null) moduleFilter.value = String(query.module || '');
+  if (query.high_risk != null) highRiskOnly.value = ['1', 'true', 'yes'].includes(String(query.high_risk).toLowerCase());
+  page.value = 1;
+  suppressAutoSearch = false;
+  persistState();
+  if (loadAfter) load();
+}
 
 function onSearch(){
   clearInputTimer();
@@ -1114,8 +1135,17 @@ async function deleteSelected(){
   }
 }
 
+watch(() => route.fullPath, (_value, oldValue) => {
+  if (oldValue === undefined) return;
+  applyRouteQuery(true);
+});
+
 onMounted(() => {
   persistState();
+  if (Object.keys(route.query || {}).length) {
+    applyRouteQuery(true);
+    return;
+  }
   load();
 });
 </script>

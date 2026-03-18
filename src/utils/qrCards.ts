@@ -16,13 +16,19 @@ function escapeHtml(value: string) {
     .replaceAll("'", '&#39;');
 }
 
-export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[]) {
-  const cards = await Promise.all(
+type QrCardPreparedRecord = QrCardRecord & { dataUrl: string };
+
+async function prepareQrCards(records: QrCardRecord[]): Promise<QrCardPreparedRecord[]> {
+  return Promise.all(
     records.map(async (record) => ({
       ...record,
       dataUrl: await QRCode.toDataURL(record.url, { width: 220, margin: 2, errorCorrectionLevel: 'Q' }),
     }))
   );
+}
+
+export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[]) {
+  const cards = await prepareQrCards(records);
 
   const html = `<!doctype html>
 <html lang="zh-CN">
@@ -75,4 +81,138 @@ ${cards.map((record) => `
   a.click();
   document.body.removeChild(a);
   URL.revokeObjectURL(url);
+}
+
+
+function loadImage(src: string): Promise<HTMLImageElement> {
+  return new Promise((resolve, reject) => {
+    const image = new Image();
+    image.onload = () => resolve(image);
+    image.onerror = () => reject(new Error('二维码图片加载失败'));
+    image.src = src;
+  });
+}
+
+function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const value = String(text || '').trim();
+  if (!value) return ['-'];
+  const chars = Array.from(value);
+  const lines: string[] = [];
+  let current = '';
+  chars.forEach((char) => {
+    const next = current + char;
+    if (ctx.measureText(next).width > maxWidth && current) {
+      lines.push(current);
+      current = char;
+    } else {
+      current = next;
+    }
+  });
+  if (current) lines.push(current);
+  return lines;
+}
+
+export async function downloadQrCardsPng(filename: string, title: string, records: QrCardRecord[]) {
+  const cards = await prepareQrCards(records);
+  if (!cards.length) return;
+
+  const cols = 2;
+  const rowsPerPage = 3;
+  const pageSize = cols * rowsPerPage;
+  const pageWidth = 1600;
+  const pageHeight = 2200;
+  const margin = 72;
+  const gapX = 40;
+  const gapY = 40;
+  const cardWidth = Math.floor((pageWidth - margin * 2 - gapX) / cols);
+  const cardHeight = Math.floor((pageHeight - margin * 2 - gapY * (rowsPerPage - 1)) / rowsPerPage);
+
+  for (let pageIndex = 0; pageIndex * pageSize < cards.length; pageIndex += 1) {
+    const pageCards = cards.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
+    const canvas = document.createElement('canvas');
+    canvas.width = pageWidth;
+    canvas.height = pageHeight;
+    const ctx = canvas.getContext('2d');
+    if (!ctx) throw new Error('生成二维码图版失败');
+
+    ctx.fillStyle = '#f5f7fb';
+    ctx.fillRect(0, 0, pageWidth, pageHeight);
+    ctx.fillStyle = '#111827';
+    ctx.font = 'bold 40px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+    ctx.fillText(title, margin, 54);
+    ctx.font = '24px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+    ctx.fillStyle = '#6b7280';
+    ctx.fillText(`第 ${pageIndex + 1} 页 · 共 ${cards.length} 张`, margin, 92);
+
+    for (let index = 0; index < pageCards.length; index += 1) {
+      const card = pageCards[index];
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = margin + col * (cardWidth + gapX);
+      const y = 130 + row * (cardHeight + gapY);
+
+      ctx.fillStyle = '#ffffff';
+      ctx.strokeStyle = '#e5e7eb';
+      ctx.lineWidth = 2;
+      const radius = 28;
+      ctx.beginPath();
+      ctx.moveTo(x + radius, y);
+      ctx.arcTo(x + cardWidth, y, x + cardWidth, y + cardHeight, radius);
+      ctx.arcTo(x + cardWidth, y + cardHeight, x, y + cardHeight, radius);
+      ctx.arcTo(x, y + cardHeight, x, y, radius);
+      ctx.arcTo(x, y, x + cardWidth, y, radius);
+      ctx.closePath();
+      ctx.fill();
+      ctx.stroke();
+
+      const qrImage = await loadImage(card.dataUrl);
+      const qrSize = 240;
+      const qrX = x + 28;
+      const qrY = y + 34;
+      ctx.drawImage(qrImage, qrX, qrY, qrSize, qrSize);
+
+      const textX = qrX + qrSize + 28;
+      const textWidth = cardWidth - (textX - x) - 28;
+      ctx.fillStyle = '#111827';
+      ctx.font = 'bold 30px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+      wrapText(ctx, card.title, textWidth).slice(0, 2).forEach((line, lineIndex) => {
+        ctx.fillText(line, textX, y + 76 + lineIndex * 38);
+      });
+
+      if (card.subtitle) {
+        ctx.font = '20px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+        ctx.fillStyle = '#4b5563';
+        wrapText(ctx, card.subtitle, textWidth).slice(0, 2).forEach((line, lineIndex) => {
+          ctx.fillText(line, textX, y + 152 + lineIndex * 28);
+        });
+      }
+
+      const metaStartY = y + 292;
+      ctx.font = '18px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+      (card.meta || []).slice(0, 5).forEach((item, metaIndex) => {
+        const currentY = metaStartY + metaIndex * 30;
+        ctx.fillStyle = '#6b7280';
+        ctx.fillText(`${item.label}：`, qrX, currentY);
+        ctx.fillStyle = '#111827';
+        const labelWidth = ctx.measureText(`${item.label}：`).width;
+        const valueLines = wrapText(ctx, item.value, cardWidth - 56 - labelWidth).slice(0, 1);
+        ctx.fillText(valueLines[0] || '-', qrX + labelWidth, currentY);
+      });
+
+      ctx.fillStyle = '#9ca3af';
+      ctx.font = '14px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif';
+      const linkLines = wrapText(ctx, card.url, cardWidth - 56).slice(0, 2);
+      linkLines.forEach((line, lineIndex) => {
+        ctx.fillText(line, qrX, y + cardHeight - 34 + lineIndex * 18);
+      });
+    }
+
+    const dataUrl = canvas.toDataURL('image/png');
+    const link = document.createElement('a');
+    link.href = dataUrl;
+    link.download = `${filename}_第${pageIndex + 1}页.png`;
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  }
 }
