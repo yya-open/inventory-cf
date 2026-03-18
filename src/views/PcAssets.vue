@@ -5,6 +5,12 @@
       v-model:keyword="keyword"
       :is-admin="isAdmin"
       :can-operator="canOperator"
+      :visible-columns="visibleColumns"
+      :column-options="pcColumnOptions"
+      :export-busy="exportBusy"
+      :import-busy="importBusy"
+      :init-qr-busy="initQrBusy"
+      @update:visible-columns="updateVisibleColumns"
       @search="onSearch"
       @reset="reset"
       @export="exportExcel"
@@ -21,6 +27,7 @@
       :total="total"
       :can-operator="canOperator"
       :is-admin="isAdmin"
+      :visible-columns="visibleColumns"
       @open-info="openInfo"
       @open-edit="openEdit"
       @open-qr="openQr"
@@ -68,6 +75,7 @@ import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
+import { normalizeVisibleColumns } from '../utils/tableColumns';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
@@ -76,10 +84,21 @@ import PcAssetInfoDialog from '../components/assets/PcAssetInfoDialog.vue';
 import PcAssetQrDialog from '../components/assets/PcAssetQrDialog.vue';
 
 const STORAGE_KEY = 'inventory:pc-assets:filters';
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50 });
+const PC_COLUMN_OPTIONS = [
+  { value: 'computer', label: '电脑' },
+  { value: 'config', label: '配置' },
+  { value: 'status', label: '状态' },
+  { value: 'owner', label: '当前领用人' },
+  { value: 'configDate', label: '配置日期' },
+  { value: 'recycleDate', label: '回收日期' },
+  { value: 'remark', label: '备注' },
+] as const;
+const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50, visibleColumns: PC_COLUMN_KEYS });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const visibleColumns = ref(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS));
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 
@@ -96,11 +115,17 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
 
+const pcColumnOptions = [...PC_COLUMN_OPTIONS];
+const exportBusy = ref(false);
+const importBusy = ref(false);
+const initQrBusy = ref(false);
+
 function persistState() {
   writeJsonStorage(STORAGE_KEY, {
     status: status.value || '',
     keyword: keyword.value || '',
     pageSize: Number(pageSize.value || 50),
+    visibleColumns: visibleColumns.value,
   });
 }
 
@@ -121,7 +146,7 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, pageSize], persistState);
+watch([status, keyword, pageSize, visibleColumns], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -148,6 +173,10 @@ const qrDataUrl = ref('');
 const qrLink = ref('');
 const qrRow = ref<PcAsset | null>(null);
 
+function updateVisibleColumns(value: string[]) {
+  visibleColumns.value = normalizeVisibleColumns(value, PC_COLUMN_KEYS);
+}
+
 const onSearch = () => {
   clearKeywordTimer();
   reload(currentFilters());
@@ -162,9 +191,10 @@ const reset = () => {
 };
 
 async function initQrKeys() {
+  if (initQrBusy.value) return;
   try {
     await ElMessageBox.confirm('将为所有缺少二维码Key的电脑批量生成Key（分批执行）。继续？', '初始化二维码Key', { type: 'warning' });
-    loading.value = true;
+    initQrBusy.value = true;
     let totalUpdated = 0;
     for (let i = 0; i < 20; i += 1) {
       const result: any = await apiPost('/api/pc-assets-init-qr-keys?batch=200', {});
@@ -176,7 +206,7 @@ async function initQrKeys() {
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);
   } finally {
-    loading.value = false;
+    initQrBusy.value = false;
   }
 }
 
@@ -367,8 +397,9 @@ async function removeAsset(row: PcAsset) {
 }
 
 async function exportExcel() {
+  if (exportBusy.value) return;
   try {
-    loading.value = true;
+    exportBusy.value = true;
     const all = await fetchAll(currentFilters());
     exportToXlsx({
       filename: '电脑台账_仓库2.xlsx',
@@ -397,7 +428,7 @@ async function exportExcel() {
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
   } finally {
-    loading.value = false;
+    exportBusy.value = false;
   }
 }
 
@@ -430,9 +461,11 @@ function downloadAssetTemplate() {
 }
 
 async function onImportAssetsFile(uploadFile: any) {
+  if (importBusy.value) return;
   const file: File = uploadFile?.raw;
   if (!file) return;
   try {
+    importBusy.value = true;
     const excelRows = await parseXlsx(file);
     const items = excelRows
       .map((row) => ({
@@ -470,6 +503,8 @@ async function onImportAssetsFile(uploadFile: any) {
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     ElMessage.error(error?.message || '导入失败');
+  } finally {
+    importBusy.value = false;
   }
 }
 

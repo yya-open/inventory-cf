@@ -14,6 +14,7 @@
         </template>
       </el-table-column>
       <el-table-column
+        v-if="visible('computer')"
         label="电脑"
         min-width="260"
       >
@@ -23,7 +24,8 @@
             @click="emit('open-info', row)"
           >
             {{ row.brand }} · {{ row.model }}
-          </div><div
+          </div>
+          <div
             class="asset-link subtle"
             @click="emit('open-info', row)"
           >
@@ -32,36 +34,42 @@
         </template>
       </el-table-column>
       <el-table-column
+        v-if="visible('config')"
         label="配置"
         width="170"
       >
         <template #default="{ row }">
-          <div>{{ row.disk_capacity || '-' }} / {{ row.memory_size || '-' }}</div><div class="subtle">
+          <div>{{ row.disk_capacity || '-' }} / {{ row.memory_size || '-' }}</div>
+          <div class="subtle">
             保修：{{ row.warranty_end || '-' }}
           </div>
         </template>
       </el-table-column>
       <el-table-column
+        v-if="visible('status')"
         label="状态"
         width="120"
       >
         <template #default="{ row }">
           <el-tag
-            v-if="row.status==='IN_STOCK'"
+            v-if="row.status === 'IN_STOCK'"
             type="success"
           >
             在库
-          </el-tag><el-tag
-            v-else-if="row.status==='ASSIGNED'"
+          </el-tag>
+          <el-tag
+            v-else-if="row.status === 'ASSIGNED'"
             type="warning"
           >
             已领用
-          </el-tag><el-tag
-            v-else-if="row.status==='RECYCLED'"
+          </el-tag>
+          <el-tag
+            v-else-if="row.status === 'RECYCLED'"
             type="info"
           >
             已回收
-          </el-tag><el-tag
+          </el-tag>
+          <el-tag
             v-else
             type="danger"
           >
@@ -70,30 +78,36 @@
         </template>
       </el-table-column>
       <el-table-column
+        v-if="visible('owner')"
         label="当前领用人"
         width="220"
       >
         <template #default="{ row }">
-          <div v-if="row.status==='ASSIGNED'">
+          <div v-if="row.status === 'ASSIGNED'">
             <div class="strong">
               {{ row.last_employee_name || '-' }}
-            </div><div class="subtle">
+            </div>
+            <div class="subtle">
               {{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}
             </div>
-          </div><span v-else>-</span>
+          </div>
+          <span v-else>-</span>
         </template>
       </el-table-column>
       <el-table-column
+        v-if="visible('configDate')"
         prop="last_config_date"
         label="配置日期"
         width="130"
       />
       <el-table-column
+        v-if="visible('recycleDate')"
         prop="last_recycle_date"
         label="回收日期"
         width="130"
       />
       <el-table-column
+        v-if="visible('remark')"
         prop="remark"
         label="备注"
         min-width="220"
@@ -109,18 +123,23 @@
           <el-button
             link
             type="primary"
+            :disabled="loading"
             @click="emit('open-edit', row)"
           >
             修改
-          </el-button><el-button
+          </el-button>
+          <el-button
             link
+            :disabled="loading"
             @click="emit('open-qr', row)"
           >
             二维码
-          </el-button><el-button
+          </el-button>
+          <el-button
             v-if="isAdmin"
             link
             type="danger"
+            :disabled="loading"
             @click="emit('remove', row)"
           >
             删除
@@ -135,7 +154,7 @@
         :total="total"
         background
         layout="total, sizes, prev, pager, next, jumper"
-        :page-sizes="[20,50,100,200]"
+        :page-sizes="[20, 50, 100, 200]"
         @update:current-page="(value: number) => emit('page-change', value)"
         @update:page-size="(value: number) => emit('page-size-change', value)"
       />
@@ -143,7 +162,24 @@
   </div>
 </template>
 <script setup lang="ts">
-defineProps<{ rows:Array<Record<string, any>>; loading:boolean; page:number; pageSize:number; total:number; canOperator:boolean; isAdmin:boolean }>();
-const emit = defineEmits<{ 'open-info':[Record<string,any>]; 'open-edit':[Record<string,any>]; 'open-qr':[Record<string,any>]; remove:[Record<string,any>]; 'page-change':[number]; 'page-size-change':[number] }>();
+const props = defineProps<{
+  rows: Array<Record<string, any>>;
+  loading: boolean;
+  page: number;
+  pageSize: number;
+  total: number;
+  canOperator: boolean;
+  isAdmin: boolean;
+  visibleColumns: string[];
+}>();
+const emit = defineEmits<{
+  'open-info': [Record<string, any>];
+  'open-edit': [Record<string, any>];
+  'open-qr': [Record<string, any>];
+  remove: [Record<string, any>];
+  'page-change': [number];
+  'page-size-change': [number];
+}>();
+const visible = (key: string) => props.visibleColumns.includes(key);
 </script>
 <style scoped>.pager-wrap{display:flex;justify-content:flex-end;margin-top:12px}.asset-link{cursor:pointer}.strong{font-weight:600}.subtle{color:#999;font-size:12px}</style>

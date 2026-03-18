@@ -7,16 +7,20 @@
   >
     <div class="asset-meta">
       {{ asset?.asset_code }} {{ asset?.sn ? ' / ' + asset.sn : '' }}
-    </div><el-form label-width="90px">
+    </div>
+    <el-form label-width="90px">
       <template v-if="kind==='out'">
         <el-form-item label="工号">
           <el-input v-model="form.employee_no" />
-        </el-form-item><el-form-item label="姓名">
+        </el-form-item>
+        <el-form-item label="姓名">
           <el-input v-model="form.employee_name" />
-        </el-form-item><el-form-item label="部门">
+        </el-form-item>
+        <el-form-item label="部门">
           <el-input v-model="form.department" />
         </el-form-item>
-      </template><el-form-item label="位置">
+      </template>
+      <el-form-item label="位置">
         <el-select
           v-model="form.location_id"
           filterable
@@ -31,18 +35,25 @@
             :value="it.value"
           />
         </el-select>
-      </el-form-item><el-form-item label="备注">
+      </el-form-item>
+      <el-form-item label="备注">
         <el-input
           v-model="form.remark"
           type="textarea"
           :rows="3"
         />
       </el-form-item>
-    </el-form><template #footer>
-      <el-button @click="emit('update:visible', false)">
+    </el-form>
+    <template #footer>
+      <el-button
+        :disabled="submitting"
+        @click="emit('update:visible', false)"
+      >
         取消
-      </el-button><el-button
+      </el-button>
+      <el-button
         type="primary"
+        :loading="submitting"
         @click="emit('submit')"
       >
         提交
@@ -50,5 +61,5 @@
     </template>
   </el-dialog>
 </template>
-<script setup lang="ts">defineProps<{ visible:boolean; title:string; kind:'in'|'out'|'return'|'transfer'; asset:Record<string,any>|null; form:Record<string,any>; locationOptions:Array<{value:number;label:string}> }>(); const emit = defineEmits<{ 'update:visible':[boolean]; submit:[] }>();</script>
+<script setup lang="ts">defineProps<{ visible:boolean; title:string; kind:'in'|'out'|'return'|'transfer'; asset:Record<string,any>|null; form:Record<string,any>; locationOptions:Array<{value:number;label:string}>; submitting:boolean }>(); const emit = defineEmits<{ 'update:visible':[boolean]; submit:[] }>();</script>
 <style scoped>.asset-meta{margin-bottom:8px;color:#666}</style>

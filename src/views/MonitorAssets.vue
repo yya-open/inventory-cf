@@ -7,6 +7,12 @@
       :location-options="locationOptions"
       :can-operator="canOperator"
       :is-admin="isAdmin"
+      :visible-columns="visibleColumns"
+      :column-options="monitorColumnOptions"
+      :export-busy="exportBusy"
+      :import-busy="importBusy"
+      :init-qr-busy="initQrBusy"
+      @update:visible-columns="updateVisibleColumns"
       @search="reloadList"
       @export="exportExcel"
       @download-template="downloadMonitorTemplate"
@@ -25,6 +31,7 @@
       :is-admin="isAdmin"
       :status-text="assetStatusText"
       :location-text="locationText"
+      :visible-columns="visibleColumns"
       @in="openIn"
       @out="openOut"
       @row-more="handleRowMore"
@@ -37,6 +44,7 @@
       :mode="dlgAsset.mode"
       :form="dlgAsset.form"
       :location-options="locationOptions"
+      :saving="assetSaving"
       @save="saveAsset"
     />
 
@@ -47,6 +55,7 @@
       :asset="dlgOp.asset"
       :form="dlgOp.form"
       :location-options="locationOptions"
+      :submitting="opSubmitting"
       @submit="submitOp"
     />
 
@@ -72,6 +81,7 @@
       :location-parent-options="locationParentOptions"
       :is-admin="isAdmin"
       :build-loc-label="buildLocLabel"
+      :saving="locationSaving"
       @create="createLocation"
       @update-location="updateLocation"
       @delete-location="deleteLocation"
@@ -91,6 +101,7 @@ import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets'
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
+import { normalizeVisibleColumns } from '../utils/tableColumns';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import MonitorAssetFormDialog from '../components/assets/MonitorAssetFormDialog.vue';
@@ -99,11 +110,24 @@ import MonitorAssetQrDialog from '../components/assets/MonitorAssetQrDialog.vue'
 import MonitorLocationManagerDialog from '../components/assets/MonitorLocationManagerDialog.vue';
 
 const STORAGE_KEY = 'inventory:monitor-assets:filters';
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50 });
+const MONITOR_COLUMN_OPTIONS = [
+  { value: 'assetCode', label: '资产编号' },
+  { value: 'sn', label: 'SN' },
+  { value: 'model', label: '型号' },
+  { value: 'size', label: '尺寸' },
+  { value: 'status', label: '状态' },
+  { value: 'location', label: '位置' },
+  { value: 'owner', label: '领用人' },
+  { value: 'department', label: '部门' },
+  { value: 'updatedAt', label: '更新时间' },
+] as const;
+const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const visibleColumns = ref(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS));
 const locations = ref<LocationRow[]>([]);
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
@@ -190,12 +214,21 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
 
+const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
+const exportBusy = ref(false);
+const importBusy = ref(false);
+const initQrBusy = ref(false);
+const assetSaving = ref(false);
+const opSubmitting = ref(false);
+const locationSaving = ref(false);
+
 function persistState() {
   writeJsonStorage(STORAGE_KEY, {
     status: status.value || '',
     locationId: String(locationId.value || ''),
     keyword: keyword.value || '',
     pageSize: Number(pageSize.value || 50),
+    visibleColumns: visibleColumns.value,
   });
 }
 
@@ -216,11 +249,15 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, pageSize], persistState);
+watch([status, locationId, keyword, pageSize, visibleColumns], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
+
+function updateVisibleColumns(value: string[]) {
+  visibleColumns.value = normalizeVisibleColumns(value, MONITOR_COLUMN_KEYS);
+}
 
 const reloadList = () => {
   clearKeywordTimer();
@@ -241,8 +278,9 @@ function handleRowMore(command: string, row: MonitorAsset) {
 }
 
 async function exportExcel() {
+  if (exportBusy.value) return;
   try {
-    loading.value = true;
+    exportBusy.value = true;
     const all = await fetchAll(currentFilters());
     exportToXlsx({
       filename: '显示器台账.xlsx',
@@ -271,7 +309,7 @@ async function exportExcel() {
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
   } finally {
-    loading.value = false;
+    exportBusy.value = false;
   }
 }
 
@@ -302,9 +340,11 @@ function downloadMonitorTemplate() {
 }
 
 async function onImportMonitorFile(uploadFile: any) {
+  if (importBusy.value) return;
   const file: File = uploadFile?.raw;
   if (!file) return;
   try {
+    importBusy.value = true;
     const excelRows = await parseXlsx(file);
     if (!excelRows.length) return ElMessage.warning('Excel里没有可导入的数据');
 
@@ -351,6 +391,8 @@ async function onImportMonitorFile(uploadFile: any) {
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     ElMessage.error(error?.message || '导入失败');
+  } finally {
+    importBusy.value = false;
   }
 }
 
@@ -391,6 +433,8 @@ function openEdit(row: MonitorAsset) {
 }
 
 async function saveAsset() {
+  if (assetSaving.value) return;
+  assetSaving.value = true;
   try {
     if (dlgAsset.mode === 'create') {
       await apiPost('/api/monitor-assets', dlgAsset.form);
@@ -416,6 +460,8 @@ async function saveAsset() {
     } catch (nextError: any) {
       ElMessage.error(nextError.message || '操作失败');
     }
+  } finally {
+    assetSaving.value = false;
   }
 }
 
@@ -487,8 +533,9 @@ function openTransfer(row: MonitorAsset) {
 
 async function submitOp() {
   const asset = dlgOp.asset;
-  if (!asset) return;
+  if (!asset || opSubmitting.value) return;
   try {
+    opSubmitting.value = true;
     if (dlgOp.kind === 'in') {
       await apiPost('/api/monitor-in', { asset_id: asset.id, location_id: dlgOp.form.location_id || null, remark: dlgOp.form.remark });
       ElMessage.success('入库成功');
@@ -513,6 +560,8 @@ async function submitOp() {
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败');
+  } finally {
+    opSubmitting.value = false;
   }
 }
 
@@ -587,12 +636,14 @@ async function resetQr() {
 }
 
 async function initQrKeys() {
+  if (initQrBusy.value) return;
   try {
     await ElMessageBox.confirm('将为所有缺少二维码Key的显示器批量生成Key（分批执行）。继续？', '初始化二维码Key', {
       type: 'warning',
       confirmButtonText: '继续',
       cancelButtonText: '取消',
     });
+    initQrBusy.value = true;
     let totalUpdated = 0;
     for (let index = 0; index < 20; index += 1) {
       const result: any = await apiPost('/api/monitor-assets-init-qr-keys', { batch_size: 50 });
@@ -604,6 +655,8 @@ async function initQrKeys() {
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '初始化失败');
+  } finally {
+    initQrBusy.value = false;
   }
 }
 
@@ -625,7 +678,9 @@ async function refreshLocationMgr() {
 }
 
 async function createLocation() {
+  if (locationSaving.value) return;
   try {
+    locationSaving.value = true;
     if (!dlgLoc.newName.trim()) return ElMessage.warning('请输入位置名称');
     await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
     dlgLoc.newName = '';
@@ -634,27 +689,37 @@ async function createLocation() {
     ElMessage.success('新增成功');
   } catch (error: any) {
     ElMessage.error(error.message || '新增失败');
+  } finally {
+    locationSaving.value = false;
   }
 }
 
 async function updateLocation(row: MonitorAsset) {
+  if (locationSaving.value) return;
   try {
+    locationSaving.value = true;
     await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
     await refreshLocationMgr();
     ElMessage.success('保存成功');
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败');
+  } finally {
+    locationSaving.value = false;
   }
 }
 
 async function deleteLocation(row: MonitorAsset) {
+  if (locationSaving.value) return;
   try {
+    locationSaving.value = true;
     await ElMessageBox.confirm('删除位置后无法恢复，确认继续？', '提示', { type: 'warning' });
     await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
     await refreshLocationMgr();
     ElMessage.success('删除成功');
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);
+  } finally {
+    locationSaving.value = false;
   }
 }
 

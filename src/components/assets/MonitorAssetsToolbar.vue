@@ -8,7 +8,8 @@
         <div class="toolbar-block toolbar-search">
           <div class="toolbar-block-title">
             筛选查询
-          </div><div class="toolbar-row">
+          </div>
+          <div class="toolbar-row">
             <el-select
               :model-value="status"
               placeholder="状态"
@@ -20,17 +21,21 @@
               <el-option
                 label="在库"
                 value="IN_STOCK"
-              /><el-option
+              />
+              <el-option
                 label="已领用"
                 value="ASSIGNED"
-              /><el-option
+              />
+              <el-option
                 label="已回收"
                 value="RECYCLED"
-              /><el-option
+              />
+              <el-option
                 label="已报废"
                 value="SCRAPPED"
               />
-            </el-select><el-select
+            </el-select>
+            <el-select
               :model-value="locationId"
               placeholder="位置"
               clearable
@@ -45,14 +50,16 @@
                 :label="it.label"
                 :value="it.value"
               />
-            </el-select><el-input
+            </el-select>
+            <el-input
               :model-value="keyword"
               placeholder="关键词：资产编号/SN/员工/型号"
               clearable
               class="toolbar-input"
               @update:model-value="emit('update:keyword', $event || '')"
               @keyup.enter="emit('search')"
-            /><div class="toolbar-actions-inline">
+            />
+            <div class="toolbar-actions-inline">
               <el-button
                 type="primary"
                 @click="emit('search')"
@@ -62,51 +69,104 @@
             </div>
           </div>
         </div>
-      </div><div class="toolbar-right">
+      </div>
+      <div class="toolbar-right">
         <div class="toolbar-block toolbar-tools">
-          <div class="toolbar-block-title">
-            快捷工具
-          </div><div class="toolbar-tool-grid-two">
-            <el-button @click="emit('export')">
+          <div class="toolbar-head">
+            <div class="toolbar-block-title">
+              快捷工具
+            </div>
+            <el-popover
+              placement="bottom-end"
+              trigger="click"
+              :width="240"
+            >
+              <template #reference>
+                <el-button>显示列</el-button>
+              </template>
+              <div class="column-panel">
+                <div class="column-panel-title">
+                  表格列显示
+                </div>
+                <el-checkbox-group
+                  :model-value="visibleColumns"
+                  class="column-check-group"
+                  @update:model-value="emit('update:visible-columns', $event as string[])"
+                >
+                  <el-checkbox
+                    v-for="item in columnOptions"
+                    :key="item.value"
+                    :label="item.value"
+                  >
+                    {{ item.label }}
+                  </el-checkbox>
+                </el-checkbox-group>
+              </div>
+            </el-popover>
+          </div>
+          <div class="toolbar-tool-grid-two">
+            <el-button
+              :loading="exportBusy"
+              :disabled="importBusy || initQrBusy"
+              @click="emit('export')"
+            >
               导出Excel
-            </el-button><el-button @click="emit('download-template')">
+            </el-button>
+            <el-button
+              :disabled="importBusy"
+              @click="emit('download-template')"
+            >
               下载导入模板
-            </el-button><el-upload
+            </el-button>
+            <el-upload
               class="toolbar-upload toolbar-upload-inline"
               :show-file-list="false"
               :auto-upload="false"
               accept=".xlsx,.xls"
+              :disabled="importBusy || exportBusy || initQrBusy"
               :on-change="(file: unknown) => emit('import-file', file)"
             >
-              <el-button type="primary">
+              <el-button
+                type="primary"
+                :loading="importBusy"
+                :disabled="exportBusy || initQrBusy"
+              >
                 Excel导入
               </el-button>
-            </el-upload><el-button
+            </el-upload>
+            <el-button
               v-if="canOperator"
               type="primary"
               plain
               @click="emit('open-create')"
             >
               新增台账
-            </el-button><el-dropdown
+            </el-button>
+            <el-dropdown
               v-if="canOperator || isAdmin"
               trigger="click"
               @command="(command: string | number | object) => emit('toolbar-more', String(command))"
             >
-              <el-button class="toolbar-more-button">
+              <el-button
+                class="toolbar-more-button"
+                :disabled="initQrBusy"
+              >
                 更多<el-icon class="el-icon--right">
                   <ArrowDown />
                 </el-icon>
-              </el-button><template #dropdown>
+              </el-button>
+              <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item
                     v-if="canOperator"
                     command="location"
                   >
                     管理位置
-                  </el-dropdown-item><el-dropdown-item
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     v-if="isAdmin"
                     command="initQr"
+                    :disabled="initQrBusy"
                   >
                     初始化二维码Key
                   </el-dropdown-item>
@@ -119,5 +179,32 @@
     </div>
   </el-card>
 </template>
-<script setup lang="ts">import { ArrowDown } from '@element-plus/icons-vue'; defineProps<{ status:string; locationId:string|number; keyword:string; locationOptions:Array<{value:number;label:string}>; canOperator:boolean; isAdmin:boolean }>(); const emit = defineEmits<{ 'update:status':[string]; 'update:location-id':[string|number]; 'update:keyword':[string]; search:[]; export:[]; 'download-template':[]; 'import-file':[unknown]; 'open-create':[]; 'toolbar-more':[string] }>();</script>
-<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(280px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{margin-bottom:10px;font-size:13px;font-weight:700;color:#606266}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-tool-grid-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid-two :deep(.el-button){width:100%;margin-left:0}.toolbar-tool-grid-two :deep(.el-upload),.toolbar-tool-grid-two :deep(.el-upload .el-button){width:100%}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){width:100%}}</style>
+<script setup lang="ts">
+import { ArrowDown } from '@element-plus/icons-vue';
+defineProps<{
+  status: string;
+  locationId: string | number;
+  keyword: string;
+  locationOptions: Array<{ value: number; label: string }>;
+  canOperator: boolean;
+  isAdmin: boolean;
+  visibleColumns: string[];
+  columnOptions: Array<{ value: string; label: string }>;
+  exportBusy: boolean;
+  importBusy: boolean;
+  initQrBusy: boolean;
+}>();
+const emit = defineEmits<{
+  'update:status': [string];
+  'update:location-id': [string | number];
+  'update:keyword': [string];
+  'update:visible-columns': [string[]];
+  search: [];
+  export: [];
+  'download-template': [];
+  'import-file': [unknown];
+  'open-create': [];
+  'toolbar-more': [string];
+}>();
+</script>
+<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-tool-grid-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid-two :deep(.el-button){width:100%;margin-left:0}.toolbar-tool-grid-two :deep(.el-upload),.toolbar-tool-grid-two :deep(.el-upload .el-button){width:100%}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}}</style>

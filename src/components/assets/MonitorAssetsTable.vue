@@ -10,55 +10,75 @@
         prop="id"
         label="ID"
         width="70"
-      /><el-table-column
+      />
+      <el-table-column
+        v-if="visible('assetCode')"
         prop="asset_code"
         label="资产编号"
         min-width="160"
-      /><el-table-column
+      />
+      <el-table-column
+        v-if="visible('sn')"
         prop="sn"
         label="SN"
         min-width="140"
-      /><el-table-column
+      />
+      <el-table-column
+        v-if="visible('model')"
         label="型号"
         min-width="200"
       >
         <template #default="{ row }">
           <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
         </template>
-      </el-table-column><el-table-column
+      </el-table-column>
+      <el-table-column
+        v-if="visible('size')"
         prop="size_inch"
         label="尺寸"
         width="90"
-      /><el-table-column
+      />
+      <el-table-column
+        v-if="visible('status')"
         label="状态"
         width="110"
       >
         <template #default="{ row }">
           {{ statusText(row.status) }}
         </template>
-      </el-table-column><el-table-column
+      </el-table-column>
+      <el-table-column
+        v-if="visible('location')"
         label="位置"
         min-width="180"
       >
         <template #default="{ row }">
           {{ locationText(row) }}
         </template>
-      </el-table-column><el-table-column
+      </el-table-column>
+      <el-table-column
+        v-if="visible('owner')"
         label="领用人"
         min-width="180"
       >
         <template #default="{ row }">
-          <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span><span v-else>-</span>
+          <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
+          <span v-else>-</span>
         </template>
-      </el-table-column><el-table-column
+      </el-table-column>
+      <el-table-column
+        v-if="visible('department')"
         prop="department"
         label="部门"
         min-width="140"
-      /><el-table-column
+      />
+      <el-table-column
+        v-if="visible('updatedAt')"
         prop="updated_at"
         label="更新时间"
         min-width="170"
-      /><el-table-column
+      />
+      <el-table-column
         label="操作"
         width="220"
         fixed="right"
@@ -69,51 +89,62 @@
               v-if="canOperator"
               link
               type="success"
+              :disabled="loading"
               @click="emit('in', row)"
             >
               入库
-            </el-button><el-button
+            </el-button>
+            <el-button
               v-if="canOperator"
               link
               type="warning"
+              :disabled="loading"
               @click="emit('out', row)"
             >
               出库
-            </el-button><el-dropdown
+            </el-button>
+            <el-dropdown
               v-if="canOperator || isAdmin"
               trigger="click"
+              :disabled="loading"
               @command="(command: string | number | object) => emit('row-more', String(command), row)"
             >
               <el-button
                 link
                 class="row-more-trigger"
+                :disabled="loading"
               >
                 更多<el-icon class="el-icon--right">
                   <ArrowDown />
                 </el-icon>
-              </el-button><template #dropdown>
+              </el-button>
+              <template #dropdown>
                 <el-dropdown-menu>
                   <el-dropdown-item
                     v-if="isAdmin"
                     command="edit"
                   >
                     编辑
-                  </el-dropdown-item><el-dropdown-item
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     v-if="canOperator"
                     command="qr"
                   >
                     二维码
-                  </el-dropdown-item><el-dropdown-item
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     v-if="canOperator"
                     command="return"
                   >
                     归还
-                  </el-dropdown-item><el-dropdown-item
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     v-if="canOperator"
                     command="transfer"
                   >
                     调拨
-                  </el-dropdown-item><el-dropdown-item
+                  </el-dropdown-item>
+                  <el-dropdown-item
                     v-if="isAdmin"
                     command="delete"
                     divided
@@ -126,7 +157,8 @@
           </div>
         </template>
       </el-table-column>
-    </el-table><div class="pager-wrap">
+    </el-table>
+    <div class="pager-wrap">
       <el-pagination
         background
         layout="total, sizes, prev, pager, next"
@@ -139,5 +171,27 @@
     </div>
   </el-card>
 </template>
-<script setup lang="ts">import { ArrowDown } from '@element-plus/icons-vue'; defineProps<{ rows:Array<Record<string,any>>; loading:boolean; total:number; page:number; pageSize:number; canOperator:boolean; isAdmin:boolean; statusText:(status:string)=>string; locationText:(row:Record<string,any>)=>string }>(); const emit = defineEmits<{ in:[Record<string,any>]; out:[Record<string,any>]; 'row-more':[string,Record<string,any>]; 'page-change':[number]; 'size-change':[number] }>();</script>
+<script setup lang="ts">
+import { ArrowDown } from '@element-plus/icons-vue';
+const props = defineProps<{
+  rows: Array<Record<string, any>>;
+  loading: boolean;
+  total: number;
+  page: number;
+  pageSize: number;
+  canOperator: boolean;
+  isAdmin: boolean;
+  visibleColumns: string[];
+  statusText: (status: string) => string;
+  locationText: (row: Record<string, any>) => string;
+}>();
+const emit = defineEmits<{
+  in: [Record<string, any>];
+  out: [Record<string, any>];
+  'row-more': [string, Record<string, any>];
+  'page-change': [number];
+  'size-change': [number];
+}>();
+const visible = (key: string) => props.visibleColumns.includes(key);
+</script>
 <style scoped>.pager-wrap{margin-top:12px;display:flex;justify-content:flex-end}.monitor-op-group.compact{display:flex;align-items:center;gap:8px}</style>

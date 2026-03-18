@@ -6,6 +6,7 @@ import {
   ElButtonGroup,
   ElCard,
   ElCheckbox,
+  ElCheckboxGroup,
   ElCol,
   ElContainer,
   ElDatePicker,
@@ -28,6 +29,7 @@ import {
   ElMenuItem,
   ElOption,
   ElPagination,
+  ElPopover,
   ElPopconfirm,
   ElProgress,
   ElRadio,
@@ -53,6 +55,7 @@ import 'element-plus/es/components/button/style/css';
 import 'element-plus/es/components/button-group/style/css';
 import 'element-plus/es/components/card/style/css';
 import 'element-plus/es/components/checkbox/style/css';
+import 'element-plus/es/components/checkbox-group/style/css';
 import 'element-plus/es/components/col/style/css';
 import 'element-plus/es/components/container/style/css';
 import 'element-plus/es/components/date-picker/style/css';
@@ -77,6 +80,7 @@ import 'element-plus/es/components/message/style/css';
 import 'element-plus/es/components/message-box/style/css';
 import 'element-plus/es/components/option/style/css';
 import 'element-plus/es/components/pagination/style/css';
+import 'element-plus/es/components/popover/style/css';
 import 'element-plus/es/components/popconfirm/style/css';
 import 'element-plus/es/components/progress/style/css';
 import 'element-plus/es/components/radio/style/css';
@@ -102,6 +106,7 @@ const components = [
   ElButtonGroup,
   ElCard,
   ElCheckbox,
+  ElCheckboxGroup,
   ElCol,
   ElContainer,
   ElDatePicker,
@@ -124,6 +129,7 @@ const components = [
   ElMenuItem,
   ElOption,
   ElPagination,
+  ElPopover,
   ElPopconfirm,
   ElProgress,
   ElRadio,

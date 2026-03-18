@@ -11,21 +11,26 @@
           v-model="form.asset_code"
           placeholder="必填"
         />
-      </el-form-item><el-form-item label="SN">
+      </el-form-item>
+      <el-form-item label="SN">
         <el-input
           v-model="form.sn"
           placeholder="可选"
         />
-      </el-form-item><el-form-item label="品牌">
+      </el-form-item>
+      <el-form-item label="品牌">
         <el-input v-model="form.brand" />
-      </el-form-item><el-form-item label="型号">
+      </el-form-item>
+      <el-form-item label="型号">
         <el-input v-model="form.model" />
-      </el-form-item><el-form-item label="尺寸">
+      </el-form-item>
+      <el-form-item label="尺寸">
         <el-input
           v-model="form.size_inch"
           placeholder="例如 27"
         />
-      </el-form-item><el-form-item label="位置">
+      </el-form-item>
+      <el-form-item label="位置">
         <el-select
           v-model="form.location_id"
           filterable
@@ -40,18 +45,25 @@
             :value="it.value"
           />
         </el-select>
-      </el-form-item><el-form-item label="备注">
+      </el-form-item>
+      <el-form-item label="备注">
         <el-input
           v-model="form.remark"
           type="textarea"
           :rows="3"
         />
       </el-form-item>
-    </el-form><template #footer>
-      <el-button @click="emit('update:visible', false)">
+    </el-form>
+    <template #footer>
+      <el-button
+        :disabled="saving"
+        @click="emit('update:visible', false)"
+      >
         取消
-      </el-button><el-button
+      </el-button>
+      <el-button
         type="primary"
+        :loading="saving"
         @click="emit('save')"
       >
         保存
@@ -59,4 +71,4 @@
     </template>
   </el-dialog>
 </template>
-<script setup lang="ts">defineProps<{ visible:boolean; mode:'create'|'edit'; form:Record<string,any>; locationOptions:Array<{value:number;label:string}> }>(); const emit = defineEmits<{ 'update:visible':[boolean]; save:[] }>();</script>
+<script setup lang="ts">defineProps<{ visible:boolean; mode:'create'|'edit'; form:Record<string,any>; locationOptions:Array<{value:number;label:string}>; saving:boolean }>(); const emit = defineEmits<{ 'update:visible':[boolean]; save:[] }>();</script>
