@@ -11,8 +11,6 @@
       :column-order="columnOrder"
       :column-options="monitorColumnOptions"
       :selected-count="selectedCount"
-      :current-page-count="rows.length"
-      :selected-on-page-count="selectedOnPageCount"
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
@@ -20,8 +18,6 @@
       @move-column="moveVisibleColumn"
       @search="reloadList"
       @export="exportExcel"
-      @select-page="selectCurrentPage"
-      @clear-page-selection="clearCurrentPageSelection"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @download-template="downloadMonitorTemplate"
@@ -235,7 +231,7 @@ const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
 
-const { selectedIds, selectedRows, selectedCount, syncPageSelection, selectRows, unselectRows, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
+const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
 const assetSaving = ref(false);
 const opSubmitting = ref(false);
 const locationSaving = ref(false);
@@ -632,20 +628,7 @@ async function submitOp() {
 
 const qrVisible = ref(false);
 
-const selectedOnPageCount = computed(() => {
-  const selectedSet = new Set(selectedIds.value.map((item) => String(item)));
-  return rows.value.filter((row) => selectedSet.has(String(row.id))).length;
-});
 
-function selectCurrentPage() {
-  if (!rows.value.length) return;
-  selectRows(rows.value);
-}
-
-function clearCurrentPageSelection() {
-  if (!rows.value.length) return;
-  unselectRows(rows.value);
-}
 const qrLoading = ref(false);
 const qrRow = ref<MonitorAsset | null>(null);
 const qrLink = ref('');
