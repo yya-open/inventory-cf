@@ -3,9 +3,7 @@
     <div class="monitor-toolbar">
       <div class="toolbar-left">
         <div class="toolbar-block">
-          <div class="toolbar-block-title">
-            筛选查询
-          </div>
+          <div class="toolbar-block-title">筛选查询</div>
           <div class="toolbar-row">
             <el-select
               :model-value="status"
@@ -40,10 +38,15 @@
               @update:model-value="emit('update:keyword', $event || '')"
               @keyup.enter="emit('search')"
             />
+            <el-checkbox
+              :model-value="showArchived"
+              class="toolbar-archive-checkbox"
+              @change="handleArchivedToggle"
+            >
+              显示已归档
+            </el-checkbox>
             <div class="toolbar-actions-inline">
-              <el-button type="primary" @click="emit('search')">
-                查询
-              </el-button>
+              <el-button type="primary" @click="emit('search')">查询</el-button>
             </div>
           </div>
         </div>
@@ -53,12 +56,8 @@
         <div class="toolbar-block">
           <div class="toolbar-head">
             <div>
-              <div class="toolbar-block-title">
-                快捷工具
-              </div>
-              <div class="toolbar-subtle">
-                已选 {{ selectedCount }} 项，支持跨页保留
-              </div>
+              <div class="toolbar-block-title">快捷工具</div>
+              <div class="toolbar-subtle">已选 {{ selectedCount }} 项，支持跨页保留</div>
             </div>
           </div>
 
@@ -73,35 +72,22 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item command="export-qr">
-                    导出二维码链接
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-status">
-                    批量修改状态
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-location">
-                    批量修改位置
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-archive">
-                    批量归档
-                  </el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>
-                    批量删除选中
-                  </el-dropdown-item>
+                  <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="batch-location">批量修改位置</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
 
-            <el-button :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">
-              清空已选
-            </el-button>
+            <el-button :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
 
-            <div class="toolbar-compact-actions">
+            <div class="toolbar-secondary-actions">
               <el-popover placement="bottom-end" trigger="click" :width="320">
                 <template #reference>
-                  <el-button size="small" class="toolbar-compact-button">
-                    显示列
-                  </el-button>
+                  <el-button>显示列</el-button>
                 </template>
                 <div class="column-panel-head">
                   <div class="column-panel-title">表格列显示</div>
@@ -112,63 +98,41 @@
                   class="column-check-group"
                   @update:model-value="emit('update:visible-columns', $event as string[])"
                 >
-                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">
-                    {{ item.label }}
-                  </el-checkbox>
+                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
                 </el-checkbox-group>
-                <div class="column-panel-title reorder-title">
-                  列顺序
-                </div>
+                <div class="column-panel-title reorder-title">列顺序</div>
                 <div v-if="orderedVisibleOptions.length" class="column-order-list">
                   <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
                     <span>{{ index + 1 }}. {{ item.label }}</span>
                     <div class="column-order-actions">
-                      <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">
-                        上移
-                      </el-button>
-                      <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">
-                        下移
-                      </el-button>
+                      <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
+                      <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
                     </div>
                   </div>
                 </div>
-                <div v-else class="toolbar-subtle">
-                  请至少保留一列显示。
-                </div>
+                <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
               </el-popover>
 
               <el-button
                 v-if="canOperator"
-                size="small"
                 type="primary"
                 plain
-                class="toolbar-compact-button"
                 @click="emit('open-create')"
               >
                 新增台账
               </el-button>
 
               <el-dropdown v-if="canOperator || isAdmin" trigger="click" @command="handleMoreCommand">
-                <el-button size="small" class="toolbar-compact-button toolbar-more-button" :disabled="initQrBusy || batchBusy">
+                <el-button :disabled="initQrBusy || batchBusy">
                   更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
-                    <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">
-                      导出Excel
-                    </el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">
-                      下载导入模板
-                    </el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">
-                      Excel导入
-                    </el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="location">
-                      管理位置
-                    </el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="initQr" :disabled="initQrBusy || batchBusy">
-                      初始化二维码Key
-                    </el-dropdown-item>
+                    <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
+                    <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                    <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
+                    <el-dropdown-item v-if="canOperator" command="location">管理位置</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="initQr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -199,6 +163,7 @@ const props = defineProps<{
   status: string;
   locationId: string | number;
   keyword: string;
+  showArchived: boolean;
   locationOptions: Array<{ value: number; label: string }>;
   canOperator: boolean;
   isAdmin: boolean;
@@ -216,6 +181,7 @@ const emit = defineEmits<{
   'update:status': [string];
   'update:location-id': [string | number];
   'update:keyword': [string];
+  'update:show-archived': [boolean];
   'update:visible-columns': [string[]];
   'move-column': [string, 'up' | 'down'];
   search: [];
@@ -226,6 +192,7 @@ const emit = defineEmits<{
   'batch-status': [];
   'batch-location': [];
   'batch-archive': [];
+  'batch-restore': [];
   'clear-selection': [];
   'restore-columns': [];
   'download-template': [];
@@ -252,6 +219,11 @@ function openImportPicker() {
   input?.click();
 }
 
+function handleArchivedToggle(value: string | number | boolean) {
+  emit('update:show-archived', Boolean(value));
+  emit('search');
+}
+
 function handleMoreCommand(command: string | number | object) {
   const value = String(command);
   if (value === 'export') return emit('export');
@@ -266,6 +238,7 @@ function handleBatchCommand(command: string | number | object) {
   if (value === 'batch-status') return emit('batch-status');
   if (value === 'batch-location') return emit('batch-location');
   if (value === 'batch-archive') return emit('batch-archive');
+  if (value === 'batch-restore') return emit('batch-restore');
   if (value === 'batch-delete') return emit('batch-delete');
 }
 </script>
@@ -303,15 +276,14 @@ function handleBatchCommand(command: string | number | object) {
   gap: 12px;
   margin-bottom: 10px;
 }
-.toolbar-row {
+.toolbar-row,
+.toolbar-selection-row {
   display: flex;
   align-items: center;
   gap: 12px;
   flex-wrap: wrap;
 }
-.toolbar-select {
-  width: 160px;
-}
+.toolbar-select,
 .toolbar-location {
   width: 160px;
 }
@@ -319,29 +291,17 @@ function handleBatchCommand(command: string | number | object) {
   width: 300px;
   max-width: 100%;
 }
-.toolbar-actions-inline {
+.toolbar-actions-inline,
+.toolbar-secondary-actions {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
-.toolbar-selection-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-.toolbar-compact-actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
+.toolbar-secondary-actions {
   margin-left: auto;
 }
-.toolbar-compact-button {
-  min-width: 72px;
-  padding-inline: 12px;
-}
-.toolbar-more-button {
-  min-width: 68px;
+.toolbar-archive-checkbox {
+  margin-right: 4px;
 }
 .toolbar-upload-hidden {
   display: none;
@@ -389,7 +349,7 @@ function handleBatchCommand(command: string | number | object) {
   .monitor-toolbar {
     grid-template-columns: 1fr;
   }
-  .toolbar-compact-actions {
+  .toolbar-secondary-actions {
     margin-left: 0;
   }
 }
@@ -409,11 +369,11 @@ function handleBatchCommand(command: string | number | object) {
   .toolbar-actions-inline :deep(.el-button),
   .toolbar-selection-row,
   .toolbar-selection-row :deep(.el-button),
-  .toolbar-compact-actions {
+  .toolbar-secondary-actions,
+  .toolbar-secondary-actions :deep(.el-button) {
     width: 100%;
   }
-  .toolbar-compact-actions {
-    display: flex;
+  .toolbar-secondary-actions {
     margin-left: 0;
   }
   .column-check-group {

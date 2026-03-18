@@ -40,7 +40,9 @@ export function buildPcAssetQuery(url: URL) {
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
   const { page, pageSize, offset } = getPageParams(url);
-  const clauses: string[] = ['COALESCE(a.archived, 0)=0'];
+  const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
+  const clauses: string[] = [];
+  if (!showArchived) clauses.push('COALESCE(a.archived, 0)=0');
   const binds: any[] = [];
 
   if (status) {
@@ -83,7 +85,9 @@ export function buildMonitorAssetQuery(url: URL) {
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
-  const clauses: string[] = ['COALESCE(a.archived, 0)=0'];
+  const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
+  const clauses: string[] = [];
+  if (!showArchived) clauses.push('COALESCE(a.archived, 0)=0');
   const binds: any[] = [];
 
   if (status) {
@@ -230,6 +234,23 @@ export function monitorAssetArchiveSql() {
   return `
     UPDATE monitor_assets
     SET archived=1, archived_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+
+export function pcAssetRestoreSql() {
+  return `
+    UPDATE pc_assets
+    SET archived=0, archived_at=NULL, updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+export function monitorAssetRestoreSql() {
+  return `
+    UPDATE monitor_assets
+    SET archived=0, archived_at=NULL, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }

@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
-import { monitorAssetArchiveSql, monitorAssetBulkLocationSql, monitorAssetBulkStatusSql } from './services/asset-ledger';
+import { monitorAssetArchiveSql, monitorAssetBulkLocationSql, monitorAssetBulkStatusSql, monitorAssetRestoreSql } from './services/asset-ledger';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -25,6 +25,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), { ids, count: archived });
       return Response.json({ ok: true, archived, message: `已归档 ${archived} 台显示器` });
+    }
+
+
+    if (action === 'restore') {
+      let restored = 0;
+      for (const id of ids) {
+        const row = await env.DB.prepare('SELECT id FROM monitor_assets WHERE id=? AND COALESCE(archived,0)=1').bind(id).first<any>();
+        if (!row) continue;
+        await env.DB.prepare(monitorAssetRestoreSql()).bind(id).run();
+        restored += 1;
+      }
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_RESTORE_BATCH', 'monitor_assets', String(ids.length), { ids, count: restored });
+      return Response.json({ ok: true, restored, message: `已恢复 ${restored} 台显示器` });
     }
 
     if (action === 'status') {

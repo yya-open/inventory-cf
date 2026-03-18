@@ -4,6 +4,7 @@
       v-model:status="status"
       v-model:location-id="locationId"
       v-model:keyword="keyword"
+      v-model:show-archived="showArchived"
       :location-options="locationOptions"
       :can-operator="canOperator"
       :is-admin="isAdmin"
@@ -26,6 +27,7 @@
       @batch-status="openBatchStatusDialog"
       @batch-location="openBatchLocationDialog"
       @batch-archive="batchArchiveSelected"
+      @batch-restore="batchRestoreSelected"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
@@ -49,6 +51,7 @@
       @in="openIn"
       @out="openOut"
       @row-more="handleRowMore"
+      @restore="restoreAsset"
       @selection-change="onSelectionChange"
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
@@ -180,11 +183,12 @@ const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const showArchived = ref(Boolean(persistedState.showArchived));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
@@ -196,6 +200,7 @@ const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
   locationId: String(locationId.value || ''),
   keyword: keyword.value || '',
+  showArchived: Boolean(showArchived.value),
 });
 
 const locationText = (row: MonitorAsset) => [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-';
@@ -253,7 +258,7 @@ async function loadLocations() {
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}`,
+  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archived=${filters.showArchived ? 1 : 0}`,
   fetchPage: async (filters, currentPage, currentPageSize, fast) => {
     try {
       return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
@@ -294,6 +299,7 @@ function persistState() {
     status: status.value || '',
     locationId: String(locationId.value || ''),
     keyword: keyword.value || '',
+    showArchived: Boolean(showArchived.value),
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
     columnOrder: columnOrder.value,
@@ -318,7 +324,7 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, locationId, keyword, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -360,6 +366,27 @@ function handleRowMore(command: string, row: MonitorAsset) {
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
   if (command === 'delete') return removeAsset(row);
+}
+
+
+async function restoreAsset(row: MonitorAsset) {
+  try {
+    await ElMessageBox.confirm(`确认恢复显示器：${row.asset_code || '-'} ${row.brand || ''} ${row.model || ''}？恢复后将重新出现在默认台账列表中。`, '恢复归档', {
+      type: 'warning',
+      confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
+    ElMessage.success(result?.message || '恢复成功');
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '恢复归档失败');
+  } finally {
+    batchBusy.value = false;
+  }
 }
 
 async function exportSelectedQrLinks() {
@@ -450,6 +477,31 @@ async function submitBatchLocation() {
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改位置失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+
+async function batchRestoreSelected() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  try {
+    await ElMessageBox.confirm(`确认恢复选中的 ${selectedCount.value} 台显示器？恢复后将重新出现在默认台账列表中。`, '批量恢复归档', {
+      type: 'warning',
+      confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/monitor-assets-bulk', {
+      action: 'restore',
+      ids: selectedIds.value.map((id) => Number(id)),
+    });
+    ElMessage.success(result?.message || '批量恢复成功');
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '批量恢复归档失败');
   } finally {
     batchBusy.value = false;
   }

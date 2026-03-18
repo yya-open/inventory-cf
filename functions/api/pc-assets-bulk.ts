@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed } from './_pc';
-import { pcAssetArchiveSql, pcAssetBulkStatusSql } from './services/asset-ledger';
+import { pcAssetArchiveSql, pcAssetBulkStatusSql, pcAssetRestoreSql } from './services/asset-ledger';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -25,6 +25,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), { ids, count: archived });
       return Response.json({ ok: true, archived, message: `已归档 ${archived} 台电脑` });
+    }
+
+
+    if (action === 'restore') {
+      let restored = 0;
+      for (const id of ids) {
+        const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=? AND COALESCE(archived,0)=1').bind(id).first<any>();
+        if (!row) continue;
+        await env.DB.prepare(pcAssetRestoreSql()).bind(id).run();
+        restored += 1;
+      }
+      await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), { ids, count: restored });
+      return Response.json({ ok: true, restored, message: `已恢复 ${restored} 台电脑` });
     }
 
     if (action === 'status') {

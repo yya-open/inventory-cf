@@ -10,188 +10,68 @@
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
     >
-      <el-table-column
-        type="selection"
-        width="48"
-        fixed="left"
-      />
-      <el-table-column
-        prop="id"
-        label="ID"
-        width="70"
-        fixed="left"
-      />
+      <el-table-column type="selection" width="48" fixed="left" />
+      <el-table-column prop="id" label="ID" width="70" fixed="left" />
 
-      <template
-        v-for="key in orderedVisibleColumns"
-        :key="key"
-      >
-        <el-table-column
-          v-if="key === 'assetCode'"
-          column-key="assetCode"
-          prop="asset_code"
-          label="资产编号"
-          :width="getColumnWidth('assetCode')"
-          :min-width="160"
-          fixed="left"
-        />
-        <el-table-column
-          v-else-if="key === 'sn'"
-          column-key="sn"
-          prop="sn"
-          label="SN"
-          :width="getColumnWidth('sn')"
-          :min-width="140"
-        />
-        <el-table-column
-          v-else-if="key === 'model'"
-          column-key="model"
-          label="型号"
-          :width="getColumnWidth('model')"
-          :min-width="200"
-        >
+      <template v-for="key in orderedVisibleColumns" :key="key">
+        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" prop="asset_code" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="160" fixed="left" />
+        <el-table-column v-else-if="key === 'sn'" column-key="sn" prop="sn" label="SN" :width="getColumnWidth('sn')" :min-width="140" />
+        <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="200">
           <template #default="{ row }">
             <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
+            <el-tag v-if="Number(row.archived || 0) === 1" size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
           </template>
         </el-table-column>
-        <el-table-column
-          v-else-if="key === 'size'"
-          column-key="size"
-          prop="size_inch"
-          label="尺寸"
-          :width="getColumnWidth('size', 90)"
-        />
-        <el-table-column
-          v-else-if="key === 'status'"
-          column-key="status"
-          label="状态"
-          :width="getColumnWidth('status', 110)"
-        >
+        <el-table-column v-else-if="key === 'size'" column-key="size" prop="size_inch" label="尺寸" :width="getColumnWidth('size', 90)" />
+        <el-table-column v-else-if="key === 'status'" column-key="status" label="状态" :width="getColumnWidth('status', 120)">
           <template #default="{ row }">
-            {{ statusText(row.status) }}
+            <div class="status-stack">
+              <span>{{ statusText(row.status) }}</span>
+              <el-tag v-if="Number(row.archived || 0) === 1" size="small" type="warning" effect="plain">已归档</el-tag>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column
-          v-else-if="key === 'location'"
-          column-key="location"
-          label="位置"
-          :width="getColumnWidth('location')"
-          :min-width="180"
-        >
-          <template #default="{ row }">
-            {{ locationText(row) }}
-          </template>
+        <el-table-column v-else-if="key === 'location'" column-key="location" label="位置" :width="getColumnWidth('location')" :min-width="180">
+          <template #default="{ row }">{{ locationText(row) }}</template>
         </el-table-column>
-        <el-table-column
-          v-else-if="key === 'owner'"
-          column-key="owner"
-          label="领用人"
-          :width="getColumnWidth('owner')"
-          :min-width="180"
-        >
+        <el-table-column v-else-if="key === 'owner'" column-key="owner" label="领用人" :width="getColumnWidth('owner')" :min-width="180">
           <template #default="{ row }">
             <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column
-          v-else-if="key === 'department'"
-          column-key="department"
-          prop="department"
-          label="部门"
-          :width="getColumnWidth('department')"
-          :min-width="140"
-        />
-        <el-table-column
-          v-else-if="key === 'updatedAt'"
-          column-key="updatedAt"
-          prop="updated_at"
-          label="更新时间"
-          :width="getColumnWidth('updatedAt')"
-          :min-width="170"
-        />
+        <el-table-column v-else-if="key === 'department'" column-key="department" prop="department" label="部门" :width="getColumnWidth('department')" :min-width="140" />
+        <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
       </template>
 
-      <el-table-column
-        label="操作"
-        width="220"
-        fixed="right"
-      >
+      <el-table-column label="操作" width="220" fixed="right">
         <template #default="{ row }">
-          <div class="monitor-op-group compact">
-            <el-button
-              v-if="canOperator"
-              link
-              type="success"
-              :disabled="loading"
-              @click="emit('in', row)"
-            >
-              入库
-            </el-button>
-            <el-button
-              v-if="canOperator"
-              link
-              type="warning"
-              :disabled="loading"
-              @click="emit('out', row)"
-            >
-              出库
-            </el-button>
-            <el-dropdown
-              v-if="canOperator || isAdmin"
-              trigger="click"
-              :disabled="loading"
-              @command="(command: string | number | object) => emit('row-more', String(command), row)"
-            >
-              <el-button
-                link
-                class="row-more-trigger"
-                :disabled="loading"
-              >
-                更多<el-icon class="el-icon--right">
-                  <ArrowDown />
-                </el-icon>
+          <div v-if="Number(row.archived || 0) === 1" class="monitor-op-group compact">
+            <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
+            <span v-else class="table-subtle">已归档</span>
+          </div>
+          <div v-else class="monitor-op-group compact">
+            <el-button v-if="canOperator" link type="success" :disabled="loading" @click="emit('in', row)">入库</el-button>
+            <el-button v-if="canOperator" link type="warning" :disabled="loading" @click="emit('out', row)">出库</el-button>
+            <el-dropdown v-if="canOperator || isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="loading">
+                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item
-                    v-if="isAdmin"
-                    command="edit"
-                  >
-                    编辑
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="canOperator"
-                    command="qr"
-                  >
-                    二维码
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="canOperator"
-                    command="return"
-                  >
-                    归还
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="canOperator"
-                    command="transfer"
-                  >
-                    调拨
-                  </el-dropdown-item>
-                  <el-dropdown-item
-                    v-if="isAdmin"
-                    command="delete"
-                    divided
-                  >
-                    删除
-                  </el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item v-if="canOperator" command="qr">二维码</el-dropdown-item>
+                  <el-dropdown-item v-if="canOperator" command="return">归还</el-dropdown-item>
+                  <el-dropdown-item v-if="canOperator" command="transfer">调拨</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
           </div>
         </template>
       </el-table-column>
-          <template #empty>
+
+      <template #empty>
         <el-empty description="暂无匹配数据" />
       </template>
     </el-table>
@@ -228,6 +108,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   in: [Record<string, any>];
   out: [Record<string, any>];
+  restore: [Record<string, any>];
   'row-more': [string, Record<string, any>];
   'selection-change': [Record<string, any>[]];
   'column-resize': [{ key: string; width: number }];
@@ -263,4 +144,11 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   emit('column-resize', { key, width: Number(newWidth) });
 }
 </script>
-<style scoped>.pager-wrap{display:flex;justify-content:flex-end;margin-top:12px}.monitor-op-group.compact{display:flex;align-items:center;gap:6px}.row-more-trigger{padding-inline:4px}.row-more-trigger :deep(.el-icon){margin-left:2px}</style>
+<style scoped>
+.pager-wrap { margin-top: 12px; display: flex; justify-content: flex-end; }
+.monitor-op-group.compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.row-more-trigger { padding-left: 0; padding-right: 0; }
+.status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.archive-tag { margin-left: 8px; }
+.table-subtle { color: #909399; font-size: 12px; }
+</style>

@@ -3,6 +3,7 @@
     <PcAssetsToolbar
       v-model:status="status"
       v-model:keyword="keyword"
+      v-model:show-archived="showArchived"
       :is-admin="isAdmin"
       :can-operator="canOperator"
       :visible-columns="visibleColumns"
@@ -24,6 +25,7 @@
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
       @batch-archive="batchArchiveSelected"
+      @batch-restore="batchRestoreSelected"
       @restore-columns="restoreDefaultColumns"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
@@ -45,6 +47,7 @@
       @open-edit="openEdit"
       @open-qr="openQr"
       @remove="removeAsset"
+      @restore="restoreAsset"
       @selection-change="onSelectionChange"
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
@@ -131,10 +134,11 @@ const PC_COLUMN_OPTIONS = [
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
+const showArchived = ref(Boolean(persistedState.showArchived));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
@@ -144,10 +148,11 @@ const isAdmin = computed(() => can('admin'));
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
   keyword: keyword.value || '',
+  showArchived: Boolean(showArchived.value),
 });
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<PcFilters, PcAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}`,
+  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archived=${filters.showArchived ? 1 : 0}`,
   fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
   fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
@@ -168,6 +173,7 @@ function persistState() {
   writeJsonStorage(STORAGE_KEY, {
     status: status.value || '',
     keyword: keyword.value || '',
+    showArchived: Boolean(showArchived.value),
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
     columnOrder: columnOrder.value,
@@ -192,7 +198,7 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, keyword, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -249,6 +255,7 @@ const reset = () => {
   suppressAutoSearch = true;
   status.value = '';
   keyword.value = '';
+  showArchived.value = false;
   suppressAutoSearch = false;
   clearKeywordTimer();
   reload(currentFilters());
@@ -460,6 +467,27 @@ async function removeAsset(row: PcAsset) {
   }
 }
 
+
+async function restoreAsset(row: PcAsset) {
+  try {
+    await ElMessageBox.confirm(`确认恢复电脑：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？恢复后将重新出现在默认台账列表中。`, '恢复归档', {
+      type: 'warning',
+      confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
+    ElMessage.success(result?.message || '恢复成功');
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '恢复归档失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
 async function exportSelectedQrLinks() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
@@ -519,6 +547,31 @@ async function submitBatchStatus() {
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改状态失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+
+async function batchRestoreSelected() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    await ElMessageBox.confirm(`确认恢复选中的 ${selectedCount.value} 台电脑？恢复后将重新出现在默认台账列表中。`, '批量恢复归档', {
+      type: 'warning',
+      confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/pc-assets-bulk', {
+      action: 'restore',
+      ids: selectedIds.value.map((id) => Number(id)),
+    });
+    ElMessage.success(result?.message || '批量恢复成功');
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '批量恢复归档失败');
   } finally {
     batchBusy.value = false;
   }
