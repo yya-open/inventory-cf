@@ -8,13 +8,18 @@
       :can-operator="canOperator"
       :is-admin="isAdmin"
       :visible-columns="visibleColumns"
+      :column-order="columnOrder"
       :column-options="monitorColumnOptions"
+      :selected-count="selectedCount"
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
       @update:visible-columns="updateVisibleColumns"
+      @move-column="moveVisibleColumn"
       @search="reloadList"
       @export="exportExcel"
+      @export-selected="exportSelectedRows"
+      @clear-selection="clearSelection"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
@@ -32,9 +37,13 @@
       :status-text="assetStatusText"
       :location-text="locationText"
       :visible-columns="visibleColumns"
+      :column-widths="columnWidths"
+      :selected-ids="selectedIds"
       @in="openIn"
       @out="openOut"
       @row-more="handleRowMore"
+      @selection-change="onSelectionChange"
+      @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
       @size-change="(value) => onPageSizeChange(currentFilters(), value)"
     />
@@ -96,12 +105,13 @@ import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, listAllLocations, listEnabledLocations, listMonitorAssets } from '../api/assetLedgers';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
+import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
-import { normalizeVisibleColumns } from '../utils/tableColumns';
+import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import MonitorAssetFormDialog from '../components/assets/MonitorAssetFormDialog.vue';
@@ -122,12 +132,14 @@ const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
 const keyword = ref(String(persistedState.keyword || ''));
-const visibleColumns = ref(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS));
+const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
+const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
+const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
 const locations = ref<LocationRow[]>([]);
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
@@ -218,6 +230,8 @@ const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
+
+const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
 const assetSaving = ref(false);
 const opSubmitting = ref(false);
 const locationSaving = ref(false);
@@ -229,6 +243,8 @@ function persistState() {
     keyword: keyword.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
+    columnOrder: columnOrder.value,
+    columnWidths: columnWidths.value,
   });
 }
 
@@ -249,14 +265,24 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, pageSize, visibleColumns], persistState);
+watch([status, locationId, keyword, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
 
 function updateVisibleColumns(value: string[]) {
-  visibleColumns.value = normalizeVisibleColumns(value, MONITOR_COLUMN_KEYS);
+  visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, MONITOR_COLUMN_KEYS), columnOrder.value);
+}
+
+function moveVisibleColumn(key: string, direction: 'up' | 'down') {
+  columnOrder.value = moveColumnKey(columnOrder.value, key, direction);
+  visibleColumns.value = orderVisibleColumns(visibleColumns.value, columnOrder.value);
+}
+
+function updateColumnWidth(payload: { key: string; width: number }) {
+  if (!payload?.key) return;
+  columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
 }
 
 const reloadList = () => {
@@ -275,6 +301,41 @@ function handleRowMore(command: string, row: MonitorAsset) {
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
   if (command === 'delete') return removeAsset(row);
+}
+
+async function exportSelectedRows() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的显示器');
+  try {
+    exportBusy.value = true;
+    exportToXlsx({
+      filename: `显示器台账_已选_${selectedCount.value}条.xlsx`,
+      sheetName: '已选台账',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'asset_code', title: '资产编号' },
+        { key: 'sn', title: 'SN' },
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'size_inch', title: '尺寸' },
+        { key: 'status', title: '状态' },
+        { key: 'location_text', title: '位置' },
+        { key: 'employee_name', title: '领用人' },
+        { key: 'employee_no', title: '员工工号' },
+        { key: 'department', title: '部门' },
+        { key: 'remark', title: '备注' },
+        { key: 'updated_at', title: '更新时间' },
+      ],
+      rows: selectedRows.value.map((row) => ({
+        ...row,
+        status: assetStatusText(row.status),
+        location_text: locationText(row),
+      })),
+    });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出失败');
+  } finally {
+    exportBusy.value = false;
+  }
 }
 
 async function exportExcel() {
@@ -721,6 +782,10 @@ async function deleteLocation(row: MonitorAsset) {
   } finally {
     locationSaving.value = false;
   }
+}
+
+function onSelectionChange(currentPageSelected: MonitorAsset[]) {
+  syncPageSelection(rows.value, currentPageSelected);
 }
 
 onMounted(async () => {

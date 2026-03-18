@@ -6,14 +6,19 @@
       :is-admin="isAdmin"
       :can-operator="canOperator"
       :visible-columns="visibleColumns"
+      :column-order="columnOrder"
       :column-options="pcColumnOptions"
+      :selected-count="selectedCount"
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
       @update:visible-columns="updateVisibleColumns"
+      @move-column="moveVisibleColumn"
       @search="onSearch"
       @reset="reset"
       @export="exportExcel"
+      @export-selected="exportSelectedRows"
+      @clear-selection="clearSelection"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
       @import-file="onImportAssetsFile"
@@ -28,10 +33,14 @@
       :can-operator="canOperator"
       :is-admin="isAdmin"
       :visible-columns="visibleColumns"
+      :column-widths="columnWidths"
+      :selected-ids="selectedIds"
       @open-info="openInfo"
       @open-edit="openEdit"
       @open-qr="openQr"
       @remove="removeAsset"
+      @selection-change="onSelectionChange"
+      @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
       @page-size-change="(value) => onPageSizeChange(currentFilters(), value)"
     />
@@ -70,12 +79,13 @@ import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countPcAssets, listPcAssets } from '../api/assetLedgers';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
+import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
-import { normalizeVisibleColumns } from '../utils/tableColumns';
+import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
@@ -94,11 +104,13 @@ const PC_COLUMN_OPTIONS = [
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50, visibleColumns: PC_COLUMN_KEYS });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
-const visibleColumns = ref(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS));
+const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
+const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
+const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 
@@ -120,12 +132,16 @@ const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
 
+const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
+
 function persistState() {
   writeJsonStorage(STORAGE_KEY, {
     status: status.value || '',
     keyword: keyword.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
+    columnOrder: columnOrder.value,
+    columnWidths: columnWidths.value,
   });
 }
 
@@ -146,7 +162,7 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, pageSize, visibleColumns], persistState);
+watch([status, keyword, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -174,7 +190,17 @@ const qrLink = ref('');
 const qrRow = ref<PcAsset | null>(null);
 
 function updateVisibleColumns(value: string[]) {
-  visibleColumns.value = normalizeVisibleColumns(value, PC_COLUMN_KEYS);
+  visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, PC_COLUMN_KEYS), columnOrder.value);
+}
+
+function moveVisibleColumn(key: string, direction: 'up' | 'down') {
+  columnOrder.value = moveColumnKey(columnOrder.value, key, direction);
+  visibleColumns.value = orderVisibleColumns(visibleColumns.value, columnOrder.value);
+}
+
+function updateColumnWidth(payload: { key: string; width: number }) {
+  if (!payload?.key) return;
+  columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
 }
 
 const onSearch = () => {
@@ -396,6 +422,41 @@ async function removeAsset(row: PcAsset) {
   }
 }
 
+async function exportSelectedRows() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的电脑');
+  try {
+    exportBusy.value = true;
+    exportToXlsx({
+      filename: `电脑台账_已选_${selectedCount.value}条.xlsx`,
+      sheetName: '已选台账',
+      headers: [
+        { key: 'id', title: 'ID' },
+        { key: 'status', title: '状态' },
+        { key: 'brand', title: '品牌' },
+        { key: 'serial_no', title: '序列号' },
+        { key: 'model', title: '型号' },
+        { key: 'manufacture_date', title: '出厂时间' },
+        { key: 'warranty_end', title: '保修到期' },
+        { key: 'disk_capacity', title: '硬盘容量' },
+        { key: 'memory_size', title: '内存大小' },
+        { key: 'remark', title: '备注' },
+        { key: 'created_at', title: '创建时间' },
+        { key: 'updated_at', title: '更新时间' },
+      ],
+      rows: selectedRows.value.map((row) => ({
+        ...row,
+        status: assetStatusText(row.status),
+        created_at: formatBeijingDateTime(row.created_at),
+        updated_at: formatBeijingDateTime(row.updated_at),
+      })),
+    });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出失败');
+  } finally {
+    exportBusy.value = false;
+  }
+}
+
 async function exportExcel() {
   if (exportBusy.value) return;
   try {
@@ -506,6 +567,10 @@ async function onImportAssetsFile(uploadFile: any) {
   } finally {
     importBusy.value = false;
   }
+}
+
+function onSelectionChange(currentPageSelected: PcAsset[]) {
+  syncPageSelection(rows.value, currentPageSelected);
 }
 
 onMounted(() => {

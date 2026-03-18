@@ -1,83 +1,116 @@
 <template>
   <el-card shadow="never">
     <el-table
+      ref="tableRef"
       v-loading="loading"
       :data="rows"
+      row-key="id"
       size="small"
       border
+      @selection-change="handleSelectionChange"
+      @header-dragend="handleHeaderDragend"
     >
+      <el-table-column
+        type="selection"
+        width="48"
+        fixed="left"
+      />
       <el-table-column
         prop="id"
         label="ID"
         width="70"
+        fixed="left"
       />
-      <el-table-column
-        v-if="visible('assetCode')"
-        prop="asset_code"
-        label="资产编号"
-        min-width="160"
-      />
-      <el-table-column
-        v-if="visible('sn')"
-        prop="sn"
-        label="SN"
-        min-width="140"
-      />
-      <el-table-column
-        v-if="visible('model')"
-        label="型号"
-        min-width="200"
+
+      <template
+        v-for="key in orderedVisibleColumns"
+        :key="key"
       >
-        <template #default="{ row }">
-          <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="visible('size')"
-        prop="size_inch"
-        label="尺寸"
-        width="90"
-      />
-      <el-table-column
-        v-if="visible('status')"
-        label="状态"
-        width="110"
-      >
-        <template #default="{ row }">
-          {{ statusText(row.status) }}
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="visible('location')"
-        label="位置"
-        min-width="180"
-      >
-        <template #default="{ row }">
-          {{ locationText(row) }}
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="visible('owner')"
-        label="领用人"
-        min-width="180"
-      >
-        <template #default="{ row }">
-          <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
-          <span v-else>-</span>
-        </template>
-      </el-table-column>
-      <el-table-column
-        v-if="visible('department')"
-        prop="department"
-        label="部门"
-        min-width="140"
-      />
-      <el-table-column
-        v-if="visible('updatedAt')"
-        prop="updated_at"
-        label="更新时间"
-        min-width="170"
-      />
+        <el-table-column
+          v-if="key === 'assetCode'"
+          column-key="assetCode"
+          prop="asset_code"
+          label="资产编号"
+          :width="getColumnWidth('assetCode')"
+          :min-width="160"
+        />
+        <el-table-column
+          v-else-if="key === 'sn'"
+          column-key="sn"
+          prop="sn"
+          label="SN"
+          :width="getColumnWidth('sn')"
+          :min-width="140"
+        />
+        <el-table-column
+          v-else-if="key === 'model'"
+          column-key="model"
+          label="型号"
+          :width="getColumnWidth('model')"
+          :min-width="200"
+        >
+          <template #default="{ row }">
+            <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-else-if="key === 'size'"
+          column-key="size"
+          prop="size_inch"
+          label="尺寸"
+          :width="getColumnWidth('size', 90)"
+        />
+        <el-table-column
+          v-else-if="key === 'status'"
+          column-key="status"
+          label="状态"
+          :width="getColumnWidth('status', 110)"
+        >
+          <template #default="{ row }">
+            {{ statusText(row.status) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-else-if="key === 'location'"
+          column-key="location"
+          label="位置"
+          :width="getColumnWidth('location')"
+          :min-width="180"
+        >
+          <template #default="{ row }">
+            {{ locationText(row) }}
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-else-if="key === 'owner'"
+          column-key="owner"
+          label="领用人"
+          :width="getColumnWidth('owner')"
+          :min-width="180"
+        >
+          <template #default="{ row }">
+            <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
+            <span v-else>-</span>
+          </template>
+        </el-table-column>
+        <el-table-column
+          v-else-if="key === 'department'"
+          column-key="department"
+          prop="department"
+          label="部门"
+          :width="getColumnWidth('department')"
+          :min-width="140"
+        />
+        <el-table-column
+          v-else-if="key === 'updatedAt'"
+          column-key="updatedAt"
+          prop="updated_at"
+          label="更新时间"
+          :width="getColumnWidth('updatedAt')"
+          :min-width="170"
+        />
+      </template>
+
       <el-table-column
         label="操作"
         width="220"
@@ -172,6 +205,7 @@
   </el-card>
 </template>
 <script setup lang="ts">
+import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 const props = defineProps<{
   rows: Array<Record<string, any>>;
@@ -182,6 +216,8 @@ const props = defineProps<{
   canOperator: boolean;
   isAdmin: boolean;
   visibleColumns: string[];
+  columnWidths: Record<string, number>;
+  selectedIds: string[];
   statusText: (status: string) => string;
   locationText: (row: Record<string, any>) => string;
 }>();
@@ -189,9 +225,38 @@ const emit = defineEmits<{
   in: [Record<string, any>];
   out: [Record<string, any>];
   'row-more': [string, Record<string, any>];
+  'selection-change': [Record<string, any>[]];
+  'column-resize': [{ key: string; width: number }];
   'page-change': [number];
   'size-change': [number];
 }>();
-const visible = (key: string) => props.visibleColumns.includes(key);
+const orderedVisibleColumns = computed(() => props.visibleColumns);
+const tableRef = ref<any>();
+const syncingSelection = ref(false);
+const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
+
+async function syncSelection() {
+  if (!tableRef.value) return;
+  syncingSelection.value = true;
+  tableRef.value.clearSelection();
+  const selectedSet = new Set((props.selectedIds || []).map((item) => String(item)));
+  props.rows.forEach((row) => {
+    if (selectedSet.has(String(row.id))) tableRef.value.toggleRowSelection(row, true);
+  });
+  await nextTick();
+  syncingSelection.value = false;
+}
+watch(() => [props.rows, props.selectedIds], () => {
+  nextTick(syncSelection);
+}, { deep: true, immediate: true });
+function handleSelectionChange(value: Record<string, any>[]) {
+  if (syncingSelection.value) return;
+  emit('selection-change', value);
+}
+function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
+  const key = String(column?.columnKey || '');
+  if (!key) return;
+  emit('column-resize', { key, width: Number(newWidth) });
+}
 </script>
-<style scoped>.pager-wrap{margin-top:12px;display:flex;justify-content:flex-end}.monitor-op-group.compact{display:flex;align-items:center;gap:8px}</style>
+<style scoped>.pager-wrap{display:flex;justify-content:flex-end;margin-top:12px}.monitor-op-group.compact{display:flex;align-items:center;gap:6px}.row-more-trigger{padding-inline:4px}.row-more-trigger :deep(.el-icon){margin-left:2px}</style>

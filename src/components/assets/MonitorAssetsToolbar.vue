@@ -1,11 +1,11 @@
 <template>
   <el-card
     shadow="never"
-    class="monitor-page-card mb12"
+    class="monitor-toolbar-card"
   >
     <div class="monitor-toolbar">
       <div class="toolbar-left">
-        <div class="toolbar-block toolbar-search">
+        <div class="toolbar-block">
           <div class="toolbar-block-title">
             筛选查询
           </div>
@@ -28,7 +28,11 @@
               />
               <el-option
                 label="已回收"
-                value="RECYCLED"
+                value="RETURNED"
+              />
+              <el-option
+                label="已调拨"
+                value="TRANSFERRED"
               />
               <el-option
                 label="已报废"
@@ -45,16 +49,16 @@
               @change="emit('search')"
             >
               <el-option
-                v-for="it in locationOptions"
-                :key="it.value"
-                :label="it.label"
-                :value="it.value"
+                v-for="item in locationOptions"
+                :key="item.value"
+                :label="item.label"
+                :value="item.value"
               />
             </el-select>
             <el-input
               :model-value="keyword"
-              placeholder="关键词：资产编号/SN/员工/型号"
               clearable
+              placeholder="关键词：资产编号/SN/品牌/型号/领用人"
               class="toolbar-input"
               @update:model-value="emit('update:keyword', $event || '')"
               @keyup.enter="emit('search')"
@@ -71,38 +75,86 @@
         </div>
       </div>
       <div class="toolbar-right">
-        <div class="toolbar-block toolbar-tools">
+        <div class="toolbar-block">
           <div class="toolbar-head">
-            <div class="toolbar-block-title">
-              快捷工具
+            <div>
+              <div class="toolbar-block-title">
+                快捷工具
+              </div>
+              <div class="toolbar-subtle">
+                已选 {{ selectedCount }} 项，支持跨页保留
+              </div>
             </div>
             <el-popover
               placement="bottom-end"
               trigger="click"
-              :width="240"
+              :width="320"
             >
               <template #reference>
                 <el-button>显示列</el-button>
               </template>
-              <div class="column-panel">
-                <div class="column-panel-title">
-                  表格列显示
-                </div>
-                <el-checkbox-group
-                  :model-value="visibleColumns"
-                  class="column-check-group"
-                  @update:model-value="emit('update:visible-columns', $event as string[])"
+              <div class="column-panel-title">
+                表格列显示
+              </div>
+              <el-checkbox-group
+                :model-value="visibleColumns"
+                class="column-check-group"
+                @update:model-value="emit('update:visible-columns', $event as string[])"
+              >
+                <el-checkbox
+                  v-for="item in orderedColumnOptions"
+                  :key="item.value"
+                  :label="item.value"
                 >
-                  <el-checkbox
-                    v-for="item in columnOptions"
-                    :key="item.value"
-                    :label="item.value"
-                  >
-                    {{ item.label }}
-                  </el-checkbox>
-                </el-checkbox-group>
+                  {{ item.label }}
+                </el-checkbox>
+              </el-checkbox-group>
+              <div class="column-panel-title reorder-title">
+                列顺序
+              </div>
+              <div
+                v-if="orderedVisibleOptions.length"
+                class="column-order-list"
+              >
+                <div
+                  v-for="(item, index) in orderedVisibleOptions"
+                  :key="item.value"
+                  class="column-order-item"
+                >
+                  <span>{{ index + 1 }}. {{ item.label }}</span>
+                  <div class="column-order-actions">
+                    <el-button
+                      text
+                      :disabled="index === 0"
+                      @click="emit('move-column', item.value, 'up')"
+                    >
+                      上移
+                    </el-button>
+                    <el-button
+                      text
+                      :disabled="index === orderedVisibleOptions.length - 1"
+                      @click="emit('move-column', item.value, 'down')"
+                    >
+                      下移
+                    </el-button>
+                  </div>
+                </div>
               </div>
             </el-popover>
+          </div>
+          <div class="toolbar-selection-row">
+            <el-button
+              :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy"
+              @click="emit('export-selected')"
+            >
+              导出选中
+            </el-button>
+            <el-button
+              :disabled="selectedCount === 0"
+              @click="emit('clear-selection')"
+            >
+              清空已选
+            </el-button>
           </div>
           <div class="toolbar-tool-grid-two">
             <el-button
@@ -180,8 +232,9 @@
   </el-card>
 </template>
 <script setup lang="ts">
+import { computed } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
-defineProps<{
+const props = defineProps<{
   status: string;
   locationId: string | number;
   keyword: string;
@@ -189,7 +242,9 @@ defineProps<{
   canOperator: boolean;
   isAdmin: boolean;
   visibleColumns: string[];
+  columnOrder: string[];
   columnOptions: Array<{ value: string; label: string }>;
+  selectedCount: number;
   exportBusy: boolean;
   importBusy: boolean;
   initQrBusy: boolean;
@@ -199,12 +254,23 @@ const emit = defineEmits<{
   'update:location-id': [string | number];
   'update:keyword': [string];
   'update:visible-columns': [string[]];
+  'move-column': [string, 'up' | 'down'];
   search: [];
   export: [];
+  'export-selected': [];
+  'clear-selection': [];
   'download-template': [];
   'import-file': [unknown];
   'open-create': [];
   'toolbar-more': [string];
 }>();
+const orderedColumnOptions = computed(() => {
+  const map = new Map(props.columnOptions.map((item) => [item.value, item]));
+  return props.columnOrder.map((key) => map.get(key)).filter(Boolean) as Array<{ value: string; label: string }>;
+});
+const orderedVisibleOptions = computed(() => {
+  const visibleSet = new Set(props.visibleColumns);
+  return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
+});
 </script>
-<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-head{display:flex;align-items:center;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-tool-grid-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid-two :deep(.el-button){width:100%;margin-left:0}.toolbar-tool-grid-two :deep(.el-upload),.toolbar-tool-grid-two :deep(.el-upload .el-button){width:100%}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}}</style>
+<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-subtle{margin-top:4px;color:#909399;font-size:12px}.toolbar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-selection-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.toolbar-tool-grid-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid-two :deep(.el-button){width:100%;margin-left:0}.toolbar-tool-grid-two :deep(.el-upload),.toolbar-tool-grid-two :deep(.el-upload .el-button){width:100%}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.reorder-title{margin-top:12px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.column-order-list{display:flex;flex-direction:column;gap:8px}.column-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid #ebeef5;border-radius:10px;background:#fff}.column-order-actions{display:flex;gap:4px}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button),.toolbar-selection-row,.toolbar-selection-row :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}.column-order-item{flex-direction:column;align-items:stretch}}</style>
