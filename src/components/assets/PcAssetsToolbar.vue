@@ -64,6 +64,32 @@
               已选 {{ selectedCount }} 项，支持跨页保留
             </div>
           </div>
+        </div>
+        <div class="toolbar-selection-row">
+          <el-button
+            :disabled="currentPageCount === 0"
+            @click="emit('select-page')"
+          >
+            本页全选
+          </el-button>
+          <el-button
+            :disabled="selectedOnPageCount === 0"
+            @click="emit('clear-page-selection')"
+          >
+            取消本页
+          </el-button>
+          <el-button
+            :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy"
+            @click="emit('export-selected')"
+          >
+            导出选中
+          </el-button>
+          <el-button
+            :disabled="selectedCount === 0"
+            @click="emit('clear-selection')"
+          >
+            清空已选
+          </el-button>
           <el-popover
             placement="bottom-end"
             trigger="click"
@@ -131,20 +157,6 @@
             </div>
           </el-popover>
         </div>
-        <div class="toolbar-selection-row">
-          <el-button
-            :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy"
-            @click="emit('export-selected')"
-          >
-            导出选中
-          </el-button>
-          <el-button
-            :disabled="selectedCount === 0"
-            @click="emit('clear-selection')"
-          >
-            清空已选
-          </el-button>
-        </div>
         <div class="toolbar-tool-grid">
           <el-button
             :loading="exportBusy"
@@ -201,6 +213,8 @@ const props = defineProps<{
   columnOrder: string[];
   columnOptions: Array<{ value: string; label: string }>;
   selectedCount: number;
+  currentPageCount: number;
+  selectedOnPageCount: number;
   exportBusy: boolean;
   importBusy: boolean;
   initQrBusy: boolean;
@@ -213,6 +227,8 @@ const emit = defineEmits<{
   search: [];
   reset: [];
   export: [];
+  'select-page': [];
+  'clear-page-selection': [];
   'export-selected': [];
   'clear-selection': [];
   'init-qr': [];

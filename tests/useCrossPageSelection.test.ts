@@ -24,6 +24,15 @@ describe('useCrossPageSelection', () => {
     expect(selection.selectedIds.value).toEqual(['3']);
   });
 
+  it('supports selecting and unselecting rows directly', () => {
+    const selection = useCrossPageSelection<{ id: number; name: string }>((row) => String(row.id));
+    selection.selectRows([{ id: 1, name: 'A' }, { id: 2, name: 'B' }]);
+    expect(selection.selectedIds.value).toEqual(['1', '2']);
+
+    selection.unselectRows([{ id: 2, name: 'B' }]);
+    expect(selection.selectedIds.value).toEqual(['1']);
+  });
+
   it('clears all selected rows', () => {
     const selection = useCrossPageSelection<{ id: number }>((row) => String(row.id));
     selection.syncPageSelection([{ id: 1 }], [{ id: 1 }]);

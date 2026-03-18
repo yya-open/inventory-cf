@@ -9,6 +9,8 @@
       :column-order="columnOrder"
       :column-options="pcColumnOptions"
       :selected-count="selectedCount"
+      :current-page-count="rows.length"
+      :selected-on-page-count="selectedOnPageCount"
       :export-busy="exportBusy"
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
@@ -17,6 +19,8 @@
       @search="onSearch"
       @reset="reset"
       @export="exportExcel"
+      @select-page="selectCurrentPage"
+      @clear-page-selection="clearCurrentPageSelection"
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @init-qr="initQrKeys"
@@ -132,7 +136,7 @@ const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
 
-const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
+const { selectedIds, selectedRows, selectedCount, syncPageSelection, selectRows, unselectRows, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
 
 function persistState() {
   writeJsonStorage(STORAGE_KEY, {
@@ -184,6 +188,21 @@ const editForm = ref<PcAsset>({
 const infoVisible = ref(false);
 const infoRow = ref<PcAsset | null>(null);
 const qrVisible = ref(false);
+
+const selectedOnPageCount = computed(() => {
+  const selectedSet = new Set(selectedIds.value.map((item) => String(item)));
+  return rows.value.filter((row) => selectedSet.has(String(row.id))).length;
+});
+
+function selectCurrentPage() {
+  if (!rows.value.length) return;
+  selectRows(rows.value);
+}
+
+function clearCurrentPageSelection() {
+  if (!rows.value.length) return;
+  unselectRows(rows.value);
+}
 const qrLoading = ref(false);
 const qrDataUrl = ref('');
 const qrLink = ref('');

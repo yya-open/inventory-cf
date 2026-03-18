@@ -14,6 +14,23 @@ export function useCrossPageSelection<TItem extends Record<string, any>>(getRowK
     selectedMap.value = next;
   }
 
+  function selectRows(rows: TItem[]) {
+    const next = { ...selectedMap.value };
+    rows.forEach((row) => {
+      next[getRowKey(row)] = row;
+    });
+    selectedMap.value = next;
+  }
+
+  function unselectRows(rows: TItem[]) {
+    if (!rows.length) return;
+    const next = { ...selectedMap.value };
+    rows.forEach((row) => {
+      delete next[getRowKey(row)];
+    });
+    selectedMap.value = next;
+  }
+
   function clearSelection() {
     selectedMap.value = {};
   }
@@ -28,6 +45,8 @@ export function useCrossPageSelection<TItem extends Record<string, any>>(getRowK
     selectedRows,
     selectedCount,
     syncPageSelection,
+    selectRows,
+    unselectRows,
     clearSelection,
   };
 }
