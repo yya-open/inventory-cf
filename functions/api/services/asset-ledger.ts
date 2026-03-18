@@ -42,8 +42,11 @@ export function buildPcAssetQuery(url: URL) {
   const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
+  const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
   const clauses: string[] = [];
-  if (!showArchived) clauses.push('COALESCE(a.archived, 0)=0');
+  if (archiveMode === 'archived') clauses.push('COALESCE(a.archived, 0)=1');
+  else if (archiveMode === 'all' || showArchived) { /* include both */ }
+  else clauses.push('COALESCE(a.archived, 0)=0');
   const binds: any[] = [];
 
   if (status) {
@@ -93,8 +96,11 @@ export function buildMonitorAssetQuery(url: URL) {
   const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
+  const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
   const clauses: string[] = [];
-  if (!showArchived) clauses.push('COALESCE(a.archived, 0)=0');
+  if (archiveMode === 'archived') clauses.push('COALESCE(a.archived, 0)=1');
+  else if (archiveMode === 'all' || showArchived) { /* include both */ }
+  else clauses.push('COALESCE(a.archived, 0)=0');
   const binds: any[] = [];
 
   if (status) {

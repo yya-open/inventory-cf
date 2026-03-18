@@ -4,6 +4,7 @@
       v-model:status="status"
       v-model:keyword="keyword"
       v-model:archive-reason="archiveReason"
+      v-model:archive-mode="archiveMode"
       v-model:show-archived="showArchived"
       :is-admin="isAdmin"
       :can-operator="canOperator"
@@ -24,6 +25,7 @@
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
+      @export-selected-qr-cards="exportSelectedQrCards"
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
       @batch-owner="openBatchOwnerDialog"
@@ -157,6 +159,7 @@ import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
+import { downloadQrCardsHtml } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
@@ -178,12 +181,13 @@ const PC_COLUMN_OPTIONS = [
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
 const archiveReason = ref(String((persistedState as any).archiveReason || ''));
-const showArchived = ref(Boolean(persistedState.showArchived));
+const archiveMode = ref(((persistedState as any).archiveMode || (persistedState.showArchived ? 'all' : 'active')) as 'active' | 'archived' | 'all');
+const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
@@ -193,12 +197,13 @@ const isAdmin = computed(() => can('admin'));
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
   keyword: keyword.value || '',
-  archiveReason: showArchived.value ? (archiveReason.value || '') : '',
-  showArchived: Boolean(showArchived.value),
+  archiveReason: archiveMode.value !== 'active' ? (archiveReason.value || '') : '',
+  archiveMode: archiveMode.value,
+  showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
 });
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<PcFilters, PcAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}`,
+  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
   fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
@@ -223,7 +228,8 @@ function persistState() {
   writeJsonStorage(STORAGE_KEY, {
     status: status.value || '',
     keyword: keyword.value || '',
-    showArchived: Boolean(showArchived.value),
+    showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
+    archiveMode: archiveMode.value,
     archiveReason: archiveReason.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
@@ -249,11 +255,16 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, archiveReason, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
+watch(archiveMode, (value) => {
+  showArchived.value = value !== 'active';
+  if (value === 'active') archiveReason.value = '';
+});
+
 watch(archiveReason, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -311,6 +322,7 @@ const reset = () => {
   status.value = '';
   keyword.value = '';
   showArchived.value = false;
+  archiveMode.value = 'active';
   archiveReason.value = '';
   suppressAutoSearch = false;
   clearKeywordTimer();
@@ -576,6 +588,35 @@ async function exportSelectedQrLinks() {
     ElMessage.success('二维码链接已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码链接失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function exportSelectedQrCards() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  try {
+    batchBusy.value = true;
+    const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      if (!result?.url) continue;
+      records.push({
+        title: `${row.brand || '-'} ${row.model || ''}`.trim(),
+        subtitle: `SN：${row.serial_no || '-'}`,
+        meta: [
+          { label: '状态', value: assetStatusText(row.status) },
+          { label: '序列号', value: row.serial_no || '-' },
+          { label: '领用人', value: row.last_employee_name || '-' },
+        ],
+        url: result.url,
+      });
+    }
+    if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    await downloadQrCardsHtml(`电脑二维码卡片_${records.length}条`, '电脑二维码卡片', records);
+    ElMessage.success('二维码卡片已导出，可直接打印');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
     batchBusy.value = false;
   }

@@ -1,13 +1,14 @@
 <template>
-  <div class="public-wrap">
+  <div class="public-wrap public-mobile-page">
     <el-card
       class="public-card"
       shadow="always"
     >
       <template #header>
         <div style="display:flex;align-items:center;justify-content:space-between;gap:12px">
-          <div style="font-weight:700">
+          <div class="public-card-title">
             电脑信息
+            <div class="public-card-subtitle">扫码即可查看实时信息，适合现场盘点和快速复核。</div>
           </div>
           <el-tag
             v-if="row"
@@ -37,7 +38,7 @@
 
       <el-descriptions
         v-else
-        :column="2"
+        :column="descColumns"
         border
       >
         <el-descriptions-item label="品牌">
@@ -100,7 +101,7 @@
 
       <div
         v-if="!loading && !error"
-        class="public-actions"
+        class="public-actions public-actions-sticky"
       >
         <el-button
           type="success"
@@ -117,6 +118,14 @@
           @click="issueVisible=true"
         >
           报异常
+        </el-button>
+        <el-button
+          type="primary"
+          plain
+          :disabled="cooldownLeft > 0"
+          @click="refresh"
+        >
+          刷新
         </el-button>
 
         <div
@@ -200,7 +209,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onBeforeUnmount } from "vue";
+import { computed, ref, onMounted, onBeforeUnmount } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGetPublic, apiPostPublic } from "../api/client";
 
@@ -218,7 +227,13 @@ const issueVisible = ref(false);
 const issueForm = ref<{ issue_type: string; remark: string }>({ issue_type: "", remark: "" });
 
 const cooldownLeft = ref(0);
+const viewportWidth = ref(typeof window !== "undefined" ? window.innerWidth : 1280);
+const descColumns = computed(() => (viewportWidth.value < 640 ? 1 : 2));
 let cooldownTimer: any = null;
+
+function handleResize() {
+  viewportWidth.value = window.innerWidth;
+}
 
 function startCooldown(seconds = 30) {
   cooldownLeft.value = seconds;
@@ -248,7 +263,7 @@ function statusTagType(s: string) {
   return "info";
 }
 
-onMounted(async () => {
+async function refresh() {
   try {
     const url = new URL(window.location.href);
     id.value = (url.searchParams.get("id") || "").trim();
@@ -273,10 +288,17 @@ onMounted(async () => {
   } finally {
     loading.value = false;
   }
+}
+
+onMounted(refresh);
+
+onMounted(() => {
+  window.addEventListener("resize", handleResize);
 });
 
 onBeforeUnmount(() => {
   if (cooldownTimer) clearInterval(cooldownTimer);
+  window.removeEventListener("resize", handleResize);
 });
 
 function inventoryApiUrl() {

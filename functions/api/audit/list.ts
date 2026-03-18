@@ -10,6 +10,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const keyword = (url.searchParams.get("keyword") || "").trim();
     const action = (url.searchParams.get("action") || "").trim();
     const entity = (url.searchParams.get("entity") || "").trim();
+    const entityId = (url.searchParams.get("entity_id") || "").trim();
     const user = (url.searchParams.get("user") || "").trim();
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
@@ -35,6 +36,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     }
     if (action) { wh.push("a.action=?"); binds.push(action); }
     if (entity) { wh.push("a.entity=?"); binds.push(entity); }
+    if (entityId) { wh.push("a.entity_id=?"); binds.push(entityId); }
     if (user) { wh.push("a.username=?"); binds.push(user); }
     const fromSql = toSqlRange(date_from, false);
     const toSql = toSqlRange(date_to, true);

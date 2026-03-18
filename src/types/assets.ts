@@ -1,7 +1,9 @@
 export type AssetStatus = 'IN_STOCK' | 'ASSIGNED' | 'RECYCLED' | 'SCRAPPED' | string;
 
-export type PcFilters = { status: string; keyword: string; archiveReason: string; showArchived: boolean };
-export type MonitorFilters = { status: string; locationId: string; keyword: string; archiveReason: string; showArchived: boolean };
+export type ArchiveMode = 'active' | 'archived' | 'all';
+
+export type PcFilters = { status: string; keyword: string; archiveReason: string; archiveMode: ArchiveMode; showArchived: boolean };
+export type MonitorFilters = { status: string; locationId: string; keyword: string; archiveReason: string; archiveMode: ArchiveMode; showArchived: boolean };
 
 export type PcAsset = Record<string, any>;
 export type MonitorAsset = Record<string, any>;

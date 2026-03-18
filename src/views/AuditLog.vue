@@ -88,6 +88,14 @@
           </el-select>
         </el-form-item>
         <el-form-item>
+          <el-input
+            v-model="entityId"
+            placeholder="对象ID（如资产ID / tx_no）"
+            clearable
+            style="width: 190px"
+          />
+        </el-form-item>
+        <el-form-item>
           <el-select
             v-model="moduleFilter"
             placeholder="模块"
@@ -229,6 +237,7 @@
           >
             查看
           </el-button>
+          <el-button link @click="focusEntityHistory(row)">同对象历史</el-button>
           <el-popconfirm
             v-if="isAdmin"
             title="确认删除该审计日志？"
@@ -277,6 +286,7 @@
         >
           复制
         </el-button>
+        <el-button :disabled="!currentPayloadRow?.entity_id" @click="currentPayloadRow && focusEntityHistory(currentPayloadRow)">同对象历史</el-button>
       </div>
 
       <el-tabs v-model="activePayloadTab">
@@ -578,6 +588,7 @@ const persistedState = readJsonStorage(STORAGE_KEY, {
   sortDir: 'desc',
   action: '',
   entity: '',
+  entityId: '',
   user: '',
   moduleFilter: '',
   highRiskOnly: false,
@@ -593,6 +604,7 @@ const sortBy = ref<string>(String(persistedState.sortBy || "created_at"));
 const sortDir = ref<string>(String(persistedState.sortDir || "desc"));
 const action = ref(String(persistedState.action || ""));
 const entity = ref(String(persistedState.entity || ""));
+const entityId = ref(String((persistedState as any).entityId || ''));
 const user = ref(String(persistedState.user || ""));
 const moduleFilter = ref(String((persistedState as any).moduleFilter || ""));
 const highRiskOnly = ref(Boolean((persistedState as any).highRiskOnly || false));
@@ -802,6 +814,7 @@ function persistState() {
     sortDir: sortDir.value || 'desc',
     action: action.value || '',
     entity: entity.value || '',
+    entityId: entityId.value || '',
     user: user.value || '',
     moduleFilter: moduleFilter.value || '',
     highRiskOnly: Boolean(highRiskOnly.value),
@@ -833,13 +846,17 @@ function scheduleSearch() {
   }, 320);
 }
 
-watch([keyword, action, entity, user, moduleFilter, highRiskOnly, sortBy, sortDir, pageSize], persistState);
+watch([keyword, action, entity, entityId, user, moduleFilter, highRiskOnly, sortBy, sortDir, pageSize], persistState);
 watch(range, persistState, { deep: true });
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleSearch();
 });
 watch(user, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleSearch();
+});
+watch(entityId, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleSearch();
 });
@@ -862,6 +879,7 @@ function reset(){
   keyword.value = "";
   action.value = "";
   entity.value = "";
+  entityId.value = "";
   user.value = "";
   moduleFilter.value = "";
   highRiskOnly.value = false;
@@ -893,6 +911,15 @@ function openPayload(row:any){
   prettyMode.value = true;
   activePayloadTab.value = payloadDiffEntries.value.length ? 'diff' : 'summary';
   showPayload.value = true;
+}
+
+function focusEntityHistory(row: any) {
+  if (!row?.entity_id) return;
+  entity.value = row.entity || '';
+  entityId.value = String(row.entity_id || '');
+  page.value = 1;
+  showPayload.value = false;
+  load();
 }
 
 async function copyPayload(){
@@ -927,6 +954,7 @@ function buildAuditParams(targetPage: number, targetPageSize: number) {
   if (keyword.value) params.set('keyword', keyword.value);
   if (action.value) params.set('action', action.value);
   if (entity.value) params.set('entity', entity.value);
+  if (entityId.value) params.set('entity_id', entityId.value);
   if (user.value) params.set('user', user.value);
   if (range.value?.length === 2) {
     const s = new Date(range.value[0]);

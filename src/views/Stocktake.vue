@@ -233,7 +233,7 @@
                   type="success"
                   :loading="applying"
                   :disabled="!['DRAFT','APPLYING'].includes(detail.stocktake.status)"
-                  @click="applyStocktake"
+                  @click="openApplyPreview"
                 >
                   {{ detail.stocktake.status==='APPLYING' ? '继续应用' : '应用盘点' }}
                 </el-button>
@@ -363,6 +363,50 @@
         </div>
       </div>
     </el-card>
+
+    <el-dialog v-model="applyPreviewVisible" width="860px" :title="detail?.stocktake?.status === 'APPLYING' ? '继续应用盘点' : '应用盘点前预览'">
+      <div class="apply-preview-wrap">
+        <el-alert
+          v-if="detail?.stocktake?.status === 'APPLYING'"
+          type="warning"
+          :closable="false"
+          show-icon
+          title="当前盘点单处于 APPLYING 状态"
+          description="说明上次应用可能中断。继续应用时只会补齐未完成的调整记录，不会重复生成已存在的数据。"
+        />
+        <div class="preview-cards preview-cards--dialog">
+          <div class="preview-card"><div class="preview-label">盘点明细</div><div class="preview-value">{{ stocktakePreview.total }}</div></div>
+          <div class="preview-card"><div class="preview-label">已录入</div><div class="preview-value">{{ stocktakePreview.counted }}</div></div>
+          <div class="preview-card preview-card--changed"><div class="preview-label">存在差异</div><div class="preview-value">{{ stocktakePreview.changed }}</div></div>
+          <div class="preview-card preview-card--increase"><div class="preview-label">盘盈</div><div class="preview-value">{{ stocktakePreview.increase }}</div></div>
+          <div class="preview-card preview-card--decrease"><div class="preview-label">盘亏</div><div class="preview-value">{{ stocktakePreview.decrease }}</div></div>
+        </div>
+
+        <div class="apply-preview-head">
+          <div class="panel-title">将受影响的明细</div>
+          <div class="muted">最多预览 20 条差异/未盘项目，确认后系统会生成 ADJUST 调整流水。</div>
+        </div>
+
+        <el-table :data="applyPreviewRows" max-height="360" border size="small">
+          <el-table-column prop="sku" label="SKU" min-width="150" />
+          <el-table-column prop="name" label="名称" min-width="180" />
+          <el-table-column prop="system_qty" label="系统数量" width="100" />
+          <el-table-column prop="counted_qty" label="盘点数量" width="100" />
+          <el-table-column label="差异结果" min-width="140">
+            <template #default="{ row }">
+              <el-tag v-if="row.diffType === 'pending'" type="info" effect="plain">未盘</el-tag>
+              <el-tag v-else-if="row.diffType === 'increase'" type="success">盘盈 {{ row.diff_qty }}</el-tag>
+              <el-tag v-else-if="row.diffType === 'decrease'" type="danger">盘亏 {{ row.diff_qty }}</el-tag>
+              <el-tag v-else type="info">无差异</el-tag>
+            </template>
+          </el-table-column>
+        </el-table>
+      </div>
+      <template #footer>
+        <el-button @click="applyPreviewVisible = false">取消</el-button>
+        <el-button type="success" :loading="applying" @click="confirmApplyStocktake">确认应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -419,6 +463,7 @@ const creating = ref(false);
 const applying = ref(false);
 const rolling = ref(false);
 const saving = ref(false);
+const applyPreviewVisible = ref(false);
 
 const dirty = ref<Set<number>>(new Set());
 
@@ -449,6 +494,19 @@ const stocktakePreview = computed(() => {
     increase: changed.filter((line:any) => Number(line.diff_qty || 0) > 0).length,
     decrease: changed.filter((line:any) => Number(line.diff_qty || 0) < 0).length,
   };
+});
+
+const applyPreviewRows = computed(() => {
+  const lines = detail.value?.lines || [];
+  return lines
+    .map((line: any) => {
+      const counted = !(line.counted_qty === null || line.counted_qty === undefined || line.counted_qty === '');
+      const diff = Number(line.diff_qty || 0);
+      const diffType = !counted ? 'pending' : diff > 0 ? 'increase' : diff < 0 ? 'decrease' : 'same';
+      return { ...line, diffType };
+    })
+    .filter((line: any) => line.diffType !== 'same')
+    .slice(0, 20);
 });
 
 
@@ -781,33 +839,18 @@ function beforeUpload(file: File){
   }
 }
 
-async function applyStocktake(){
+function openApplyPreview() {
   if (!detail.value) return;
-  const stStatus = String(detail.value.stocktake.status || "");
-  const preview = stocktakePreview.value;
-  const confirmMsg = stStatus === "APPLYING"
-    ? "检测到盘点单处于 APPLYING（上次应用可能中断）。点击“继续”将尝试补齐未完成的调整记录（幂等，不会重复生成已写入的调整流水）。"
-    : `
-      <div style="line-height:1.8">
-        <div>即将应用盘点结果，系统会按差异生成 <b>ADJUST</b> 调整流水并更新库存。</div>
-        <div style="margin-top:8px">本次预览：</div>
-        <ul style="margin:6px 0 0 18px; padding:0">
-          <li>盘点明细：<b>${preview.total}</b> 条</li>
-          <li>已录入盘点数量：<b>${preview.counted}</b> 条</li>
-          <li>存在差异：<b>${preview.changed}</b> 条</li>
-          <li>盘盈：<b>${preview.increase}</b> 条</li>
-          <li>盘亏：<b>${preview.decrease}</b> 条</li>
-        </ul>
-      </div>`;
+  applyPreviewVisible.value = true;
+}
 
-  try{
-    await ElMessageBox.confirm(confirmMsg, stStatus === "APPLYING" ? "继续应用" : "确认应用盘点", { type: "warning", dangerouslyUseHTMLString: stStatus !== 'APPLYING', confirmButtonText: stStatus === 'APPLYING' ? '继续应用' : '确认应用', cancelButtonText: '取消' });
-  }catch{ return; }
-
+async function confirmApplyStocktake(){
+  if (!detail.value) return;
   applying.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id });
     ElMessage.success(`已应用：生成 ${r.adjusted} 条调整记录`);
+    applyPreviewVisible.value = false;
     await refreshDetail();
   }catch(e:any){
     ElMessage.error(e.message || "应用失败");
@@ -883,4 +926,16 @@ onMounted(async ()=>{
 .detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
 .detail-tools{ display:flex; align-items:center; gap:10px; margin:10px 0; }
 .row-selected td{ background: var(--el-color-primary-light-9) !important; }
+.apply-preview-wrap{display:flex;flex-direction:column;gap:14px}
+.preview-cards--dialog{margin-top:0}
+.apply-preview-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
+.detail-row-pending td{background:#f8fafc !important}
+.detail-row-increase td{background:#f0fdf4 !important}
+.detail-row-decrease td{background:#fef2f2 !important}
+@media (max-width: 768px){
+  .stocktake-page{padding:12px}
+  .page-header,.panel-header,.detail-header,.detail-tools{flex-direction:column;align-items:stretch}
+  .actions,.panel-tools,.detail-actions{width:100%;justify-content:stretch}
+  .actions .el-button,.panel-tools .el-button,.detail-actions .el-button{width:100%}
+}
 </style>

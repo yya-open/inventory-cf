@@ -26,7 +26,7 @@
             @keyup.enter="emit('search')"
           />
           <el-input
-            v-if="showArchived"
+            v-if="archiveMode !== 'active'"
             :model-value="archiveReason"
             clearable
             placeholder="归档原因"
@@ -34,13 +34,12 @@
             @update:model-value="emit('update:archive-reason', $event || '')"
             @keyup.enter="emit('search')"
           />
-          <el-checkbox
-            :model-value="showArchived"
-            class="toolbar-archive-checkbox"
-            @change="handleArchivedToggle"
-          >
-            显示已归档
-          </el-checkbox>
+          <el-segmented
+            :model-value="archiveMode"
+            class="toolbar-archive-mode"
+            :options="archiveModeOptions"
+            @change="handleArchiveModeChange"
+          />
           <div class="toolbar-actions-inline">
             <el-button type="primary" @click="emit('search')">查询</el-button>
             <el-button @click="emit('reset')">重置</el-button>
@@ -70,6 +69,7 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
+                  <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
@@ -152,6 +152,7 @@ const props = defineProps<{
   status: string;
   keyword: string;
   archiveReason: string;
+  archiveMode: 'active' | 'archived' | 'all';
   showArchived: boolean;
   isAdmin: boolean;
   canOperator: boolean;
@@ -169,6 +170,7 @@ const emit = defineEmits<{
   'update:status': [string];
   'update:keyword': [string];
   'update:archive-reason': [string];
+  'update:archive-mode': ['active' | 'archived' | 'all'];
   'update:show-archived': [boolean];
   'update:visible-columns': [string[]];
   'move-column': [string, 'up' | 'down'];
@@ -178,6 +180,7 @@ const emit = defineEmits<{
   'export-archive': [];
   'export-selected': [];
   'export-selected-qr': [];
+  'export-selected-qr-cards': [];
   'batch-delete': [];
   'batch-status': [];
   'batch-owner': [];
@@ -202,14 +205,22 @@ const orderedVisibleOptions = computed(() => {
 
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 
+const archiveModeOptions = [
+  { label: '在用', value: 'active' },
+  { label: '归档', value: 'archived' },
+  { label: '全部', value: 'all' },
+] as const;
+
 function openImportPicker() {
   const root = importUploadRef.value?.$el as HTMLElement | undefined;
   const input = root?.querySelector('input[type="file"]') as HTMLInputElement | null;
   input?.click();
 }
 
-function handleArchivedToggle(value: string | number | boolean) {
-  emit('update:show-archived', Boolean(value));
+function handleArchiveModeChange(value: string | number | boolean) {
+  const mode = (String(value || 'active') as 'active' | 'archived' | 'all');
+  emit('update:archive-mode', mode);
+  emit('update:show-archived', mode !== 'active');
   emit('search');
 }
 
@@ -229,6 +240,7 @@ function handleBatchCommand(command: string | number | object) {
   if (value === 'batch-owner') return emit('batch-owner');
   if (value === 'batch-archive') return emit('batch-archive');
   if (value === 'batch-restore') return emit('batch-restore');
+  if (value === 'export-qr-cards') return emit('export-selected-qr-cards');
   if (value === 'batch-delete') return emit('batch-delete');
 }
 </script>
@@ -304,8 +316,8 @@ function handleBatchCommand(command: string | number | object) {
   justify-content: flex-start;
   align-items: center;
 }
-.toolbar-archive-checkbox {
-  margin-right: 4px;
+.toolbar-archive-mode {
+  min-width: 240px;
 }
 .toolbar-upload-hidden {
   display: none;
@@ -368,6 +380,7 @@ function handleBatchCommand(command: string | number | object) {
   }
   .toolbar-select,
   .toolbar-input,
+  .toolbar-archive-mode,
   .toolbar-actions-inline,
   .toolbar-actions-inline :deep(.el-button),
   .toolbar-selection-row,

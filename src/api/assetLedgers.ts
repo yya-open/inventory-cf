@@ -43,7 +43,8 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
     status: filters.status,
     keyword: filters.keyword,
     archive_reason: filters.archiveReason,
-    show_archived: filters.showArchived ? '1' : undefined,
+    archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
+    show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
@@ -51,7 +52,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
 }
 
 export async function countPcAssets(filters: PcFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined })}`, { signal });
   return Number(result?.total || 0);
 }
 
@@ -61,7 +62,8 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
     location_id: filters.locationId,
     keyword: filters.keyword,
     archive_reason: filters.archiveReason,
-    show_archived: filters.showArchived ? '1' : undefined,
+    archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
+    show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
@@ -69,7 +71,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
 }
 
 export async function countMonitorAssets(filters: MonitorFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, show_archived: filters.showArchived ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined })}`, { signal });
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 

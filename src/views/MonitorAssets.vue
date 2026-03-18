@@ -5,6 +5,7 @@
       v-model:location-id="locationId"
       v-model:keyword="keyword"
       v-model:archive-reason="archiveReason"
+      v-model:archive-mode="archiveMode"
       v-model:show-archived="showArchived"
       :location-options="locationOptions"
       :can-operator="canOperator"
@@ -25,6 +26,7 @@
       @export-selected="exportSelectedRows"
       @clear-selection="clearSelection"
       @export-selected-qr="exportSelectedQrLinks"
+      @export-selected-qr-cards="exportSelectedQrCards"
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
       @batch-location="openBatchLocationDialog"
@@ -205,6 +207,7 @@ import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
+import { downloadQrCardsHtml } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
@@ -228,13 +231,14 @@ const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
 const keyword = ref(String(persistedState.keyword || ''));
 const archiveReason = ref(String((persistedState as any).archiveReason || ''));
-const showArchived = ref(Boolean(persistedState.showArchived));
+const archiveMode = ref(((persistedState as any).archiveMode || (persistedState.showArchived ? 'all' : 'active')) as 'active' | 'archived' | 'all');
+const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
@@ -246,8 +250,9 @@ const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
   locationId: String(locationId.value || ''),
   keyword: keyword.value || '',
-  archiveReason: showArchived.value ? (archiveReason.value || '') : '',
-  showArchived: Boolean(showArchived.value),
+  archiveReason: archiveMode.value !== 'active' ? (archiveReason.value || '') : '',
+  archiveMode: archiveMode.value,
+  showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
 });
 
 const locationText = (row: MonitorAsset) => [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-';
@@ -305,7 +310,7 @@ async function loadLocations() {
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}`,
+  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: async (filters, currentPage, currentPageSize, fast) => {
     try {
       return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
@@ -350,7 +355,8 @@ function persistState() {
     status: status.value || '',
     locationId: String(locationId.value || ''),
     keyword: keyword.value || '',
-    showArchived: Boolean(showArchived.value),
+    showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
+    archiveMode: archiveMode.value,
     archiveReason: archiveReason.value || '',
     pageSize: Number(pageSize.value || 50),
     visibleColumns: visibleColumns.value,
@@ -376,11 +382,16 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, archiveReason, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+watch([status, locationId, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
 });
+watch(archiveMode, (value) => {
+  showArchived.value = value !== 'active';
+  if (value === 'active') archiveReason.value = '';
+});
+
 watch(archiveReason, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -479,6 +490,35 @@ async function exportSelectedQrLinks() {
     ElMessage.success('二维码链接已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码链接失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function exportSelectedQrCards() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  try {
+    batchBusy.value = true;
+    const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
+    for (const row of selectedRows.value) {
+      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
+      if (!result?.url) continue;
+      records.push({
+        title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
+        subtitle: `${row.model || '-'} · SN：${row.sn || '-'}`,
+        meta: [
+          { label: '状态', value: assetStatusText(row.status) },
+          { label: '位置', value: locationText(row) },
+          { label: '领用人', value: row.employee_name || '-' },
+        ],
+        url: result.url,
+      });
+    }
+    if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    await downloadQrCardsHtml(`显示器二维码卡片_${records.length}条`, '显示器二维码卡片', records);
+    ElMessage.success('二维码卡片已导出，可直接打印');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
     batchBusy.value = false;
   }
