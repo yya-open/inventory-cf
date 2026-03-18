@@ -80,7 +80,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -90,6 +90,7 @@ import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
+import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import MonitorAssetFormDialog from '../components/assets/MonitorAssetFormDialog.vue';
@@ -97,9 +98,12 @@ import MonitorAssetOperationDialog from '../components/assets/MonitorAssetOperat
 import MonitorAssetQrDialog from '../components/assets/MonitorAssetQrDialog.vue';
 import MonitorLocationManagerDialog from '../components/assets/MonitorLocationManagerDialog.vue';
 
-const status = ref('');
-const locationId = ref('');
-const keyword = ref('');
+const STORAGE_KEY = 'inventory:monitor-assets:filters';
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', pageSize: 50 });
+
+const status = ref(String(persistedState.status || ''));
+const locationId = ref(String(persistedState.locationId || ''));
+const keyword = ref(String(persistedState.keyword || ''));
 const locations = ref<LocationRow[]>([]);
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
@@ -184,7 +188,44 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   },
 });
 
-const reloadList = () => reload(currentFilters());
+pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
+
+function persistState() {
+  writeJsonStorage(STORAGE_KEY, {
+    status: status.value || '',
+    locationId: String(locationId.value || ''),
+    keyword: keyword.value || '',
+    pageSize: Number(pageSize.value || 50),
+  });
+}
+
+let suppressAutoSearch = false;
+let keywordTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearKeywordTimer() {
+  if (keywordTimer) {
+    clearTimeout(keywordTimer);
+    keywordTimer = null;
+  }
+}
+
+function scheduleKeywordSearch() {
+  clearKeywordTimer();
+  keywordTimer = setTimeout(() => {
+    reload(currentFilters());
+  }, 320);
+}
+
+watch([status, locationId, keyword, pageSize], persistState);
+watch(keyword, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleKeywordSearch();
+});
+
+const reloadList = () => {
+  clearKeywordTimer();
+  reload(currentFilters());
+};
 
 function handleToolbarMore(command: string) {
   if (command === 'location') return openLocationMgr();
@@ -618,6 +659,7 @@ async function deleteLocation(row: MonitorAsset) {
 }
 
 onMounted(async () => {
+  persistState();
   await loadLocations();
   await load(currentFilters());
 });

@@ -18,6 +18,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const total = ref(0);
   const totalCache = new Map<string, number>();
   let totalTimer: ReturnType<typeof setTimeout> | null = null;
+  let requestSeq = 0;
 
   function clearTotalTimer() {
     if (totalTimer) {
@@ -27,10 +28,19 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   }
 
   async function load(filters: TFilters, opts: { keepPage?: boolean } = {}) {
+    const currentSeq = ++requestSeq;
     loading.value = true;
     try {
       const nextPage = opts.keepPage ? page.value : 1;
-      const result = await options.fetchPage({ filters, page: nextPage, pageSize: pageSize.value, fast: Boolean(options.fetchTotal) });
+      let result: LoadResult<TItem>;
+      try {
+        result = await options.fetchPage({ filters, page: nextPage, pageSize: pageSize.value, fast: Boolean(options.fetchTotal) });
+      } catch (error) {
+        if (currentSeq !== requestSeq) return;
+        throw error;
+      }
+      if (currentSeq !== requestSeq) return;
+
       rows.value = result.rows || [];
       if (!opts.keepPage) page.value = 1;
 
@@ -50,8 +60,10 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       }
       clearTotalTimer();
       totalTimer = setTimeout(async () => {
+        const totalSeq = requestSeq;
         try {
           const value = Number(await options.fetchTotal!(filters));
+          if (totalSeq !== requestSeq) return;
           totalCache.set(key, value);
           total.value = value;
         } catch {
@@ -59,13 +71,20 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         }
       }, options.totalDebounceMs ?? 250);
     } finally {
-      loading.value = false;
+      if (currentSeq === requestSeq) loading.value = false;
     }
   }
 
   const reload = (filters: TFilters) => load(filters, { keepPage: false });
-  const onPageChange = (filters: TFilters, nextPage: number) => { page.value = nextPage; return load(filters, { keepPage: true }); };
-  const onPageSizeChange = (filters: TFilters, nextPageSize: number) => { pageSize.value = nextPageSize; page.value = 1; return load(filters, { keepPage: true }); };
+  const onPageChange = (filters: TFilters, nextPage: number) => {
+    page.value = nextPage;
+    return load(filters, { keepPage: true });
+  };
+  const onPageSizeChange = (filters: TFilters, nextPageSize: number) => {
+    pageSize.value = nextPageSize;
+    page.value = 1;
+    return load(filters, { keepPage: true });
+  };
 
   return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer };
 }

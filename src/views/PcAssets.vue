@@ -57,7 +57,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -67,6 +67,7 @@ import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { formatBeijingDateTime } from '../utils/datetime';
+import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
@@ -74,8 +75,11 @@ import PcAssetEditDialog from '../components/assets/PcAssetEditDialog.vue';
 import PcAssetInfoDialog from '../components/assets/PcAssetInfoDialog.vue';
 import PcAssetQrDialog from '../components/assets/PcAssetQrDialog.vue';
 
-const status = ref('');
-const keyword = ref('');
+const STORAGE_KEY = 'inventory:pc-assets:filters';
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', pageSize: 50 });
+
+const status = ref(String(persistedState.status || ''));
+const keyword = ref(String(persistedState.keyword || ''));
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 
@@ -88,6 +92,39 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}`,
   fetchPage: (filters, currentPage, currentPageSize, fast) => listPcAssets(filters, currentPage, currentPageSize, fast),
   fetchTotal: (filters) => countPcAssets(filters),
+});
+
+pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
+
+function persistState() {
+  writeJsonStorage(STORAGE_KEY, {
+    status: status.value || '',
+    keyword: keyword.value || '',
+    pageSize: Number(pageSize.value || 50),
+  });
+}
+
+let suppressAutoSearch = false;
+let keywordTimer: ReturnType<typeof setTimeout> | null = null;
+
+function clearKeywordTimer() {
+  if (keywordTimer) {
+    clearTimeout(keywordTimer);
+    keywordTimer = null;
+  }
+}
+
+function scheduleKeywordSearch() {
+  clearKeywordTimer();
+  keywordTimer = setTimeout(() => {
+    reload(currentFilters());
+  }, 320);
+}
+
+watch([status, keyword, pageSize], persistState);
+watch(keyword, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleKeywordSearch();
 });
 
 const editVisible = ref(false);
@@ -111,10 +148,16 @@ const qrDataUrl = ref('');
 const qrLink = ref('');
 const qrRow = ref<PcAsset | null>(null);
 
-const onSearch = () => reload(currentFilters());
+const onSearch = () => {
+  clearKeywordTimer();
+  reload(currentFilters());
+};
 const reset = () => {
+  suppressAutoSearch = true;
   status.value = '';
   keyword.value = '';
+  suppressAutoSearch = false;
+  clearKeywordTimer();
   reload(currentFilters());
 };
 
@@ -431,6 +474,7 @@ async function onImportAssetsFile(uploadFile: any) {
 }
 
 onMounted(() => {
+  persistState();
   load(currentFilters());
 });
 </script>

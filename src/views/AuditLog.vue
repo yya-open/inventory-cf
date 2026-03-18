@@ -323,11 +323,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, computed, watch } from "vue";
 import { apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { formatBeijingDateTime } from "../utils/datetime";
+import { readJsonStorage, writeJsonStorage } from "../utils/storage";
 
 
 const ACTION_LABEL: Record<string, string> = {
@@ -455,19 +456,33 @@ function entityLabel(e: string) {
 function formatTime(s?: string) {
   return s ? formatBeijingDateTime(s) : "-";
 }
+const STORAGE_KEY = 'inventory:audit-log:filters';
+const persistedState = readJsonStorage(STORAGE_KEY, {
+  keyword: '',
+  sortBy: 'created_at',
+  sortDir: 'desc',
+  action: '',
+  entity: '',
+  user: '',
+  range: null as [string, string] | null,
+  pageSize: 50,
+});
+
 const rows = ref<any[]>([]);
 const loading = ref(false);
 
-const keyword = ref("");
-const sortBy = ref<string>("created_at");
-const sortDir = ref<string>("desc");
-const action = ref("");
-const entity = ref("");
-const user = ref("");
-const range = ref<any>(null);
+const keyword = ref(String(persistedState.keyword || ""));
+const sortBy = ref<string>(String(persistedState.sortBy || "created_at"));
+const sortDir = ref<string>(String(persistedState.sortDir || "desc"));
+const action = ref(String(persistedState.action || ""));
+const entity = ref(String(persistedState.entity || ""));
+const user = ref(String(persistedState.user || ""));
+const range = ref<any>(Array.isArray(persistedState.range) && persistedState.range.length === 2
+  ? persistedState.range.map((value) => new Date(value))
+  : null);
 
 const page = ref(1);
-const pageSize = ref(50);
+const pageSize = ref(Number(persistedState.pageSize || 50));
 const total = ref(0);
 
 const showPayload = ref(false);
@@ -566,7 +581,60 @@ function tagType(action: string) {
   return "info";
 }
 
+function serializeRange() {
+  if (!Array.isArray(range.value) || range.value.length !== 2) return null;
+  return range.value.map((value: Date | string) => new Date(value).toISOString()) as [string, string];
+}
+
+function persistState() {
+  writeJsonStorage(STORAGE_KEY, {
+    keyword: keyword.value || '',
+    sortBy: sortBy.value || 'created_at',
+    sortDir: sortDir.value || 'desc',
+    action: action.value || '',
+    entity: entity.value || '',
+    user: user.value || '',
+    range: serializeRange(),
+    pageSize: Number(pageSize.value || 50),
+  });
+}
+
+let suppressAutoSearch = false;
+let inputTimer: ReturnType<typeof setTimeout> | null = null;
+let loadSeq = 0;
+
+function clearInputTimer() {
+  if (inputTimer) {
+    clearTimeout(inputTimer);
+    inputTimer = null;
+  }
+}
+
+function scheduleSearch() {
+  clearInputTimer();
+  inputTimer = setTimeout(() => {
+    onSearch();
+  }, 320);
+}
+
+watch([keyword, action, entity, user, sortBy, sortDir, pageSize], persistState);
+watch(range, persistState, { deep: true });
+watch(keyword, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleSearch();
+});
+watch(user, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  scheduleSearch();
+});
+watch(range, (_value, oldValue) => {
+  if (suppressAutoSearch || oldValue === undefined) return;
+  clearInputTimer();
+  onSearch();
+}, { deep: true });
+
 function onSearch(){
+  clearInputTimer();
   page.value = 1;
   load();
 }
@@ -574,6 +642,7 @@ function onPageChange(){ load(); }
 function onPageSizeChange(){ page.value = 1; load(); }
 
 function reset(){
+  suppressAutoSearch = true;
   keyword.value = "";
   action.value = "";
   entity.value = "";
@@ -582,6 +651,8 @@ function reset(){
   sortBy.value = "created_at";
   sortDir.value = "desc";
   page.value = 1;
+  suppressAutoSearch = false;
+  clearInputTimer();
   load();
 }
 
@@ -632,6 +703,7 @@ async function copyPayload(){
 }
 
 async function load(){
+  const currentSeq = ++loadSeq;
   loading.value = true;
   try{
     const params = new URLSearchParams();
@@ -652,12 +724,14 @@ async function load(){
     if (sortDir.value) params.set("sort_dir", sortDir.value);
 
     const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
-    rows.value = (j.data || []).map((r:any, idx:number)=>({ ...r }));
+    if (currentSeq !== loadSeq) return;
+    rows.value = (j.data || []).map((r:any)=>({ ...r }));
     total.value = Number(j.total || 0);
   }catch(e:any){
+    if (currentSeq !== loadSeq) return;
     ElMessage.error(e.message || "加载失败");
   }finally{
-    loading.value = false;
+    if (currentSeq === loadSeq) loading.value = false;
   }
 }
 
@@ -708,7 +782,10 @@ async function deleteSelected(){
   }
 }
 
-onMounted(load);
+onMounted(() => {
+  persistState();
+  load();
+});
 </script>
 
 <style scoped>
