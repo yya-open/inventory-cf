@@ -156,36 +156,7 @@
               </div>
             </el-popover>
           </div>
-          <div class="toolbar-tool-grid-two">
-            <el-button
-              :loading="exportBusy"
-              :disabled="importBusy || initQrBusy"
-              @click="emit('export')"
-            >
-              导出Excel
-            </el-button>
-            <el-button
-              :disabled="importBusy"
-              @click="emit('download-template')"
-            >
-              下载导入模板
-            </el-button>
-            <el-upload
-              class="toolbar-upload toolbar-upload-inline"
-              :show-file-list="false"
-              :auto-upload="false"
-              accept=".xlsx,.xls"
-              :disabled="importBusy || exportBusy || initQrBusy"
-              :on-change="(file: unknown) => emit('import-file', file)"
-            >
-              <el-button
-                type="primary"
-                :loading="importBusy"
-                :disabled="exportBusy || initQrBusy"
-              >
-                Excel导入
-              </el-button>
-            </el-upload>
+          <div class="toolbar-tool-actions">
             <el-button
               v-if="canOperator"
               type="primary"
@@ -197,7 +168,7 @@
             <el-dropdown
               v-if="canOperator || isAdmin"
               trigger="click"
-              @command="(command: string | number | object) => emit('toolbar-more', String(command))"
+              @command="handleMoreCommand"
             >
               <el-button
                 class="toolbar-more-button"
@@ -209,6 +180,26 @@
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
+                  <el-dropdown-item
+                    command="export"
+                    :disabled="exportBusy || importBusy || initQrBusy"
+                  >
+                    导出Excel
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="canOperator"
+                    command="download-template"
+                    :disabled="importBusy"
+                  >
+                    下载导入模板
+                  </el-dropdown-item>
+                  <el-dropdown-item
+                    v-if="canOperator"
+                    command="import"
+                    :disabled="importBusy || exportBusy || initQrBusy"
+                  >
+                    Excel导入
+                  </el-dropdown-item>
                   <el-dropdown-item
                     v-if="canOperator"
                     command="location"
@@ -225,6 +216,15 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
+            <el-upload
+              ref="importUploadRef"
+              class="toolbar-upload-hidden"
+              :show-file-list="false"
+              :auto-upload="false"
+              accept=".xlsx,.xls"
+              :disabled="importBusy || exportBusy || initQrBusy"
+              :on-change="(file: unknown) => emit('import-file', file)"
+            />
           </div>
         </div>
       </div>
@@ -232,7 +232,8 @@
   </el-card>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 const props = defineProps<{
   status: string;
@@ -272,5 +273,27 @@ const orderedVisibleOptions = computed(() => {
   const visibleSet = new Set(props.visibleColumns);
   return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
 });
+const importUploadRef = ref<ComponentPublicInstance | null>(null);
+function openImportPicker() {
+  const root = importUploadRef.value?.$el as HTMLElement | undefined;
+  const input = root?.querySelector('input[type="file"]') as HTMLInputElement | null;
+  input?.click();
+}
+function handleMoreCommand(command: string | number | object) {
+  const value = String(command);
+  if (value === 'export') {
+    emit('export');
+    return;
+  }
+  if (value === 'download-template') {
+    emit('download-template');
+    return;
+  }
+  if (value === 'import') {
+    openImportPicker();
+    return;
+  }
+  emit('toolbar-more', value);
+}
 </script>
-<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-subtle{margin-top:4px;color:#909399;font-size:12px}.toolbar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-selection-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.toolbar-tool-grid-two{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid-two :deep(.el-button){width:100%;margin-left:0}.toolbar-tool-grid-two :deep(.el-upload),.toolbar-tool-grid-two :deep(.el-upload .el-button){width:100%}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.reorder-title{margin-top:12px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.column-order-list{display:flex;flex-direction:column;gap:8px}.column-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid #ebeef5;border-radius:10px;background:#fff}.column-order-actions{display:flex;gap:4px}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button),.toolbar-selection-row,.toolbar-selection-row :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}.column-order-item{flex-direction:column;align-items:stretch}}</style>
+<style scoped>.monitor-toolbar{display:grid;grid-template-columns:minmax(0,1.5fr) minmax(320px,.95fr);gap:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-subtle{margin-top:4px;color:#909399;font-size:12px}.toolbar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:150px}.toolbar-location{width:220px}.toolbar-input{width:260px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px}.toolbar-selection-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.toolbar-tool-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-actions :deep(.el-button){width:100%;margin-left:0}.toolbar-upload-hidden{display:none}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.reorder-title{margin-top:12px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.column-order-list{display:flex;flex-direction:column;gap:8px}.column-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid #ebeef5;border-radius:10px;background:#fff}.column-order-actions{display:flex;gap:4px}@media (max-width:1100px){.monitor-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-location,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button),.toolbar-selection-row,.toolbar-selection-row :deep(.el-button),.toolbar-tool-actions,.toolbar-tool-actions :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}.column-order-item{flex-direction:column;align-items:stretch}}</style>

@@ -145,53 +145,67 @@
             </div>
           </el-popover>
         </div>
-        <div class="toolbar-tool-grid">
-          <el-button
-            :loading="exportBusy"
-            :disabled="importBusy || initQrBusy"
-            @click="emit('export')"
+        <div class="toolbar-tool-actions">
+          <el-dropdown
+            trigger="click"
+            @command="handleMoreCommand"
           >
-            导出Excel
-          </el-button>
-          <el-button
-            v-if="isAdmin"
-            :loading="initQrBusy"
-            :disabled="exportBusy || importBusy"
-            @click="emit('init-qr')"
-          >
-            初始化二维码Key
-          </el-button>
-          <el-button
-            v-if="canOperator"
-            :disabled="importBusy"
-            @click="emit('download-template')"
-          >
-            下载导入模板
-          </el-button>
+            <el-button
+              class="toolbar-more-button"
+              :disabled="initQrBusy"
+            >
+              更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            </el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item
+                  command="export"
+                  :disabled="exportBusy || importBusy || initQrBusy"
+                >
+                  导出Excel
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="isAdmin"
+                  command="init-qr"
+                  :disabled="initQrBusy"
+                >
+                  初始化二维码Key
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="canOperator"
+                  command="download-template"
+                  :disabled="importBusy"
+                >
+                  下载导入模板
+                </el-dropdown-item>
+                <el-dropdown-item
+                  v-if="canOperator"
+                  command="import"
+                  :disabled="importBusy || exportBusy || initQrBusy"
+                >
+                  Excel导入（批量入库）
+                </el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
           <el-upload
-            v-if="canOperator"
-            class="toolbar-upload"
+            ref="importUploadRef"
+            class="toolbar-upload-hidden"
             :show-file-list="false"
             :auto-upload="false"
             accept=".xlsx,.xls"
             :disabled="importBusy || exportBusy || initQrBusy"
             :on-change="(file: unknown) => emit('import-file', file)"
-          >
-            <el-button
-              type="primary"
-              :loading="importBusy"
-              :disabled="exportBusy || initQrBusy"
-            >
-              Excel导入（批量入库）
-            </el-button>
-          </el-upload>
+          />
         </div>
       </div>
     </div>
   </div>
 </template>
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
+import type { ComponentPublicInstance } from 'vue';
+import { ArrowDown } from '@element-plus/icons-vue';
 const props = defineProps<{
   status: string;
   keyword: string;
@@ -227,7 +241,31 @@ const orderedVisibleOptions = computed(() => {
   const visibleSet = new Set(props.visibleColumns);
   return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
 });
+const importUploadRef = ref<ComponentPublicInstance | null>(null);
+function openImportPicker() {
+  const root = importUploadRef.value?.$el as HTMLElement | undefined;
+  const input = root?.querySelector('input[type="file"]') as HTMLInputElement | null;
+  input?.click();
+}
+function handleMoreCommand(command: string | number | object) {
+  const value = String(command);
+  if (value === 'export') {
+    emit('export');
+    return;
+  }
+  if (value === 'init-qr') {
+    emit('init-qr');
+    return;
+  }
+  if (value === 'download-template') {
+    emit('download-template');
+    return;
+  }
+  if (value === 'import') {
+    openImportPicker();
+  }
+}
 </script>
 <style scoped>
-.asset-toolbar{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.95fr);gap:16px;margin-bottom:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-left{display:flex;flex-direction:column;gap:12px}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-subtle{margin-top:4px;color:#909399;font-size:12px}.toolbar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:160px}.toolbar-input{width:300px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px;flex-wrap:wrap}.toolbar-selection-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.toolbar-tool-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-grid :deep(.el-button){margin-left:0;width:100%}.toolbar-tool-grid :deep(.el-upload),.toolbar-tool-grid :deep(.el-upload .el-button){width:100%}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.reorder-title{margin-top:12px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.column-order-list{display:flex;flex-direction:column;gap:8px}.column-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid #ebeef5;border-radius:10px;background:#fff}.column-order-actions{display:flex;gap:4px}@media (max-width:1100px){.asset-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px;border-radius:14px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button),.toolbar-selection-row,.toolbar-selection-row :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}.column-order-item{flex-direction:column;align-items:stretch}}
+.asset-toolbar{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(320px,.95fr);gap:16px;margin-bottom:16px}.toolbar-left,.toolbar-right{min-width:0}.toolbar-left{display:flex;flex-direction:column;gap:12px}.toolbar-block{padding:14px 16px;border:1px solid #ebeef5;border-radius:16px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}.toolbar-block-title{font-size:13px;font-weight:700;color:#606266}.toolbar-subtle{margin-top:4px;color:#909399;font-size:12px}.toolbar-head{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;margin-bottom:10px}.toolbar-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}.toolbar-select{width:160px}.toolbar-input{width:300px;max-width:100%}.toolbar-actions-inline{display:flex;gap:12px;flex-wrap:wrap}.toolbar-selection-row{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:10px}.toolbar-tool-actions{display:grid;grid-template-columns:repeat(auto-fit,minmax(140px,1fr));gap:10px}.toolbar-tool-actions :deep(.el-button){margin-left:0;width:100%}.toolbar-upload-hidden{display:none}.column-panel-title{font-size:13px;font-weight:700;color:#606266;margin-bottom:8px}.reorder-title{margin-top:12px}.column-check-group{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px 12px}.column-order-list{display:flex;flex-direction:column;gap:8px}.column-order-item{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:8px 10px;border:1px solid #ebeef5;border-radius:10px;background:#fff}.column-order-actions{display:flex;gap:4px}@media (max-width:1100px){.asset-toolbar{grid-template-columns:1fr}}@media (max-width:768px){.toolbar-block{padding:12px;border-radius:14px}.toolbar-head{flex-direction:column;align-items:stretch}.toolbar-select,.toolbar-input,.toolbar-actions-inline,.toolbar-actions-inline :deep(.el-button),.toolbar-selection-row,.toolbar-selection-row :deep(.el-button),.toolbar-tool-actions,.toolbar-tool-actions :deep(.el-button){width:100%}.column-check-group{grid-template-columns:1fr}.column-order-item{flex-direction:column;align-items:stretch}}
 </style>
