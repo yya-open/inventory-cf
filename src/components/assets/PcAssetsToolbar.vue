@@ -101,7 +101,7 @@
                   class="column-check-group"
                   @update:model-value="emit('update:visible-columns', $event as string[])"
                 >
-                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :label="item.value">
+                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">
                     {{ item.label }}
                   </el-checkbox>
                 </el-checkbox-group>

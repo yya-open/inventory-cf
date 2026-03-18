@@ -108,9 +108,19 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const asset = await env.DB.prepare('SELECT * FROM monitor_assets WHERE id=?').bind(id).first<any>();
     if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
 
-    const ref = await env.DB.prepare('SELECT COUNT(*) AS c FROM monitor_tx WHERE asset_id=?').bind(id).first<any>();
-    if (Number(ref?.c || 0) > 0) {
+    const refs = await env.DB
+      .prepare(`
+        SELECT
+          (SELECT COUNT(*) FROM monitor_tx WHERE asset_id=?) AS tx_count,
+          (SELECT COUNT(*) FROM monitor_inventory_log WHERE asset_id=?) AS inventory_log_count
+      `)
+      .bind(id, id)
+      .first<any>();
+    if (Number(refs?.tx_count || 0) > 0) {
       throw Object.assign(new Error('该资产已有出入库记录，为避免影响追溯，暂不允许删除'), { status: 400 });
+    }
+    if (Number(refs?.inventory_log_count || 0) > 0) {
+      throw Object.assign(new Error('该资产已有盘点记录，为避免影响追溯，暂不允许删除'), { status: 400 });
     }
 
     await env.DB.prepare('DELETE FROM monitor_assets WHERE id=?').bind(id).run();
