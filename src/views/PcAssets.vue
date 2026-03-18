@@ -165,6 +165,7 @@ import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
+import { getCachedSystemSettings } from '../api/systemSettings';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
@@ -184,7 +185,7 @@ const PC_COLUMN_OPTIONS = [
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: 50, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: getCachedSystemSettings().ui_default_page_size, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const keyword = ref(String(persistedState.keyword || ''));
@@ -212,7 +213,7 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
 
-pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
+pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
 
 const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 const exportBusy = ref(false);

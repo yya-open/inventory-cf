@@ -38,6 +38,9 @@
           <el-menu-item index="/system/users">
             用户管理
           </el-menu-item>
+          <el-menu-item index="/system/settings">
+            系统配置
+          </el-menu-item>
         </el-menu>
 
         <!-- 配件仓菜单 -->

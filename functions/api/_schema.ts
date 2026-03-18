@@ -166,6 +166,15 @@ export async function ensureCoreSchema(db: D1Database) {
     )`,
     "CREATE INDEX IF NOT EXISTS idx_public_api_throttle_updated_at ON public_api_throttle(updated_at)",
 
+    // System settings
+    `CREATE TABLE IF NOT EXISTS system_settings (
+      key TEXT PRIMARY KEY,
+      value_json TEXT NOT NULL,
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      updated_by TEXT
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)",
+
     // Restore jobs (admin progress restore)
     `CREATE TABLE IF NOT EXISTS restore_job (
       id TEXT PRIMARY KEY,

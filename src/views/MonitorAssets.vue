@@ -212,6 +212,7 @@ import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
 import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
+import { getCachedSystemSettings } from '../api/systemSettings';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
@@ -233,7 +234,7 @@ const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: 50, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
+const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: getCachedSystemSettings().ui_default_page_size, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
 
 const status = ref(String(persistedState.status || ''));
 const locationId = ref(String(persistedState.locationId || ''));
@@ -332,7 +333,7 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   },
 });
 
-pageSize.value = Number(persistedState.pageSize || pageSize.value || 50);
+pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
 
 const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 const exportBusy = ref(false);

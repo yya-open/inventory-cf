@@ -412,6 +412,7 @@ import { ElMessage, ElMessageBox } from "element-plus";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { exportToXlsx } from "../utils/excel";
 import { readJsonStorage, writeJsonStorage } from "../utils/storage";
+import { getCachedSystemSettings } from "../api/systemSettings";
 
 
 const ACTION_LABEL: Record<string, string> = {
@@ -594,7 +595,7 @@ const persistedState = readJsonStorage(STORAGE_KEY, {
   moduleFilter: '',
   highRiskOnly: false,
   range: null as [string, string] | null,
-  pageSize: 50,
+  pageSize: getCachedSystemSettings().ui_default_page_size,
 });
 
 const rows = ref<any[]>([]);
@@ -614,7 +615,7 @@ const range = ref<any>(Array.isArray(persistedState.range) && persistedState.ran
   : null);
 
 const page = ref(1);
-const pageSize = ref(Number(persistedState.pageSize || 50));
+const pageSize = ref(Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50));
 const total = ref(0);
 
 const showPayload = ref(false);

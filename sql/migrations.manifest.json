@@ -93,5 +93,10 @@
     "id": "202603180020_asset_archive_meta",
     "file": "sql/migrate_asset_archive_meta.sql",
     "description": "archive reason, note, and operator fields for asset soft archive"
+  },
+  {
+    "id": "202603180030_system_settings",
+    "file": "sql/migrate_system_settings.sql",
+    "description": "system settings key-value store"
   }
 ]

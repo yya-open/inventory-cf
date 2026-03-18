@@ -143,6 +143,35 @@
             </el-button>
           </el-card>
         </el-col>
+      
+        <el-col
+          :xs="24"
+          :sm="12"
+          :md="12"
+          :lg="8"
+          style="margin-top: 12px"
+        >
+          <el-card
+            shadow="never"
+            style="border-radius: 12px; height: 100%"
+          >
+            <div style="font-weight:700; margin-bottom: 8px">
+              系统配置
+            </div>
+            <div style="color:#777; font-size: 12px; margin-bottom: 12px">
+              设置扫码现场体验、默认页大小等系统级规则
+            </div>
+            <el-button
+              type="primary"
+              plain
+              size="small"
+              @click="go('/system/settings')"
+            >
+              打开
+            </el-button>
+          </el-card>
+        </el-col>
+
       </el-row>
     </el-card>
   </div>
