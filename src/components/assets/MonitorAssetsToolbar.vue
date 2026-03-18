@@ -291,14 +291,19 @@ function handleBatchCommand(command: string | number | object) {
   width: 300px;
   max-width: 100%;
 }
-.toolbar-actions-inline,
-.toolbar-secondary-actions {
+.toolbar-actions-inline {
   display: flex;
   gap: 12px;
   flex-wrap: wrap;
 }
 .toolbar-secondary-actions {
+  display: flex;
+  gap: 12px;
+  flex-wrap: wrap;
+  flex-basis: 100%;
+  width: 100%;
   justify-content: flex-start;
+  align-items: center;
 }
 .toolbar-archive-checkbox {
   margin-right: 4px;
