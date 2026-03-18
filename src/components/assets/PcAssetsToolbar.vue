@@ -63,6 +63,7 @@
                 <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
+                <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
               </el-dropdown-menu>
@@ -166,6 +167,7 @@ const emit = defineEmits<{
   'export-selected-qr': [];
   'batch-delete': [];
   'batch-status': [];
+  'batch-owner': [];
   'batch-archive': [];
   'batch-restore': [];
   'clear-selection': [];
@@ -210,6 +212,7 @@ function handleBatchCommand(command: string | number | object) {
   const value = String(command);
   if (value === 'export-qr') return emit('export-selected-qr');
   if (value === 'batch-status') return emit('batch-status');
+  if (value === 'batch-owner') return emit('batch-owner');
   if (value === 'batch-archive') return emit('batch-archive');
   if (value === 'batch-restore') return emit('batch-restore');
   if (value === 'batch-delete') return emit('batch-delete');

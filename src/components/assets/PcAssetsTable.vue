@@ -32,7 +32,17 @@
             <div class="asset-link subtle" @click="emit('open-info', row)">
               SN：{{ row.serial_no }}
             </div>
-            <el-tag v-if="Number(row.archived || 0) === 1" size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
+            <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
+              <template #reference>
+                <el-tag size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
+              </template>
+              <div class="archive-detail">
+                <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
+                <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
+                <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
+                <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+              </div>
+            </el-popover>
           </template>
         </el-table-column>
 
@@ -50,7 +60,17 @@
               <el-tag v-else-if="row.status === 'ASSIGNED'" type="warning">已领用</el-tag>
               <el-tag v-else-if="row.status === 'RECYCLED'" type="info">已回收</el-tag>
               <el-tag v-else type="danger">已报废</el-tag>
-              <el-tag v-if="Number(row.archived || 0) === 1" type="warning" effect="plain">已归档</el-tag>
+              <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
+                <template #reference>
+                  <el-tag size="small" type="warning" effect="plain">已归档</el-tag>
+                </template>
+                <div class="archive-detail">
+                  <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
+                  <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
+                  <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
+                  <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+                </div>
+              </el-popover>
             </div>
           </template>
         </el-table-column>
@@ -167,4 +187,5 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .status-stack { display:flex; flex-wrap:wrap; gap:6px; }
 .archive-tag { margin-top:6px; }
 .row-archived-actions { display:flex; align-items:center; }
+.archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
 </style>

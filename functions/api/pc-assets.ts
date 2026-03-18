@@ -123,12 +123,14 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const hasRefs = Number(refs?.out_count || 0) > 0 || Number(refs?.recycle_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
 
     if (hasRefs) {
-      await env.DB.prepare(pcAssetArchiveSql()).bind(id).run();
+      const archiveReason = '有历史记录，删除改为归档';
+      await env.DB.prepare(pcAssetArchiveSql()).bind(archiveReason, null, user.username, id).run();
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
         model: asset.model,
         status: asset.status,
+        archived_reason: archiveReason,
       });
       return Response.json({ ok: true, archived: true, message: '该电脑已有历史记录，已自动归档' });
     }

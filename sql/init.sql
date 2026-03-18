@@ -173,7 +173,10 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   archived INTEGER NOT NULL DEFAULT 0,
-  archived_at TEXT
+  archived_at TEXT,
+  archived_reason TEXT,
+  archived_note TEXT,
+  archived_by TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
@@ -275,6 +278,9 @@ CREATE TABLE IF NOT EXISTS monitor_assets (
   updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   archived INTEGER NOT NULL DEFAULT 0,
   archived_at TEXT,
+  archived_reason TEXT,
+  archived_note TEXT,
+  archived_by TEXT,
   FOREIGN KEY(location_id) REFERENCES pc_locations(id)
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);

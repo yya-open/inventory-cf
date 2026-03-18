@@ -55,7 +55,10 @@ export async function ensurePcSchema(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       archived INTEGER NOT NULL DEFAULT 0,
-      archived_at TEXT
+      archived_at TEXT,
+      archived_reason TEXT,
+      archived_note TEXT,
+      archived_by TEXT
     )
   `).run();
 
@@ -65,6 +68,9 @@ export async function ensurePcSchema(db: D1Database) {
   for (const ddl of [
     "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
   ]) {
     try {
       await db.prepare(ddl).run();
@@ -96,12 +102,15 @@ try {
           created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           archived INTEGER NOT NULL DEFAULT 0,
-          archived_at TEXT
+          archived_at TEXT,
+          archived_reason TEXT,
+          archived_note TEXT,
+          archived_by TEXT
         )
       `),
       db.prepare(`
-        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, archived, archived_at)
-        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, 0, NULL
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL
         FROM pc_assets
       `),
       db.prepare("DROP TABLE pc_assets"),

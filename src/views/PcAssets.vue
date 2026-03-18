@@ -24,6 +24,7 @@
       @export-selected-qr="exportSelectedQrLinks"
       @batch-delete="batchDeleteSelected"
       @batch-status="openBatchStatusDialog"
+      @batch-owner="openBatchOwnerDialog"
       @batch-archive="batchArchiveSelected"
       @batch-restore="batchRestoreSelected"
       @restore-columns="restoreDefaultColumns"
@@ -99,6 +100,47 @@
         <el-button type="primary" :loading="batchBusy" @click="submitBatchStatus">确认</el-button>
       </template>
     </el-dialog>
+
+    <el-dialog v-model="batchOwnerVisible" title="批量修改电脑领用人" width="420px">
+      <el-form label-width="90px">
+        <el-form-item label="领用人">
+          <el-input v-model="batchOwnerForm.employee_name" placeholder="请输入领用人姓名" />
+        </el-form-item>
+        <el-form-item label="工号">
+          <el-input v-model="batchOwnerForm.employee_no" placeholder="可选" />
+        </el-form-item>
+        <el-form-item label="部门">
+          <el-input v-model="batchOwnerForm.department" placeholder="可选" />
+        </el-form-item>
+        <div class="batch-help">仅对当前已领用的电脑生效，未领用电脑会自动跳过。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchOwnerVisible=false">取消</el-button>
+        <el-button type="primary" :loading="batchBusy" @click="submitBatchOwner">确认</el-button>
+      </template>
+    </el-dialog>
+
+    <el-dialog v-model="batchArchiveVisible" title="批量归档电脑" width="460px">
+      <el-form label-width="90px">
+        <el-form-item label="归档原因">
+          <el-select v-model="batchArchiveForm.reason" style="width:100%" placeholder="请选择归档原因">
+            <el-option label="停用归档" value="停用归档" />
+            <el-option label="闲置归档" value="闲置归档" />
+            <el-option label="重复录入" value="重复录入" />
+            <el-option label="测试数据归档" value="测试数据归档" />
+            <el-option label="其他" value="其他" />
+          </el-select>
+        </el-form-item>
+        <el-form-item label="备注">
+          <el-input v-model="batchArchiveForm.note" type="textarea" :rows="3" placeholder="可选，补充归档说明" />
+        </el-form-item>
+        <div class="batch-help">归档后默认列表将不再显示，可通过“显示已归档”查看并恢复。</div>
+      </el-form>
+      <template #footer>
+        <el-button @click="batchArchiveVisible=false">取消</el-button>
+        <el-button type="primary" :loading="batchBusy" @click="submitBatchArchive">确认归档</el-button>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
@@ -166,6 +208,10 @@ const initQrBusy = ref(false);
 const batchBusy = ref(false);
 const batchStatusVisible = ref(false);
 const batchStatusValue = ref('IN_STOCK');
+const batchOwnerVisible = ref(false);
+const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
+const batchArchiveVisible = ref(false);
+const batchArchiveForm = ref({ reason: '停用归档', note: '' });
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
 
@@ -532,6 +578,12 @@ function openBatchStatusDialog() {
   batchStatusVisible.value = true;
 }
 
+function openBatchOwnerDialog() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
+  batchOwnerVisible.value = true;
+}
+
 async function submitBatchStatus() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
@@ -552,6 +604,29 @@ async function submitBatchStatus() {
   }
 }
 
+
+async function submitBatchOwner() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return ElMessage.warning('请输入领用人');
+  try {
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/pc-assets-bulk', {
+      action: 'owner',
+      ids: selectedIds.value.map((id) => Number(id)),
+      employee_name: batchOwnerForm.value.employee_name,
+      employee_no: batchOwnerForm.value.employee_no,
+      department: batchOwnerForm.value.department,
+    });
+    ElMessage.success(result?.message || '批量修改领用人成功');
+    batchOwnerVisible.value = false;
+    clearSelection();
+    await load(currentFilters(), { keepPage: true });
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量修改领用人失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
 
 async function batchRestoreSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
@@ -579,22 +654,26 @@ async function batchRestoreSelected() {
 
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  batchArchiveForm.value = { reason: '停用归档', note: '' };
+  batchArchiveVisible.value = true;
+}
+
+async function submitBatchArchive() {
+  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!String(batchArchiveForm.value.reason || '').trim()) return ElMessage.warning('请选择归档原因');
   try {
-    await ElMessageBox.confirm(`确认归档选中的 ${selectedCount.value} 台电脑？归档后默认列表将不再显示。`, '批量归档确认', {
-      type: 'warning',
-      confirmButtonText: '确认归档',
-      cancelButtonText: '取消',
-    });
     batchBusy.value = true;
     const result: any = await apiPost('/api/pc-assets-bulk', {
       action: 'archive',
       ids: selectedIds.value.map((id) => Number(id)),
+      reason: batchArchiveForm.value.reason,
+      note: batchArchiveForm.value.note,
     });
     ElMessage.success(result?.message || '批量归档成功');
+    batchArchiveVisible.value = false;
     clearSelection();
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量归档失败');
   } finally {
     batchBusy.value = false;

@@ -258,12 +258,40 @@
               </div>
             </div>
 
+            <div class="preview-cards">
+              <div class="preview-card">
+                <div class="preview-label">盘点明细</div>
+                <div class="preview-value">{{ stocktakePreview.total }}</div>
+              </div>
+              <div class="preview-card">
+                <div class="preview-label">已录入</div>
+                <div class="preview-value">{{ stocktakePreview.counted }}</div>
+              </div>
+              <div class="preview-card preview-card--changed">
+                <div class="preview-label">存在差异</div>
+                <div class="preview-value">{{ stocktakePreview.changed }}</div>
+              </div>
+              <div class="preview-card preview-card--increase">
+                <div class="preview-label">盘盈</div>
+                <div class="preview-value">{{ stocktakePreview.increase }}</div>
+              </div>
+              <div class="preview-card preview-card--decrease">
+                <div class="preview-label">盘亏</div>
+                <div class="preview-value">{{ stocktakePreview.decrease }}</div>
+              </div>
+            </div>
+
             <div class="detail-tools">
               <el-input
                 v-model="lineKeyword"
                 clearable
                 placeholder="搜索 SKU / 名称"
                 style="max-width: 260px;"
+              />
+              <el-segmented
+                v-model="lineFilter"
+                :options="lineFilterOptions"
+                size="small"
               />
               <div
                 class="muted"
@@ -279,6 +307,7 @@
               stripe
               size="small"
               border
+              :row-class-name="detailRowClassName"
             >
               <el-table-column
                 prop="sku"
@@ -312,8 +341,15 @@
               <el-table-column
                 prop="diff_qty"
                 label="差异"
-                width="90"
-              />
+                width="110"
+              >
+                <template #default="{ row }">
+                  <el-tag v-if="row.counted_qty===null || row.counted_qty===undefined || row.counted_qty===''" size="small" type="info" effect="plain">未盘</el-tag>
+                  <el-tag v-else-if="Number(row.diff_qty || 0) > 0" size="small" type="success">+{{ Number(row.diff_qty || 0) }}</el-tag>
+                  <el-tag v-else-if="Number(row.diff_qty || 0) < 0" size="small" type="danger">{{ Number(row.diff_qty || 0) }}</el-tag>
+                  <el-tag v-else size="small" type="info">0</el-tag>
+                </template>
+              </el-table-column>
               <el-table-column
                 label="更新时间"
                 width="170"
@@ -366,6 +402,14 @@ const toggleList = () => {
 
 
 const lineKeyword = ref("");
+const lineFilter = ref<'all'|'changed'|'increase'|'decrease'|'pending'>("all");
+const lineFilterOptions = [
+  { label: '全部', value: 'all' },
+  { label: '差异', value: 'changed' },
+  { label: '盘盈', value: 'increase' },
+  { label: '盘亏', value: 'decrease' },
+  { label: '未盘', value: 'pending' },
+];
 const listKeyword = ref("");
 const listSortBy = ref<string>("created_at");
 const listSortDir = ref<string>("desc");
@@ -380,10 +424,17 @@ const dirty = ref<Set<number>>(new Set());
 const filteredLines = computed(()=>{
   if (!detail.value) return [];
   const k = lineKeyword.value.trim().toLowerCase();
-  if (!k) return detail.value.lines;
-  return detail.value.lines.filter((x:any)=>
-    String(x.sku||"").toLowerCase().includes(k) || String(x.name||"").toLowerCase().includes(k)
-  );
+  return detail.value.lines.filter((x:any)=>{
+    const hitKeyword = !k || String(x.sku||"").toLowerCase().includes(k) || String(x.name||"").toLowerCase().includes(k);
+    if (!hitKeyword) return false;
+    const diff = Number(x.diff_qty || 0);
+    const counted = !(x.counted_qty === null || x.counted_qty === undefined || x.counted_qty === '');
+    if (lineFilter.value === 'changed') return counted && diff !== 0;
+    if (lineFilter.value === 'increase') return counted && diff > 0;
+    if (lineFilter.value === 'decrease') return counted && diff < 0;
+    if (lineFilter.value === 'pending') return !counted;
+    return true;
+  });
 });
 
 const stocktakePreview = computed(() => {
@@ -403,6 +454,14 @@ const stocktakePreview = computed(() => {
 
 function rowClassName({ row }: any){
   return Number(row?.id) === Number(selectedId.value) ? "row-selected" : "";
+}
+
+function detailRowClassName({ row }: any) {
+  if (row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '') return 'detail-row-pending';
+  const diff = Number(row.diff_qty || 0);
+  if (diff > 0) return 'detail-row-increase';
+  if (diff < 0) return 'detail-row-decrease';
+  return '';
 }
 
 function scrollToSelected(){

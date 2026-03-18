@@ -120,8 +120,9 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const hasRefs = Number(refs?.tx_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
 
     if (hasRefs) {
-      await env.DB.prepare(monitorAssetArchiveSql()).bind(id).run();
-      await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status });
+      const archiveReason = '有历史记录，删除改为归档';
+      await env.DB.prepare(monitorAssetArchiveSql()).bind(archiveReason, null, user.username, id).run();
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status, archived_reason: archiveReason });
       return Response.json({ ok: true, archived: true, message: '该资产已有历史记录，已自动归档' });
     }
 

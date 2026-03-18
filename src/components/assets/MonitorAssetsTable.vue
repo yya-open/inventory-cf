@@ -19,7 +19,17 @@
         <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="200">
           <template #default="{ row }">
             <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
-            <el-tag v-if="Number(row.archived || 0) === 1" size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
+            <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
+              <template #reference>
+                <el-tag size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
+              </template>
+              <div class="archive-detail">
+                <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
+                <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
+                <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
+                <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+              </div>
+            </el-popover>
           </template>
         </el-table-column>
         <el-table-column v-else-if="key === 'size'" column-key="size" prop="size_inch" label="尺寸" :width="getColumnWidth('size', 90)" />
@@ -27,7 +37,17 @@
           <template #default="{ row }">
             <div class="status-stack">
               <span>{{ statusText(row.status) }}</span>
-              <el-tag v-if="Number(row.archived || 0) === 1" size="small" type="warning" effect="plain">已归档</el-tag>
+              <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
+                <template #reference>
+                  <el-tag size="small" type="warning" effect="plain">已归档</el-tag>
+                </template>
+                <div class="archive-detail">
+                  <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
+                  <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
+                  <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
+                  <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+                </div>
+              </el-popover>
             </div>
           </template>
         </el-table-column>
@@ -151,4 +171,5 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .archive-tag { margin-left: 8px; }
 .table-subtle { color: #909399; font-size: 12px; }
+.archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
 </style>

@@ -88,5 +88,10 @@
     "id": "202603180010_asset_archive",
     "file": "sql/migrate_asset_archive.sql",
     "description": "soft archive support for pc and monitor assets"
+  },
+  {
+    "id": "202603180020_asset_archive_meta",
+    "file": "sql/migrate_asset_archive_meta.sql",
+    "description": "archive reason, note, and operator fields for asset soft archive"
   }
 ]

@@ -62,6 +62,20 @@
           </div>
         </div><span v-else>-</span>
       </el-descriptions-item><el-descriptions-item
+        v-if="Number(row?.archived || 0)===1"
+        label="归档记录"
+        :span="2"
+      >
+        <div class="remark">
+          原因：{{ row?.archived_reason || '未填写' }}
+        </div>
+        <div class="subtle">
+          归档人：{{ row?.archived_by || '-' }} · 归档时间：{{ row?.archived_at || '-' }}
+        </div>
+        <div v-if="row?.archived_note" class="remark">
+          备注：{{ row?.archived_note }}
+        </div>
+      </el-descriptions-item><el-descriptions-item
         label="备注"
         :span="2"
       >

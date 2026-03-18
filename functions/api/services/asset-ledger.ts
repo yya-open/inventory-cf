@@ -1,4 +1,4 @@
-import { buildKeywordWhere, type KeywordFields } from '../_search';
+import { buildKeywordWhere } from '../_search';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 
@@ -217,6 +217,21 @@ export function parseMonitorAssetInput(body: any): MonitorAssetInput {
   };
 }
 
+export function parseArchiveMeta(body: any) {
+  return {
+    reason: optional(body?.reason, '归档原因', 120) || '手动归档',
+    note: optional(body?.note, 500),
+  };
+}
+
+export function parseOwnerInput(body: any) {
+  return {
+    employee_no: optional(body?.employee_no, 60),
+    employee_name: must(body?.employee_name, '领用人', 120),
+    department: optional(body?.department, 120),
+  };
+}
+
 export async function assertUnique(db: D1Database, sql: string, binds: any[], message: string) {
   const row = await db.prepare(sql).bind(...binds).first<any>();
   if (row) throw Object.assign(new Error(message), { status: 400 });
@@ -225,7 +240,12 @@ export async function assertUnique(db: D1Database, sql: string, binds: any[], me
 export function pcAssetArchiveSql() {
   return `
     UPDATE pc_assets
-    SET archived=1, archived_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
+    SET archived=1,
+        archived_at=${sqlNowStored()},
+        archived_reason=?,
+        archived_note=?,
+        archived_by=?,
+        updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
@@ -233,16 +253,25 @@ export function pcAssetArchiveSql() {
 export function monitorAssetArchiveSql() {
   return `
     UPDATE monitor_assets
-    SET archived=1, archived_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
+    SET archived=1,
+        archived_at=${sqlNowStored()},
+        archived_reason=?,
+        archived_note=?,
+        archived_by=?,
+        updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
 
-
 export function pcAssetRestoreSql() {
   return `
     UPDATE pc_assets
-    SET archived=0, archived_at=NULL, updated_at=${sqlNowStored()}
+    SET archived=0,
+        archived_at=NULL,
+        archived_reason=NULL,
+        archived_note=NULL,
+        archived_by=NULL,
+        updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
@@ -250,7 +279,12 @@ export function pcAssetRestoreSql() {
 export function monitorAssetRestoreSql() {
   return `
     UPDATE monitor_assets
-    SET archived=0, archived_at=NULL, updated_at=${sqlNowStored()}
+    SET archived=0,
+        archived_at=NULL,
+        archived_reason=NULL,
+        archived_note=NULL,
+        archived_by=NULL,
+        updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
@@ -273,6 +307,22 @@ export function monitorAssetBulkStatusSql() {
 
 export function monitorAssetBulkLocationSql() {
   return `UPDATE monitor_assets SET location_id=?, updated_at=${sqlNowStored()} WHERE id=?`;
+}
+
+export function monitorAssetBulkOwnerSql() {
+  return `
+    UPDATE monitor_assets
+    SET status='ASSIGNED', employee_no=?, department=?, employee_name=?, is_employed='Y', updated_at=${sqlNowStored()}
+    WHERE id=?
+  `;
+}
+
+export function latestPcOutRowSql() {
+  return `SELECT id FROM pc_out WHERE asset_id=? ORDER BY id DESC LIMIT 1`;
+}
+
+export function pcAssetBulkOwnerSql() {
+  return `UPDATE pc_out SET employee_no=?, department=?, employee_name=? WHERE id=?`;
 }
 
 export function pcAssetUpdateSql() {

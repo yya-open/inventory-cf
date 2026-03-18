@@ -66,6 +66,9 @@ export async function ensureMonitorSchema(db: D1Database) {
           updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           archived INTEGER NOT NULL DEFAULT 0,
           archived_at TEXT,
+          archived_reason TEXT,
+          archived_note TEXT,
+          archived_by TEXT,
           FOREIGN KEY(location_id) REFERENCES pc_locations(id)
         )
       `)
@@ -87,6 +90,9 @@ export async function ensureMonitorSchema(db: D1Database) {
       "ALTER TABLE monitor_assets ADD COLUMN is_employed TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
       "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
     ]) {
       try {
         await db.prepare(ddl).run();

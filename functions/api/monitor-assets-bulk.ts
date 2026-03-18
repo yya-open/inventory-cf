@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
-import { monitorAssetArchiveSql, monitorAssetBulkLocationSql, monitorAssetBulkStatusSql, monitorAssetRestoreSql } from './services/asset-ledger';
+import { monitorAssetArchiveSql, monitorAssetBulkLocationSql, monitorAssetBulkOwnerSql, monitorAssetBulkStatusSql, monitorAssetRestoreSql, parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -16,17 +16,17 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!ids.length) throw Object.assign(new Error('请选择至少一条显示器台账'), { status: 400 });
 
     if (action === 'archive') {
+      const meta = parseArchiveMeta(body);
       let archived = 0;
       for (const id of ids) {
         const row = await env.DB.prepare('SELECT id FROM monitor_assets WHERE id=?').bind(id).first<any>();
         if (!row) continue;
-        await env.DB.prepare(monitorAssetArchiveSql()).bind(id).run();
+        await env.DB.prepare(monitorAssetArchiveSql()).bind(meta.reason, meta.note, user.username, id).run();
         archived += 1;
       }
-      await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), { ids, count: archived });
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), { ids, count: archived, reason: meta.reason, note: meta.note });
       return Response.json({ ok: true, archived, message: `已归档 ${archived} 台显示器` });
     }
-
 
     if (action === 'restore') {
       let restored = 0;
@@ -65,6 +65,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_LOCATION_BATCH', 'monitor_assets', String(ids.length), { ids, location_id: locationId, count: changed });
       return Response.json({ ok: true, changed, message: `已更新 ${changed} 台显示器位置` });
+    }
+
+    if (action === 'owner') {
+      const owner = parseOwnerInput(body);
+      let changed = 0;
+      for (const id of ids) {
+        const row = await env.DB.prepare('SELECT id FROM monitor_assets WHERE id=? AND COALESCE(archived,0)=0').bind(id).first<any>();
+        if (!row) continue;
+        await env.DB.prepare(monitorAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, id).run();
+        changed += 1;
+      }
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_OWNER_BATCH', 'monitor_assets', String(ids.length), { ids, employee_name: owner.employee_name, employee_no: owner.employee_no, department: owner.department, count: changed });
+      return Response.json({ ok: true, changed, message: `已更新 ${changed} 台显示器领用人` });
     }
 
     throw Object.assign(new Error('不支持的批量操作'), { status: 400 });
