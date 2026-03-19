@@ -213,6 +213,13 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
   return counts;
 }
 
+async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {
+  const normalizedLabel = normalizeLabel(label);
+  if (!normalizedLabel) return 0;
+  const counts = await loadReferenceCounts(db, [key]);
+  return Number(counts[key]?.[normalizedLabel] || 0);
+}
+
 function normalizeRow(row: any, reference_count = 0): SystemDictionaryItem {
   return {
     id: Number(row?.id || 0),
