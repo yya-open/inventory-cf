@@ -12,4 +12,9 @@ describe('system settings normalization', () => {
     expect(data.public_inventory_cooldown_seconds).toBe(5);
     expect(data.public_inventory_auto_vibrate).toBe(false);
   });
+
+  it('includes scanner mode default flag', () => {
+    const data = normalizeSystemSettings({ public_inventory_scanner_mode_default: '0' as any });
+    expect(data.public_inventory_scanner_mode_default).toBe(false);
+  });
 });

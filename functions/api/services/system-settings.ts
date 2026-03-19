@@ -7,6 +7,7 @@ export type SystemSettings = {
   public_inventory_mobile_compact: boolean;
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
+  public_inventory_scanner_mode_default: boolean;
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -16,6 +17,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_mobile_compact: true,
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
+  public_inventory_scanner_mode_default: true,
 };
 
 const SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[];
@@ -54,6 +56,7 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_mobile_compact: toBoolean(source.public_inventory_mobile_compact, DEFAULT_SYSTEM_SETTINGS.public_inventory_mobile_compact),
     public_inventory_continuous_mode_default: toBoolean(source.public_inventory_continuous_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_continuous_mode_default),
     public_inventory_retry_hint: toBoolean(source.public_inventory_retry_hint, DEFAULT_SYSTEM_SETTINGS.public_inventory_retry_hint),
+    public_inventory_scanner_mode_default: toBoolean(source.public_inventory_scanner_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scanner_mode_default),
   };
 }
 
@@ -93,5 +96,6 @@ export function getPublicSettingsPayload(settings: SystemSettings) {
     public_inventory_mobile_compact: settings.public_inventory_mobile_compact,
     public_inventory_continuous_mode_default: settings.public_inventory_continuous_mode_default,
     public_inventory_retry_hint: settings.public_inventory_retry_hint,
+    public_inventory_scanner_mode_default: settings.public_inventory_scanner_mode_default,
   };
 }

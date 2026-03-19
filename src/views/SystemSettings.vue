@@ -48,6 +48,10 @@
               <el-form-item label="弱网重试提示">
                 <el-switch v-model="form.public_inventory_retry_hint" />
               </el-form-item>
+              <el-form-item label="默认扫码枪模式">
+                <el-switch v-model="form.public_inventory_scanner_mode_default" />
+                <div class="form-tip">开启后，连续盘点输入框会自动聚焦并在识别到完整二维码链接或 token 后自动跳转下一项。</div>
+              </el-form-item>
             </el-form>
           </el-card>
         </el-col>

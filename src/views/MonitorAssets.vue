@@ -125,7 +125,13 @@
             <el-option label="已报废" value="SCRAPPED" />
           </el-select>
         </el-form-item>
-        <div class="batch-help">将对当前已选 {{ selectedCount }} 台显示器生效。</div>
+        <div class="batch-preview">
+          <el-tag>已选 {{ batchStatusPreview.total }} 台</el-tag>
+          <el-tag type="success">预计生效 {{ batchStatusPreview.eligible }} 台</el-tag>
+          <el-tag v-if="batchStatusPreview.sameStatus" type="info">状态相同 {{ batchStatusPreview.sameStatus }} 台</el-tag>
+          <el-tag v-if="batchStatusPreview.archived" type="warning">已归档 {{ batchStatusPreview.archived }} 台</el-tag>
+        </div>
+        <div class="batch-help">将对当前已选显示器中“未归档且状态不同”的记录生效。</div>
       </el-form>
       <template #footer>
         <el-button @click="batchStatusVisible=false">取消</el-button>
@@ -144,7 +150,13 @@
             <el-option v-for="item in locationOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <div class="batch-help">将对当前已选 {{ selectedCount }} 台显示器生效。</div>
+        <div class="batch-preview">
+          <el-tag>已选 {{ batchLocationPreview.total }} 台</el-tag>
+          <el-tag type="success">预计生效 {{ batchLocationPreview.eligible }} 台</el-tag>
+          <el-tag v-if="batchLocationPreview.sameLocation" type="info">位置相同 {{ batchLocationPreview.sameLocation }} 台</el-tag>
+          <el-tag v-if="batchLocationPreview.archived" type="warning">已归档 {{ batchLocationPreview.archived }} 台</el-tag>
+        </div>
+        <div class="batch-help">将对当前已选显示器中“未归档且位置不同”的记录生效。</div>
       </el-form>
       <template #footer>
         <el-button @click="batchLocationVisible=false">取消</el-button>
@@ -163,7 +175,13 @@
         <el-form-item label="部门">
           <el-input v-model="batchOwnerForm.department" placeholder="可选" />
         </el-form-item>
-        <div class="batch-help">批量更新后，这些显示器会标记为“已领用”。</div>
+        <div class="batch-preview">
+          <el-tag>已选 {{ batchOwnerPreview.total }} 台</el-tag>
+          <el-tag type="success">预计生效 {{ batchOwnerPreview.eligible }} 台</el-tag>
+          <el-tag v-if="batchOwnerPreview.sameOwner" type="info">信息相同 {{ batchOwnerPreview.sameOwner }} 台</el-tag>
+          <el-tag v-if="batchOwnerPreview.archived" type="warning">已归档 {{ batchOwnerPreview.archived }} 台</el-tag>
+        </div>
+        <div class="batch-help">批量更新后，这些显示器会标记为“已领用”，仅会对领用信息发生变化的记录生效。</div>
       </el-form>
       <template #footer>
         <el-button @click="batchOwnerVisible=false">取消</el-button>
@@ -185,6 +203,11 @@
         <el-form-item label="备注">
           <el-input v-model="batchArchiveForm.note" type="textarea" :rows="3" placeholder="可选，补充归档说明" />
         </el-form-item>
+        <div class="batch-preview">
+          <el-tag>已选 {{ batchArchivePreview.total }} 台</el-tag>
+          <el-tag type="success">预计归档 {{ batchArchivePreview.eligible }} 台</el-tag>
+          <el-tag v-if="batchArchivePreview.archived" type="info">已归档 {{ batchArchivePreview.archived }} 台</el-tag>
+        </div>
         <div class="batch-help">归档后默认列表将不再显示，可通过“显示已归档”查看并恢复。</div>
       </el-form>
       <template #footer>
@@ -348,6 +371,41 @@ const batchOwnerVisible = ref(false);
 const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
 const batchArchiveVisible = ref(false);
 const batchArchiveForm = ref({ reason: '停用归档', note: '' });
+
+const batchStatusPreview = computed(() => {
+  const total = selectedRows.value.length;
+  const archived = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+  const sameStatus = selectedRows.value.filter((row) => Number(row.archived || 0) !== 1 && String(row.status || '') === String(batchStatusValue.value || '')).length;
+  return { total, archived, sameStatus, eligible: Math.max(0, total - archived - sameStatus) };
+});
+
+const batchLocationPreview = computed(() => {
+  const total = selectedRows.value.length;
+  const archived = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+  const sameLocation = selectedRows.value.filter((row) => Number(row.archived || 0) !== 1 && Number(row.location_id || 0) === Number(batchLocationValue.value || 0)).length;
+  return { total, archived, sameLocation, eligible: Math.max(0, total - archived - sameLocation) };
+});
+
+const batchOwnerPreview = computed(() => {
+  const total = selectedRows.value.length;
+  const archived = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+  const sameOwner = selectedRows.value.filter((row) => {
+    if (Number(row.archived || 0) === 1) return false;
+    const name = String(row.employee_name || '').trim();
+    const no = String(row.employee_no || '').trim();
+    const dept = String(row.department || '').trim();
+    return name === String(batchOwnerForm.value.employee_name || '').trim()
+      && no === String(batchOwnerForm.value.employee_no || '').trim()
+      && dept === String(batchOwnerForm.value.department || '').trim();
+  }).length;
+  return { total, archived, sameOwner, eligible: Math.max(0, total - archived - sameOwner) };
+});
+
+const batchArchivePreview = computed(() => {
+  const total = selectedRows.value.length;
+  const archived = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+  return { total, archived, eligible: Math.max(0, total - archived) };
+});
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
 const assetSaving = ref(false);
@@ -615,7 +673,7 @@ async function submitBatchOwner() {
 async function batchRestoreSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
-    await ElMessageBox.confirm(`确认恢复选中的 ${selectedCount.value} 台显示器？恢复后将重新出现在默认台账列表中。`, '批量恢复归档', {
+    await ElMessageBox.confirm(`确认恢复选中的 ${selectedCount.value} 台显示器？预计可恢复 ${selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length} 台，恢复后将重新出现在默认台账列表中。`, '批量恢复归档', {
       type: 'warning',
       confirmButtonText: '确认恢复',
       cancelButtonText: '取消',
@@ -667,7 +725,7 @@ async function submitBatchArchive() {
 async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${selectedCount.value} 台显示器？仅未产生事务记录的资产可删除。`, '批量删除确认', {
+    await ElMessageBox.confirm(`确认删除选中的 ${selectedCount.value} 台显示器？其中 ${selectedRows.value.filter((row) => String(row.status || '') === 'ASSIGNED').length} 台当前处于已领用状态。带历史记录的资产会自动转归档，只有满足条件的资产会物理删除。`, '批量删除确认', {
       type: 'warning',
       confirmButtonText: '确认删除',
       cancelButtonText: '取消',
@@ -1272,6 +1330,13 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.batch-preview {
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:6px;
+}
+
 .batch-help {
   color: #909399;
   font-size: 12px;

@@ -33,19 +33,24 @@
             <div class="next-title">连续盘点</div>
             <div class="next-subtitle">提交当前结果后，可直接在本页切到下一项，减少来回跳转。</div>
           </div>
-          <el-switch v-model="continuousMode" active-text="连续模式" />
+          <div class="public-next-switches">
+            <el-switch v-model="continuousMode" active-text="连续模式" />
+            <el-switch v-model="scannerMode" active-text="扫码枪模式" />
+          </div>
         </div>
         <div class="public-next-body">
           <el-input
+            ref="nextInputRef"
             v-model="nextInput"
             size="large"
             clearable
             inputmode="search"
-            placeholder="粘贴下一项二维码链接或 token，回车即可切换"
+            placeholder="粘贴或扫描下一项二维码链接 / token，扫码枪回车可直接切换"
             @keydown.enter.prevent="goNextFromInput"
           />
           <el-button size="large" type="primary" plain @click="goNextFromInput">前往下一项</el-button>
         </div>
+        <div class="scanner-tip">{{ scannerTip }}</div>
         <div v-if="recentTargets.length" class="recent-row">
           <span class="recent-label">最近扫码：</span>
           <el-button v-for="item in recentTargets" :key="item" size="small" text @click="openRecent(item)">{{ recentLabel(item) }}</el-button>
@@ -111,7 +116,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus';
 import { apiGetPublic, apiPostPublic } from '../api/client';
 import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type SystemSettings } from '../api/systemSettings';
@@ -143,12 +148,16 @@ const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 12
 const descColumns = computed(() => (viewportWidth.value < 640 ? 1 : 2));
 const isMobile = computed(() => viewportWidth.value < 640);
 const continuousMode = ref(true);
+const scannerMode = ref(true);
 const nextInput = ref('');
+const nextInputRef = ref<any>(null);
 const recentTargets = ref<string[]>([]);
 const weakNetworkHint = ref('');
 const retryMessage = ref('');
 const retryAction = ref<null | 'refresh' | 'ok' | 'issue'>(null);
+const scannerTip = computed(() => scannerMode.value ? '扫码枪模式已开启：输入框会自动保持焦点，识别到完整二维码链接或 token 后会自动切换。' : '扫码枪模式已关闭：可粘贴内容后按回车或点击按钮切换。');
 let cooldownTimer: any = null;
+let scannerTimer: any = null;
 
 function handleResize() { viewportWidth.value = window.innerWidth; }
 function handleNetworkChange() { weakNetworkHint.value = settings.value.public_inventory_retry_hint ? getWeakNetworkText() : ''; }
@@ -158,9 +167,29 @@ function recentLabel(item: string) {
 }
 function clearRetry() { retryMessage.value = ''; retryAction.value = null; }
 
+function focusNextInput() {
+  nextTick(() => {
+    const target = nextInputRef.value;
+    if (target && typeof target.focus === 'function') target.focus();
+  });
+}
+
+function scheduleScannerAutoGo() {
+  if (!continuousMode.value || !scannerMode.value) return;
+  const target = parsePublicTargetInput(nextInput.value);
+  if (!target) return;
+  if (scannerTimer) clearTimeout(scannerTimer);
+  scannerTimer = setTimeout(() => {
+    if (continuousMode.value && scannerMode.value && parsePublicTargetInput(nextInput.value)) {
+      goNextFromInput();
+    }
+  }, 90);
+}
+
 function startCooldown(seconds = settings.value.public_inventory_cooldown_seconds) {
   cooldownLeft.value = seconds;
   if (cooldownTimer) clearInterval(cooldownTimer);
+  if (scannerTimer) clearTimeout(scannerTimer);
   cooldownTimer = setInterval(() => {
     cooldownLeft.value = Math.max(0, cooldownLeft.value - 1);
     if (cooldownLeft.value <= 0) {
@@ -200,6 +229,7 @@ function applyTargetFromQueryString(qs: string) {
   window.history.replaceState({}, '', url.toString());
   nextInput.value = '';
   refresh();
+  if (continuousMode.value) focusNextInput();
 }
 
 function openRecent(item: string) { applyTargetFromQueryString(item); }
@@ -211,12 +241,14 @@ function goNextFromInput() {
   window.history.replaceState({}, '', url.toString());
   nextInput.value = '';
   refresh();
+  if (continuousMode.value) focusNextInput();
 }
 
 async function loadPublicConfig() {
   try {
     settings.value = await fetchPublicSettings();
     continuousMode.value = settings.value.public_inventory_continuous_mode_default;
+    scannerMode.value = settings.value.public_inventory_scanner_mode_default;
   } catch {}
   handleNetworkChange();
 }
@@ -226,6 +258,7 @@ async function refresh() {
   error.value = '';
   clearRetry();
   try {
+    if (scannerTimer) { clearTimeout(scannerTimer); scannerTimer = null; }
     syncFromLocation();
     let apiUrl = '';
     if (id.value && key.value) apiUrl = `/api/public/pc-asset?id=${encodeURIComponent(id.value)}&key=${encodeURIComponent(key.value)}`;
@@ -305,11 +338,18 @@ function retryLast() {
 }
 
 watch(() => settings.value.public_inventory_retry_hint, handleNetworkChange);
+watch([continuousMode, scannerMode], ([enabled, scannerEnabled]) => {
+  if (enabled && scannerEnabled) focusNextInput();
+});
+watch(nextInput, () => {
+  if (scannerMode.value) scheduleScannerAutoGo();
+});
 
 onMounted(async () => {
   await loadPublicConfig();
   recentTargets.value = loadRecentPublicTargets('pc');
   await refresh();
+  if (continuousMode.value && scannerMode.value) focusNextInput();
   window.addEventListener('resize', handleResize);
   window.addEventListener('online', handleNetworkChange);
   window.addEventListener('offline', handleNetworkChange);
@@ -317,6 +357,7 @@ onMounted(async () => {
 
 onBeforeUnmount(() => {
   if (cooldownTimer) clearInterval(cooldownTimer);
+  if (scannerTimer) clearTimeout(scannerTimer);
   window.removeEventListener('resize', handleResize);
   window.removeEventListener('online', handleNetworkChange);
   window.removeEventListener('offline', handleNetworkChange);
@@ -332,9 +373,9 @@ onBeforeUnmount(() => {
 .public-alert{margin-bottom:12px}
 .alert-actions{display:flex;gap:8px;flex-wrap:wrap;margin-top:8px}
 .public-next-card{margin-bottom:14px;border-radius:14px;background:linear-gradient(180deg,rgba(255,255,255,.95),rgba(246,248,250,.98))}
-.public-next-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}
+.public-next-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap}.public-next-switches{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .next-title{font-weight:700}.next-subtitle{font-size:12px;color:#7a7a7a;margin-top:4px}
-.public-next-body{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}
+.public-next-body{display:flex;gap:10px;align-items:center;margin-top:12px;flex-wrap:wrap}.scanner-tip{margin-top:8px;color:#7d7d7d;font-size:12px;line-height:1.5}
 .recent-row{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-top:10px}
 .recent-label{font-size:12px;color:#8a8a8a}
 .public-actions{display:flex;align-items:center;gap:10px;margin-top:14px;flex-wrap:wrap}.cooldown{color:#999;font-size:12px}
