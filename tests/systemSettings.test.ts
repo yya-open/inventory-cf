@@ -13,8 +13,13 @@ describe('system settings normalization', () => {
     expect(data.public_inventory_auto_vibrate).toBe(false);
   });
 
-  it('includes scanner mode default flag', () => {
-    const data = normalizeSystemSettings({ public_inventory_scanner_mode_default: '0' as any });
-    expect(data.public_inventory_scanner_mode_default).toBe(false);
+  it('maps legacy scanner flag to new scan mode', () => {
+    const data = normalizeSystemSettings({ public_inventory_scanner_mode_default: '0' as any } as any);
+    expect(data.public_inventory_scan_mode_default).toBe('manual');
+  });
+
+  it('accepts camera scan mode', () => {
+    const data = normalizeSystemSettings({ public_inventory_scan_mode_default: 'camera' as any });
+    expect(data.public_inventory_scan_mode_default).toBe('camera');
   });
 });

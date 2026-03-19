@@ -1,13 +1,15 @@
 import { apiGet, apiPut, apiGetPublic } from './client';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 
+export type PublicScanMode = 'manual' | 'scanner' | 'camera';
+
 export type PublicSettings = {
   public_inventory_cooldown_seconds: number;
   public_inventory_auto_vibrate: boolean;
   public_inventory_mobile_compact: boolean;
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
-  public_inventory_scanner_mode_default: boolean;
+  public_inventory_scan_mode_default: PublicScanMode;
 };
 
 export type SystemSettings = PublicSettings & {
@@ -21,7 +23,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_mobile_compact: true,
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
-  public_inventory_scanner_mode_default: true,
+  public_inventory_scan_mode_default: 'scanner',
 };
 
 const SETTINGS_CACHE_KEY = 'inventory:system-settings-cache';

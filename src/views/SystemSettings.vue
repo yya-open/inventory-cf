@@ -48,9 +48,9 @@
               <el-form-item label="弱网重试提示">
                 <el-switch v-model="form.public_inventory_retry_hint" />
               </el-form-item>
-              <el-form-item label="默认扫码枪模式">
-                <el-switch v-model="form.public_inventory_scanner_mode_default" />
-                <div class="form-tip">开启后，连续盘点输入框会自动聚焦并在识别到完整二维码链接或 token 后自动跳转下一项。</div>
+              <el-form-item label="默认连续扫码方式">
+                <el-segmented v-model="form.public_inventory_scan_mode_default" :options="scanModeOptions" class="scan-mode-setting" />
+                <div class="form-tip">可选手动、扫码枪或摄像头连续扫码。摄像头模式更适合手机现场盘点。</div>
               </el-form-item>
             </el-form>
           </el-card>
@@ -68,6 +68,11 @@ import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, type 
 const loading = ref(false);
 const saving = ref(false);
 const form = ref<SystemSettings>({ ...DEFAULT_SYSTEM_SETTINGS });
+const scanModeOptions = [
+  { label: '手动', value: 'manual' },
+  { label: '扫码枪', value: 'scanner' },
+  { label: '摄像头', value: 'camera' },
+];
 
 async function reload() {
   loading.value = true;
@@ -105,4 +110,5 @@ onMounted(reload);
 .settings-grid{margin-top:14px}
 .section-title{font-weight:700}
 .form-tip{margin-top:6px;color:#8a8a8a;font-size:12px;line-height:1.5}
+.scan-mode-setting{max-width:320px}
 </style>

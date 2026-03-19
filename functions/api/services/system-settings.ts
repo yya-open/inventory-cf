@@ -1,5 +1,7 @@
 import { sqlNowStored } from '../_time';
 
+export type PublicScanMode = 'manual' | 'scanner' | 'camera';
+
 export type SystemSettings = {
   ui_default_page_size: number;
   public_inventory_cooldown_seconds: number;
@@ -7,7 +9,7 @@ export type SystemSettings = {
   public_inventory_mobile_compact: boolean;
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
-  public_inventory_scanner_mode_default: boolean;
+  public_inventory_scan_mode_default: PublicScanMode;
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -17,7 +19,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_mobile_compact: true,
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
-  public_inventory_scanner_mode_default: true,
+  public_inventory_scan_mode_default: 'scanner',
 };
 
 const SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[];
@@ -47,6 +49,14 @@ function toInt(value: any, fallback: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
+
+function normalizeScanMode(value: any, fallback: PublicScanMode, legacyScanner?: any): PublicScanMode {
+  const raw = String(value || '').trim().toLowerCase();
+  if (raw === 'manual' || raw === 'scanner' || raw === 'camera') return raw as PublicScanMode;
+  if (legacyScanner !== undefined) return toBoolean(legacyScanner, true) ? 'scanner' : 'manual';
+  return fallback;
+}
+
 export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettings, any>> | null | undefined): SystemSettings {
   const source = input || {};
   return {
@@ -56,7 +66,7 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_mobile_compact: toBoolean(source.public_inventory_mobile_compact, DEFAULT_SYSTEM_SETTINGS.public_inventory_mobile_compact),
     public_inventory_continuous_mode_default: toBoolean(source.public_inventory_continuous_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_continuous_mode_default),
     public_inventory_retry_hint: toBoolean(source.public_inventory_retry_hint, DEFAULT_SYSTEM_SETTINGS.public_inventory_retry_hint),
-    public_inventory_scanner_mode_default: toBoolean(source.public_inventory_scanner_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scanner_mode_default),
+    public_inventory_scan_mode_default: normalizeScanMode(source.public_inventory_scan_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scan_mode_default, source.public_inventory_scanner_mode_default),
   };
 }
 
@@ -96,6 +106,6 @@ export function getPublicSettingsPayload(settings: SystemSettings) {
     public_inventory_mobile_compact: settings.public_inventory_mobile_compact,
     public_inventory_continuous_mode_default: settings.public_inventory_continuous_mode_default,
     public_inventory_retry_hint: settings.public_inventory_retry_hint,
-    public_inventory_scanner_mode_default: settings.public_inventory_scanner_mode_default,
+    public_inventory_scan_mode_default: settings.public_inventory_scan_mode_default,
   };
 }
