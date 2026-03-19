@@ -110,10 +110,14 @@
         width="48"
       />
       <el-table-column
-        prop="id"
-        label="ID"
+        label="序号"
         width="80"
-      />
+        align="center"
+      >
+        <template #default="{ $index }">
+          {{ getRowNumber($index) }}
+        </template>
+      </el-table-column>
       <el-table-column
         label="电脑"
         min-width="260"
@@ -259,6 +263,15 @@ const exportingAll = ref(false);
 const selectedIds = ref<number[]>([]);
 const scrapLoading = ref(false);
 
+function clearTotals() {
+  totalCache.clear();
+  total.value = 0;
+}
+
+function getRowNumber(index: number) {
+  return (page.value - 1) * pageSize.value + index + 1;
+}
+
 function onSearch() {
   page.value = 1;
   load();
@@ -268,6 +281,7 @@ function reset() {
   status.value = "";
   keyword.value = "";
   page.value = 1;
+  clearTotals();
   load();
 }
 
@@ -369,6 +383,10 @@ function calcAgeYears(dateStr: string) {
 
 async function load() {
   try {
+    if (totalTimer) {
+      clearTimeout(totalTimer);
+      totalTimer = null;
+    }
     loading.value = true;
     const qs = new URLSearchParams();
     qs.set("age_years", String(ageYears.value));
@@ -381,7 +399,7 @@ async function load() {
     qs.set("fast", "1");
 
     const j = await apiGet<{ ok: boolean; data: any[]; total: number | null }>(`/api/pc-assets?${qs.toString()}`);
-    rows.value = j.data || [];
+    rows.value = Array.isArray(j.data) ? j.data : [];
 
     const key = filterKey();
     if (totalCache.has(key)) {
@@ -410,6 +428,7 @@ async function load() {
       total.value = v;
     }
   } catch (e: any) {
+    rows.value = [];
     ElMessage.error(e?.message || "加载失败");
   } finally {
     loading.value = false;
@@ -538,10 +557,16 @@ async function exportExcel(all: boolean) {
 }
 
 onMounted(async () => {
+  load();
   try {
     const settings = await fetchSystemSettings();
-    ageYears.value = Number(settings?.pc_scrap_warning_years || ageYears.value || 5);
+    const nextYears = Number(settings?.pc_scrap_warning_years || ageYears.value || 5);
+    if (nextYears !== ageYears.value) {
+      ageYears.value = nextYears;
+      page.value = 1;
+      clearTotals();
+      await load();
+    }
   } catch {}
-  load();
 });
 </script>
