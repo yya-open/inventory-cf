@@ -497,6 +497,9 @@ const ACTION_LABEL: Record<string, string> = {
   MONITOR_TX_EXPORT: "导出显示器事务",
   MONITOR_INVENTORY_LOG_DELETE: "删除显示器盘点记录",
   MONITOR_INVENTORY_LOG_EXPORT: "导出显示器盘点记录",
+  SYSTEM_DICTIONARY_CREATE: "新增系统字典项",
+  SYSTEM_DICTIONARY_UPDATE: "修改系统字典项",
+  SYSTEM_DICTIONARY_DELETE: "删除系统字典项",
 
   pc_asset_update: "修改电脑台账",
   pc_asset_delete: "删除电脑台账",
@@ -531,6 +534,7 @@ const ENTITY_LABEL: Record<string, string> = {
   monitor_assets: "显示器台账",
   monitor_tx: "显示器事务",
   monitor_inventory_log: "显示器盘点记录",
+  system_dictionary_items: "系统字典项",
 };
 
 const FIELD_LABEL: Record<string, string> = {

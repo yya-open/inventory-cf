@@ -1,3 +1,4 @@
+import { getEnabledDictionaryLabels } from './system-dictionaries';
 import { sqlNowStored } from '../_time';
 
 export type PublicScanMode = 'manual' | 'scanner' | 'camera';
@@ -32,7 +33,14 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_scan_mode_default: 'scanner',
 };
 
-const SETTING_KEYS = Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[];
+const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
+  'asset_archive_reason_options',
+  'dictionary_department_options',
+  'dictionary_pc_brand_options',
+  'dictionary_monitor_brand_options',
+];
+
+const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key));
 
 export async function ensureSystemSettingsTable(db: D1Database) {
   await db.prepare(
@@ -59,7 +67,6 @@ function toInt(value: any, fallback: number, min: number, max: number) {
   return Math.min(max, Math.max(min, Math.round(n)));
 }
 
-
 function toStringArray(value: any, fallback: string[] = []) {
   const raw = Array.isArray(value)
     ? value
@@ -72,7 +79,6 @@ function toStringArray(value: any, fallback: string[] = []) {
     .filter((item, index, arr) => arr.indexOf(item) === index);
   return normalized.length ? normalized : [...fallback];
 }
-
 
 function normalizeScanMode(value: any, fallback: PublicScanMode, legacyScanner?: any): PublicScanMode {
   const raw = String(value || '').trim().toLowerCase();
@@ -112,6 +118,10 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
       patch[key] = row?.value_json;
     }
   }
+  patch.asset_archive_reason_options = await getEnabledDictionaryLabels(db, 'asset_archive_reason');
+  patch.dictionary_department_options = await getEnabledDictionaryLabels(db, 'department');
+  patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
+  patch.dictionary_monitor_brand_options = await getEnabledDictionaryLabels(db, 'monitor_brand');
   return normalizeSystemSettings(patch as any);
 }
 
@@ -125,7 +135,7 @@ export async function updateSystemSettings(db: D1Database, patch: Partial<System
        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=${sqlNowStored()}, updated_by=excluded.updated_by`
     ).bind(key, JSON.stringify(next[key]), updatedBy || null).run();
   }
-  return next;
+  return getSystemSettings(db);
 }
 
 export function getPublicSettingsPayload(settings: SystemSettings) {
