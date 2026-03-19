@@ -142,7 +142,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     if (Number(asset.archived || 0) === 1) {
       const purgeSummary = await purgeArchivedMonitorAsset(env.DB, id);
-      await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, {
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', id, {
         asset_code: asset.asset_code,
         brand: asset.brand,
         model: asset.model,

@@ -465,6 +465,7 @@ const ACTION_LABEL: Record<string, string> = {
   PC_SCRAP: "电脑报废",
   PC_ASSET_UPDATE: "修改电脑台账",
   PC_ASSET_DELETE: "删除电脑台账",
+  PC_ASSET_PURGE: "彻底删除电脑台账",
   PC_TX_DELETE: "删除电脑事务",
   PC_TX_CLEAR: "清空电脑事务",
   PC_LOCATION_CREATE: "新增电脑位置",
@@ -477,6 +478,7 @@ const ACTION_LABEL: Record<string, string> = {
   MONITOR_ASSET_CREATE: "新增显示器台账",
   MONITOR_ASSET_UPDATE: "修改显示器台账",
   MONITOR_ASSET_DELETE: "删除显示器台账",
+  MONITOR_ASSET_PURGE: "彻底删除显示器台账",
   PC_ASSET_ARCHIVE: "归档电脑台账",
   PC_ASSET_ARCHIVE_BATCH: "批量归档电脑台账",
   PC_ASSET_RESTORE_BATCH: "批量恢复电脑归档",
@@ -503,12 +505,81 @@ const ACTION_LABEL: Record<string, string> = {
 
   pc_asset_update: "修改电脑台账",
   pc_asset_delete: "删除电脑台账",
+  pc_asset_purge: "彻底删除电脑台账",
   pc_tx_delete: "删除电脑事务",
   pc_tx_clear: "清空电脑事务",
   monitor_asset_create: "新增显示器台账",
   monitor_asset_update: "修改显示器台账",
   monitor_asset_delete: "删除显示器台账",
+  monitor_asset_purge: "彻底删除显示器台账",
 };
+
+const ACTION_TOKEN_LABEL: Record<string, string> = {
+  STOCK: '库存',
+  STOCKTAKE: '盘点',
+  ITEM: '配件',
+  ITEMS: '配件',
+  USER: '用户',
+  USERS: '用户',
+  AUDIT: '审计',
+  ADMIN: '系统管理',
+  PC: '电脑',
+  MONITOR: '显示器',
+  ASSET: '台账',
+  ASSETS: '台账',
+  TX: '事务',
+  INVENTORY: '盘点',
+  LOG: '记录',
+  LOCATION: '位置',
+  LOCATIONS: '位置',
+  DICTIONARY: '字典',
+  DICTIONARIES: '字典',
+  SYSTEM: '系统',
+  SCHEMA: '结构',
+  BACKUP: '备份',
+  RESTORE: '恢复',
+  JOB: '任务',
+  STOCK_TX: '出入库流水',
+  CREATE: '新增',
+  UPDATE: '修改',
+  DELETE: '删除',
+  PURGE: '彻底删除',
+  ARCHIVE: '归档',
+  BATCH: '批量',
+  STATUS: '状态',
+  OWNER: '领用人',
+  PASSWORD: '密码',
+  INIT: '初始化',
+  IN: '入库',
+  OUT: '出库',
+  RETURN: '归还',
+  RECYCLE: '回收',
+  SCRAP: '报废',
+  EXPORT: '导出',
+  IMPORT: '导入',
+  APPLY: '应用',
+  ROLLBACK: '回滚',
+  CLEAR: '清空',
+  RESET: '重置',
+  TRANSFER: '调拨',
+  PAUSE: '暂停',
+  CANCELED: '取消',
+  CANCEL: '取消',
+  SCAN: '扫描',
+  SNAPSHOT: '快照',
+  SKIPPED: '跳过',
+  DONE: '完成',
+  FAILED: '失败',
+  UPLOAD: '上传',
+  RETENTION: '保留',
+  THROTTLE: '限流',
+};
+
+const ACTION_VERB_TOKENS = new Set([
+  'CREATE', 'UPDATE', 'DELETE', 'PURGE', 'ARCHIVE', 'RESTORE', 'EXPORT', 'IMPORT', 'APPLY',
+  'ROLLBACK', 'CLEAR', 'RESET', 'INIT', 'IN', 'OUT', 'RETURN', 'RECYCLE', 'SCRAP', 'TRANSFER',
+  'PAUSE', 'CANCELED', 'CANCEL', 'SCAN', 'DONE', 'FAILED', 'UPLOAD',
+]);
 
 const ENTITY_LABEL: Record<string, string> = {
   stock_tx: "出入库流水",
@@ -576,11 +647,56 @@ function prettifyCodeLabel(value: string) {
     .trim();
 }
 
+function splitCodeTokens(value: string) {
+  return String(value || '')
+    .trim()
+    .replace(/[.\s-]+/g, '_')
+    .replace(/_+/g, '_')
+    .replace(/^_+|_+$/g, '')
+    .split('_')
+    .filter(Boolean);
+}
+
+function translateActionCode(value: string) {
+  const tokens = splitCodeTokens(value).map((token) => token.toUpperCase());
+  if (!tokens.length) return '';
+
+  const hasBatch = tokens.includes('BATCH');
+  const coreTokens = tokens.filter((token) => token !== 'BATCH');
+  const verbIndex = [...coreTokens].reverse().findIndex((token) => ACTION_VERB_TOKENS.has(token));
+
+  if (verbIndex !== -1) {
+    const actualVerbIndex = coreTokens.length - 1 - verbIndex;
+    const verbToken = coreTokens[actualVerbIndex];
+    const verb = ACTION_TOKEN_LABEL[verbToken] || '';
+    const target = coreTokens
+      .filter((_, index) => index !== actualVerbIndex)
+      .map((token) => ACTION_TOKEN_LABEL[token] || ENTITY_LABEL[token.toLowerCase()] || prettifyCodeLabel(token))
+      .join('');
+    if (verb) return `${hasBatch ? '批量' : ''}${verb}${target}`;
+  }
+
+  const translated = tokens
+    .map((token) => ACTION_TOKEN_LABEL[token] || ENTITY_LABEL[token.toLowerCase()] || '')
+    .filter(Boolean)
+    .join('');
+  return translated || '';
+}
+
+function translateEntityCode(value: string) {
+  const tokens = splitCodeTokens(value).map((token) => token.toLowerCase());
+  if (!tokens.length) return '';
+  return tokens
+    .map((token) => ENTITY_LABEL[token] || ACTION_TOKEN_LABEL[token.toUpperCase()] || '')
+    .filter(Boolean)
+    .join('');
+}
+
 function actionLabel(a: string) {
-  return ACTION_LABEL[a] || prettifyCodeLabel(a) || "-";
+  return ACTION_LABEL[a] || translateActionCode(a) || prettifyCodeLabel(a) || "-";
 }
 function entityLabel(e: string) {
-  return ENTITY_LABEL[e] || prettifyCodeLabel(e) || "-";
+  return ENTITY_LABEL[e] || translateEntityCode(e) || prettifyCodeLabel(e) || "-";
 }
 
 
@@ -630,14 +746,22 @@ const activePayloadTab = ref('summary');
 const currentPayloadRow = ref<any | null>(null);
 
 const actionFilterOptions = computed(() => {
-  const keys = Object.keys(ACTION_LABEL);
+  const keys = Array.from(new Set([
+    ...Object.keys(ACTION_LABEL),
+    action.value,
+    ...rows.value.map((row) => String(row?.action || '').trim()).filter(Boolean),
+  ].filter(Boolean)));
   return keys
     .sort((a, b) => actionLabel(a).localeCompare(actionLabel(b), "zh-CN"))
     .map((k) => ({ value: k, label: actionLabel(k) }));
 });
 
 const entityFilterOptions = computed(() => {
-  const keys = Object.keys(ENTITY_LABEL);
+  const keys = Array.from(new Set([
+    ...Object.keys(ENTITY_LABEL),
+    entity.value,
+    ...rows.value.map((row) => String(row?.entity || '').trim()).filter(Boolean),
+  ].filter(Boolean)));
   return keys
     .sort((a, b) => entityLabel(a).localeCompare(entityLabel(b), "zh-CN"))
     .map((k) => ({ value: k, label: entityLabel(k) }));
