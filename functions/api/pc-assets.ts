@@ -12,6 +12,44 @@ import {
   pcAssetUpdateSql,
 } from './services/asset-ledger';
 
+async function getPcRelatedRecordCounts(db: D1Database, id: number) {
+  const refs = await db
+    .prepare(`
+      SELECT
+        (SELECT COUNT(*) FROM pc_in WHERE asset_id=?) AS in_count,
+        (SELECT COUNT(*) FROM pc_out WHERE asset_id=?) AS out_count,
+        (SELECT COUNT(*) FROM pc_recycle WHERE asset_id=?) AS recycle_count,
+        (SELECT COUNT(*) FROM pc_scrap WHERE asset_id=?) AS scrap_count,
+        (SELECT COUNT(*) FROM pc_inventory_log WHERE asset_id=?) AS inventory_log_count
+    `)
+    .bind(id, id, id, id, id)
+    .first<any>();
+
+  return {
+    in_count: Number(refs?.in_count || 0),
+    out_count: Number(refs?.out_count || 0),
+    recycle_count: Number(refs?.recycle_count || 0),
+    scrap_count: Number(refs?.scrap_count || 0),
+    inventory_log_count: Number(refs?.inventory_log_count || 0),
+  };
+}
+
+async function purgeArchivedPcAsset(db: D1Database, id: number) {
+  const counts = await getPcRelatedRecordCounts(db, id);
+  await db.batch([
+    db.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id),
+    db.prepare('DELETE FROM pc_out WHERE asset_id=?').bind(id),
+    db.prepare('DELETE FROM pc_recycle WHERE asset_id=?').bind(id),
+    db.prepare('DELETE FROM pc_scrap WHERE asset_id=?').bind(id),
+    db.prepare('DELETE FROM pc_inventory_log WHERE asset_id=?').bind(id),
+    db.prepare('DELETE FROM pc_assets WHERE id=?').bind(id),
+  ]);
+  return {
+    ...counts,
+    related_total: counts.in_count + counts.out_count + counts.recycle_count + counts.scrap_count + counts.inventory_log_count,
+  };
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, 'viewer');
@@ -108,22 +146,35 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     const asset = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
     if (!asset) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
+
+    if (Number(asset.archived || 0) === 1) {
+      const purgeSummary = await purgeArchivedPcAsset(env.DB, id);
+      await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
+        brand: asset.brand,
+        serial_no: asset.serial_no,
+        model: asset.model,
+        status: asset.status,
+        archived: true,
+        purge_related: purgeSummary,
+      });
+      return Response.json({
+        ok: true,
+        purged: true,
+        related_deleted: purgeSummary.related_total,
+        message: purgeSummary.related_total
+          ? `已彻底删除归档电脑，并清理 ${purgeSummary.related_total} 条关联记录`
+          : '已彻底删除归档电脑',
+      });
+    }
+
     if (String(asset.status) === 'ASSIGNED') {
       throw Object.assign(new Error('该电脑当前为已领用状态，请先办理回收/归还后再删除'), { status: 400 });
     }
 
     const settings = await getSystemSettings(env.DB);
-    const refs = await env.DB
-      .prepare(`
-        SELECT
-          (SELECT COUNT(*) FROM pc_out WHERE asset_id=?) AS out_count,
-          (SELECT COUNT(*) FROM pc_recycle WHERE asset_id=?) AS recycle_count,
-          (SELECT COUNT(*) FROM pc_inventory_log WHERE asset_id=?) AS inventory_log_count
-      `)
-      .bind(id, id, id)
-      .first<any>();
+    const refs = await getPcRelatedRecordCounts(env.DB, id);
 
-    const hasRefs = Number(refs?.out_count || 0) > 0 || Number(refs?.recycle_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
+    const hasRefs = refs.out_count > 0 || refs.recycle_count > 0 || refs.inventory_log_count > 0 || refs.scrap_count > 0;
 
     if (hasRefs || !settings.asset_allow_physical_delete) {
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';

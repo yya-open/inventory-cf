@@ -68,6 +68,7 @@
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="monitor-op-group compact">
             <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
+            <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">彻底删除</el-button>
             <span v-else class="table-subtle">已归档</span>
           </div>
           <div v-else class="monitor-op-group compact">
@@ -129,6 +130,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   in: [Record<string, any>];
   out: [Record<string, any>];
+  remove: [Record<string, any>];
   restore: [Record<string, any>];
   'row-more': [string, Record<string, any>];
   'selection-change': [Record<string, any>[]];

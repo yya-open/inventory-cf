@@ -94,6 +94,7 @@
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="row-archived-actions">
             <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
+            <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">彻底删除</el-button>
             <span v-else class="subtle">已归档</span>
           </div>
           <template v-else>

@@ -612,20 +612,27 @@ async function saveEdit() {
 }
 
 async function removeAsset(row: PcAsset) {
+  const isArchived = Number(row.archived || 0) === 1;
   try {
-    await ElMessageBox.confirm(`确认删除电脑台账：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？`, '删除确认', {
-      type: 'warning',
-      confirmButtonText: '确认删除',
-      cancelButtonText: '取消',
-    });
+    await ElMessageBox.confirm(
+      isArchived
+        ? `确认彻底删除归档电脑：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？删除后将同时清理该电脑的历史记录，且不可恢复。`
+        : `确认删除电脑台账：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？`,
+      isArchived ? '彻底删除确认' : '删除确认',
+      {
+        type: 'warning',
+        confirmButtonText: isArchived ? '确认彻底删除' : '确认删除',
+        cancelButtonText: '取消',
+      }
+    );
     loading.value = true;
     const result: any = await apiDelete('/api/pc-assets', { id: row.id });
-    ElMessage.success(result?.message || '删除成功');
+    ElMessage.success(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '删除失败');
+    ElMessage.error(error?.message || (isArchived ? '彻底删除失败' : '删除失败'));
   } finally {
     loading.value = false;
   }
@@ -850,7 +857,14 @@ async function submitBatchArchive() {
 async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
-    await confirmBatchRisk('批量删除确认', `选中的 ${selectedCount.value} 台电脑中，有历史记录的资产会自动转归档，只有满足条件的资产会物理删除。请输入“确认”继续。`);
+    const archivedCount = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+    const activeCount = Math.max(0, selectedCount.value - archivedCount);
+    const tip = archivedCount && activeCount
+      ? `选中的 ${selectedCount.value} 台电脑中，已归档的 ${archivedCount} 台会被彻底删除并清理历史记录，其余 ${activeCount} 台仍按原规则执行：有历史记录则自动归档，满足条件才物理删除。请输入“确认”继续。`
+      : archivedCount
+        ? `选中的 ${archivedCount} 台归档电脑会被彻底删除，并同时清理关联历史记录。请输入“确认”继续。`
+        : `选中的 ${selectedCount.value} 台电脑中，有历史记录的资产会自动转归档，只有满足条件的资产会物理删除。请输入“确认”继续。`;
+    await confirmBatchRisk('批量删除确认', tip);
     batchBusy.value = true;
     let success = 0;
     let archived = 0;
@@ -871,8 +885,9 @@ async function batchDeleteSelected() {
     if (success) {
       clearSelection();
     }
-    if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台电脑（其中归档 ${archived} 台）` : `已删除 ${success} 台电脑`);
-    else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    const purged = Math.max(0, success - archived);
+    if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台电脑（其中归档 ${archived} 台，彻底删除 ${purged} 台）` : `已删除 ${success} 台电脑`);
+    else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
     if (failedRecords.length) exportBatchFailures(`电脑批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
