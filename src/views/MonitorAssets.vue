@@ -18,6 +18,7 @@
       :import-busy="importBusy"
       :init-qr-busy="initQrBusy"
       :batch-busy="batchBusy"
+      :archive-reason-options="archiveReasonOptions"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="reloadList"
@@ -70,6 +71,7 @@
       :form="dlgAsset.form"
       :location-options="locationOptions"
       :saving="assetSaving"
+      :brand-options="monitorBrandOptions"
       @save="saveAsset"
     />
 
@@ -173,7 +175,9 @@
           <el-input v-model="batchOwnerForm.employee_no" placeholder="可选" />
         </el-form-item>
         <el-form-item label="部门">
-          <el-input v-model="batchOwnerForm.department" placeholder="可选" />
+          <el-select v-model="batchOwnerForm.department" filterable allow-create default-first-option clearable style="width:100%" placeholder="可选">
+            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
+          </el-select>
         </el-form-item>
         <div class="batch-preview">
           <el-tag>已选 {{ batchOwnerPreview.total }} 台</el-tag>
@@ -192,12 +196,8 @@
     <el-dialog v-model="batchArchiveVisible" title="批量归档显示器" width="460px">
       <el-form label-width="90px">
         <el-form-item label="归档原因">
-          <el-select v-model="batchArchiveForm.reason" style="width:100%" placeholder="请选择归档原因">
-            <el-option label="停用归档" value="停用归档" />
-            <el-option label="闲置归档" value="闲置归档" />
-            <el-option label="重复录入" value="重复录入" />
-            <el-option label="测试数据归档" value="测试数据归档" />
-            <el-option label="其他" value="其他" />
+          <el-select v-model="batchArchiveForm.reason" style="width:100%" placeholder="请选择归档原因" filterable allow-create default-first-option>
+            <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
         <el-form-item label="备注">
@@ -272,6 +272,10 @@ const locations = ref<LocationRow[]>([]);
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 const router = useRouter();
+const systemSettings = ref(getCachedSystemSettings());
+const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
+const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
+const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 
 const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
@@ -714,7 +718,7 @@ async function batchRestoreSelected() {
 
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  batchArchiveForm.value = { reason: '停用归档', note: '' };
+  batchArchiveForm.value = { reason: archiveReasonOptions.value[0] || '停用归档', note: '' };
   batchArchiveVisible.value = true;
 }
 

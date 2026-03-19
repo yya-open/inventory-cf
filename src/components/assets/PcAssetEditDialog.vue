@@ -13,7 +13,9 @@
       <el-row :gutter="12">
         <el-col :span="12">
           <el-form-item label="品牌">
-            <el-input v-model="form.brand" />
+            <el-select v-model="form.brand" filterable allow-create default-first-option clearable style="width:100%" placeholder="请选择或输入品牌">
+              <el-option v-for="item in brandOptions" :key="item" :label="item" :value="item" />
+            </el-select>
           </el-form-item>
         </el-col><el-col :span="12">
           <el-form-item label="型号">
@@ -68,4 +70,4 @@
     </template>
   </el-dialog>
 </template>
-<script setup lang="ts">defineProps<{ visible:boolean; saving:boolean; form:Record<string,any> }>(); const emit = defineEmits<{ 'update:visible':[boolean]; save:[] }>();</script>
+<script setup lang="ts">defineProps<{ visible:boolean; saving:boolean; form:Record<string,any>; brandOptions:string[] }>(); const emit = defineEmits<{ 'update:visible':[boolean]; save:[] }>();</script>

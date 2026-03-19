@@ -14,10 +14,20 @@ export type PublicSettings = {
 
 export type SystemSettings = PublicSettings & {
   ui_default_page_size: number;
+  asset_allow_physical_delete: boolean;
+  asset_archive_reason_options: string[];
+  dictionary_department_options: string[];
+  dictionary_pc_brand_options: string[];
+  dictionary_monitor_brand_options: string[];
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui_default_page_size: 50,
+  asset_allow_physical_delete: true,
+  asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
+  dictionary_department_options: [],
+  dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
+  dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
   public_inventory_cooldown_seconds: 30,
   public_inventory_auto_vibrate: true,
   public_inventory_mobile_compact: true,

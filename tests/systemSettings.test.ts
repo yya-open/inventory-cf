@@ -23,3 +23,15 @@ describe('system settings normalization', () => {
     expect(data.public_inventory_scan_mode_default).toBe('camera');
   });
 });
+
+
+  it('normalizes dictionary arrays and archive policy', () => {
+    const data = normalizeSystemSettings({
+      asset_allow_physical_delete: '0' as any,
+      asset_archive_reason_options: '停用归档\n测试数据归档\n停用归档' as any,
+      dictionary_department_options: ['研发部', '研发部', '行政部'] as any,
+    } as any);
+    expect(data.asset_allow_physical_delete).toBe(false);
+    expect(data.asset_archive_reason_options).toEqual(['停用归档', '测试数据归档']);
+    expect(data.dictionary_department_options).toEqual(['研发部', '行政部']);
+  });

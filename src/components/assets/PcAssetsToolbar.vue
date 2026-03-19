@@ -25,15 +25,20 @@
             @update:model-value="emit('update:keyword', $event || '')"
             @keyup.enter="emit('search')"
           />
-          <el-input
+          <el-select
             v-if="archiveMode !== 'active'"
             :model-value="archiveReason"
             clearable
+            filterable
+            allow-create
+            default-first-option
             placeholder="归档原因"
             class="toolbar-archive-input"
-            @update:model-value="emit('update:archive-reason', $event || '')"
-            @keyup.enter="emit('search')"
-          />
+            @update:model-value="emit('update:archive-reason', String($event || ''))"
+            @change="emit('search')"
+          >
+            <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
+          </el-select>
           <el-segmented
             :model-value="archiveMode"
             class="toolbar-archive-mode"
@@ -153,6 +158,7 @@ const props = defineProps<{
   status: string;
   keyword: string;
   archiveReason: string;
+  archiveReasonOptions: string[];
   archiveMode: 'active' | 'archived' | 'all';
   showArchived: boolean;
   isAdmin: boolean;

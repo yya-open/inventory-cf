@@ -176,6 +176,7 @@ const props = defineProps<{
   locationId: string | number;
   keyword: string;
   archiveReason: string;
+  archiveReasonOptions: string[];
   archiveMode: 'active' | 'archived' | 'all';
   showArchived: boolean;
   locationOptions: Array<{ value: number; label: string }>;

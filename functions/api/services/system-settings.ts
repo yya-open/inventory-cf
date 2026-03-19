@@ -4,6 +4,11 @@ export type PublicScanMode = 'manual' | 'scanner' | 'camera';
 
 export type SystemSettings = {
   ui_default_page_size: number;
+  asset_allow_physical_delete: boolean;
+  asset_archive_reason_options: string[];
+  dictionary_department_options: string[];
+  dictionary_pc_brand_options: string[];
+  dictionary_monitor_brand_options: string[];
   public_inventory_cooldown_seconds: number;
   public_inventory_auto_vibrate: boolean;
   public_inventory_mobile_compact: boolean;
@@ -14,6 +19,11 @@ export type SystemSettings = {
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui_default_page_size: 50,
+  asset_allow_physical_delete: true,
+  asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
+  dictionary_department_options: [],
+  dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
+  dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
   public_inventory_cooldown_seconds: 30,
   public_inventory_auto_vibrate: true,
   public_inventory_mobile_compact: true,
@@ -50,6 +60,20 @@ function toInt(value: any, fallback: number, min: number, max: number) {
 }
 
 
+function toStringArray(value: any, fallback: string[] = []) {
+  const raw = Array.isArray(value)
+    ? value
+    : typeof value === 'string'
+      ? value.split(/[\n,，]/)
+      : [];
+  const normalized = raw
+    .map((item) => String(item || '').trim())
+    .filter(Boolean)
+    .filter((item, index, arr) => arr.indexOf(item) === index);
+  return normalized.length ? normalized : [...fallback];
+}
+
+
 function normalizeScanMode(value: any, fallback: PublicScanMode, legacyScanner?: any): PublicScanMode {
   const raw = String(value || '').trim().toLowerCase();
   if (raw === 'manual' || raw === 'scanner' || raw === 'camera') return raw as PublicScanMode;
@@ -61,6 +85,11 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
   const source = input || {};
   return {
     ui_default_page_size: toInt(source.ui_default_page_size, DEFAULT_SYSTEM_SETTINGS.ui_default_page_size, 10, 200),
+    asset_allow_physical_delete: toBoolean(source.asset_allow_physical_delete, DEFAULT_SYSTEM_SETTINGS.asset_allow_physical_delete),
+    asset_archive_reason_options: toStringArray(source.asset_archive_reason_options, DEFAULT_SYSTEM_SETTINGS.asset_archive_reason_options),
+    dictionary_department_options: toStringArray(source.dictionary_department_options, DEFAULT_SYSTEM_SETTINGS.dictionary_department_options),
+    dictionary_pc_brand_options: toStringArray(source.dictionary_pc_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_pc_brand_options),
+    dictionary_monitor_brand_options: toStringArray(source.dictionary_monitor_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_monitor_brand_options),
     public_inventory_cooldown_seconds: toInt(source.public_inventory_cooldown_seconds, DEFAULT_SYSTEM_SETTINGS.public_inventory_cooldown_seconds, 5, 120),
     public_inventory_auto_vibrate: toBoolean(source.public_inventory_auto_vibrate, DEFAULT_SYSTEM_SETTINGS.public_inventory_auto_vibrate),
     public_inventory_mobile_compact: toBoolean(source.public_inventory_mobile_compact, DEFAULT_SYSTEM_SETTINGS.public_inventory_mobile_compact),

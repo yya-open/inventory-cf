@@ -1,5 +1,6 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
+import { getSystemSettings } from './services/system-settings';
 import { ensurePcSchemaIfAllowed } from './_pc';
 import {
   assertUnique,
@@ -111,6 +112,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       throw Object.assign(new Error('该电脑当前为已领用状态，请先办理回收/归还后再删除'), { status: 400 });
     }
 
+    const settings = await getSystemSettings(env.DB);
     const refs = await env.DB
       .prepare(`
         SELECT
@@ -123,8 +125,8 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     const hasRefs = Number(refs?.out_count || 0) > 0 || Number(refs?.recycle_count || 0) > 0 || Number(refs?.inventory_log_count || 0) > 0;
 
-    if (hasRefs) {
-      const archiveReason = '有历史记录，删除改为归档';
+    if (hasRefs || !settings.asset_allow_physical_delete) {
+      const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
       await env.DB.prepare(pcAssetArchiveSql()).bind(archiveReason, null, user.username, id).run();
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
         brand: asset.brand,
@@ -133,7 +135,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
         status: asset.status,
         archived_reason: archiveReason,
       });
-      return Response.json({ ok: true, archived: true, message: '该电脑已有历史记录，已自动归档' });
+      return Response.json({ ok: true, archived: true, message: hasRefs ? '该电脑已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
     }
 
     await env.DB.batch([env.DB.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id), env.DB.prepare('DELETE FROM pc_assets WHERE id=?').bind(id)]);
