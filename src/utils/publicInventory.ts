@@ -1,7 +1,17 @@
 export type PublicAssetTarget = { id?: string; key?: string; token?: string; href?: string };
+export type PendingPublicSubmission = {
+  id: string;
+  kind: 'pc' | 'monitor';
+  target: PublicAssetTarget;
+  payload: { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string };
+  createdAt: string;
+  label: string;
+};
 
 const RECENT_KEY_PREFIX = 'inventory:public-recent:';
+const PENDING_KEY_PREFIX = 'inventory:public-pending:';
 const MAX_RECENT = 8;
+const MAX_PENDING = 50;
 
 export function parsePublicTargetInput(input: string): PublicAssetTarget | null {
   const raw = String(input || '').trim();
@@ -52,11 +62,75 @@ export function loadRecentPublicTargets(kind: 'pc' | 'monitor') {
   }
 }
 
+function getPendingStorageKey(kind: 'pc' | 'monitor') {
+  return `${PENDING_KEY_PREFIX}${kind}`;
+}
+
+export function loadPendingPublicSubmissions(kind: 'pc' | 'monitor') {
+  const key = getPendingStorageKey(kind);
+  try {
+    return (JSON.parse(localStorage.getItem(key) || '[]') || []) as PendingPublicSubmission[];
+  } catch {
+    return [];
+  }
+}
+
+function savePendingPublicSubmissions(kind: 'pc' | 'monitor', items: PendingPublicSubmission[]) {
+  localStorage.setItem(getPendingStorageKey(kind), JSON.stringify(items.slice(0, MAX_PENDING)));
+}
+
+export function enqueuePendingPublicSubmission(
+  kind: 'pc' | 'monitor',
+  target: PublicAssetTarget,
+  payload: PendingPublicSubmission['payload'],
+  label: string,
+) {
+  const pending = loadPendingPublicSubmissions(kind);
+  const targetKey = buildPublicQuery(target);
+  const payloadKey = JSON.stringify(payload || {});
+  const deduped = pending.filter((item) => buildPublicQuery(item.target) !== targetKey || JSON.stringify(item.payload || {}) !== payloadKey);
+  const entry: PendingPublicSubmission = {
+    id: `${Date.now()}_${Math.random().toString(36).slice(2, 8)}`,
+    kind,
+    target,
+    payload,
+    createdAt: new Date().toISOString(),
+    label,
+  };
+  savePendingPublicSubmissions(kind, [entry, ...deduped]);
+  return entry;
+}
+
+export function removePendingPublicSubmission(kind: 'pc' | 'monitor', entryId: string) {
+  const pending = loadPendingPublicSubmissions(kind);
+  savePendingPublicSubmissions(kind, pending.filter((item) => item.id !== entryId));
+}
+
+export async function flushPendingPublicSubmissions(
+  kind: 'pc' | 'monitor',
+  sender: (target: PublicAssetTarget, payload: PendingPublicSubmission['payload']) => Promise<void>,
+) {
+  const pending = loadPendingPublicSubmissions(kind);
+  if (!pending.length) return { sent: 0, failed: 0 };
+  const remain: PendingPublicSubmission[] = [];
+  let sent = 0;
+  for (const item of pending) {
+    try {
+      await sender(item.target, item.payload);
+      sent += 1;
+    } catch {
+      remain.push(item);
+    }
+  }
+  savePendingPublicSubmissions(kind, remain);
+  return { sent, failed: remain.length };
+}
+
 export function getWeakNetworkText() {
   const nav: any = navigator;
-  if (nav && nav.onLine === false) return '当前设备离线，请检查网络后重试。';
+  if (nav && nav.onLine === false) return '当前设备离线，提交会先进入待重试队列，网络恢复后可继续提交。';
   const type = nav?.connection?.effectiveType || nav?.mozConnection?.effectiveType || nav?.webkitConnection?.effectiveType;
-  if (type === 'slow-2g' || type === '2g') return '当前网络较弱，提交失败时可直接点击重试。';
+  if (type === 'slow-2g' || type === '2g') return '当前网络较弱，提交失败时会提示重试，也可先进入待重试队列。';
   return '';
 }
 

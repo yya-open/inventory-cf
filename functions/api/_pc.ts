@@ -301,10 +301,10 @@ export async function getPcAssetByIdOrSerial(db: D1Database, asset_id?: any, ser
   const id = Number(asset_id);
   const sn = normalizeText(serial_no, 120);
   if (id) {
-    return db.prepare("SELECT * FROM pc_assets WHERE id=?").bind(id).first<any>();
+    return db.prepare("SELECT * FROM pc_assets WHERE id=? AND COALESCE(archived,0)=0").bind(id).first<any>();
   }
   if (sn) {
-    return db.prepare("SELECT * FROM pc_assets WHERE serial_no=?").bind(sn).first<any>();
+    return db.prepare("SELECT * FROM pc_assets WHERE serial_no=? AND COALESCE(archived,0)=0").bind(sn).first<any>();
   }
   return null;
 }

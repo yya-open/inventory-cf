@@ -67,6 +67,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const old = await env.DB.prepare('SELECT * FROM monitor_assets WHERE id=?').bind(id).first<any>();
     if (!old) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
+    if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该显示器已归档，请先恢复归档后再编辑'), { status: 400 });
 
     const payload = parseMonitorAssetInput(body);
     await assertUnique(env.DB, 'SELECT id FROM monitor_assets WHERE asset_code=? AND id<>?', [payload.asset_code, id], '资产编号已存在');

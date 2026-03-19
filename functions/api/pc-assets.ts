@@ -51,6 +51,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const old = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
     if (!old) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
+    if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该电脑已归档，请先恢复归档后再编辑'), { status: 400 });
 
     const payload = parsePcAssetInput(body);
     await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE serial_no=? AND id<>?', [payload.serial_no, id], '序列号已存在');

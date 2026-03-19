@@ -44,7 +44,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const assets = await env.DB.prepare(
       `SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status
        FROM pc_assets
-       WHERE id IN (${placeholders})`
+       WHERE id IN (${placeholders}) AND COALESCE(archived,0)=0`
     ).bind(...assetIds).all<any>();
 
     const rows: any[] = (assets as any)?.results || [];

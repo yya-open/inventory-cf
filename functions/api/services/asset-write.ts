@@ -35,6 +35,7 @@ export async function getMonitorAssetByIdOrCode(db: D1Database, assetId?: number
 export function assertMonitorMovementAllowed(asset: any, type: MonitorMovementType) {
   const status = String(asset?.status || '');
   if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
+  if (Number(asset?.archived || 0) === 1) throw Object.assign(new Error('该显示器已归档，请先恢复归档后再执行操作'), { status: 400 });
   if (type === 'IN') {
     if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废，无法入库'), { status: 400 });
     return;

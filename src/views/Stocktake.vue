@@ -293,6 +293,7 @@
                 :options="lineFilterOptions"
                 size="small"
               />
+              <el-button size="small" @click="exportStocktakeReport">导出结果报表</el-button>
               <div
                 class="muted"
                 style="margin-left:auto;"
@@ -666,6 +667,38 @@ async function createStocktake(){
   }finally{
     creating.value = false;
   }
+}
+
+
+function exportStocktakeReport(){
+  if (!detail.value) return ElMessage.warning('请先选择盘点单');
+  const summaryRows = [
+    ['盘点单号', detail.value.stocktake?.st_no || ''],
+    ['仓库', detail.value.stocktake?.warehouse_name || ''],
+    ['状态', detail.value.stocktake?.status || ''],
+    ['盘点明细', stocktakePreview.value.total],
+    ['已录入', stocktakePreview.value.counted],
+    ['存在差异', stocktakePreview.value.changed],
+    ['盘盈', stocktakePreview.value.increase],
+    ['盘亏', stocktakePreview.value.decrease],
+    ['导出时间', formatBeijingDateTime(new Date().toISOString())],
+  ];
+  const detailRows = filteredLines.value.map((row:any) => ({
+    SKU: row.sku,
+    名称: row.name,
+    系统数量: row.system_qty,
+    盘点数量: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : row.counted_qty,
+    差异类型: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : Number(row.diff_qty || 0) > 0 ? '盘盈' : Number(row.diff_qty || 0) < 0 ? '盘亏' : '无差异',
+    差异数量: row.diff_qty ?? '',
+    更新时间: formatBeijingDateTime(row.updated_at),
+  }));
+  const wb = XLSX.utils.book_new();
+  const wsSummary = XLSX.utils.aoa_to_sheet([['指标','值'], ...summaryRows]);
+  const wsDetail = XLSX.utils.json_to_sheet(detailRows);
+  XLSX.utils.book_append_sheet(wb, wsSummary, '汇总');
+  XLSX.utils.book_append_sheet(wb, wsDetail, '明细');
+  XLSX.writeFile(wb, `盘点结果报表_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}.xlsx`);
+  ElMessage.success('盘点结果报表已导出');
 }
 
 function exportFilteredLines(){

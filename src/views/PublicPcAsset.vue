@@ -12,9 +12,9 @@
       </template>
 
       <el-alert
-        v-if="settings.public_inventory_retry_hint && (retryMessage || weakNetworkHint)"
+        v-if="settings.public_inventory_retry_hint && (retryMessage || weakNetworkHint || pendingQueue.length)"
         class="public-alert"
-        :title="retryMessage || weakNetworkHint"
+        :title="retryMessage || weakNetworkHint || `当前有 ${pendingQueue.length} 条待重试记录`"
         :type="retryMessage ? 'warning' : 'info'"
         show-icon
         :closable="false"
@@ -22,6 +22,7 @@
         <template #default>
           <div class="alert-actions">
             <el-button size="small" @click="retryLast">重试</el-button>
+            <el-button v-if="pendingQueue.length" size="small" type="primary" plain :loading="flushingQueue" @click="flushPendingQueue">提交待重试({{ pendingQueue.length }})</el-button>
             <el-button v-if="retryMessage" size="small" text @click="clearRetry">关闭提示</el-button>
           </div>
         </template>
@@ -131,7 +132,7 @@ import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { ElMessage } from 'element-plus';
 import { apiGetPublic, apiPostPublic } from '../api/client';
 import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type PublicScanMode, type SystemSettings } from '../api/systemSettings';
-import { buildPublicQuery, getWeakNetworkText, isNetworkError, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration } from '../utils/publicInventory';
+import { buildPublicQuery, enqueuePendingPublicSubmission, flushPendingPublicSubmissions, getWeakNetworkText, isNetworkError, loadPendingPublicSubmissions, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration, type PendingPublicSubmission } from '../utils/publicInventory';
 import { useCameraQrScanner } from '../composables/useCameraQrScanner';
 
 const issueOptions = [
@@ -168,6 +169,8 @@ const recentTargets = ref<string[]>([]);
 const weakNetworkHint = ref('');
 const retryMessage = ref('');
 const retryAction = ref<null | 'refresh' | 'ok' | 'issue'>(null);
+const pendingQueue = ref<PendingPublicSubmission[]>([]);
+const flushingQueue = ref(false);
 const scanModeOptions = computed(() => ([
   { label: '手动', value: 'manual' },
   { label: '扫码枪', value: 'scanner' },
@@ -193,6 +196,7 @@ function recentLabel(item: string) {
   return q.get('id') || q.get('token')?.slice(0, 12) || item.slice(0, 14);
 }
 function clearRetry() { retryMessage.value = ''; retryAction.value = null; }
+function refreshPendingQueue() { pendingQueue.value = loadPendingPublicSubmissions('pc'); }
 const {
   supported: cameraSupported,
   active: cameraActive,
@@ -320,6 +324,7 @@ async function refresh() {
     row.value = j.data;
     saveRecentPublicTarget('pc', token.value ? { token: token.value } : { id: id.value, key: key.value });
     recentTargets.value = loadRecentPublicTargets('pc');
+  refreshPendingQueue();
   } catch (e: any) {
     error.value = e?.message || '获取失败';
     if (isNetworkError(e)) {
@@ -331,9 +336,13 @@ async function refresh() {
   }
 }
 
-function inventoryApiUrl() {
-  if (id.value && key.value) return `/api/public/pc-asset-inventory?id=${encodeURIComponent(id.value)}&key=${encodeURIComponent(key.value)}`;
-  if (token.value) return `/api/public/pc-asset-inventory?token=${encodeURIComponent(token.value)}`;
+function inventoryApiUrl(target?: any) {
+  const targetId = target?.id || id.value;
+  const targetKey = target?.key || key.value;
+  const targetToken = target?.token || token.value;
+
+  if (targetId && targetKey) return `/api/public/pc-asset-inventory?id=${encodeURIComponent(targetId)}&key=${encodeURIComponent(targetKey)}`;
+  if (targetToken) return `/api/public/pc-asset-inventory?token=${encodeURIComponent(targetToken)}`;
   return '';
 }
 
@@ -346,18 +355,46 @@ async function onSubmitSuccess(message: string) {
   }
 }
 
+
+async function sendInventoryPayload(target: any, payload: { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string }) {
+  const apiUrl = inventoryApiUrl(target);
+  if (!apiUrl) throw new Error('缺少二维码参数');
+  await apiPostPublic(apiUrl, payload);
+}
+
+async function flushPendingQueue() {
+  if (!pendingQueue.value.length) return;
+  try {
+    flushingQueue.value = true;
+    const result = await flushPendingPublicSubmissions('pc', sendInventoryPayload);
+    refreshPendingQueue();
+    if (result.sent) ElMessage.success(`已补交 ${result.sent} 条待重试记录`);
+    if (result.failed) ElMessage.warning(`仍有 ${result.failed} 条待重试记录未成功提交`);
+  } catch (error: any) {
+    ElMessage.error(error?.message || '提交待重试记录失败');
+  } finally {
+    flushingQueue.value = false;
+  }
+}
+
+function queuePending(payload: { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string }, label: string) {
+  const target = token.value ? { token: token.value } : { id: id.value, key: key.value };
+  enqueuePendingPublicSubmission('pc', target, payload, label);
+  refreshPendingQueue();
+}
+
 async function submitOk() {
   try {
     clearRetry();
-    const apiUrl = inventoryApiUrl();
-    if (!apiUrl) throw new Error('缺少二维码参数');
+    if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
     submittingOk.value = true;
-    await apiPostPublic(apiUrl, { action: 'OK' });
+    await sendInventoryPayload(undefined, { action: 'OK' });
     await onSubmitSuccess('已记录：盘点通过');
   } catch (e: any) {
     if (isNetworkError(e)) {
-      retryMessage.value = '网络较弱，盘点结果暂未提交成功，可点击重试。';
+      retryMessage.value = '网络较弱，盘点结果已加入待重试队列，可点击重试或稍后统一补交。';
       retryAction.value = 'ok';
+      queuePending({ action: 'OK' }, '盘点通过');
     }
     ElMessage.error(e?.message || '提交失败');
   } finally { submittingOk.value = false; }
@@ -366,18 +403,18 @@ async function submitOk() {
 async function submitIssue() {
   try {
     clearRetry();
-    const apiUrl = inventoryApiUrl();
-    if (!apiUrl) throw new Error('缺少二维码参数');
+    if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
     if (!issueForm.value.issue_type) throw new Error('请选择异常类型');
     submittingIssue.value = true;
-    await apiPostPublic(apiUrl, { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark });
+    await sendInventoryPayload(undefined, { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark });
     issueVisible.value = false;
     issueForm.value = { issue_type: '', remark: '' };
     await onSubmitSuccess('已提交：异常');
   } catch (e: any) {
     if (isNetworkError(e)) {
-      retryMessage.value = '网络较弱，异常结果暂未提交成功，可点击重试。';
+      retryMessage.value = '网络较弱，异常结果已加入待重试队列，可点击重试或稍后统一补交。';
       retryAction.value = 'issue';
+      queuePending({ action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark }, '异常提交');
     }
     ElMessage.error(e?.message || '提交失败');
   } finally { submittingIssue.value = false; }
@@ -390,6 +427,7 @@ function retryLast() {
 }
 
 watch(() => settings.value.public_inventory_retry_hint, handleNetworkChange);
+watch(() => pendingQueue.value.length, (count) => { if (!count && retryAction.value && retryMessage.value.includes('待重试')) clearRetry(); });
 watch([continuousMode, scanMode], async ([enabled, mode]) => {
   if (!enabled) {
     stopCamera();
@@ -417,11 +455,14 @@ watch(nextInput, () => {
 onMounted(async () => {
   await loadPublicConfig();
   recentTargets.value = loadRecentPublicTargets('pc');
+  refreshPendingQueue();
   await refresh();
+  if (navigator.onLine && pendingQueue.value.length) { flushPendingQueue().catch(() => {}); }
   if (continuousMode.value && scanMode.value === 'scanner') focusNextInput();
   if (continuousMode.value && scanMode.value === 'camera') await startCamera();
   window.addEventListener('resize', handleResize);
   window.addEventListener('online', handleNetworkChange);
+  window.addEventListener('online', () => { flushPendingQueue().catch(() => {}); });
   window.addEventListener('offline', handleNetworkChange);
 });
 

@@ -587,6 +587,28 @@ async function exportSelectedQrCards() {
 }
 
 
+async function confirmBatchRisk(title: string, message: string) {
+  await ElMessageBox.prompt(message, title, {
+    type: 'warning',
+    confirmButtonText: '确认继续',
+    cancelButtonText: '取消',
+    inputPlaceholder: '请输入“确认”后继续',
+    inputPattern: /^确认$/,
+    inputErrorMessage: '请输入“确认”',
+  });
+}
+
+function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
+  if (!rows.length) return;
+  exportToXlsx({
+    filename,
+    sheetName: '失败明细',
+    headers: Object.keys(rows[0]).map((key) => ({ key, title: key })),
+    rows,
+  });
+}
+
+
 function openBatchStatusDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchStatusValue.value = 'IN_STOCK';
@@ -673,11 +695,7 @@ async function submitBatchOwner() {
 async function batchRestoreSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
-    await ElMessageBox.confirm(`确认恢复选中的 ${selectedCount.value} 台显示器？预计可恢复 ${selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length} 台，恢复后将重新出现在默认台账列表中。`, '批量恢复归档', {
-      type: 'warning',
-      confirmButtonText: '确认恢复',
-      cancelButtonText: '取消',
-    });
+    await confirmBatchRisk('批量恢复归档', `预计恢复 ${selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length} 台显示器。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
     batchBusy.value = true;
     const result: any = await apiPost('/api/monitor-assets-bulk', {
       action: 'restore',
@@ -704,6 +722,7 @@ async function submitBatchArchive() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   if (!String(batchArchiveForm.value.reason || '').trim()) return ElMessage.warning('请选择归档原因');
   try {
+    await confirmBatchRisk('批量归档确认', `此操作会归档选中的 ${selectedCount.value} 台显示器，默认列表将不再显示，请输入“确认”继续。`);
     batchBusy.value = true;
     const result: any = await apiPost('/api/monitor-assets-bulk', {
       action: 'archive',
@@ -716,6 +735,7 @@ async function submitBatchArchive() {
     clearSelection();
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量归档失败');
   } finally {
     batchBusy.value = false;
@@ -725,16 +745,13 @@ async function submitBatchArchive() {
 async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
-    await ElMessageBox.confirm(`确认删除选中的 ${selectedCount.value} 台显示器？其中 ${selectedRows.value.filter((row) => String(row.status || '') === 'ASSIGNED').length} 台当前处于已领用状态。带历史记录的资产会自动转归档，只有满足条件的资产会物理删除。`, '批量删除确认', {
-      type: 'warning',
-      confirmButtonText: '确认删除',
-      cancelButtonText: '取消',
-    });
+    await confirmBatchRisk('批量删除确认', `选中的 ${selectedCount.value} 台显示器中，有历史记录的资产会自动转归档，只有满足条件的资产会物理删除。请输入“确认”继续。`);
     batchBusy.value = true;
     let success = 0;
     let archived = 0;
     let failed = 0;
     const failedMsgs: string[] = [];
+    const failedRecords: Array<Record<string, any>> = [];
     for (const row of selectedRows.value.slice()) {
       try {
         const result: any = await apiDelete('/api/monitor-assets', { id: row.id });
@@ -743,11 +760,13 @@ async function batchDeleteSelected() {
       } catch (error: any) {
         failed += 1;
         failedMsgs.push(`${row.asset_code || ''}`.trim() || `ID ${row.id}`);
+        failedRecords.push({ ID: row.id, 资产编号: row.asset_code || '-', SN: row.sn || '-', 型号: row.model || '-', 原因: error?.message || '删除失败' });
       }
     }
     if (success) clearSelection();
     if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台显示器（其中归档 ${archived} 台）` : `已删除 ${success} 台显示器`);
     else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    if (failedRecords.length) exportBatchFailures(`显示器批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
     await load(currentFilters(), { keepPage: true });
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
