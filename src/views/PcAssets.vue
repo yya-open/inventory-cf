@@ -230,13 +230,19 @@ const currentFilters = (): PcFilters => ({
   showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
 });
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll } = useAssetLedgerPage<PcFilters, PcAsset>({
+const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<PcFilters, PcAsset>({
   createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
   fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
+
+
+async function refreshCurrent(keepPage = true, resetTotal = false) {
+  if (resetTotal) invalidateTotal();
+  await load(currentFilters(), { keepPage });
+}
 
 const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 const exportBusy = ref(false);
@@ -603,7 +609,7 @@ async function saveEdit() {
     await apiPut('/api/pc-assets', form);
     ElMessage.success('修改成功');
     editVisible.value = false;
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     ElMessage.error(error?.message || '修改失败');
   } finally {
@@ -629,7 +635,7 @@ async function removeAsset(row: PcAsset) {
     const result: any = await apiDelete('/api/pc-assets', { id: row.id });
     ElMessage.success(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || (isArchived ? '彻底删除失败' : '删除失败'));
@@ -650,7 +656,7 @@ async function restoreAsset(row: PcAsset) {
     const result: any = await apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
     ElMessage.success(result?.message || '恢复成功');
     clearSelection();
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '恢复归档失败');
@@ -772,7 +778,7 @@ async function submitBatchStatus() {
     ElMessage.success(result?.message || '批量修改成功');
     batchStatusVisible.value = false;
     clearSelection();
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改状态失败');
   } finally {
@@ -796,7 +802,7 @@ async function submitBatchOwner() {
     ElMessage.success(result?.message || '批量修改领用人成功');
     batchOwnerVisible.value = false;
     clearSelection();
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改领用人失败');
   } finally {
@@ -815,7 +821,7 @@ async function batchRestoreSelected() {
     });
     ElMessage.success(result?.message || '批量恢复成功');
     clearSelection();
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量恢复归档失败');
@@ -845,7 +851,7 @@ async function submitBatchArchive() {
     ElMessage.success(result?.message || '批量归档成功');
     batchArchiveVisible.value = false;
     clearSelection();
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量归档失败');
@@ -889,7 +895,7 @@ async function batchDeleteSelected() {
     if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台电脑（其中归档 ${archived} 台，彻底删除 ${purged} 台）` : `已删除 ${success} 台电脑`);
     else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
     if (failedRecords.length) exportBatchFailures(`电脑批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量删除失败');
@@ -1074,7 +1080,7 @@ async function onImportAssetsFile(uploadFile: any) {
     } else {
       ElMessage.success(`导入完成：成功 ${result.success} 条`);
     }
-    await load(currentFilters(), { keepPage: true });
+    await refreshCurrent(true, true);
   } catch (error: any) {
     ElMessage.error(error?.message || '导入失败');
   } finally {

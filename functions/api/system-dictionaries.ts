@@ -6,6 +6,7 @@ import {
   getSystemDictionaryItemById,
   groupDictionaryItems,
   listSystemDictionaryItems,
+  reorderSystemDictionaryItems,
   type SystemDictionaryKey,
 } from './services/system-dictionaries';
 import { updateSystemDictionaryItem } from './services/system-dictionaries';
@@ -54,6 +55,21 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const user = await requireAuth(env, request, 'admin');
     const body = await request.json().catch(() => ({}));
+    if (String(body?.action || '').trim() === 'reorder') {
+      const dictionaryKey = parseDictionaryKey(body?.dictionary_key);
+      if (!dictionaryKey) throw Object.assign(new Error('缺少字典类型'), { status: 400 });
+      const before = await listSystemDictionaryItems(env.DB, dictionaryKey);
+      const ids = Array.isArray(body?.items)
+        ? body.items.map((item: any) => Number(item?.id || 0)).filter((id: number) => id > 0)
+        : [];
+      const items = await reorderSystemDictionaryItems(env.DB, dictionaryKey, ids, user.username || null);
+      await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_REORDER', 'system_dictionary_items', dictionaryKey, {
+        dictionary_key: dictionaryKey,
+        before: before.map((item) => ({ id: item.id, label: item.label, sort_order: item.sort_order })),
+        after: items.map((item) => ({ id: item.id, label: item.label, sort_order: item.sort_order })),
+      });
+      return json(true, { items, grouped: groupDictionaryItems(items) }, '排序已保存');
+    }
     const before = await getSystemDictionaryItemById(env.DB, Number(body?.id || 0));
     const item = await updateSystemDictionaryItem(env.DB, body || {}, user.username || null);
     await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_UPDATE', 'system_dictionary_items', item.id, {

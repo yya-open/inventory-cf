@@ -78,7 +78,6 @@ export async function ensureMonitorSchema(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id)").run();
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
 
     // Backward compatibility: add employee fields if early versions created table without them.
     for (const ddl of [
@@ -100,6 +99,8 @@ export async function ensureMonitorSchema(db: D1Database) {
         // ignore
       }
     }
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run();
 
     // monitor tx
     await db
@@ -125,7 +126,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           created_by TEXT,
           ip TEXT,
           ua TEXT,
-          FOREIGN KEY(asset_id) REFERENCES monitor_assets(id),
+          FOREIGN KEY(asset_id) REFERENCES monitor_assets(id) ON DELETE CASCADE,
           FOREIGN KEY(from_location_id) REFERENCES pc_locations(id),
           FOREIGN KEY(to_location_id) REFERENCES pc_locations(id)
         )
@@ -147,7 +148,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           ip TEXT,
           ua TEXT,
           created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
-          FOREIGN KEY(asset_id) REFERENCES monitor_assets(id)
+          FOREIGN KEY(asset_id) REFERENCES monitor_assets(id) ON DELETE CASCADE
         )
       `)
       .run();

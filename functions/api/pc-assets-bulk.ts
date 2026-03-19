@@ -1,7 +1,8 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed } from './_pc';
-import { latestPcOutRowSql, parseArchiveMeta, parseOwnerInput, pcAssetArchiveSql, pcAssetBulkOwnerSql, pcAssetBulkStatusSql, pcAssetRestoreSql } from './services/asset-ledger';
+import { latestPcOutRowSql, parseArchiveMeta, parseOwnerInput, pcAssetBulkOwnerSql, pcAssetBulkStatusSql } from './services/asset-ledger';
+import { archiveAsset, restoreAsset } from './services/asset-archive';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -21,7 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       for (const id of ids) {
         const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=?').bind(id).first<any>();
         if (!row) continue;
-        await env.DB.prepare(pcAssetArchiveSql()).bind(meta.reason, meta.note, user.username, id).run();
+        await archiveAsset(env.DB, 'pc', id, user.username || null, meta.reason, meta.note || null);
         archived += 1;
       }
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), { ids, count: archived, reason: meta.reason, note: meta.note });
@@ -33,7 +34,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       for (const id of ids) {
         const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=? AND COALESCE(archived,0)=1').bind(id).first<any>();
         if (!row) continue;
-        await env.DB.prepare(pcAssetRestoreSql()).bind(id).run();
+        await restoreAsset(env.DB, 'pc', id);
         restored += 1;
       }
       await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), { ids, count: restored });

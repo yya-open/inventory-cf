@@ -103,5 +103,10 @@
     "id": "202603190010_system_dictionary_items",
     "file": "sql/migrate_system_dictionary_items.sql",
     "description": "maintainable system dictionary items with enable and ordering"
+  },
+  {
+    "id": "202603190020_asset_fk_cascade_and_archive_reason_indexes",
+    "file": "sql/migrate_asset_fk_cascade_and_archive_reason_indexes.sql",
+    "description": "exact archive reason indexes and cascading asset history foreign keys"
   }
 ]

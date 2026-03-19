@@ -8,47 +8,16 @@ import {
   countByWhere,
   listPcAssets,
   parsePcAssetInput,
-  pcAssetArchiveSql,
   pcAssetUpdateSql,
 } from './services/asset-ledger';
-
-async function getPcRelatedRecordCounts(db: D1Database, id: number) {
-  const refs = await db
-    .prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM pc_in WHERE asset_id=?) AS in_count,
-        (SELECT COUNT(*) FROM pc_out WHERE asset_id=?) AS out_count,
-        (SELECT COUNT(*) FROM pc_recycle WHERE asset_id=?) AS recycle_count,
-        (SELECT COUNT(*) FROM pc_scrap WHERE asset_id=?) AS scrap_count,
-        (SELECT COUNT(*) FROM pc_inventory_log WHERE asset_id=?) AS inventory_log_count
-    `)
-    .bind(id, id, id, id, id)
-    .first<any>();
-
-  return {
-    in_count: Number(refs?.in_count || 0),
-    out_count: Number(refs?.out_count || 0),
-    recycle_count: Number(refs?.recycle_count || 0),
-    scrap_count: Number(refs?.scrap_count || 0),
-    inventory_log_count: Number(refs?.inventory_log_count || 0),
-  };
-}
-
-async function purgeArchivedPcAsset(db: D1Database, id: number) {
-  const counts = await getPcRelatedRecordCounts(db, id);
-  await db.batch([
-    db.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM pc_out WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM pc_recycle WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM pc_scrap WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM pc_inventory_log WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM pc_assets WHERE id=?').bind(id),
-  ]);
-  return {
-    ...counts,
-    related_total: counts.in_count + counts.out_count + counts.recycle_count + counts.scrap_count + counts.inventory_log_count,
-  };
-}
+import {
+  archiveAsset,
+  deleteAssetRow,
+  getAssetById,
+  getRelatedRecordCounts,
+  hasRelatedHistory,
+  purgeArchivedAsset,
+} from './services/asset-archive';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -144,11 +113,11 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const id = Number(body?.id || url.searchParams.get('id') || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 
-    const asset = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
+    const asset = await getAssetById(env.DB, 'pc', id);
     if (!asset) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
 
     if (Number(asset.archived || 0) === 1) {
-      const purgeSummary = await purgeArchivedPcAsset(env.DB, id);
+      const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
       await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -172,13 +141,12 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     const settings = await getSystemSettings(env.DB);
-    const refs = await getPcRelatedRecordCounts(env.DB, id);
-
-    const hasRefs = refs.out_count > 0 || refs.recycle_count > 0 || refs.inventory_log_count > 0 || refs.scrap_count > 0;
+    const refs = await getRelatedRecordCounts(env.DB, 'pc', id);
+    const hasRefs = hasRelatedHistory('pc', refs);
 
     if (hasRefs || !settings.asset_allow_physical_delete) {
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
-      await env.DB.prepare(pcAssetArchiveSql()).bind(archiveReason, null, user.username, id).run();
+      await archiveAsset(env.DB, 'pc', id, user.username || null, archiveReason, null);
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -189,7 +157,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       return Response.json({ ok: true, archived: true, message: hasRefs ? '该电脑已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
     }
 
-    await env.DB.batch([env.DB.prepare('DELETE FROM pc_in WHERE asset_id=?').bind(id), env.DB.prepare('DELETE FROM pc_assets WHERE id=?').bind(id)]);
+    await deleteAssetRow(env.DB, 'pc', id);
     await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,

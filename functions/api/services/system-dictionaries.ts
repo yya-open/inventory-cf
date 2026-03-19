@@ -322,6 +322,30 @@ export async function updateSystemDictionaryItem(db: D1Database, input: Partial<
   return getSystemDictionaryItemById(db, id);
 }
 
+
+export async function reorderSystemDictionaryItems(db: D1Database, key: SystemDictionaryKey, orderedIds: number[], updatedBy: string | null) {
+  if (!ALL_DICTIONARY_KEYS.includes(key)) throw Object.assign(new Error('字典类型不支持'), { status: 400 });
+  await bootstrapDictionaryIfNeeded(db, key);
+  const { results } = await db.prepare(
+    `SELECT id FROM system_dictionary_items WHERE dictionary_key=? ORDER BY sort_order ASC, id ASC`
+  ).bind(key).all<any>();
+  const existingIds = (results || []).map((row: any) => Number(row?.id || 0)).filter(Boolean);
+  const nextIds = orderedIds.map((id) => Number(id || 0)).filter(Boolean);
+  if (!nextIds.length) throw Object.assign(new Error('缺少排序数据'), { status: 400 });
+  if (existingIds.length !== nextIds.length) throw Object.assign(new Error('排序项数量不匹配，请刷新后重试'), { status: 400 });
+  const existingSet = new Set(existingIds);
+  if (new Set(nextIds).size !== nextIds.length || nextIds.some((id) => !existingSet.has(id))) {
+    throw Object.assign(new Error('排序数据无效，请刷新后重试'), { status: 400 });
+  }
+  const statements = nextIds.map((id, index) => db.prepare(
+    `UPDATE system_dictionary_items
+     SET sort_order=?, updated_at=${sqlNowStored()}, updated_by=?
+     WHERE id=? AND dictionary_key=?`
+  ).bind((index + 1) * 10, updatedBy || null, id, key));
+  if (statements.length) await db.batch(statements);
+  return listSystemDictionaryItems(db, key);
+}
+
 export async function deleteSystemDictionaryItem(db: D1Database, id: number) {
   const row = await getSystemDictionaryItemById(db, id);
   if (Number(row.reference_count || 0) > 0) {

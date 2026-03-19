@@ -183,6 +183,7 @@ CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -198,7 +199,7 @@ CREATE TABLE IF NOT EXISTS pc_in (
   remark TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
-  FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+  FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_in_created_at ON pc_in(created_at);
@@ -225,7 +226,7 @@ CREATE TABLE IF NOT EXISTS pc_out (
   recycle_date TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
-  FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+  FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_out_created_at ON pc_out(created_at);
@@ -251,7 +252,7 @@ CREATE TABLE IF NOT EXISTS pc_scrap (
   reason TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
   created_by TEXT,
-  FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+  FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
 );
 CREATE INDEX IF NOT EXISTS idx_pc_scrap_no ON pc_scrap(scrap_no);
 CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asset_id);
@@ -289,6 +290,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_assets(status, location_id, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id);
 
 CREATE TABLE IF NOT EXISTS monitor_tx (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -311,7 +313,7 @@ CREATE TABLE IF NOT EXISTS monitor_tx (
   created_by TEXT,
   ip TEXT,
   ua TEXT,
-  FOREIGN KEY(asset_id) REFERENCES monitor_assets(id),
+  FOREIGN KEY(asset_id) REFERENCES monitor_assets(id) ON DELETE CASCADE,
   FOREIGN KEY(from_location_id) REFERENCES pc_locations(id),
   FOREIGN KEY(to_location_id) REFERENCES pc_locations(id)
 );

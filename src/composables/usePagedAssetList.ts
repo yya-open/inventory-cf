@@ -93,6 +93,15 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   }
 
   const reload = (filters: TFilters) => load(filters, { keepPage: false });
+  const invalidateTotal = (filters?: TFilters | string) => {
+    if (typeof filters === 'undefined') {
+      totalCache.clear();
+      return;
+    }
+    const key = typeof filters === 'string' ? filters : options.createFilterKey(filters);
+    totalCache.delete(key);
+  };
+  const clearTotalCache = () => totalCache.clear();
   const onPageChange = (filters: TFilters, nextPage: number) => {
     page.value = nextPage;
     return load(filters, { keepPage: true });
@@ -103,5 +112,5 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     return load(filters, { keepPage: true });
   };
 
-  return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing };
+  return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, clearTotalCache };
 }

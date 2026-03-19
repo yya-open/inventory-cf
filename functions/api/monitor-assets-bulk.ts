@@ -1,7 +1,8 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
-import { monitorAssetArchiveSql, monitorAssetBulkLocationSql, monitorAssetBulkOwnerSql, monitorAssetBulkStatusSql, monitorAssetRestoreSql, parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
+import { monitorAssetBulkLocationSql, monitorAssetBulkOwnerSql, monitorAssetBulkStatusSql, parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
+import { archiveAsset, restoreAsset } from './services/asset-archive';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -21,7 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       for (const id of ids) {
         const row = await env.DB.prepare('SELECT id FROM monitor_assets WHERE id=?').bind(id).first<any>();
         if (!row) continue;
-        await env.DB.prepare(monitorAssetArchiveSql()).bind(meta.reason, meta.note, user.username, id).run();
+        await archiveAsset(env.DB, 'monitor', id, user.username || null, meta.reason, meta.note || null);
         archived += 1;
       }
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), { ids, count: archived, reason: meta.reason, note: meta.note });
@@ -33,7 +34,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       for (const id of ids) {
         const row = await env.DB.prepare('SELECT id FROM monitor_assets WHERE id=? AND COALESCE(archived,0)=1').bind(id).first<any>();
         if (!row) continue;
-        await env.DB.prepare(monitorAssetRestoreSql()).bind(id).run();
+        await restoreAsset(env.DB, 'monitor', id);
         restored += 1;
       }
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_RESTORE_BATCH', 'monitor_assets', String(ids.length), { ids, count: restored });

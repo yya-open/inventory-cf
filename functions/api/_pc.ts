@@ -77,6 +77,7 @@ export async function ensurePcSchema(db: D1Database) {
     } catch {}
   }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).
@@ -142,7 +143,7 @@ await db.prepare(`
     reason TEXT,
     created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
     created_by TEXT,
-    FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+    FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
   )
 `).run();
 await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_no ON pc_scrap(scrap_no)").run();
@@ -163,7 +164,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       remark TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
-      FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+      FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
     )
   `).run();
 
@@ -194,7 +195,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       recycle_date TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
-      FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+      FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
     )
   `).run();
 
@@ -223,7 +224,7 @@ await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_scrap_asset ON pc_scrap(asse
       remark TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       created_by TEXT,
-      FOREIGN KEY(asset_id) REFERENCES pc_assets(id)
+      FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
     )
   `).run();
 

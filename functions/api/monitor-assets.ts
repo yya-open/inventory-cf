@@ -8,39 +8,17 @@ import {
   countByWhere,
   listMonitorAssets,
   monitorAssetInsertSql,
-  monitorAssetArchiveSql,
   monitorAssetUpdateSql,
   parseMonitorAssetInput,
 } from './services/asset-ledger';
-
-async function getMonitorRelatedRecordCounts(db: D1Database, id: number) {
-  const refs = await db
-    .prepare(`
-      SELECT
-        (SELECT COUNT(*) FROM monitor_tx WHERE asset_id=?) AS tx_count,
-        (SELECT COUNT(*) FROM monitor_inventory_log WHERE asset_id=?) AS inventory_log_count
-    `)
-    .bind(id, id)
-    .first<any>();
-
-  return {
-    tx_count: Number(refs?.tx_count || 0),
-    inventory_log_count: Number(refs?.inventory_log_count || 0),
-  };
-}
-
-async function purgeArchivedMonitorAsset(db: D1Database, id: number) {
-  const counts = await getMonitorRelatedRecordCounts(db, id);
-  await db.batch([
-    db.prepare('DELETE FROM monitor_tx WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM monitor_inventory_log WHERE asset_id=?').bind(id),
-    db.prepare('DELETE FROM monitor_assets WHERE id=?').bind(id),
-  ]);
-  return {
-    ...counts,
-    related_total: counts.tx_count + counts.inventory_log_count,
-  };
-}
+import {
+  archiveAsset,
+  deleteAssetRow,
+  getAssetById,
+  getRelatedRecordCounts,
+  hasRelatedHistory,
+  purgeArchivedAsset,
+} from './services/asset-archive';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -137,11 +115,11 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const id = Number(body?.id || url.searchParams.get('id') || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 
-    const asset = await env.DB.prepare('SELECT * FROM monitor_assets WHERE id=?').bind(id).first<any>();
+    const asset = await getAssetById(env.DB, 'monitor', id);
     if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
 
     if (Number(asset.archived || 0) === 1) {
-      const purgeSummary = await purgeArchivedMonitorAsset(env.DB, id);
+      const purgeSummary = await purgeArchivedAsset(env.DB, 'monitor', id);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', id, {
         asset_code: asset.asset_code,
         brand: asset.brand,
@@ -161,17 +139,17 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     const settings = await getSystemSettings(env.DB);
-    const refs = await getMonitorRelatedRecordCounts(env.DB, id);
-    const hasRefs = refs.tx_count > 0 || refs.inventory_log_count > 0;
+    const refs = await getRelatedRecordCounts(env.DB, 'monitor', id);
+    const hasRefs = hasRelatedHistory('monitor', refs);
 
     if (hasRefs || !settings.asset_allow_physical_delete) {
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
-      await env.DB.prepare(monitorAssetArchiveSql()).bind(archiveReason, null, user.username, id).run();
+      await archiveAsset(env.DB, 'monitor', id, user.username || null, archiveReason, null);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status, archived_reason: archiveReason });
       return Response.json({ ok: true, archived: true, message: hasRefs ? '该资产已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
     }
 
-    await env.DB.prepare('DELETE FROM monitor_assets WHERE id=?').bind(id).run();
+    await deleteAssetRow(env.DB, 'monitor', id);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, { asset_code: asset.asset_code });
     return Response.json({ ok: true, message: '删除成功' });
   } catch (error: any) {

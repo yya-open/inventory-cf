@@ -96,7 +96,7 @@
             <div class="dictionary-overview">
               <div>启用：会出现在对应页面的下拉建议中。</div>
               <div>停用：不再提供新选择，但不会影响历史记录展示。</div>
-              <div>排序：数字越小越靠前，也可直接用上下按钮微调。</div>
+              <div>排序：支持拖拽 / 上下微调，本地调整后统一保存。</div>
               <div>引用统计：用于判断是否还在被台账数据使用。</div>
             </div>
           </el-card>
@@ -114,20 +114,33 @@
               <div class="dictionary-card-actions">
                 <el-tag type="info">启用 {{ activeCount(def.key) }}</el-tag>
                 <el-tag type="success">总计 {{ dictionaryRows(def.key).length }}</el-tag>
+                <el-tag v-if="hasPendingReorder(def.key)" type="warning">排序待保存</el-tag>
+                <el-button v-if="hasPendingReorder(def.key)" type="success" :loading="reorderBusy(def.key)" @click="saveDictionaryOrder(def.key)">保存排序</el-button>
                 <el-button type="primary" @click="openCreateDialog(def.key)">新增</el-button>
               </div>
             </div>
           </template>
 
-          <el-table :data="dictionaryRows(def.key)" border stripe class="dictionary-table" empty-text="暂无字典项">
+          <el-table :data="dictionaryRows(def.key)" border stripe class="dictionary-table" empty-text="暂无字典项" row-key="id">
+            <el-table-column label="排序" width="110" align="center">
+              <template #default="scope">
+                <div
+                  class="drag-cell"
+                  :class="{ 'drag-cell--busy': reorderBusy(def.key), 'drag-cell--active': dragState.key === def.key && dragState.fromId === scope.row.id }"
+                  :draggable="!reorderBusy(def.key)"
+                  @dragstart="onDictionaryDragStart(def.key, scope.$index, scope.row.id)"
+                  @dragover.prevent="onDictionaryDragOver"
+                  @drop.prevent="onDictionaryDrop(def.key, scope.$index)"
+                  @dragend="clearDictionaryDrag"
+                >
+                  <span class="drag-handle">☰</span>
+                  <span class="drag-order">{{ scope.$index + 1 }}</span>
+                </div>
+              </template>
+            </el-table-column>
             <el-table-column label="字典值" min-width="220">
               <template #default="{ row }">
                 <el-input v-model="row.label" maxlength="120" placeholder="请输入字典值" />
-              </template>
-            </el-table-column>
-            <el-table-column label="排序" width="110" align="center">
-              <template #default="{ row }">
-                <el-input-number v-model="row.sort_order" :min="0" :max="999999" controls-position="right" style="width:100%" />
               </template>
             </el-table-column>
             <el-table-column label="启用" width="90" align="center">
@@ -149,10 +162,10 @@
             <el-table-column label="操作" width="220" fixed="right">
               <template #default="scope">
                 <div class="row-actions">
-                  <el-button link @click="moveRow(def.key, scope.$index, -1)" :disabled="scope.$index === 0 || rowBusy(scope.row.id)">上移</el-button>
-                  <el-button link @click="moveRow(def.key, scope.$index, 1)" :disabled="scope.$index >= dictionaryRows(def.key).length - 1 || rowBusy(scope.row.id)">下移</el-button>
-                  <el-button link type="primary" :loading="rowBusy(scope.row.id)" @click="saveDictionary(scope.row)">保存</el-button>
-                  <el-button link type="danger" :disabled="Boolean(scope.row.reference_count) || rowBusy(scope.row.id)" @click="removeDictionary(scope.row)">删除</el-button>
+                  <el-button link @click="moveRow(def.key, scope.$index, -1)" :disabled="scope.$index === 0 || reorderBusy(def.key)">上移</el-button>
+                  <el-button link @click="moveRow(def.key, scope.$index, 1)" :disabled="scope.$index >= dictionaryRows(def.key).length - 1 || reorderBusy(def.key)">下移</el-button>
+                  <el-button link type="primary" :loading="rowBusy(scope.row.id, def.key)" @click="saveDictionary(scope.row)">保存</el-button>
+                  <el-button link type="danger" :disabled="Boolean(scope.row.reference_count) || rowBusy(scope.row.id, def.key)" @click="removeDictionary(scope.row)">删除</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -187,13 +200,14 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from 'element-plus';
 import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/systemSettings';
 import {
   createSystemDictionaryItem,
   deleteSystemDictionaryItem,
   fetchSystemDictionaries,
+  reorderSystemDictionaryItems,
   updateSystemDictionaryItem,
   type SystemDictionaryItem,
   type SystemDictionaryKey,
@@ -205,6 +219,23 @@ const creating = ref(false);
 const createDialogVisible = ref(false);
 const form = ref<SystemSettings>({ ...DEFAULT_SYSTEM_SETTINGS });
 const rowLoadingMap = ref<Record<number, boolean>>({});
+const reorderLoadingMap = ref<Record<SystemDictionaryKey, boolean>>({
+  asset_archive_reason: false,
+  department: false,
+  pc_brand: false,
+  monitor_brand: false,
+});
+const reorderDirtyMap = ref<Record<SystemDictionaryKey, boolean>>({
+  asset_archive_reason: false,
+  department: false,
+  pc_brand: false,
+  monitor_brand: false,
+});
+const dragState = ref<{ key: SystemDictionaryKey | null; fromIndex: number; fromId: number | null }>({
+  key: null,
+  fromIndex: -1,
+  fromId: null,
+});
 const dictionaries = ref<Record<SystemDictionaryKey, SystemDictionaryItem[]>>({
   asset_archive_reason: [],
   department: [],
@@ -238,8 +269,20 @@ function normalizeGrouped(grouped?: Partial<Record<SystemDictionaryKey, SystemDi
   } as Record<SystemDictionaryKey, SystemDictionaryItem[]>;
 }
 
-function rowBusy(id: number) {
-  return Boolean(rowLoadingMap.value[id]);
+function rowBusy(id: number, key?: SystemDictionaryKey) {
+  return Boolean(rowLoadingMap.value[id]) || Boolean(key && reorderLoadingMap.value[key]);
+}
+
+function reorderBusy(key: SystemDictionaryKey) {
+  return Boolean(reorderLoadingMap.value[key]);
+}
+
+function hasPendingReorder(key: SystemDictionaryKey) {
+  return Boolean(reorderDirtyMap.value[key]);
+}
+
+function markReorderDirty(key: SystemDictionaryKey, value = true) {
+  reorderDirtyMap.value = { ...reorderDirtyMap.value, [key]: value };
 }
 
 function dictionaryRows(key: SystemDictionaryKey) {
@@ -260,6 +303,28 @@ function sortDictionaryList(list: SystemDictionaryItem[]) {
   return [...list].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id || 0) - Number(b.id || 0));
 }
 
+function applyReorderedList(key: SystemDictionaryKey, list: SystemDictionaryItem[], markDirty = true) {
+  const normalized = list.map((item, index) => ({
+    ...item,
+    sort_order: (index + 1) * 10,
+  }));
+  dictionaries.value = {
+    ...dictionaries.value,
+    [key]: normalized,
+  };
+  if (markDirty) markReorderDirty(key, true);
+  syncFormDictionaryOptions();
+}
+
+function moveLocalRow(key: SystemDictionaryKey, fromIndex: number, toIndex: number) {
+  const list = [...dictionaryRows(key)];
+  if (fromIndex < 0 || toIndex < 0 || fromIndex >= list.length || toIndex >= list.length || fromIndex === toIndex) return;
+  const [moved] = list.splice(fromIndex, 1);
+  if (!moved) return;
+  list.splice(toIndex, 0, moved);
+  applyReorderedList(key, list, true);
+}
+
 function syncFormDictionaryOptions() {
   form.value = {
     ...form.value,
@@ -270,6 +335,16 @@ function syncFormDictionaryOptions() {
   };
 }
 
+function resetReorderState() {
+  reorderDirtyMap.value = {
+    asset_archive_reason: false,
+    department: false,
+    pc_brand: false,
+    monitor_brand: false,
+  };
+  clearDictionaryDrag();
+}
+
 async function loadSettingsOnly() {
   form.value = await fetchSystemSettings();
 }
@@ -277,6 +352,7 @@ async function loadSettingsOnly() {
 async function loadDictionariesOnly() {
   const data = await fetchSystemDictionaries();
   dictionaries.value = normalizeGrouped(data?.grouped);
+  resetReorderState();
   syncFormDictionaryOptions();
 }
 
@@ -334,9 +410,34 @@ async function submitCreate() {
   }
 }
 
+async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
+  if (!hasPendingReorder(key)) return true;
+  reorderLoadingMap.value = { ...reorderLoadingMap.value, [key]: true };
+  try {
+    const response = await reorderSystemDictionaryItems(key, dictionaryRows(key).map((item) => ({ id: item.id, sort_order: item.sort_order })));
+    dictionaries.value = {
+      ...dictionaries.value,
+      [key]: sortDictionaryList(response?.grouped?.[key] || dictionaryRows(key)),
+    };
+    syncFormDictionaryOptions();
+    markReorderDirty(key, false);
+    if (!quiet) ElMessage.success('排序已保存');
+    return true;
+  } catch (e: any) {
+    ElMessage.error(e?.message || '排序保存失败');
+    return false;
+  } finally {
+    reorderLoadingMap.value = { ...reorderLoadingMap.value, [key]: false };
+  }
+}
+
 async function saveDictionary(row: SystemDictionaryItem) {
   const label = String(row.label || '').trim();
   if (!label) return ElMessage.warning('字典值不能为空');
+  if (hasPendingReorder(row.dictionary_key)) {
+    const ok = await saveDictionaryOrder(row.dictionary_key, true);
+    if (!ok) return;
+  }
   rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: true };
   try {
     await updateSystemDictionaryItem({
@@ -355,34 +456,29 @@ async function saveDictionary(row: SystemDictionaryItem) {
   }
 }
 
-async function moveRow(key: SystemDictionaryKey, index: number, delta: number) {
-  const list = [...dictionaryRows(key)];
-  const targetIndex = index + delta;
-  if (targetIndex < 0 || targetIndex >= list.length) return;
-  const current = list[index];
-  const target = list[targetIndex];
-  if (!current || !target) return;
-  const currentSort = Number(current.sort_order || 0) || (index + 1) * 10;
-  const targetSort = Number(target.sort_order || 0) || (targetIndex + 1) * 10;
-  const previousList = list.map((item) => ({ ...item }));
-  const nextList = list.map((item) => ({ ...item }));
-  nextList[index] = { ...target, sort_order: currentSort };
-  nextList[targetIndex] = { ...current, sort_order: targetSort };
-  dictionaries.value = { ...dictionaries.value, [key]: sortDictionaryList(nextList) };
-  syncFormDictionaryOptions();
-  rowLoadingMap.value = { ...rowLoadingMap.value, [current.id]: true, [target.id]: true };
-  try {
-    await Promise.all([
-      updateSystemDictionaryItem({ id: current.id, sort_order: targetSort, label: current.label, enabled: current.enabled, dictionary_key: current.dictionary_key }),
-      updateSystemDictionaryItem({ id: target.id, sort_order: currentSort, label: target.label, enabled: target.enabled, dictionary_key: target.dictionary_key }),
-    ]);
-  } catch (e: any) {
-    dictionaries.value = { ...dictionaries.value, [key]: previousList };
-    syncFormDictionaryOptions();
-    ElMessage.error(e?.message || '排序调整失败');
-  } finally {
-    rowLoadingMap.value = { ...rowLoadingMap.value, [current.id]: false, [target.id]: false };
-  }
+function moveRow(key: SystemDictionaryKey, index: number, delta: number) {
+  if (reorderBusy(key)) return;
+  moveLocalRow(key, index, index + delta);
+}
+
+function onDictionaryDragStart(key: SystemDictionaryKey, index: number, id: number) {
+  if (reorderBusy(key)) return;
+  dragState.value = { key, fromIndex: index, fromId: id };
+}
+
+function onDictionaryDragOver(event: DragEvent) {
+  if (event.dataTransfer) event.dataTransfer.dropEffect = 'move';
+}
+
+function onDictionaryDrop(key: SystemDictionaryKey, index: number) {
+  const state = dragState.value;
+  if (!state.key || state.key !== key) return;
+  moveLocalRow(key, state.fromIndex, index);
+  clearDictionaryDrag();
+}
+
+function clearDictionaryDrag() {
+  dragState.value = { key: null, fromIndex: -1, fromId: null };
 }
 
 async function removeDictionary(row: SystemDictionaryItem) {
@@ -427,7 +523,12 @@ onMounted(reload);
 .dictionary-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .dictionary-subtitle{color:#8a8a8a;font-size:12px;margin-top:4px}
 .dictionary-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.dictionary-table :deep(.el-input-number){width:100%}
 .row-actions{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
 .table-subtle{color:#909399;font-size:12px;margin-top:2px}
+.drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:10px;border:1px dashed transparent;transition:.15s ease}
+.drag-cell:hover{background:#f5f7fa;border-color:#dcdfe6}
+.drag-cell--active{background:#ecf5ff;border-color:#409eff;color:#409eff}
+.drag-cell--busy{cursor:not-allowed;opacity:.6}
+.drag-handle{font-size:16px;line-height:1}
+.drag-order{font-size:12px;color:#606266}
 </style>
