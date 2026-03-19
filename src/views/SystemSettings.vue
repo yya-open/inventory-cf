@@ -73,6 +73,10 @@
               <el-form-item label="电脑品牌">
                 <el-input v-model="pcBrandsText" type="textarea" :rows="5" placeholder="一行一个电脑品牌" />
               </el-form-item>
+              <el-form-item label="显示器品牌">
+                <el-input v-model="monitorBrandsText" type="textarea" :rows="5" placeholder="一行一个显示器品牌" />
+                <div class="form-tip">用于显示器台账新增 / 编辑时的品牌下拉建议。</div>
+              </el-form-item>
             </el-form>
           </el-card>
         </el-col>
@@ -99,10 +103,6 @@
               <el-form-item label="默认连续扫码方式">
                 <el-segmented v-model="form.public_inventory_scan_mode_default" :options="scanModeOptions" class="scan-mode-setting" />
                 <div class="form-tip">可选手动、扫码枪或摄像头连续扫码。摄像头模式更适合手机现场盘点。</div>
-              </el-form-item>
-              <el-form-item label="显示器品牌">
-                <el-input v-model="monitorBrandsText" type="textarea" :rows="5" placeholder="一行一个显示器品牌" />
-                <div class="form-tip">用于显示器台账新增 / 编辑时的品牌下拉建议。</div>
               </el-form-item>
             </el-form>
           </el-card>
