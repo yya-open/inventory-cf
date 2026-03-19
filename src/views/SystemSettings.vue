@@ -289,6 +289,28 @@ function dictionaryRows(key: SystemDictionaryKey) {
   return dictionaries.value[key] || [];
 }
 
+function replaceDictionaryRows(key: SystemDictionaryKey, rows: SystemDictionaryItem[], markDirty = false) {
+  dictionaries.value = {
+    ...dictionaries.value,
+    [key]: sortDictionaryList(rows),
+  };
+  if (markDirty) markReorderDirty(key, true);
+  syncFormDictionaryOptions();
+}
+
+function upsertDictionaryRow(row: SystemDictionaryItem) {
+  const key = row.dictionary_key;
+  const current = dictionaryRows(key);
+  const next = current.some((item) => Number(item.id) === Number(row.id))
+    ? current.map((item) => (Number(item.id) === Number(row.id) ? { ...item, ...row } : item))
+    : [...current, row];
+  replaceDictionaryRows(key, next, false);
+}
+
+function removeLocalDictionaryRow(row: Pick<SystemDictionaryItem, 'id' | 'dictionary_key'>) {
+  replaceDictionaryRows(row.dictionary_key, dictionaryRows(row.dictionary_key).filter((item) => Number(item.id) !== Number(row.id)), false);
+}
+
 function activeCount(key: SystemDictionaryKey) {
   return dictionaryRows(key).filter((item) => Number(item.enabled || 0) === 1).length;
 }
@@ -394,14 +416,14 @@ async function submitCreate() {
   if (!label) return ElMessage.warning('请输入字典值');
   creating.value = true;
   try {
-    await createSystemDictionaryItem({
+    const created = await createSystemDictionaryItem({
       dictionary_key: createForm.value.dictionary_key,
       label,
       sort_order: createForm.value.sort_order,
       enabled: createForm.value.enabled,
     });
+    upsertDictionaryRow(created);
     createDialogVisible.value = false;
-    await Promise.all([loadDictionariesOnly(), loadSettingsOnly()]);
     ElMessage.success('字典项已新增');
   } catch (e: any) {
     ElMessage.error(e?.message || '新增失败');
@@ -415,11 +437,7 @@ async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
   reorderLoadingMap.value = { ...reorderLoadingMap.value, [key]: true };
   try {
     const response = await reorderSystemDictionaryItems(key, dictionaryRows(key).map((item) => ({ id: item.id, sort_order: item.sort_order })));
-    dictionaries.value = {
-      ...dictionaries.value,
-      [key]: sortDictionaryList(response?.grouped?.[key] || dictionaryRows(key)),
-    };
-    syncFormDictionaryOptions();
+    replaceDictionaryRows(key, response?.grouped?.[key] || dictionaryRows(key), false);
     markReorderDirty(key, false);
     if (!quiet) ElMessage.success('排序已保存');
     return true;
@@ -440,14 +458,14 @@ async function saveDictionary(row: SystemDictionaryItem) {
   }
   rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: true };
   try {
-    await updateSystemDictionaryItem({
+    const saved = await updateSystemDictionaryItem({
       id: row.id,
       dictionary_key: row.dictionary_key,
       label,
       sort_order: row.sort_order,
       enabled: row.enabled,
     });
-    await Promise.all([loadDictionariesOnly(), loadSettingsOnly()]);
+    upsertDictionaryRow(saved);
     ElMessage.success('字典项已保存');
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败');
@@ -490,7 +508,7 @@ async function removeDictionary(row: SystemDictionaryItem) {
   rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: true };
   try {
     await deleteSystemDictionaryItem(row.id);
-    await Promise.all([loadDictionariesOnly(), loadSettingsOnly()]);
+    removeLocalDictionaryRow(row);
     ElMessage.success('字典项已删除');
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败');

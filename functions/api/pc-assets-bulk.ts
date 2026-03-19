@@ -1,8 +1,9 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed } from './_pc';
-import { latestPcOutRowSql, parseArchiveMeta, parseOwnerInput, pcAssetBulkOwnerSql, pcAssetBulkStatusSql } from './services/asset-ledger';
-import { archiveAsset, restoreAsset } from './services/asset-archive';
+import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
+import { bulkArchiveAssets, bulkRestoreAssets, bulkUpdatePcOwner, bulkUpdatePcStatus } from './services/asset-bulk';
+import { invalidateSystemDictionaryReferenceCache } from './services/system-dictionaries';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -18,63 +19,83 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'archive') {
       const meta = parseArchiveMeta(body);
-      let archived = 0;
-      for (const id of ids) {
-        const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=?').bind(id).first<any>();
-        if (!row) continue;
-        await archiveAsset(env.DB, 'pc', id, user.username || null, meta.reason, meta.note || null);
-        archived += 1;
-      }
-      await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), { ids, count: archived, reason: meta.reason, note: meta.note });
-      return Response.json({ ok: true, archived, message: `已归档 ${archived} 台电脑` });
+      const result = await bulkArchiveAssets(env.DB, 'pc', ids, meta.reason, meta.note || null, user.username || null);
+      invalidateSystemDictionaryReferenceCache();
+      await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), {
+        ids: result.ids,
+        requested_ids: ids,
+        count: result.changed,
+        skipped: result.skipped,
+        skipped_ids: result.skippedIds,
+        reason: meta.reason,
+        note: meta.note,
+      });
+      return Response.json({
+        ok: true,
+        archived: result.changed,
+        skipped: result.skipped,
+        message: result.skipped ? `已归档 ${result.changed} 台电脑，跳过 ${result.skipped} 台` : `已归档 ${result.changed} 台电脑`,
+      });
     }
 
     if (action === 'restore') {
-      let restored = 0;
-      for (const id of ids) {
-        const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=? AND COALESCE(archived,0)=1').bind(id).first<any>();
-        if (!row) continue;
-        await restoreAsset(env.DB, 'pc', id);
-        restored += 1;
-      }
-      await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), { ids, count: restored });
-      return Response.json({ ok: true, restored, message: `已恢复 ${restored} 台电脑` });
+      const result = await bulkRestoreAssets(env.DB, 'pc', ids);
+      invalidateSystemDictionaryReferenceCache();
+      await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), {
+        ids: result.ids,
+        requested_ids: ids,
+        count: result.changed,
+        skipped: result.skipped,
+        skipped_ids: result.skippedIds,
+      });
+      return Response.json({
+        ok: true,
+        restored: result.changed,
+        skipped: result.skipped,
+        message: result.skipped ? `已恢复 ${result.changed} 台电脑，跳过 ${result.skipped} 台` : `已恢复 ${result.changed} 台电脑`,
+      });
     }
 
     if (action === 'status') {
       const status = String(body?.status || '').trim();
       if (!ALLOWED_STATUS.has(status)) throw Object.assign(new Error('不支持的目标状态'), { status: 400 });
-      let changed = 0;
-      for (const id of ids) {
-        const row = await env.DB.prepare('SELECT id FROM pc_assets WHERE id=? AND COALESCE(archived,0)=0').bind(id).first<any>();
-        if (!row) continue;
-        await env.DB.prepare(pcAssetBulkStatusSql()).bind(status, id).run();
-        changed += 1;
-      }
-      await logAudit(env.DB, request, user, 'PC_ASSET_STATUS_BATCH', 'pc_assets', String(ids.length), { ids, status, count: changed });
-      return Response.json({ ok: true, changed, message: `已更新 ${changed} 台电脑状态` });
+      const result = await bulkUpdatePcStatus(env.DB, ids, status);
+      await logAudit(env.DB, request, user, 'PC_ASSET_STATUS_BATCH', 'pc_assets', String(ids.length), {
+        ids: result.ids,
+        requested_ids: ids,
+        status,
+        count: result.changed,
+        skipped: result.skipped,
+        skipped_ids: result.skippedIds,
+      });
+      return Response.json({
+        ok: true,
+        changed: result.changed,
+        skipped: result.skipped,
+        message: result.skipped ? `已更新 ${result.changed} 台电脑状态，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台电脑状态`,
+      });
     }
 
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
-      let changed = 0;
-      let skipped = 0;
-      for (const id of ids) {
-        const asset = await env.DB.prepare("SELECT id, status FROM pc_assets WHERE id=? AND COALESCE(archived,0)=0").bind(id).first<any>();
-        if (!asset || String(asset.status) !== 'ASSIGNED') {
-          skipped += 1;
-          continue;
-        }
-        const outRow = await env.DB.prepare(latestPcOutRowSql()).bind(id).first<any>();
-        if (!outRow?.id) {
-          skipped += 1;
-          continue;
-        }
-        await env.DB.prepare(pcAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, outRow.id).run();
-        changed += 1;
-      }
-      await logAudit(env.DB, request, user, 'PC_ASSET_OWNER_BATCH', 'pc_assets', String(ids.length), { ids, employee_name: owner.employee_name, employee_no: owner.employee_no, department: owner.department, count: changed, skipped });
-      return Response.json({ ok: true, changed, skipped, message: skipped ? `已更新 ${changed} 台电脑领用人，跳过 ${skipped} 台非已领用电脑` : `已更新 ${changed} 台电脑领用人` });
+      const result = await bulkUpdatePcOwner(env.DB, ids, owner);
+      invalidateSystemDictionaryReferenceCache();
+      await logAudit(env.DB, request, user, 'PC_ASSET_OWNER_BATCH', 'pc_assets', String(ids.length), {
+        ids: result.ids,
+        requested_ids: ids,
+        employee_name: owner.employee_name,
+        employee_no: owner.employee_no,
+        department: owner.department,
+        count: result.changed,
+        skipped: result.skipped,
+        skipped_ids: result.skippedIds,
+      });
+      return Response.json({
+        ok: true,
+        changed: result.changed,
+        skipped: result.skipped,
+        message: result.skipped ? `已更新 ${result.changed} 台电脑领用人，跳过 ${result.skipped} 台非已领用电脑` : `已更新 ${result.changed} 台电脑领用人`,
+      });
     }
 
     throw Object.assign(new Error('不支持的批量操作'), { status: 400 });

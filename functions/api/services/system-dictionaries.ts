@@ -33,6 +33,13 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
 
+const REFERENCE_COUNT_CACHE_TTL_MS = 30 * 1000;
+let referenceCountCache: { expiresAt: number; counts: ReferenceCountMap } | null = null;
+
+export function invalidateSystemDictionaryReferenceCache() {
+  referenceCountCache = null;
+}
+
 function normalizeLabel(value: any) {
   return String(value || '').trim();
 }
@@ -139,32 +146,26 @@ function addCounts(target: Record<string, number>, rows: any[] | undefined | nul
   }
 }
 
-async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
-  const wanted = new Set(keys);
-  const counts: ReferenceCountMap = {};
+async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCountMap> {
+  const counts: ReferenceCountMap = {
+    pc_brand: {},
+    monitor_brand: {},
+    asset_archive_reason: {},
+    department: {},
+  };
 
-  if (wanted.has('pc_brand')) {
-    const { results } = await db.prepare(
+  const [{ results: pcBrandRows }, { results: monitorBrandRows }, { results: archiveReasonRows }, { results: departmentRows }] = await Promise.all([
+    db.prepare(
       `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
        FROM pc_assets
        GROUP BY TRIM(COALESCE(brand, ''))`
-    ).all<any>();
-    counts.pc_brand = {};
-    addCounts(counts.pc_brand, results);
-  }
-
-  if (wanted.has('monitor_brand')) {
-    const { results } = await db.prepare(
+    ).all<any>(),
+    db.prepare(
       `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
        FROM monitor_assets
        GROUP BY TRIM(COALESCE(brand, ''))`
-    ).all<any>();
-    counts.monitor_brand = {};
-    addCounts(counts.monitor_brand, results);
-  }
-
-  if (wanted.has('asset_archive_reason')) {
-    const { results } = await db.prepare(
+    ).all<any>(),
+    db.prepare(
       `SELECT label, SUM(c) AS c
        FROM (
          SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
@@ -178,13 +179,8 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
          GROUP BY TRIM(COALESCE(archived_reason, ''))
        ) t
        GROUP BY label`
-    ).all<any>();
-    counts.asset_archive_reason = {};
-    addCounts(counts.asset_archive_reason, results);
-  }
-
-  if (wanted.has('department')) {
-    const { results } = await db.prepare(
+    ).all<any>(),
+    db.prepare(
       `WITH latest_pc_out AS (
          SELECT o.asset_id, o.department
          FROM pc_out o
@@ -205,12 +201,30 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
          GROUP BY TRIM(COALESCE(department, ''))
        ) t
        GROUP BY label`
-    ).all<any>();
-    counts.department = {};
-    addCounts(counts.department, results);
-  }
+    ).all<any>(),
+  ]);
 
+  addCounts(counts.pc_brand as Record<string, number>, pcBrandRows);
+  addCounts(counts.monitor_brand as Record<string, number>, monitorBrandRows);
+  addCounts(counts.asset_archive_reason as Record<string, number>, archiveReasonRows);
+  addCounts(counts.department as Record<string, number>, departmentRows);
   return counts;
+}
+
+async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
+  const wanted = Array.from(new Set((keys || []).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
+  if (!wanted.length) return {};
+  const now = Date.now();
+  if (!referenceCountCache || referenceCountCache.expiresAt <= now) {
+    referenceCountCache = {
+      expiresAt: now + REFERENCE_COUNT_CACHE_TTL_MS,
+      counts: await computeAllReferenceCounts(db),
+    };
+  }
+  return wanted.reduce((acc, key) => {
+    acc[key] = { ...(referenceCountCache?.counts?.[key] || {}) };
+    return acc;
+  }, {} as ReferenceCountMap);
 }
 
 async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {

@@ -35,11 +35,27 @@ function buildWhere(clauses: string[], binds: any[]) {
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', binds };
 }
 
+function escapeSqlLike(value: string) {
+  return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
+}
+
+function applyArchiveReasonFilter(clauses: string[], binds: any[], url: URL) {
+  const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
+  if (!archiveReason) return;
+  const mode = (url.searchParams.get('archive_reason_mode') || '').trim().toLowerCase();
+  if (mode === 'contains' || mode === 'like') {
+    clauses.push("TRIM(COALESCE(a.archived_reason, '')) LIKE ? ESCAPE '\\'");
+    binds.push(`%${escapeSqlLike(archiveReason)}%`);
+    return;
+  }
+  clauses.push("TRIM(COALESCE(a.archived_reason, ''))=?");
+  binds.push(archiveReason);
+}
+
 export function buildPcAssetQuery(url: URL) {
   const status = (url.searchParams.get('status') || '').trim();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
-  const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
@@ -67,10 +83,7 @@ export function buildPcAssetQuery(url: URL) {
     }
   }
 
-  if (archiveReason) {
-    clauses.push("COALESCE(a.archived_reason, '') LIKE ? ESCAPE '\\'");
-    binds.push(`%${archiveReason.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%`);
-  }
+  applyArchiveReasonFilter(clauses, binds, url);
 
   if (ageYears > 0) {
     const cutoff = new Date();
@@ -93,7 +106,6 @@ export function buildMonitorAssetQuery(url: URL) {
   const status = (url.searchParams.get('status') || '').trim();
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
-  const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
@@ -123,10 +135,8 @@ export function buildMonitorAssetQuery(url: URL) {
       binds.push(...kw.binds);
     }
   }
-  if (archiveReason) {
-    clauses.push("COALESCE(a.archived_reason, '') LIKE ? ESCAPE '\\'");
-    binds.push(`%${archiveReason.replace('\\', '\\\\').replace('%', '\\%').replace('_', '\\_')}%`);
-  }
+
+  applyArchiveReasonFilter(clauses, binds, url);
 
   return {
     ...buildWhere(clauses, binds),

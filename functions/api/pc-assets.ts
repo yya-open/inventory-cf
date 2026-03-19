@@ -18,6 +18,7 @@ import {
   hasRelatedHistory,
   purgeArchivedAsset,
 } from './services/asset-archive';
+import { invalidateSystemDictionaryReferenceCache } from './services/system-dictionaries';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -79,6 +80,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       )
       .run();
 
+    invalidateSystemDictionaryReferenceCache();
     await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
       before: {
         brand: old.brand,
@@ -118,6 +120,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     if (Number(asset.archived || 0) === 1) {
       const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
+      invalidateSystemDictionaryReferenceCache();
       await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -147,6 +150,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (hasRefs || !settings.asset_allow_physical_delete) {
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
       await archiveAsset(env.DB, 'pc', id, user.username || null, archiveReason, null);
+      invalidateSystemDictionaryReferenceCache();
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -158,6 +162,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     await deleteAssetRow(env.DB, 'pc', id);
+    invalidateSystemDictionaryReferenceCache();
     await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,

@@ -258,28 +258,12 @@
               </div>
             </div>
 
-            <div class="preview-cards">
-              <div class="preview-card">
-                <div class="preview-label">盘点明细</div>
-                <div class="preview-value">{{ stocktakePreview.total }}</div>
-              </div>
-              <div class="preview-card">
-                <div class="preview-label">已录入</div>
-                <div class="preview-value">{{ stocktakePreview.counted }}</div>
-              </div>
-              <div class="preview-card preview-card--changed">
-                <div class="preview-label">存在差异</div>
-                <div class="preview-value">{{ stocktakePreview.changed }}</div>
-              </div>
-              <div class="preview-card preview-card--increase">
-                <div class="preview-label">盘盈</div>
-                <div class="preview-value">{{ stocktakePreview.increase }}</div>
-              </div>
-              <div class="preview-card preview-card--decrease">
-                <div class="preview-label">盘亏</div>
-                <div class="preview-value">{{ stocktakePreview.decrease }}</div>
-              </div>
-            </div>
+            <ul class="preview-list" aria-label="盘点概览">
+              <li v-for="item in stocktakeSummaryItems" :key="item.key" class="preview-list-item" :class="item.className">
+                <span class="preview-list-label">{{ item.label }}</span>
+                <strong class="preview-list-value">{{ item.value }}</strong>
+              </li>
+            </ul>
 
             <div class="detail-tools">
               <el-input
@@ -375,13 +359,12 @@
           title="当前盘点单处于 APPLYING 状态"
           description="说明上次应用可能中断。继续应用时只会补齐未完成的调整记录，不会重复生成已存在的数据。"
         />
-        <div class="preview-cards preview-cards--dialog">
-          <div class="preview-card"><div class="preview-label">盘点明细</div><div class="preview-value">{{ stocktakePreview.total }}</div></div>
-          <div class="preview-card"><div class="preview-label">已录入</div><div class="preview-value">{{ stocktakePreview.counted }}</div></div>
-          <div class="preview-card preview-card--changed"><div class="preview-label">存在差异</div><div class="preview-value">{{ stocktakePreview.changed }}</div></div>
-          <div class="preview-card preview-card--increase"><div class="preview-label">盘盈</div><div class="preview-value">{{ stocktakePreview.increase }}</div></div>
-          <div class="preview-card preview-card--decrease"><div class="preview-label">盘亏</div><div class="preview-value">{{ stocktakePreview.decrease }}</div></div>
-        </div>
+        <ul class="preview-list preview-list--dialog" aria-label="应用盘点概览">
+          <li v-for="item in stocktakeSummaryItems" :key="`dialog-${item.key}`" class="preview-list-item" :class="item.className">
+            <span class="preview-list-label">{{ item.label }}</span>
+            <strong class="preview-list-value">{{ item.value }}</strong>
+          </li>
+        </ul>
 
         <div class="apply-preview-head">
           <div class="panel-title">将受影响的明细</div>
@@ -496,6 +479,14 @@ const stocktakePreview = computed(() => {
     decrease: changed.filter((line:any) => Number(line.diff_qty || 0) < 0).length,
   };
 });
+
+const stocktakeSummaryItems = computed(() => ([
+  { key: 'total', label: '盘点明细', value: stocktakePreview.value.total, className: '' },
+  { key: 'counted', label: '已录入', value: stocktakePreview.value.counted, className: '' },
+  { key: 'changed', label: '存在差异', value: stocktakePreview.value.changed, className: 'preview-list-item--changed' },
+  { key: 'increase', label: '盘盈', value: stocktakePreview.value.increase, className: 'preview-list-item--increase' },
+  { key: 'decrease', label: '盘亏', value: stocktakePreview.value.decrease, className: 'preview-list-item--decrease' },
+]));
 
 const applyPreviewRows = computed(() => {
   const lines = detail.value?.lines || [];
@@ -957,10 +948,17 @@ onMounted(async ()=>{
 .sep{ margin:0 6px; color: var(--el-text-color-secondary); }
 .mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace; }
 .detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
+.preview-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;list-style:none;padding:0;margin:0 0 12px}
+.preview-list--dialog{margin:0}
+.preview-list-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--el-border-color-light);border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}
+.preview-list-item--changed{border-color:#f3d19e;background:#fff9f0}
+.preview-list-item--increase{border-color:#b3e19d;background:#f0fdf4}
+.preview-list-item--decrease{border-color:#f5c2c7;background:#fef2f2}
+.preview-list-label{font-size:13px;color:var(--el-text-color-secondary)}
+.preview-list-value{font-size:22px;line-height:1;font-weight:800;color:var(--el-text-color-primary)}
 .detail-tools{ display:flex; align-items:center; gap:10px; margin:10px 0; }
 .row-selected td{ background: var(--el-color-primary-light-9) !important; }
 .apply-preview-wrap{display:flex;flex-direction:column;gap:14px}
-.preview-cards--dialog{margin-top:0}
 .apply-preview-head{display:flex;justify-content:space-between;align-items:flex-end;gap:12px;flex-wrap:wrap}
 .detail-row-pending td{background:#f8fafc !important}
 .detail-row-increase td{background:#f0fdf4 !important}
