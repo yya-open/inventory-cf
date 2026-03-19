@@ -31,6 +31,10 @@
           <div class="summary-value">{{ form.asset_allow_physical_delete ? '允许' : '优先归档' }}</div>
         </div>
         <div class="summary-item">
+          <div class="summary-label">报废预警</div>
+          <div class="summary-value">{{ form.pc_scrap_warning_years }} 年</div>
+        </div>
+        <div class="summary-item">
           <div class="summary-label">归档原因</div>
           <div class="summary-value">{{ activeCount('asset_archive_reason') }}</div>
         </div>
@@ -59,6 +63,12 @@
               <el-form-item label="允许物理删除">
                 <el-switch v-model="form.asset_allow_physical_delete" />
                 <div class="form-tip">关闭后，删除资产将优先转为归档，更适合正式环境保留追溯链路。</div>
+              </el-form-item>
+              <el-form-item label="电脑报废预警年限">
+                <el-select v-model="form.pc_scrap_warning_years" style="width:180px">
+                  <el-option v-for="year in [1,2,3,4,5]" :key="year" :label="`${year} 年`" :value="year" />
+                </el-select>
+                <div class="form-tip">电脑仓“报废预警”页面会按这里的年限筛出超龄设备。</div>
               </el-form-item>
             </el-form>
           </el-card>

@@ -5,7 +5,7 @@ type Env = { DB: D1Database; JWT_SECRET?: string };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'admin');
+    await requireAuth(env, request, 'viewer');
     const data = await getSystemSettings(env.DB);
     return json(true, data);
   } catch (e: any) {

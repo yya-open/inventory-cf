@@ -161,7 +161,7 @@
 
     <el-table
       v-loading="loading"
-      :data="filteredRows"
+      :data="rows"
       border
       style="width:100%"
       @selection-change="onSelect"
@@ -502,6 +502,7 @@ const ACTION_LABEL: Record<string, string> = {
   SYSTEM_DICTIONARY_CREATE: "新增系统字典项",
   SYSTEM_DICTIONARY_UPDATE: "修改系统字典项",
   SYSTEM_DICTIONARY_DELETE: "删除系统字典项",
+  SYSTEM_DICTIONARY_REORDER: "调整系统字典排序",
 
   pc_asset_update: "修改电脑台账",
   pc_asset_delete: "删除电脑台账",
@@ -781,6 +782,8 @@ const MODULE_LABEL: Record<string, string> = {
 const moduleOptions = Object.entries(MODULE_LABEL).map(([value, label]) => ({ value, label }));
 
 function getModuleOf(row: any) {
+  const moduleCode = String(row?.module_code || '').toUpperCase();
+  if (moduleCode && MODULE_LABEL[moduleCode]) return moduleCode;
   const actionCode = String(row?.action || '').toUpperCase();
   const entityCode = String(row?.entity || '').toLowerCase();
   if (actionCode.startsWith('STOCKTAKE') || entityCode.includes('stocktake')) return 'STOCKTAKE';
@@ -795,17 +798,10 @@ function getModuleOf(row: any) {
 }
 
 function isHighRiskRow(row: any) {
+  if (row?.high_risk != null) return Number(row.high_risk || 0) === 1;
   const actionCode = String(row?.action || '').toUpperCase();
   return ['DELETE', 'ARCHIVE', 'SCRAP', 'ROLLBACK', 'RESET_PASSWORD', 'RESTORE', 'CLEAR'].some((token) => actionCode.includes(token));
 }
-
-const filteredRows = computed(() => {
-  return rows.value.filter((row) => {
-    if (moduleFilter.value && getModuleOf(row) !== moduleFilter.value) return false;
-    if (highRiskOnly.value && !isHighRiskRow(row)) return false;
-    return true;
-  });
-});
 
 const displayPayload = computed(() => {
   if (!prettyMode.value) return rawPayload.value || "";
@@ -1106,6 +1102,8 @@ function buildAuditParams(targetPage: number, targetPageSize: number) {
   if (entity.value) params.set('entity', entity.value);
   if (entityId.value) params.set('entity_id', entityId.value);
   if (user.value) params.set('user', user.value);
+  if (moduleFilter.value) params.set('module', moduleFilter.value);
+  if (highRiskOnly.value) params.set('high_risk', '1');
   if (range.value?.length === 2) {
     const s = new Date(range.value[0]);
     const e = new Date(range.value[1]);
@@ -1119,61 +1117,16 @@ function buildAuditParams(targetPage: number, targetPageSize: number) {
   return params;
 }
 
-async function exportFilteredRows() {
-  try {
-    const pageSizeForExport = 200;
-    let currentPage = 1;
-    let totalCount = 0;
-    const merged: any[] = [];
-    do {
-      const params = buildAuditParams(currentPage, pageSizeForExport);
-      const j:any = await apiGet(`/api/audit/list?${params.toString()}`);
-      const batch = (j.data || []).map((r:any) => ({ ...r }));
-      totalCount = Number(j.total || 0);
-      merged.push(...batch);
-      currentPage += 1;
-      if (!batch.length) break;
-    } while (merged.length < totalCount && currentPage < 999);
-
-    const rowsToExport = merged.filter((row) => {
-      if (moduleFilter.value && getModuleOf(row) !== moduleFilter.value) return false;
-      if (highRiskOnly.value && !isHighRiskRow(row)) return false;
-      return true;
-    });
-
-    if (!rowsToExport.length) return ElMessage.warning('当前筛选结果没有可导出的审计记录');
-    exportToXlsx({
-      filename: `审计日志_筛选结果_${rowsToExport.length}条.xlsx`,
-      sheetName: '审计日志',
-      headers: [
-        { key: 'created_at', title: '时间' },
-        { key: 'username', title: '用户' },
-        { key: 'module', title: '模块' },
-        { key: 'action_label', title: '动作' },
-        { key: 'entity_label', title: '实体' },
-        { key: 'entity_id', title: '实体ID' },
-        { key: 'object_name', title: '对象名称' },
-      ],
-      rows: rowsToExport.map((row: any) => ({
-        created_at: formatTime(row.created_at),
-        username: row.username || '-',
-        module: MODULE_LABEL[getModuleOf(row)] || '其他',
-        action_label: actionLabel(row.action),
-        entity_label: entityLabel(row.entity),
-        entity_id: row.entity_id ?? '-',
-        object_name: row.item_name || row.user_name || '-',
-      })),
-    });
-    ElMessage.success('筛选结果已导出');
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导出筛选结果失败');
-  }
+async function requestAuditExport(scope: 'current' | 'all') {
+  const params = buildAuditParams(page.value, pageSize.value);
+  params.set('scope', scope);
+  if (scope === 'all') params.set('max_rows', '5000');
+  return apiGet(`/api/audit/export?${params.toString()}`);
 }
 
-function exportCurrentRows() {
-  if (!filteredRows.value.length) return ElMessage.warning('当前页没有可导出的审计记录');
+function exportAuditRows(rowsToExport: any[], filename: string) {
   exportToXlsx({
-    filename: `审计日志_当前页_${filteredRows.value.length}条.xlsx`,
+    filename,
     sheetName: '审计日志',
     headers: [
       { key: 'created_at', title: '时间' },
@@ -1184,7 +1137,7 @@ function exportCurrentRows() {
       { key: 'entity_id', title: '实体ID' },
       { key: 'object_name', title: '对象名称' },
     ],
-    rows: filteredRows.value.map((row: any) => ({
+    rows: rowsToExport.map((row: any) => ({
       created_at: formatTime(row.created_at),
       username: row.username || '-',
       module: MODULE_LABEL[getModuleOf(row)] || '其他',
@@ -1194,7 +1147,34 @@ function exportCurrentRows() {
       object_name: row.item_name || row.user_name || '-',
     })),
   });
-  ElMessage.success('当前页审计日志已导出');
+}
+
+async function exportFilteredRows() {
+  try {
+    const response: any = await requestAuditExport('all');
+    const rowsToExport = response?.data || [];
+    if (!rowsToExport.length) return ElMessage.warning('当前筛选结果没有可导出的审计记录');
+    exportAuditRows(rowsToExport, `审计日志_筛选结果_${rowsToExport.length}条.xlsx`);
+    if (response?.limited) {
+      ElMessage.warning(`筛选结果较多，已导出前 ${rowsToExport.length} 条（共 ${Number(response?.total || rowsToExport.length)} 条）`);
+      return;
+    }
+    ElMessage.success('筛选结果已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出筛选结果失败');
+  }
+}
+
+async function exportCurrentRows() {
+  try {
+    const response: any = await requestAuditExport('current');
+    const rowsToExport = response?.data || [];
+    if (!rowsToExport.length) return ElMessage.warning('当前页没有可导出的审计记录');
+    exportAuditRows(rowsToExport, `审计日志_当前页_${rowsToExport.length}条.xlsx`);
+    ElMessage.success('当前页审计日志已导出');
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导出当前页失败');
+  }
 }
 
 async function load(){

@@ -230,9 +230,10 @@
 import { ref, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { exportToXlsx } from "../utils/excel";
 
-const ageYears = 5;
+const ageYears = ref(Number(getCachedSystemSettings().pc_scrap_warning_years || 5));
 
 const rows = ref<any[]>([]);
 const loading = ref(false);
@@ -246,7 +247,7 @@ const totalCache = new Map<string, number>();
 let totalTimer: any = null;
 
 function filterKey() {
-  return `age_years=${ageYears}&status=${status.value || ""}&keyword=${keyword.value.trim()}`;
+  return `age_years=${ageYears.value}&status=${status.value || ""}&keyword=${keyword.value.trim()}`;
 }
 
 const status = ref<string>("");
@@ -370,7 +371,7 @@ async function load() {
   try {
     loading.value = true;
     const qs = new URLSearchParams();
-    qs.set("age_years", String(ageYears));
+    qs.set("age_years", String(ageYears.value));
     qs.set("page", String(page.value));
     qs.set("page_size", String(pageSize.value));
     if (status.value) qs.set("status", status.value);
@@ -392,7 +393,7 @@ async function load() {
       if (totalTimer) clearTimeout(totalTimer);
       totalTimer = setTimeout(() => {
         const qs2 = new URLSearchParams();
-        qs2.set("age_years", String(ageYears));
+        qs2.set("age_years", String(ageYears.value));
         if (status.value) qs2.set("status", status.value);
         if (keyword.value.trim()) qs2.set("keyword", keyword.value.trim());
         apiGet(`/api/pc-assets-count?${qs2.toString()}`)
@@ -471,7 +472,7 @@ async function exportExcel(all: boolean) {
     let totalLocal = 0;
     while (allRows.length < maxRows) {
       const qs = new URLSearchParams();
-      qs.set("age_years", String(ageYears));
+      qs.set("age_years", String(ageYears.value));
       qs.set("page", String(p));
       qs.set("page_size", String(size));
       if (status.value) qs.set("status", status.value);
@@ -536,5 +537,11 @@ async function exportExcel(all: boolean) {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  try {
+    const settings = await fetchSystemSettings();
+    ageYears.value = Number(settings?.pc_scrap_warning_years || ageYears.value || 5);
+  } catch {}
+  load();
+});
 </script>

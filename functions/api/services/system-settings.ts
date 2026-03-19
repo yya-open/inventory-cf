@@ -6,6 +6,7 @@ export type PublicScanMode = 'manual' | 'scanner' | 'camera';
 export type SystemSettings = {
   ui_default_page_size: number;
   asset_allow_physical_delete: boolean;
+  pc_scrap_warning_years: number;
   asset_archive_reason_options: string[];
   dictionary_department_options: string[];
   dictionary_pc_brand_options: string[];
@@ -21,6 +22,7 @@ export type SystemSettings = {
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui_default_page_size: 50,
   asset_allow_physical_delete: true,
+  pc_scrap_warning_years: 5,
   asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
   dictionary_department_options: [],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
@@ -92,6 +94,7 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
   return {
     ui_default_page_size: toInt(source.ui_default_page_size, DEFAULT_SYSTEM_SETTINGS.ui_default_page_size, 10, 200),
     asset_allow_physical_delete: toBoolean(source.asset_allow_physical_delete, DEFAULT_SYSTEM_SETTINGS.asset_allow_physical_delete),
+    pc_scrap_warning_years: toInt(source.pc_scrap_warning_years, DEFAULT_SYSTEM_SETTINGS.pc_scrap_warning_years, 1, 5),
     asset_archive_reason_options: toStringArray(source.asset_archive_reason_options, DEFAULT_SYSTEM_SETTINGS.asset_archive_reason_options),
     dictionary_department_options: toStringArray(source.dictionary_department_options, DEFAULT_SYSTEM_SETTINGS.dictionary_department_options),
     dictionary_pc_brand_options: toStringArray(source.dictionary_pc_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_pc_brand_options),
