@@ -129,40 +129,88 @@ export async function bootstrapAllDictionaries(db: D1Database) {
   }
 }
 
-async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {
-  const normalized = normalizeLabel(label);
-  if (!normalized) return 0;
-  if (key === 'pc_brand') {
-    const row = await db.prepare(`SELECT COUNT(*) AS c FROM pc_assets WHERE TRIM(COALESCE(brand, ''))=?`).bind(normalized).first<any>();
-    return Number(row?.c || 0);
+type ReferenceCountMap = Partial<Record<SystemDictionaryKey, Record<string, number>>>;
+
+function addCounts(target: Record<string, number>, rows: any[] | undefined | null) {
+  for (const row of rows || []) {
+    const label = normalizeLabel(row?.label);
+    if (!label) continue;
+    target[label] = Number(target[label] || 0) + Number(row?.c || 0);
   }
-  if (key === 'monitor_brand') {
-    const row = await db.prepare(`SELECT COUNT(*) AS c FROM monitor_assets WHERE TRIM(COALESCE(brand, ''))=?`).bind(normalized).first<any>();
-    return Number(row?.c || 0);
+}
+
+async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
+  const wanted = new Set(keys);
+  const counts: ReferenceCountMap = {};
+
+  if (wanted.has('pc_brand')) {
+    const { results } = await db.prepare(
+      `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
+       FROM pc_assets
+       GROUP BY TRIM(COALESCE(brand, ''))`
+    ).all<any>();
+    counts.pc_brand = {};
+    addCounts(counts.pc_brand, results);
   }
-  if (key === 'asset_archive_reason') {
-    const row = await db.prepare(
-      `SELECT
-         (SELECT COUNT(*) FROM pc_assets WHERE archived=1 AND TRIM(COALESCE(archived_reason, ''))=?)
-       + (SELECT COUNT(*) FROM monitor_assets WHERE archived=1 AND TRIM(COALESCE(archived_reason, ''))=?) AS c`
-    ).bind(normalized, normalized).first<any>();
-    return Number(row?.c || 0);
+
+  if (wanted.has('monitor_brand')) {
+    const { results } = await db.prepare(
+      `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
+       FROM monitor_assets
+       GROUP BY TRIM(COALESCE(brand, ''))`
+    ).all<any>();
+    counts.monitor_brand = {};
+    addCounts(counts.monitor_brand, results);
   }
-  const row = await db.prepare(
-    `WITH latest_pc_out AS (
-       SELECT o.asset_id, o.department
-       FROM pc_out o
-       JOIN (
-         SELECT asset_id, MAX(id) AS max_id
-         FROM pc_out
-         GROUP BY asset_id
-       ) x ON x.asset_id=o.asset_id AND x.max_id=o.id
-     )
-     SELECT
-       (SELECT COUNT(*) FROM latest_pc_out WHERE TRIM(COALESCE(department, ''))=?)
-     + (SELECT COUNT(*) FROM monitor_assets WHERE TRIM(COALESCE(department, ''))=?) AS c`
-  ).bind(normalized, normalized).first<any>();
-  return Number(row?.c || 0);
+
+  if (wanted.has('asset_archive_reason')) {
+    const { results } = await db.prepare(
+      `SELECT label, SUM(c) AS c
+       FROM (
+         SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
+         FROM pc_assets
+         WHERE archived=1
+         GROUP BY TRIM(COALESCE(archived_reason, ''))
+         UNION ALL
+         SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
+         FROM monitor_assets
+         WHERE archived=1
+         GROUP BY TRIM(COALESCE(archived_reason, ''))
+       ) t
+       GROUP BY label`
+    ).all<any>();
+    counts.asset_archive_reason = {};
+    addCounts(counts.asset_archive_reason, results);
+  }
+
+  if (wanted.has('department')) {
+    const { results } = await db.prepare(
+      `WITH latest_pc_out AS (
+         SELECT o.asset_id, o.department
+         FROM pc_out o
+         JOIN (
+           SELECT asset_id, MAX(id) AS max_id
+           FROM pc_out
+           GROUP BY asset_id
+         ) x ON x.asset_id=o.asset_id AND x.max_id=o.id
+       )
+       SELECT label, SUM(c) AS c
+       FROM (
+         SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
+         FROM latest_pc_out
+         GROUP BY TRIM(COALESCE(department, ''))
+         UNION ALL
+         SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
+         FROM monitor_assets
+         GROUP BY TRIM(COALESCE(department, ''))
+       ) t
+       GROUP BY label`
+    ).all<any>();
+    counts.department = {};
+    addCounts(counts.department, results);
+  }
+
+  return counts;
 }
 
 function normalizeRow(row: any, reference_count = 0): SystemDictionaryItem {
@@ -192,11 +240,14 @@ export async function listSystemDictionaryItems(db: D1Database, key?: SystemDict
      ORDER BY dictionary_key ASC, sort_order ASC, id ASC`
   ).bind(...binds).all<any>();
   const rows = results || [];
-  const data: SystemDictionaryItem[] = [];
-  for (const row of rows) {
-    data.push(normalizeRow(row, await getReferenceCount(db, String(row.dictionary_key) as SystemDictionaryKey, row.label)));
-  }
-  return data;
+  const keys = Array.from(new Set(rows.map((row: any) => String(row?.dictionary_key || '') as SystemDictionaryKey)));
+  const referenceCounts = await loadReferenceCounts(db, keys);
+  return rows.map((row: any) => {
+    const dictionaryKey = String(row?.dictionary_key || '') as SystemDictionaryKey;
+    const label = normalizeLabel(row?.label);
+    const referenceCount = Number(referenceCounts[dictionaryKey]?.[label] || 0);
+    return normalizeRow(row, referenceCount);
+  });
 }
 
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {

@@ -256,6 +256,20 @@ function nextSortOrder(key: SystemDictionaryKey) {
   return Math.max(...list.map((item) => Number(item.sort_order || 0))) + 10;
 }
 
+function sortDictionaryList(list: SystemDictionaryItem[]) {
+  return [...list].sort((a, b) => Number(a.sort_order || 0) - Number(b.sort_order || 0) || Number(a.id || 0) - Number(b.id || 0));
+}
+
+function syncFormDictionaryOptions() {
+  form.value = {
+    ...form.value,
+    asset_archive_reason_options: sortDictionaryList(dictionaryRows('asset_archive_reason')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
+    dictionary_department_options: sortDictionaryList(dictionaryRows('department')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
+    dictionary_pc_brand_options: sortDictionaryList(dictionaryRows('pc_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
+    dictionary_monitor_brand_options: sortDictionaryList(dictionaryRows('monitor_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
+  };
+}
+
 async function loadSettingsOnly() {
   form.value = await fetchSystemSettings();
 }
@@ -263,6 +277,7 @@ async function loadSettingsOnly() {
 async function loadDictionariesOnly() {
   const data = await fetchSystemDictionaries();
   dictionaries.value = normalizeGrouped(data?.grouped);
+  syncFormDictionaryOptions();
 }
 
 async function reload() {
@@ -341,20 +356,29 @@ async function saveDictionary(row: SystemDictionaryItem) {
 }
 
 async function moveRow(key: SystemDictionaryKey, index: number, delta: number) {
-  const list = dictionaryRows(key);
+  const list = [...dictionaryRows(key)];
   const targetIndex = index + delta;
   if (targetIndex < 0 || targetIndex >= list.length) return;
   const current = list[index];
   const target = list[targetIndex];
   if (!current || !target) return;
-  const currentSort = Number(current.sort_order || 0);
-  const targetSort = Number(target.sort_order || 0);
+  const currentSort = Number(current.sort_order || 0) || (index + 1) * 10;
+  const targetSort = Number(target.sort_order || 0) || (targetIndex + 1) * 10;
+  const previousList = list.map((item) => ({ ...item }));
+  const nextList = list.map((item) => ({ ...item }));
+  nextList[index] = { ...target, sort_order: currentSort };
+  nextList[targetIndex] = { ...current, sort_order: targetSort };
+  dictionaries.value = { ...dictionaries.value, [key]: sortDictionaryList(nextList) };
+  syncFormDictionaryOptions();
   rowLoadingMap.value = { ...rowLoadingMap.value, [current.id]: true, [target.id]: true };
   try {
-    await updateSystemDictionaryItem({ id: current.id, sort_order: targetSort || (targetIndex + 1) * 10, label: current.label, enabled: current.enabled, dictionary_key: current.dictionary_key });
-    await updateSystemDictionaryItem({ id: target.id, sort_order: currentSort || (index + 1) * 10, label: target.label, enabled: target.enabled, dictionary_key: target.dictionary_key });
-    await Promise.all([loadDictionariesOnly(), loadSettingsOnly()]);
+    await Promise.all([
+      updateSystemDictionaryItem({ id: current.id, sort_order: targetSort, label: current.label, enabled: current.enabled, dictionary_key: current.dictionary_key }),
+      updateSystemDictionaryItem({ id: target.id, sort_order: currentSort, label: target.label, enabled: target.enabled, dictionary_key: target.dictionary_key }),
+    ]);
   } catch (e: any) {
+    dictionaries.value = { ...dictionaries.value, [key]: previousList };
+    syncFormDictionaryOptions();
     ElMessage.error(e?.message || '排序调整失败');
   } finally {
     rowLoadingMap.value = { ...rowLoadingMap.value, [current.id]: false, [target.id]: false };
