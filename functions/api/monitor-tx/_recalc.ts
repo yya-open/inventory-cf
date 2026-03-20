@@ -1,4 +1,5 @@
 import { sqlNowStored } from "../_time";
+import { buildMonitorAssetSearchText } from '../services/asset-ledger';
 
 export async function recalcMonitorAssets(db: D1Database, assetIds: number[]) {
   const ids = [...new Set(assetIds.filter((x) => Number.isFinite(x) && x > 0))];
@@ -26,11 +27,11 @@ export async function recalcMonitorAssets(db: D1Database, assetIds: number[]) {
         db
           .prepare(
             `UPDATE monitor_assets
-             SET status='IN_STOCK', employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
+             SET status='IN_STOCK', employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL, search_text_norm=?,
                  updated_at=${sqlNowStored()}
              WHERE id=?`
           )
-          .bind(id)
+          .bind(buildMonitorAssetSearchText({}, {}), id)
       );
       continue;
     }
@@ -41,34 +42,34 @@ export async function recalcMonitorAssets(db: D1Database, assetIds: number[]) {
         db
           .prepare(
             `UPDATE monitor_assets
-             SET status='ASSIGNED', location_id=?, employee_no=?, department=?, employee_name=?, is_employed=?, updated_at=${sqlNowStored()}
+             SET status='ASSIGNED', location_id=?, employee_no=?, department=?, employee_name=?, is_employed=?, search_text_norm=?, updated_at=${sqlNowStored()}
              WHERE id=?`
           )
-          .bind(t.to_location_id || null, t.employee_no || null, t.department || null, t.employee_name || null, t.is_employed || null, id)
+          .bind(t.to_location_id || null, t.employee_no || null, t.department || null, t.employee_name || null, t.is_employed || null, buildMonitorAssetSearchText(t, { employee_no: t.employee_no || null, employee_name: t.employee_name || null, department: t.department || null }), id)
       );
     } else if (type === "IN" || type === "RETURN") {
       batch.push(
         db
           .prepare(
             `UPDATE monitor_assets
-             SET status='IN_STOCK', location_id=?, employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
+             SET status='IN_STOCK', location_id=?, employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL, search_text_norm=?,
                  updated_at=${sqlNowStored()}
              WHERE id=?`
           )
-          .bind(t.to_location_id || null, id)
+          .bind(t.to_location_id || null, buildMonitorAssetSearchText(t, {}), id)
       );
     } else if (type === "TRANSFER") {
-      batch.push(db.prepare(`UPDATE monitor_assets SET location_id=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(t.to_location_id || null, id));
+      batch.push(db.prepare(`UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(t.to_location_id || null, buildMonitorAssetSearchText(t, { employee_no: t.employee_no || null, employee_name: t.employee_name || null, department: t.department || null }), id));
     } else if (type === "SCRAP") {
       batch.push(
         db
           .prepare(
             `UPDATE monitor_assets
-             SET status='SCRAPPED', employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
+             SET status='SCRAPPED', employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL, search_text_norm=?,
                  updated_at=${sqlNowStored()}
              WHERE id=?`
           )
-          .bind(id)
+          .bind(buildMonitorAssetSearchText(t, {}), id)
       );
     } else {
       batch.push(db.prepare(`UPDATE monitor_assets SET updated_at=${sqlNowStored()} WHERE id=?`).bind(id));

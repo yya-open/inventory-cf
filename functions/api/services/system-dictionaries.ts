@@ -1,4 +1,5 @@
 import { sqlNowStored } from '../_time';
+import { ensurePcLatestStateTable } from './pc-latest-state';
 
 export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand';
 
@@ -33,11 +34,8 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
 
-const REFERENCE_COUNT_CACHE_TTL_MS = 30 * 1000;
-let referenceCountCache: { expiresAt: number; counts: ReferenceCountMap } | null = null;
-
 export function invalidateSystemDictionaryReferenceCache() {
-  referenceCountCache = null;
+  // 已升级为持久计数表，不再使用进程内缓存；保留兼容导出。
 }
 
 function normalizeLabel(value: any) {
@@ -108,6 +106,21 @@ export async function ensureSystemDictionaryTable(db: D1Database) {
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_enabled ON system_dictionary_items(dictionary_key, enabled, sort_order, id)`).run();
 }
 
+
+export async function ensureDictionaryUsageCountersTable(db: D1Database) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS dictionary_usage_counters (
+      dictionary_key TEXT NOT NULL,
+      normalized_label TEXT NOT NULL,
+      label TEXT NOT NULL,
+      reference_count INTEGER NOT NULL DEFAULT 0,
+      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+      PRIMARY KEY (dictionary_key, normalized_label)
+    )`
+  ).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dictionary_usage_counters_key_count ON dictionary_usage_counters(dictionary_key, reference_count DESC, normalized_label ASC)`).run();
+}
+
 async function readLegacyDictionaryValues(db: D1Database, key: SystemDictionaryKey) {
   await ensureLegacySystemSettingsTable(db);
   const legacyKey = LEGACY_SETTING_KEYS[key];
@@ -152,6 +165,7 @@ function addCounts(target: Record<string, number>, rows: any[] | undefined | nul
 }
 
 async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCountMap> {
+  await ensurePcLatestStateTable(db);
   const counts: ReferenceCountMap = {
     pc_brand: {},
     monitor_brand: {},
@@ -186,20 +200,11 @@ async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCount
        GROUP BY label`
     ).all<any>(),
     db.prepare(
-      `WITH latest_pc_out AS (
-         SELECT o.asset_id, o.department
-         FROM pc_out o
-         JOIN (
-           SELECT asset_id, MAX(id) AS max_id
-           FROM pc_out
-           GROUP BY asset_id
-         ) x ON x.asset_id=o.asset_id AND x.max_id=o.id
-       )
-       SELECT label, SUM(c) AS c
+      `SELECT label, SUM(c) AS c
        FROM (
-         SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
-         FROM latest_pc_out
-         GROUP BY TRIM(COALESCE(department, ''))
+         SELECT TRIM(COALESCE(current_department, '')) AS label, COUNT(*) AS c
+         FROM pc_asset_latest_state
+         GROUP BY TRIM(COALESCE(current_department, ''))
          UNION ALL
          SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
          FROM monitor_assets
@@ -216,20 +221,56 @@ async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCount
   return counts;
 }
 
+export async function syncSystemDictionaryUsageCounters(db: D1Database, keys?: SystemDictionaryKey[]) {
+  await ensureDictionaryUsageCountersTable(db);
+  const wanted = Array.from(new Set((keys && keys.length ? keys : ALL_DICTIONARY_KEYS).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
+  if (!wanted.length) return;
+  const allCounts = await computeAllReferenceCounts(db);
+  const statements: D1PreparedStatement[] = [];
+  for (const key of wanted) {
+    statements.push(db.prepare(`DELETE FROM dictionary_usage_counters WHERE dictionary_key=?`).bind(key));
+    const rows = Object.entries(allCounts[key] || {});
+    for (const [label, referenceCount] of rows) {
+      const normalized = normalizeComparable(label);
+      if (!normalized) continue;
+      statements.push(
+        db.prepare(
+          `INSERT INTO dictionary_usage_counters (dictionary_key, normalized_label, label, reference_count, updated_at)
+           VALUES (?, ?, ?, ?, ${sqlNowStored()})`
+        ).bind(key, normalized, label, Number(referenceCount || 0))
+      );
+    }
+  }
+  if (statements.length) await db.batch(statements);
+}
+
 async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
+  await ensureDictionaryUsageCountersTable(db);
   const wanted = Array.from(new Set((keys || []).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
   if (!wanted.length) return {};
-  const now = Date.now();
-  if (!referenceCountCache || referenceCountCache.expiresAt <= now) {
-    referenceCountCache = {
-      expiresAt: now + REFERENCE_COUNT_CACHE_TTL_MS,
-      counts: await computeAllReferenceCounts(db),
-    };
+  const placeholders = wanted.map(() => '?').join(',');
+  let { results } = await db.prepare(
+    `SELECT dictionary_key, label, reference_count
+     FROM dictionary_usage_counters
+     WHERE dictionary_key IN (${placeholders})`
+  ).bind(...wanted).all<any>();
+  if (!(results || []).length) {
+    await syncSystemDictionaryUsageCounters(db, wanted);
+    ({ results } = await db.prepare(
+      `SELECT dictionary_key, label, reference_count
+       FROM dictionary_usage_counters
+       WHERE dictionary_key IN (${placeholders})`
+    ).bind(...wanted).all<any>());
   }
-  return wanted.reduce((acc, key) => {
-    acc[key] = { ...(referenceCountCache?.counts?.[key] || {}) };
-    return acc;
-  }, {} as ReferenceCountMap);
+  const counts: ReferenceCountMap = {};
+  for (const key of wanted) counts[key] = {};
+  for (const row of results || []) {
+    const key = String(row?.dictionary_key || '') as SystemDictionaryKey;
+    const label = normalizeLabel(row?.label);
+    if (!key || !label) continue;
+    (counts[key] ||= {})[label] = Number(row?.reference_count || 0);
+  }
+  return counts;
 }
 
 async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {

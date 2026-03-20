@@ -1,5 +1,5 @@
 import { toSqlRange } from '../_date';
-import { buildKeywordWhere } from '../_search';
+import { buildKeywordWhere, buildNormalizedKeywordWhere } from '../_search';
 
 export type AuditModuleCode = 'STOCK' | 'STOCKTAKE' | 'ITEM' | 'USER' | 'AUDIT' | 'ADMIN' | 'PC' | 'MONITOR' | 'OTHER';
 
@@ -86,13 +86,19 @@ export function buildAuditWhere(filters: AuditListFilters) {
   if (filters.keyword) {
     const kw = buildKeywordWhere(filters.keyword, {
       numericId: 'a.id',
-      exact: ['a.entity_id'],
-      prefix: ['a.username', 'a.action', 'a.entity', 'a.entity_id'],
-      contains: ['a.username', 'a.action', 'a.entity', 'a.entity_id'],
+      exact: ['a.entity_id', 'a.target_code'],
+      prefix: ['a.username', 'a.action', 'a.entity', 'a.entity_id', 'a.target_name', 'a.target_code'],
+      contains: [],
     });
-    if (kw.sql) {
-      wh.push(kw.sql);
-      binds.push(...kw.binds);
+    const norm = buildNormalizedKeywordWhere(filters.keyword, {
+      column: 'a.search_text_norm',
+      numericId: 'a.id',
+      exact: ['a.entity_id', 'a.target_code'],
+    });
+    const parts = [kw.sql, norm.sql].filter(Boolean);
+    if (parts.length) {
+      wh.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
+      binds.push(...kw.binds, ...norm.binds);
     }
   }
   if (filters.action) { wh.push('a.action=?'); binds.push(filters.action); }
@@ -133,10 +139,14 @@ export async function listAuditRows(db: D1Database, filters: AuditListFilters, o
     `SELECT a.id, a.created_at, a.username, a.action, a.entity, a.entity_id, a.ip, a.ua, a.payload_json,
             ${AUDIT_MODULE_SQL} AS module_code,
             ${AUDIT_HIGH_RISK_SQL} AS high_risk,
-            COALESCE(itx.name, iitems.name, json_extract(a.payload_json,'$.after.name'), json_extract(a.payload_json,'$.name')) AS item_name,
+            a.target_name,
+            a.target_code,
+            a.summary_text,
+            COALESCE(a.target_name, itx.name, iitems.name, json_extract(a.payload_json,'$.after.name'), json_extract(a.payload_json,'$.name')) AS item_name,
             COALESCE(
               CASE WHEN a.entity = 'users' THEN
                 COALESCE(
+                  a.target_name,
                   json_extract(a.payload_json,'$.after.username'),
                   json_extract(a.payload_json,'$.before.username'),
                   json_extract(a.payload_json,'$.username'),

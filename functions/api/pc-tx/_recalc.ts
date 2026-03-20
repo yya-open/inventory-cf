@@ -1,4 +1,5 @@
 import { sqlNowStored } from "../_time";
+import { rebuildPcLatestStateForAssets } from '../services/pc-latest-state';
 
 export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number | string)[]) {
   const ids = [...new Set(assetIds.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
@@ -26,4 +27,5 @@ export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number | 
 
     await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(status, assetId).run();
   }
+  if (ids.length) await rebuildPcLatestStateForAssets(db, ids);
 }

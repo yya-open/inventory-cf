@@ -10,6 +10,7 @@ import {
   monitorAssetInsertSql,
   monitorAssetUpdateSql,
   parseMonitorAssetInput,
+  buildMonitorAssetSearchText,
 } from './services/asset-ledger';
 import {
   archiveAsset,
@@ -19,7 +20,7 @@ import {
   hasRelatedHistory,
   purgeArchivedAsset,
 } from './services/asset-archive';
-import { invalidateSystemDictionaryReferenceCache } from './services/system-dictionaries';
+import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -51,10 +52,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const result = await env.DB
       .prepare(monitorAssetInsertSql())
-      .bind(payload.asset_code, payload.sn, payload.brand, payload.model, payload.size_inch, payload.remark, payload.location_id)
+.bind(payload.asset_code, payload.sn, payload.brand, payload.model, payload.size_inch, payload.remark, buildMonitorAssetSearchText(payload), payload.location_id)
       .run();
 
     invalidateSystemDictionaryReferenceCache();
+    await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
     const id = Number(result.meta.last_row_id || 0);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);
     return Response.json({ ok: true, message: '新增成功' });
@@ -84,10 +86,11 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     await env.DB
       .prepare(monitorAssetUpdateSql())
-      .bind(payload.asset_code, payload.sn, payload.brand, payload.model, payload.size_inch, payload.remark, payload.location_id, id)
+.bind(payload.asset_code, payload.sn, payload.brand, payload.model, payload.size_inch, payload.remark, buildMonitorAssetSearchText(payload, { employee_no: old.employee_no, employee_name: old.employee_name, department: old.department }), payload.location_id, id)
       .run();
 
     invalidateSystemDictionaryReferenceCache();
+    await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_UPDATE', 'monitor_assets', id, {
       before: {
         asset_code: old.asset_code,
@@ -124,6 +127,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (Number(asset.archived || 0) === 1) {
       const purgeSummary = await purgeArchivedAsset(env.DB, 'monitor', id);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', id, {
         asset_code: asset.asset_code,
         brand: asset.brand,
@@ -150,12 +154,14 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
       await archiveAsset(env.DB, 'monitor', id, user.username || null, archiveReason, null);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status, archived_reason: archiveReason });
       return Response.json({ ok: true, archived: true, message: hasRefs ? '该资产已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
     }
 
     await deleteAssetRow(env.DB, 'monitor', id);
     invalidateSystemDictionaryReferenceCache();
+    await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, { asset_code: asset.asset_code });
     return Response.json({ ok: true, message: '删除成功' });
   } catch (error: any) {

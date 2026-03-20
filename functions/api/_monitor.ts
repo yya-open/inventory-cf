@@ -56,6 +56,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           model TEXT,
           size_inch TEXT,
           remark TEXT,
+          search_text_norm TEXT,
           status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
           location_id INTEGER,
           employee_no TEXT,
@@ -83,6 +84,7 @@ export async function ensureMonitorSchema(db: D1Database) {
     for (const ddl of [
       "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN employee_no TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN department TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN employee_name TEXT",
@@ -101,6 +103,8 @@ export async function ensureMonitorSchema(db: D1Database) {
     }
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run();
+    await db.prepare(`UPDATE monitor_assets SET search_text_norm=LOWER(TRIM(COALESCE(asset_code,'') || ' ' || COALESCE(sn,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(employee_no,'') || ' ' || COALESCE(employee_name,'') || ' ' || COALESCE(department,''))) WHERE COALESCE(search_text_norm,'')=''`).run();
 
     // monitor tx
     await db
@@ -160,9 +164,7 @@ export async function ensureMonitorSchema(db: D1Database) {
         CREATE TABLE IF NOT EXISTS public_api_throttle (
           k TEXT PRIMARY KEY,
           count INTEGER NOT NULL DEFAULT 0,
-          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
-          archived INTEGER NOT NULL DEFAULT 0,
-          archived_at TEXT
+          updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
         )
       `)
       .run();

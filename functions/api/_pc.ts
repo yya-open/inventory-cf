@@ -51,6 +51,7 @@ export async function ensurePcSchema(db: D1Database) {
       disk_capacity TEXT,
       memory_size TEXT,
       remark TEXT,
+      search_text_norm TEXT,
       status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
       updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
@@ -66,6 +67,7 @@ export async function ensurePcSchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)").run();
 
   for (const ddl of [
+    "ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT",
     "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
     "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
     "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
@@ -79,6 +81,25 @@ export async function ensurePcSchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run();
+  await db.prepare(`UPDATE pc_assets SET search_text_norm=LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(disk_capacity,'') || ' ' || COALESCE(memory_size,''))) WHERE COALESCE(search_text_norm,'')=''`).run();
+
+  await db.prepare(`CREATE TABLE IF NOT EXISTS pc_asset_latest_state (
+    asset_id INTEGER PRIMARY KEY,
+    last_out_id INTEGER,
+    last_in_id INTEGER,
+    last_recycle_id INTEGER,
+    current_employee_no TEXT,
+    current_employee_name TEXT,
+    current_department TEXT,
+    last_config_date TEXT,
+    last_out_at TEXT,
+    last_in_at TEXT,
+    last_recycle_date TEXT,
+    updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+    FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
+  )`).run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_department ON pc_asset_latest_state(current_department, asset_id)").run();
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).
@@ -100,6 +121,7 @@ try {
           disk_capacity TEXT,
           memory_size TEXT,
           remark TEXT,
+          search_text_norm TEXT,
           status TEXT NOT NULL CHECK(status IN ('IN_STOCK','ASSIGNED','RECYCLED','SCRAPPED')) DEFAULT 'IN_STOCK',
           created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
@@ -111,8 +133,8 @@ try {
         )
       `),
       db.prepare(`
-        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by)
-        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,''))), status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL
         FROM pc_assets
       `),
       db.prepare("DROP TABLE pc_assets"),

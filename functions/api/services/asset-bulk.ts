@@ -9,12 +9,14 @@ import {
   pcAssetBulkOwnerSql,
   pcAssetBulkStatusSql,
   pcAssetRestoreSql,
+  buildMonitorAssetSearchText,
 } from './asset-ledger';
+import { upsertPcLatestState } from './pc-latest-state';
 import { type AssetArchiveKind } from './asset-archive';
 
 const DEFAULT_BATCH_SIZE = 100;
 
-type AssetRow = { id: number; status?: string | null; archived?: number | null };
+type AssetRow = Record<string, any> & { id: number; status?: string | null; archived?: number | null };
 
 type AssetTable = 'pc_assets' | 'monitor_assets';
 
@@ -68,9 +70,10 @@ export async function loadAssetRows(
     clauses.push(`status IN (${statuses.map(() => '?').join(',')})`);
     binds.push(...statuses);
   }
-  const sql = `SELECT id, status, archived FROM ${tableOf(kind)} WHERE ${clauses.join(' AND ')} ORDER BY id ASC`;
+  const sql = `SELECT * FROM ${tableOf(kind)} WHERE ${clauses.join(' AND ')} ORDER BY id ASC`;
   const { results } = await db.prepare(sql).bind(...binds).all<any>();
   return (results || []).map((row: any) => ({
+    ...(row || {}),
     id: Number(row?.id || 0),
     status: row?.status || null,
     archived: Number(row?.archived || 0),
@@ -118,6 +121,10 @@ export async function bulkUpdatePcStatus(
   const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
   const statements = targetIds.map((id) => db.prepare(pcAssetBulkStatusSql()).bind(status, id));
   await runBatchStatements(db, statements);
+  if (targetIds.length && status !== 'ASSIGNED') {
+    const clearStatements = targetIds.map((id) => db.prepare(`UPDATE pc_asset_latest_state SET current_employee_no=NULL, current_employee_name=NULL, current_department=NULL, updated_at=datetime('now','+8 hours') WHERE asset_id=?`).bind(id));
+    await runBatchStatements(db, clearStatements);
+  }
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
 
@@ -129,7 +136,29 @@ export async function bulkUpdateMonitorStatus(
   const rows = await loadAssetRows(db, 'monitor', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
   const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
-  const statements = targetIds.map((id) => db.prepare(monitorAssetBulkStatusSql()).bind(status, status, status, status, status, id));
+  const rowsById = new Map(rows.map((row: any) => [row.id, row]));
+  const statements = targetIds.map((id) => {
+    const row: any = rowsById.get(id) || {};
+    return db.prepare(
+      `UPDATE monitor_assets
+       SET status=?,
+           employee_no=CASE WHEN ?='ASSIGNED' THEN employee_no ELSE NULL END,
+           department=CASE WHEN ?='ASSIGNED' THEN department ELSE NULL END,
+           employee_name=CASE WHEN ?='ASSIGNED' THEN employee_name ELSE NULL END,
+           is_employed=CASE WHEN ?='ASSIGNED' THEN is_employed ELSE NULL END,
+           search_text_norm=?,
+           updated_at=datetime('now','+8 hours')
+       WHERE id=?`
+    ).bind(
+      status,
+      status,
+      status,
+      status,
+      status,
+      buildMonitorAssetSearchText(row, status === 'ASSIGNED' ? { employee_no: row.employee_no, employee_name: row.employee_name, department: row.department } : {}),
+      id,
+    );
+  });
   await runBatchStatements(db, statements);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
@@ -142,7 +171,8 @@ export async function bulkUpdateMonitorLocation(
   const rows = await loadAssetRows(db, 'monitor', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
   const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
-  const statements = targetIds.map((id) => db.prepare(monitorAssetBulkLocationSql()).bind(locationId, id));
+  const rowsById = new Map(rows.map((row: any) => [row.id, row]));
+  const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(locationId, buildMonitorAssetSearchText(row, { employee_no: row.employee_no, employee_name: row.employee_name, department: row.department }), id); });
   await runBatchStatements(db, statements);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
@@ -155,7 +185,8 @@ export async function bulkUpdateMonitorOwner(
   const rows = await loadAssetRows(db, 'monitor', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
   const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
-  const statements = targetIds.map((id) => db.prepare(monitorAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, id));
+  const rowsById = new Map(rows.map((row: any) => [row.id, row]));
+  const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET status='ASSIGNED', employee_no=?, department=?, employee_name=?, is_employed='Y', search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(owner.employee_no, owner.department, owner.employee_name, buildMonitorAssetSearchText(row, { employee_no: owner.employee_no, employee_name: owner.employee_name, department: owner.department }), id); });
   await runBatchStatements(db, statements);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
@@ -185,6 +216,13 @@ export async function bulkUpdatePcOwner(
   const extraSkippedIds = targetIds.filter((id) => !effectiveIds.includes(id));
   const statements = effectiveIds.map((assetId) => db.prepare(pcAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, Number(latestOutByAsset.get(assetId) || 0)));
   await runBatchStatements(db, statements);
+  for (const assetId of effectiveIds) {
+    await upsertPcLatestState(db, assetId, {
+      current_employee_no: owner.employee_no,
+      current_employee_name: owner.employee_name,
+      current_department: owner.department,
+    });
+  }
   return {
     changed: effectiveIds.length,
     skipped: skippedIds.length + extraSkippedIds.length,

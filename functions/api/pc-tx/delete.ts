@@ -3,6 +3,7 @@ import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchema } from "../_pc";
 import { recalcPcAssetStatuses } from "./_recalc";
+import { syncSystemDictionaryUsageCounters } from '../services/system-dictionaries';
 
 type Entry = { id: number; type: string };
 
@@ -50,6 +51,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     await recalcPcAssetStatuses(env.DB, assetIds);
+    await syncSystemDictionaryUsageCounters(env.DB, ['department']);
     await logAudit(env.DB, request, actor, "PC_TX_DELETE", "pc_tx", null, {
       count: entries.length,
       deleted,

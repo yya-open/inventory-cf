@@ -58,6 +58,19 @@ export async function ensureSystemSettingsTable(db: D1Database) {
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)`).run();
 }
 
+export async function ensureSystemSettingsMetaTable(db: D1Database) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS system_settings_meta (
+      id INTEGER PRIMARY KEY CHECK (id = 1),
+      version INTEGER NOT NULL DEFAULT 0,
+      settings_json TEXT NOT NULL DEFAULT '{}',
+      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+      updated_by TEXT
+    )`
+  ).run();
+  await db.prepare(`INSERT OR IGNORE INTO system_settings_meta (id, version, settings_json) VALUES (1, 0, '{}')`).run();
+}
+
 function toBoolean(value: any, fallback: boolean) {
   if (value === true || value === false) return value;
   if (value === 1 || value === '1' || value === 'true') return true;
@@ -116,13 +129,14 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
   };
 }
 
-async function getSystemSettingsVersion(db: D1Database) {
-  await ensureSystemSettingsTable(db);
-  const row = await db.prepare(`SELECT MAX(updated_at) AS updated_at FROM system_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`).bind(...SETTING_KEYS).first<any>();
-  return normalizeVersion(row?.updated_at);
+function toSnapshotPayload(settings: SystemSettings) {
+  return SETTING_KEYS.reduce((acc, key) => {
+    acc[key] = settings[key];
+    return acc;
+  }, {} as Record<string, any>);
 }
 
-export async function getSystemSettings(db: D1Database): Promise<SystemSettings> {
+async function getLegacySettingsPatch(db: D1Database) {
   await ensureSystemSettingsTable(db);
   const rows = await db.prepare(`SELECT key, value_json, updated_at FROM system_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`).bind(...SETTING_KEYS).all<any>();
   const patch: Record<string, any> = {};
@@ -138,6 +152,33 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
     const updatedAt = normalizeVersion(row?.updated_at);
     if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
   }
+  return { patch, latestUpdatedAt };
+}
+
+async function getSettingsMetaRow(db: D1Database) {
+  await ensureSystemSettingsMetaTable(db);
+  return db.prepare(`SELECT id, version, settings_json, updated_at FROM system_settings_meta WHERE id=1`).first<any>();
+}
+
+export async function getSystemSettings(db: D1Database): Promise<SystemSettings> {
+  await ensureSystemSettingsTable(db);
+  const meta = await getSettingsMetaRow(db);
+  let patch: Record<string, any> = {};
+  let latestUpdatedAt = normalizeVersion(meta?.updated_at);
+  try {
+    const parsed = JSON.parse(String(meta?.settings_json || '{}'));
+    if (parsed && typeof parsed === 'object' && Object.keys(parsed).length) {
+      patch = parsed as Record<string, any>;
+    } else {
+      const legacy = await getLegacySettingsPatch(db);
+      patch = legacy.patch;
+      latestUpdatedAt = legacy.latestUpdatedAt || latestUpdatedAt;
+    }
+  } catch {
+    const legacy = await getLegacySettingsPatch(db);
+    patch = legacy.patch;
+    latestUpdatedAt = legacy.latestUpdatedAt || latestUpdatedAt;
+  }
   patch.asset_archive_reason_options = await getEnabledDictionaryLabels(db, 'asset_archive_reason');
   patch.dictionary_department_options = await getEnabledDictionaryLabels(db, 'department');
   patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
@@ -148,12 +189,23 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
 
 export async function updateSystemSettings(db: D1Database, patch: Partial<SystemSettings>, updatedBy: string | null) {
   await ensureSystemSettingsTable(db);
+  await ensureSystemSettingsMetaTable(db);
   const expectedUpdatedAt = normalizeVersion(patch?.settings_updated_at);
-  const currentVersion = await getSystemSettingsVersion(db);
+  const currentMeta = await getSettingsMetaRow(db);
+  const currentVersion = normalizeVersion(currentMeta?.updated_at);
   if (expectedUpdatedAt && currentVersion && expectedUpdatedAt !== currentVersion) {
     throw Object.assign(new Error('系统配置已被其他管理员更新，请刷新后重试'), { status: 409 });
   }
   const next = normalizeSystemSettings({ ...(await getSystemSettings(db)), ...patch });
+  const snapshotJson = JSON.stringify(toSnapshotPayload(next));
+  const result = await db.prepare(
+    `UPDATE system_settings_meta
+     SET version=version+1, settings_json=?, updated_at=${sqlNowStored()}, updated_by=?
+     WHERE id=1 AND updated_at=?`
+  ).bind(snapshotJson, updatedBy || null, currentVersion).run();
+  if (Number((result as any)?.meta?.changes || 0) === 0) {
+    throw Object.assign(new Error('系统配置已被其他管理员更新，请刷新后重试'), { status: 409 });
+  }
   for (const key of SETTING_KEYS) {
     await db.prepare(
       `INSERT INTO system_settings (key, value_json, updated_at, updated_by)

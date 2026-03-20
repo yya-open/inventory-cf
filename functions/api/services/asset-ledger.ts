@@ -1,4 +1,4 @@
-import { buildKeywordWhere } from '../_search';
+import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 
@@ -39,6 +39,24 @@ function escapeSqlLike(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+export function buildPcAssetSearchText(input: Partial<PcAssetInput> | any) {
+  return normalizeSearchText(input?.serial_no, input?.brand, input?.model, input?.remark, input?.disk_capacity, input?.memory_size);
+}
+
+export function buildMonitorAssetSearchText(input: Partial<MonitorAssetInput> | any, extra?: { employee_no?: string | null; employee_name?: string | null; department?: string | null }) {
+  return normalizeSearchText(
+    input?.asset_code,
+    input?.sn,
+    input?.brand,
+    input?.model,
+    input?.size_inch,
+    input?.remark,
+    extra?.employee_no,
+    extra?.employee_name,
+    extra?.department,
+  );
+}
+
 function applyArchiveReasonFilter(clauses: string[], binds: any[], url: URL) {
   const archiveReason = (url.searchParams.get('archive_reason') || '').trim();
   if (!archiveReason) return;
@@ -75,11 +93,17 @@ export function buildPcAssetQuery(url: URL) {
       numericId: 'a.id',
       exact: ['a.serial_no'],
       prefix: ['a.serial_no', 'a.brand', 'a.model'],
-      contains: ['a.brand', 'a.model', 'a.remark'],
+      contains: [],
     });
-    if (kw.sql) {
-      clauses.push(kw.sql);
-      binds.push(...kw.binds);
+    const norm = buildNormalizedKeywordWhere(keyword, {
+      column: 'a.search_text_norm',
+      numericId: 'a.id',
+      exact: ['a.serial_no'],
+    });
+    const parts = [kw.sql, norm.sql].filter(Boolean);
+    if (parts.length) {
+      clauses.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
+      binds.push(...kw.binds, ...norm.binds);
     }
   }
 
@@ -129,11 +153,17 @@ export function buildMonitorAssetQuery(url: URL) {
       numericId: 'a.id',
       exact: ['a.asset_code', 'a.sn', 'a.employee_no'],
       prefix: ['a.asset_code', 'a.sn', 'a.brand', 'a.model', 'a.employee_name', 'a.department'],
-      contains: ['a.brand', 'a.model', 'a.remark', 'a.employee_name', 'a.department'],
+      contains: [],
     });
-    if (kw.sql) {
-      clauses.push(kw.sql);
-      binds.push(...kw.binds);
+    const norm = buildNormalizedKeywordWhere(keyword, {
+      column: 'a.search_text_norm',
+      numericId: 'a.id',
+      exact: ['a.asset_code', 'a.sn', 'a.employee_no'],
+    });
+    const parts = [kw.sql, norm.sql].filter(Boolean);
+    if (parts.length) {
+      clauses.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
+      binds.push(...kw.binds, ...norm.binds);
     }
   }
 
@@ -161,42 +191,19 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
       ${query.where}
       ORDER BY a.id ASC
       LIMIT ? OFFSET ?
-    ),
-    latest_out AS (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM pc_out
-      WHERE asset_id IN (SELECT id FROM page_a)
-      GROUP BY asset_id
-    ),
-    latest_in AS (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM pc_in
-      WHERE asset_id IN (SELECT id FROM page_a)
-      GROUP BY asset_id
-    ),
-    latest_recycle AS (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM pc_recycle
-      WHERE asset_id IN (SELECT id FROM page_a)
-      GROUP BY asset_id
     )
     SELECT
       a.*,
-      o.employee_no   AS last_employee_no,
-      o.employee_name AS last_employee_name,
-      o.department    AS last_department,
-      o.config_date   AS last_config_date,
-      r.recycle_date  AS last_recycle_date,
-      o.created_at    AS last_out_at,
-      i.created_at    AS last_in_at
+      s.current_employee_no AS last_employee_no,
+      s.current_employee_name AS last_employee_name,
+      s.current_department AS last_department,
+      s.last_config_date,
+      s.last_recycle_date,
+      s.last_out_at,
+      s.last_in_at
     FROM pc_assets a
     JOIN page_a p ON p.id = a.id
-    LEFT JOIN latest_out lo ON lo.asset_id = a.id
-    LEFT JOIN pc_out o ON o.id = lo.max_id
-    LEFT JOIN latest_recycle lr ON lr.asset_id = a.id
-    LEFT JOIN pc_recycle r ON r.id = lr.max_id
-    LEFT JOIN latest_in li ON li.asset_id = a.id
-    LEFT JOIN pc_in i ON i.id = li.max_id
+    LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
     ORDER BY a.id ASC
   `;
   const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
@@ -356,22 +363,22 @@ export function pcAssetBulkOwnerSql() {
 export function pcAssetUpdateSql() {
   return `
     UPDATE pc_assets
-    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, archived=0, updated_at=${sqlNowStored()}
+    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, archived=0, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
 
 export function monitorAssetInsertSql() {
   return `
-    INSERT INTO monitor_assets (asset_code, sn, brand, model, size_inch, remark, status, location_id, archived, created_at, updated_at)
-    VALUES (?,?,?,?,?,?, 'IN_STOCK', ?, 0, ${sqlNowStored()}, ${sqlNowStored()})
+    INSERT INTO monitor_assets (asset_code, sn, brand, model, size_inch, remark, search_text_norm, status, location_id, archived, created_at, updated_at)
+    VALUES (?,?,?,?,?,?,?, 'IN_STOCK', ?, 0, ${sqlNowStored()}, ${sqlNowStored()})
   `;
 }
 
 export function monitorAssetUpdateSql() {
   return `
     UPDATE monitor_assets
-    SET asset_code=?, sn=?, brand=?, model=?, size_inch=?, remark=?, location_id=?, archived=0, updated_at=${sqlNowStored()}
+    SET asset_code=?, sn=?, brand=?, model=?, size_inch=?, remark=?, search_text_norm=?, location_id=?, archived=0, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }

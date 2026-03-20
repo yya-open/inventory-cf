@@ -1,4 +1,7 @@
 import { sqlNowStored } from '../_time';
+import { buildMonitorAssetSearchText, buildPcAssetSearchText } from './asset-ledger';
+import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
+import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
 export type PcRecycleAction = 'RETURN' | 'RECYCLE';
@@ -94,33 +97,33 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
     IN: {
       sql: `UPDATE monitor_assets
             SET status='IN_STOCK', location_id=?, employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
-                updated_at=${sqlNowStored()}
+                search_text_norm=?, updated_at=${sqlNowStored()}
             WHERE id=?`,
-      binds: [toLocationId, asset.id],
+      binds: [toLocationId, buildMonitorAssetSearchText(asset, {}), asset.id],
     },
     OUT: {
       sql: `UPDATE monitor_assets
-            SET status='ASSIGNED', location_id=?, employee_no=?, department=?, employee_name=?, is_employed=?, updated_at=${sqlNowStored()}
+            SET status='ASSIGNED', location_id=?, employee_no=?, department=?, employee_name=?, is_employed=?, search_text_norm=?, updated_at=${sqlNowStored()}
             WHERE id=?`,
-      binds: [toLocationId, employeeNo, department, employeeName, isEmployed, asset.id],
+      binds: [toLocationId, employeeNo, department, employeeName, isEmployed, buildMonitorAssetSearchText(asset, { employee_no: employeeNo, employee_name: employeeName, department }), asset.id],
     },
     RETURN: {
       sql: `UPDATE monitor_assets
             SET status='IN_STOCK', location_id=?, employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
-                updated_at=${sqlNowStored()}
+                search_text_norm=?, updated_at=${sqlNowStored()}
             WHERE id=?`,
-      binds: [toLocationId, asset.id],
+      binds: [toLocationId, buildMonitorAssetSearchText(asset, {}), asset.id],
     },
     TRANSFER: {
-      sql: `UPDATE monitor_assets SET location_id=?, updated_at=${sqlNowStored()} WHERE id=?`,
-      binds: [toLocationId, asset.id],
+      sql: `UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=${sqlNowStored()} WHERE id=?`,
+      binds: [toLocationId, buildMonitorAssetSearchText(asset, {}), asset.id],
     },
     SCRAP: {
       sql: `UPDATE monitor_assets
             SET status='SCRAPPED', employee_no=NULL, department=NULL, employee_name=NULL, is_employed=NULL,
-                updated_at=${sqlNowStored()}
+                search_text_norm=?, updated_at=${sqlNowStored()}
             WHERE id=?`,
-      binds: [asset.id],
+      binds: [buildMonitorAssetSearchText(asset, {}), asset.id],
     },
   };
 
@@ -152,6 +155,7 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
     ),
     db.prepare(updateSqlByType[type].sql).bind(...updateSqlByType[type].binds),
   ]);
+  await syncSystemDictionaryUsageCounters(db, ['department']);
 }
 
 type CreatePcAssetArgs = {
@@ -170,13 +174,11 @@ type CreatePcAssetArgs = {
 
 export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
   const { db, inNo, brand, serialNo, model, manufactureDate, warrantyEnd = null, diskCapacity = null, memorySize = null, remark = null, createdBy } = args;
-  const ins = await db.batch([
-    db.prepare(
-      `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status, created_at, updated_at)
-       VALUES (?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
-    ).bind(brand, serialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark),
-  ]);
-  const lastId = Number((ins?.[0] as any)?.meta?.last_row_id || 0) || 0;
+  const ins = await db.prepare(
+    `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
+  ).bind(brand, serialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, buildPcAssetSearchText({ brand, serial_no: serialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize })).run();
+  const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
   const assetRow = lastId
     ? await db.prepare('SELECT id FROM pc_assets WHERE id=?').bind(lastId).first<any>()
     : await db.prepare('SELECT id FROM pc_assets WHERE serial_no=?').bind(serialNo).first<any>();
@@ -186,6 +188,9 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
     `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by, created_at)
      VALUES (?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
   ).bind(inNo, assetId, brand, serialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy).run();
+  const lastIn = await db.prepare(`SELECT id, created_at FROM pc_in WHERE in_no=?`).bind(inNo).first<any>();
+  await upsertPcLatestState(db, assetId, { last_in_id: Number(lastIn?.id || 0) || null, last_in_at: lastIn?.created_at || null, current_employee_no: null, current_employee_name: null, current_department: null });
+  await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
   return assetId;
 }
 
@@ -205,35 +210,43 @@ type ApplyPcOutArgs = {
 
 export async function applyPcOut(args: ApplyPcOutArgs) {
   const { db, outNo, asset, employeeNo, department, employeeName, isEmployed = null, configDate = null, remark = null, createdBy, statusAfter } = args;
-  await db.batch([
-    db.prepare(
-      `INSERT INTO pc_out (
-        out_no, asset_id,
-        employee_no, department, employee_name, is_employed,
-        brand, serial_no, model,
-        config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
-        remark, created_by, created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-    ).bind(
-      outNo,
-      asset.id,
-      employeeNo,
-      department,
-      employeeName,
-      isEmployed,
-      asset.brand,
-      asset.serial_no,
-      asset.model,
-      configDate,
-      asset.manufacture_date ?? null,
-      asset.warranty_end ?? null,
-      asset.disk_capacity ?? null,
-      asset.memory_size ?? null,
-      remark,
-      createdBy,
-    ),
-    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
-  ]);
+  await db.prepare(
+    `INSERT INTO pc_out (
+      out_no, asset_id,
+      employee_no, department, employee_name, is_employed,
+      brand, serial_no, model,
+      config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
+      remark, created_by, created_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+  ).bind(
+    outNo,
+    asset.id,
+    employeeNo,
+    department,
+    employeeName,
+    isEmployed,
+    asset.brand,
+    asset.serial_no,
+    asset.model,
+    configDate,
+    asset.manufacture_date ?? null,
+    asset.warranty_end ?? null,
+    asset.disk_capacity ?? null,
+    asset.memory_size ?? null,
+    remark,
+    createdBy,
+  ).run();
+  await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id).run();
+  const outRow = await db.prepare(`SELECT id, created_at FROM pc_out WHERE out_no=?`).bind(outNo).first<any>();
+  await upsertPcLatestState(db, asset.id, {
+    last_out_id: Number(outRow?.id || 0) || null,
+    current_employee_no: employeeNo,
+    current_employee_name: employeeName,
+    current_department: department,
+    last_config_date: configDate,
+    last_out_at: outRow?.created_at || null,
+  });
+  await syncSystemDictionaryUsageCounters(db, ['department']);
 }
 
 type ApplyPcRecycleArgs = {
@@ -250,31 +263,38 @@ type ApplyPcRecycleArgs = {
 export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
   const { db, recycleNo, action, asset, lastOut, recycleDate, remark = null, createdBy } = args;
   const statusAfter = pcStatusAfterRecycle(action);
-  await db.batch([
-    db.prepare(
-      `INSERT INTO pc_recycle (
-        recycle_no, action, asset_id,
-        employee_no, department, employee_name, is_employed,
-        brand, serial_no, model,
-        recycle_date, remark, created_by
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-    ).bind(
-      recycleNo,
-      action,
-      asset.id,
-      lastOut?.employee_no ?? null,
-      lastOut?.department ?? null,
-      lastOut?.employee_name ?? null,
-      lastOut?.is_employed ?? null,
-      asset.brand,
-      asset.serial_no,
-      asset.model,
-      recycleDate,
-      remark,
-      createdBy,
-    ),
-    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
-  ]);
+  await db.prepare(
+    `INSERT INTO pc_recycle (
+      recycle_no, action, asset_id,
+      employee_no, department, employee_name, is_employed,
+      brand, serial_no, model,
+      recycle_date, remark, created_by
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+  ).bind(
+    recycleNo,
+    action,
+    asset.id,
+    lastOut?.employee_no ?? null,
+    lastOut?.department ?? null,
+    lastOut?.employee_name ?? null,
+    lastOut?.is_employed ?? null,
+    asset.brand,
+    asset.serial_no,
+    asset.model,
+    recycleDate,
+    remark,
+    createdBy,
+  ).run();
+  await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id).run();
+  const recycleRow = await db.prepare(`SELECT id FROM pc_recycle WHERE recycle_no=?`).bind(recycleNo).first<any>();
+  await upsertPcLatestState(db, asset.id, {
+    last_recycle_id: Number(recycleRow?.id || 0) || null,
+    last_recycle_date: recycleDate,
+    current_employee_no: null,
+    current_employee_name: null,
+    current_department: null,
+  });
+  await syncSystemDictionaryUsageCounters(db, ['department']);
   return statusAfter;
 }
 
@@ -318,4 +338,12 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
     );
   }
   await db.batch(stmts);
+  for (const row of rows) {
+    await upsertPcLatestState(db, Number(row.id || 0), {
+      current_employee_no: null,
+      current_employee_name: null,
+      current_department: null,
+    });
+  }
+  await syncSystemDictionaryUsageCounters(db, ['department']);
 }

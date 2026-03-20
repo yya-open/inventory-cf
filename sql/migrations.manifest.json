@@ -113,5 +113,10 @@
     "id": "202603200010_audit_materialized_and_pc_warning_index",
     "file": "sql/migrate_audit_materialized_and_pc_warning_index.sql",
     "description": "materialize audit module/high-risk fields and add pc age-warning index"
+  },
+  {
+    "id": "202603200020_snapshot_counters_search_atomic_settings",
+    "file": "sql/migrate_snapshot_counters_search_atomic_settings.sql",
+    "description": "pc latest snapshot, search normalization, dictionary counters, and atomic settings meta"
   }
 ]

@@ -124,6 +124,10 @@ export async function ensureCoreSchema(db: D1Database) {
       ua TEXT,
       module_code TEXT,
       high_risk INTEGER NOT NULL DEFAULT 0,
+      target_name TEXT,
+      target_code TEXT,
+      summary_text TEXT,
+      search_text_norm TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
@@ -132,6 +136,8 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(username, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_module_created_at ON audit_log(module_code, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_target_code_created_at ON audit_log(target_code, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_search_text_norm ON audit_log(search_text_norm)",
 
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (

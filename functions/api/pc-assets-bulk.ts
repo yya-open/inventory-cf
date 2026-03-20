@@ -3,7 +3,7 @@ import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed } from './_pc';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 import { bulkArchiveAssets, bulkRestoreAssets, bulkUpdatePcOwner, bulkUpdatePcStatus } from './services/asset-bulk';
-import { invalidateSystemDictionaryReferenceCache } from './services/system-dictionaries';
+import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -21,6 +21,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       const meta = parseArchiveMeta(body);
       const result = await bulkArchiveAssets(env.DB, 'pc', ids, meta.reason, meta.note || null, user.username || null);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -41,6 +42,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (action === 'restore') {
       const result = await bulkRestoreAssets(env.DB, 'pc', ids);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
       await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -80,6 +82,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       const owner = parseOwnerInput(body);
       const result = await bulkUpdatePcOwner(env.DB, ids, owner);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
       await logAudit(env.DB, request, user, 'PC_ASSET_OWNER_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,

@@ -9,6 +9,7 @@ import {
   listPcAssets,
   parsePcAssetInput,
   pcAssetUpdateSql,
+  buildPcAssetSearchText,
 } from './services/asset-ledger';
 import {
   archiveAsset,
@@ -18,7 +19,7 @@ import {
   hasRelatedHistory,
   purgeArchivedAsset,
 } from './services/asset-archive';
-import { invalidateSystemDictionaryReferenceCache } from './services/system-dictionaries';
+import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -76,11 +77,13 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         payload.disk_capacity,
         payload.memory_size,
         payload.remark,
+        buildPcAssetSearchText(payload),
         id
       )
       .run();
 
     invalidateSystemDictionaryReferenceCache();
+    await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']);
     await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
       before: {
         brand: old.brand,
@@ -121,6 +124,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (Number(asset.archived || 0) === 1) {
       const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason', 'department']);
       await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -151,6 +155,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
       await archiveAsset(env.DB, 'pc', id, user.username || null, archiveReason, null);
       invalidateSystemDictionaryReferenceCache();
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -163,6 +168,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     await deleteAssetRow(env.DB, 'pc', id);
     invalidateSystemDictionaryReferenceCache();
+    await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason', 'department']);
     await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,

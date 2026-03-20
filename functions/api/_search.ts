@@ -15,6 +15,18 @@ function escapeLike(input: string) {
   return String(input || '').replace(/[\\%_]/g, '\\$&');
 }
 
+export function normalizeSearchText(...parts: any[]) {
+  return parts
+    .flatMap((part) => Array.isArray(part) ? part : [part])
+    .map((part) => String(part || ''))
+    .join(' ')
+    .replace(/[·•|,，;；/\\()\[\]{}]+/g, ' ')
+    .replace(/\u3000/g, ' ')
+    .toLowerCase()
+    .trim()
+    .replace(/\s+/g, ' ');
+}
+
 export type KeywordFields = {
   /** exact match fields, e.g. ["i.sku", "CAST(i.id AS TEXT)"] */
   exact?: string[];
@@ -93,5 +105,36 @@ export function buildKeywordWhere(keywordRaw: string, fields: KeywordFields) {
     sql: clauseGroups.length === 1 ? clauseGroups[0] : `(${clauseGroups.join(' AND ')})`,
     binds,
     mode: (hasContains ? 'contains' : 'prefix') as KeywordMode,
+  };
+}
+
+export function buildNormalizedKeywordWhere(keywordRaw: string, options: { column: string; numericId?: string; exact?: string[] } ) {
+  const keyword = normalizeKeyword(keywordRaw);
+  if (!keyword) return { sql: '', binds: [] as any[], mode: 'none' as KeywordMode };
+  const normalized = normalizeSearchText(keyword);
+  const tokens = normalized.split(' ').filter(Boolean);
+  if (!tokens.length) return { sql: '', binds: [] as any[], mode: 'none' as KeywordMode };
+
+  if (tokens.length === 1 && isDigits(tokens[0])) {
+    const exactClauses: string[] = [];
+    const exactBinds: any[] = [];
+    if (options.numericId) {
+      exactClauses.push(`${options.numericId} = ?`);
+      exactBinds.push(Number(tokens[0]));
+    }
+    for (const column of options.exact || []) {
+      exactClauses.push(`${column} = ?`);
+      exactBinds.push(tokens[0]);
+    }
+    if (exactClauses.length) {
+      return { sql: `(${exactClauses.join(' OR ')})`, binds: exactBinds, mode: 'exact' as KeywordMode };
+    }
+  }
+
+  const groups = tokens.map((token) => `${options.column} LIKE ? ESCAPE '\\'`);
+  return {
+    sql: groups.length === 1 ? groups[0] : `(${groups.join(' AND ')})`,
+    binds: tokens.map((token) => `%${escapeLike(token)}%`),
+    mode: 'contains' as KeywordMode,
   };
 }

@@ -1,5 +1,6 @@
 import type { AuthUser } from '../_auth';
 import { sqlNowStored, sqlStoredDaysAgo } from './_time';
+import { normalizeSearchText } from './_search';
 
 const DEFAULT_RETENTION_DAYS = 180;
 const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000;
@@ -79,6 +80,64 @@ export function isAuditHighRisk(action: string | null | undefined) {
   );
 }
 
+function pickFirstText(...values: any[]) {
+  for (const value of values) {
+    const text = String(value ?? '').trim();
+    if (text) return text;
+  }
+  return null;
+}
+
+export function materializeAuditFields(action: string, entity: string | null | undefined, entityId: string | number | null | undefined, payload?: any) {
+  const p = payload && typeof payload === 'object' ? payload : {};
+  const after = p.after && typeof p.after === 'object' ? p.after : {};
+  const before = p.before && typeof p.before === 'object' ? p.before : {};
+  const targetName = pickFirstText(
+    p.target_name,
+    p.item_name,
+    p.user_name,
+    after.name,
+    after.username,
+    after.employee_name,
+    after.model,
+    p.name,
+    p.username,
+    p.employee_name,
+    before.name,
+    before.username,
+    before.employee_name,
+  );
+  const targetCode = pickFirstText(
+    p.target_code,
+    after.asset_code,
+    after.serial_no,
+    after.employee_no,
+    p.asset_code,
+    p.serial_no,
+    p.employee_no,
+    p.tx_no,
+    p.out_no,
+    p.in_no,
+    p.recycle_no,
+    p.scrap_no,
+    entityId,
+  );
+  const summaryText = pickFirstText(
+    p.summary_text,
+    p.summary,
+    p.reason,
+    p.message,
+    `${normalizeAuditAction(action)} ${pickFirstText(targetName, targetCode, entity, '')}`.trim(),
+  );
+  const searchText = normalizeSearchText(action, entity, entityId, targetName, targetCode, summaryText, p.username, p.item_name, p.user_name);
+  return {
+    target_name: targetName,
+    target_code: targetCode,
+    summary_text: summaryText,
+    search_text_norm: searchText,
+  };
+}
+
 function getIp(request: Request) {
   const h = request.headers;
   const cf = h.get('CF-Connecting-IP') || h.get('cf-connecting-ip');
@@ -103,9 +162,12 @@ export async function logAudit(
     const ip = getIp(request);
     const ua = request.headers.get('user-agent');
     const payload_json = payload === undefined ? null : JSON.stringify(payload);
+    const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entity_id, payload);
     await db.prepare(
-      `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua, module_code, high_risk, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+      `INSERT INTO audit_log (
+         user_id, username, action, entity, entity_id, payload_json, ip, ua,
+         module_code, high_risk, target_name, target_code, summary_text, search_text_norm, created_at
+       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
     ).bind(
       user?.id ?? null,
       user?.username ?? null,
@@ -117,6 +179,10 @@ export async function logAudit(
       ua,
       resolveAuditModuleCode(normalizedAction, normalizedEntity),
       isAuditHighRisk(normalizedAction),
+      materialized.target_name,
+      materialized.target_code,
+      materialized.summary_text,
+      materialized.search_text_norm,
     ).run();
     await maybeCleanupAudit(db);
   } catch {
