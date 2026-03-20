@@ -121,6 +121,7 @@
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from 'element-plus';
 import { apiGet, apiPost, apiPut, apiDownload } from '../api/client';
+import { getSystemHealth } from '../api/systemHealth';
 
 const autoScanMinutes = 15;
 type JobRow = { id:number; job_type:string; status:string; created_by_name?:string; message?:string; created_at?:string; retry_count?:number; max_retries?:number; retain_until?:string };
@@ -169,7 +170,7 @@ async function loadObservability() {
 }
 
 async function loadHealth() {
-  const r:any = await apiGet('/api/system-health');
+  const r:any = await getSystemHealth({ force: true });
   health.schema = r.data?.schema || { ok: true };
   health.metrics = r.data?.metrics || {};
   health.scan = r.data?.scan || null;

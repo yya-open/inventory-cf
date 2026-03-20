@@ -235,7 +235,7 @@ import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
-import * as XLSX from "xlsx";
+import { loadXlsx } from "../utils/excel";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
@@ -354,6 +354,7 @@ async function doExport() {
       "备注": r.remark || ""
     }));
 
+    const XLSX = await loadXlsx();
     const ws = XLSX.utils.json_to_sheet(data, { skipHeader: false });
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "明细");

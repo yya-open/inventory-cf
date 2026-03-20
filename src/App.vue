@@ -272,7 +272,8 @@
 import { computed, ref, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { apiGet, apiPost } from "./api/client";
+import { apiPost } from "./api/client";
+import { getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 
@@ -364,7 +365,7 @@ const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; r
 async function loadSchemaStatus() {
   if (!auth.user || simpleLayout.value) return;
   try {
-    const r:any = await apiGet('/api/system-schema-status');
+    const r:any = await getSystemSchemaStatus();
     schemaStatus.loaded = true;
     schemaStatus.ok = !!r.data?.ok;
     schemaStatus.message = String(r.data?.message || '');

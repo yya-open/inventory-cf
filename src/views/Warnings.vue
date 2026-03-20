@@ -310,7 +310,7 @@ import { ElMessage } from "element-plus";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
-import * as XLSX from "xlsx";
+import { loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime, beijingTodayCompact } from "../utils/datetime";
 
 const router = useRouter();
@@ -458,7 +458,7 @@ async function exportCsv() {
   }
 }
 
-function exportXlsx() {
+async function exportXlsx() {
   try {
     exportingXlsx.value = true;
 
@@ -475,6 +475,7 @@ function exportXlsx() {
       最后变动: formatTime(r.last_tx_at),
     }));
 
+    const XLSX = await loadXlsx();
     const ws = XLSX.utils.json_to_sheet(data);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "预警中心");

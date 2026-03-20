@@ -397,8 +397,7 @@
 <script setup lang="ts">
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import * as XLSX from "xlsx";
-import { exportToXlsx } from "../utils/excel";
+import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -661,7 +660,7 @@ async function createStocktake(){
 }
 
 
-function exportStocktakeReport(){
+async function exportStocktakeReport(){
   if (!detail.value) return ElMessage.warning('请先选择盘点单');
   const summaryRows = [
     ['盘点单号', detail.value.stocktake?.st_no || ''],
@@ -683,6 +682,7 @@ function exportStocktakeReport(){
     差异数量: row.diff_qty ?? '',
     更新时间: formatBeijingDateTime(row.updated_at),
   }));
+  const XLSX = await loadXlsx();
   const wb = XLSX.utils.book_new();
   const wsSummary = XLSX.utils.aoa_to_sheet([['指标','值'], ...summaryRows]);
   const wsDetail = XLSX.utils.json_to_sheet(detailRows);
@@ -717,12 +717,13 @@ function exportFilteredLines(){
   ElMessage.success('盘点明细已导出');
 }
 
-function downloadCountTemplate(){
+async function downloadCountTemplate(){
   if (!detail.value) return;
   const header = ["sku","counted_qty"];
   // 模板默认带一行示例（sku 留空，导入时会被自动忽略），并列出本次盘点涉及的 SKU
   const exampleRow = ["", 10];
   const rows = detail.value.lines.map((l:any)=>[l.sku,""]);
+  const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet([header, exampleRow, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "count");
@@ -735,6 +736,7 @@ function beforeUpload(file: File){
     try{
       if (!detail.value) return;
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const XLSX = await loadXlsx();
       const wb = XLSX.read(data, { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" }) as any[][];

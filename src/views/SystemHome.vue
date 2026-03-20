@@ -43,7 +43,7 @@
 <script setup lang="ts">
 import { defineComponent, h, onMounted, reactive } from 'vue';
 import { useRouter } from 'vue-router';
-import { apiGet } from '../api/client';
+import { getSystemHealth } from '../api/systemHealth';
 import { ElButton, ElCard } from 'element-plus';
 
 const HomeCard = defineComponent({
@@ -67,7 +67,7 @@ const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, l
 function formatTime(v?: string | null) { return v ? String(v).replace('T', ' ').replace(/\.\d+Z?$/, '') : ''; }
 
 async function loadOpsSummary() {
-  const r:any = await apiGet('/api/system-health');
+  const r:any = await getSystemHealth();
   ops.schema_ok = !!r.data?.schema?.ok;
   ops.problem_count = Number(r.data?.scan?.total_problem_count || 0);
   ops.failed_jobs = Number(r.data?.metrics?.failed_async_jobs || 0);

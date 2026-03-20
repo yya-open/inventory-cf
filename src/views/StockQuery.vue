@@ -171,7 +171,7 @@
 import { ref, onMounted } from "vue";
 import { ElMessage } from "element-plus";
 import { apiGet } from "../api/client";
-import * as XLSX from "xlsx";
+import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";
 import { useRouter, useRoute } from "vue-router";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -237,12 +237,13 @@ async function load() {
   }
 }
 
-function doExport() {
+async function doExport() {
   const header = ["SKU", "名称", "品牌", "型号", "分类", "库存", "预警值"];
   const aoa: any[][] = [header];
   for (const r of rows.value) {
     aoa.push([r.sku, r.name, r.brand || "", r.model || "", r.category || "", Number(r.qty), Number(r.warning_qty)]);
   }
+  const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet(aoa);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "stock");

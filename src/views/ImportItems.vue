@@ -124,8 +124,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import { exportTemplateItems } from "../utils/excel";
-import * as XLSX from "xlsx";
+import { exportTemplateItems, loadXlsx } from "../utils/excel";
 import { apiPost } from "../api/client";
 
 type Row = { sku:string; name:string; brand?:string; model?:string; category?:string; unit?:string; warning_qty?:number };
@@ -163,6 +162,7 @@ async function onPick(uploadFile: any) {
   if (!file) return;
   try {
     const data = await file.arrayBuffer();
+    const XLSX = await loadXlsx();
     const wb = XLSX.read(data, { type: "array" });
     const sheet = wb.Sheets[wb.SheetNames[0]];
     const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" }) as any[][];
@@ -266,8 +266,8 @@ async function onPick(uploadFile: any) {
   }
 }
 
-function downloadTemplate() {
-  exportTemplateItems();
+async function downloadTemplate() {
+  await exportTemplateItems();
 }
 
 async function submit() {

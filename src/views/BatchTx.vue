@@ -206,7 +206,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "element-plus";
-import * as XLSX from "xlsx";
+import { loadXlsx } from "../utils/excel";
 import { apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 
@@ -259,7 +259,7 @@ function clearRows() {
 }
 
 
-function downloadTemplate() {
+async function downloadTemplate() {
   // 模板默认带示例，方便用户照填
   const header =
     mode.value === "IN"
@@ -277,6 +277,7 @@ function downloadTemplate() {
           ["SSD-1T-NVME", 2, "李四", "示例：领用人必填（也可用表头默认）"],
         ];
 
+  const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet([header, ...exampleRows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "template");
@@ -285,9 +286,10 @@ function downloadTemplate() {
 
 function beforeUpload(file: File) {
   const reader = new FileReader();
-  reader.onload = (e) => {
+  reader.onload = async (e) => {
     try {
       const data = new Uint8Array(e.target?.result as ArrayBuffer);
+      const XLSX = await loadXlsx();
       const wb = XLSX.read(data, { type: "array" });
       const sheet = wb.Sheets[wb.SheetNames[0]];
       const aoa = XLSX.utils.sheet_to_json<any[]>(sheet, { header: 1, defval: "" }) as any[][];
