@@ -1,8 +1,9 @@
 import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
+import { applyDepartmentDataScopeClause, type UserDataScope } from './data-scope';
 
-export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean };
+export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string };
 
 export type PcAssetInput = {
   brand: string;
@@ -70,7 +71,7 @@ function applyArchiveReasonFilter(clauses: string[], binds: any[], url: URL) {
   binds.push(archiveReason);
 }
 
-export function buildPcAssetQuery(url: URL) {
+export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
@@ -87,6 +88,7 @@ export function buildPcAssetQuery(url: URL) {
     clauses.push('a.status=?');
     binds.push(status);
   }
+  applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
 
   if (keyword) {
     const kw = buildKeywordWhere(keyword, {
@@ -124,10 +126,11 @@ export function buildPcAssetQuery(url: URL) {
     pageSize,
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
+    joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
   } satisfies QueryParts;
 }
 
-export function buildMonitorAssetQuery(url: URL) {
+export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
@@ -144,10 +147,12 @@ export function buildMonitorAssetQuery(url: URL) {
     clauses.push('a.status=?');
     binds.push(status);
   }
+  applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
   if (locationId) {
     clauses.push('a.location_id=?');
     binds.push(locationId);
   }
+  applyDepartmentDataScopeClause(clauses, binds, 'a.department', scope);
   if (keyword) {
     const kw = buildKeywordWhere(keyword, {
       numericId: 'a.id',
@@ -175,11 +180,12 @@ export function buildMonitorAssetQuery(url: URL) {
     pageSize,
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
+    joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
   } satisfies QueryParts;
 }
 
-export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds'>) {
-  const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.where}`).bind(...query.binds).first<any>();
+export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins'>) {
+  const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.joins || ''} ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
@@ -188,6 +194,7 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
     WITH page_a AS (
       SELECT a.id
       FROM pc_assets a
+      ${query.joins || ''}
       ${query.where}
       ORDER BY a.id ASC
       LIMIT ? OFFSET ?

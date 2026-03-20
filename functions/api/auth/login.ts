@@ -1,7 +1,8 @@
 import { buildAuthCookie, json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword } from "../../_password";
 import { sqlNowStored, sqlStoredMinutesAgo, sqlStoredMinutesFromNow } from "../_time";
-import { getUserPermissionMap } from "../../_permissions";
+import { getUserPermissionMap, getUserTemplateCode } from "../../_permissions";
+import { getUserDataScope } from '../services/data-scope';
 
 function getClientIp(request: Request) {
   const ip =
@@ -209,8 +210,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await clearFail(env as any, ip, u);
 
     const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, JWT_TTL_SECONDS);
+    const permission_template_code = await getUserTemplateCode(env.DB, row.id, row.role).catch(() => null);
+    const permissions = await getUserPermissionMap(env.DB, row.id, row.role, permission_template_code || undefined);
+    const dataScope = await getUserDataScope(env.DB, row.id).catch(() => ({ data_scope_type: 'all', data_scope_value: null }));
     const res = json(true, {
-      user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permissions: await getUserPermissionMap(env.DB, row.id, row.role) },
+      user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permission_template_code, permissions, ...dataScope },
     });
     res.headers.append("Set-Cookie", buildAuthCookie(token));
     return res;

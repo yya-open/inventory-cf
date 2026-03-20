@@ -5,7 +5,7 @@ import { hasRole } from "../utils/roles";
 import type { PermissionCode } from "../utils/permissions";
 import { hasPermission } from "../utils/permissions";
 
-export type User = { id: number; username: string; role: Role; must_change_password?: number; permission_template_code?: string | null; permissions?: Record<string, boolean> };
+export type User = { id: number; username: string; role: Role; must_change_password?: number; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department'; data_scope_value?: string | null };
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
 export const useAuth = () => state;

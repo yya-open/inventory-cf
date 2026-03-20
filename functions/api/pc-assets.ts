@@ -21,10 +21,11 @@ import {
   purgeArchivedAsset,
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
+import { requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
@@ -32,7 +33,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const query = buildPcAssetQuery(url);
+    const query = buildPcAssetQuery(url, user);
     const total = query.fast
       ? null
       : timing?.measure

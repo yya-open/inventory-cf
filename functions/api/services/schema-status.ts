@@ -25,6 +25,7 @@ export async function getSchemaStatus(db: D1Database) {
     { key: 'dictionary_usage_counters', label: '字典引用计数表', ok: await tableExists(db, 'dictionary_usage_counters'), need: 'dictionary_usage_counters' },
     { key: 'system_settings_meta', label: '系统配置元信息', ok: await tableExists(db, 'system_settings_meta'), need: 'system_settings_meta' },
     { key: 'users.permission_template_code', label: '用户权限模板字段', ok: await tableHasColumn(db, 'users', 'permission_template_code'), need: 'users.permission_template_code' },
+    { key: 'users.data_scope_type', label: '用户数据范围字段', ok: await tableHasColumn(db, 'users', 'data_scope_type'), need: 'users.data_scope_type' },
     { key: 'async_jobs.retry_count', label: '异步任务重试字段', ok: await tableHasColumn(db, 'async_jobs', 'retry_count'), need: 'async_jobs.retry_count' },
     { key: 'async_jobs.cancel_requested', label: '异步任务取消字段', ok: await tableHasColumn(db, 'async_jobs', 'cancel_requested'), need: 'async_jobs.cancel_requested' },
     { key: 'async_jobs.retain_until', label: '异步任务保留期字段', ok: await tableHasColumn(db, 'async_jobs', 'retain_until'), need: 'async_jobs.retain_until' },

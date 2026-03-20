@@ -41,6 +41,7 @@
             <div style="color:#999; font-size:12px; line-height:1.7; min-height:52px">
               <div>最近巡检：{{ formatTime(ops.last_scan_at) || '-' }}</div>
               <div>最近演练：{{ formatTime(ops.last_backup_drill_at) || '-' }}</div>
+              <div>演练闭环：{{ ops.open_backup_drill_issue_count || 0 }} 项待整改 / 逾期 {{ ops.overdue_backup_drill_issue_count || 0 }}</div>
             </div>
             <el-button type="primary" plain size="small" @click="go('/system/tools')">打开</el-button>
           </el-card>
@@ -74,7 +75,7 @@ const HomeCard = defineComponent({
 
 const router = useRouter();
 const go = (path: string) => router.push(path);
-const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '' });
+const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '', open_backup_drill_issue_count: 0, overdue_backup_drill_issue_count: 0 });
 function formatTime(v?: string | null) { return v ? String(v).replace('T', ' ').replace(/\.\d+Z?$/, '') : ''; }
 
 async function loadOpsSummary() {
@@ -84,6 +85,8 @@ async function loadOpsSummary() {
   ops.failed_jobs = Number(r.data?.metrics?.failed_async_jobs || 0);
   ops.last_scan_at = r.data?.scan?.last_scanned_at || '';
   ops.last_backup_drill_at = r.data?.metrics?.last_backup_drill_at || '';
+  ops.open_backup_drill_issue_count = Number(r.data?.metrics?.open_backup_drill_issue_count || 0);
+  ops.overdue_backup_drill_issue_count = Number(r.data?.metrics?.overdue_backup_drill_issue_count || 0);
 }
 
 onMounted(loadOpsSummary);

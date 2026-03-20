@@ -10,14 +10,16 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     await Promise.all([ensureRequestErrorLogTable(env.DB), ensureAsyncJobsTable(env.DB), ensureAdminRepairHistoryTable(env.DB)]);
     const schema = await getSchemaStatus(env.DB);
     const scan = await getAutoRepairScan(env.DB);
-    const [pcAssets, latestState, counterRows, failedJobs, errors24h, lastRepair, lastDrill] = await Promise.all([
+    const [pcAssets, latestState, counterRows, failedJobs, errors24h, lastRepair, lastDrill, openDrillIssues, overdueDrillIssues] = await Promise.all([
       env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_assets`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_asset_latest_state`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM dictionary_usage_counters`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM async_jobs WHERE status='failed'`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM request_error_log WHERE created_at >= datetime('now','+8 hours','-1 day') AND status >= 500`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT created_at, action_label, result_summary FROM admin_repair_history ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
-      env.DB.prepare(`SELECT drill_at FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
+      env.DB.prepare(`SELECT drill_at, outcome FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
+      env.DB.prepare(`SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open'`).first<any>().catch(() => ({ c: 0 })),
+      env.DB.prepare(`SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')`).first<any>().catch(() => ({ c: 0 })),
     ]);
     const latestMissing = await env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE s.asset_id IS NULL`).first<any>().catch(() => ({ c: 0 }));
     const activeAlerts = [
@@ -25,6 +27,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       Number(scan?.total_problem_count || 0) > 0 ? 1 : 0,
       Number(failedJobs?.c || 0) > 0 ? 1 : 0,
       Number(errors24h?.c || 0) > 0 ? 1 : 0,
+      Number(openDrillIssues?.c || 0) > 0 ? 1 : 0,
     ].reduce((sum, item) => sum + item, 0);
     return json(true, {
       schema,
@@ -40,6 +43,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         last_repair_label: lastRepair?.action_label || null,
         last_repair_summary: lastRepair?.result_summary || null,
         last_backup_drill_at: lastDrill?.drill_at || null,
+        last_backup_drill_outcome: lastDrill?.outcome || null,
+        open_backup_drill_issue_count: Number(openDrillIssues?.c || 0),
+        overdue_backup_drill_issue_count: Number(overdueDrillIssues?.c || 0),
         active_alert_count: activeAlerts,
       },
       alerts: {
@@ -49,6 +55,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         scan_issue: Number(scan?.total_problem_count || 0) > 0,
         failed_jobs: Number(failedJobs?.c || 0),
         error_5xx_last_24h: Number(errors24h?.c || 0),
+        open_backup_drill_issue_count: Number(openDrillIssues?.c || 0),
+        overdue_backup_drill_issue_count: Number(overdueDrillIssues?.c || 0),
       },
     });
   } catch (e: any) {

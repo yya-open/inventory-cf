@@ -88,10 +88,14 @@ CREATE TABLE IF NOT EXISTS users (
   is_active INTEGER NOT NULL DEFAULT 1,
   must_change_password INTEGER NOT NULL DEFAULT 1,
   token_version INTEGER NOT NULL DEFAULT 0,
+  permission_template_code TEXT,
+  data_scope_type TEXT NOT NULL DEFAULT 'all',
+  data_scope_value TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
+CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value ON users(data_scope_type, data_scope_value);
 
 -- Login throttle (防爆破/限流)
 CREATE TABLE IF NOT EXISTS auth_login_throttle (

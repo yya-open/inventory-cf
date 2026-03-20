@@ -22,15 +22,16 @@ import {
   purgeArchivedAsset,
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
+import { requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
-    const query = buildMonitorAssetQuery(url);
+    const query = buildMonitorAssetQuery(url, user);
     const total = query.fast ? null : await countByWhere(env.DB, 'monitor_assets a', query);
     const data = await listMonitorAssets(env.DB, query);
     return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });

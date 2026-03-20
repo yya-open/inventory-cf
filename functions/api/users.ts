@@ -5,6 +5,7 @@ import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions } from "../_permissions";
+import { getUserDataScope, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -41,13 +42,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
     const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM users ${where}`).bind(...kw.binds).first<any>();
     const { results } = await env.DB
-      .prepare(`SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+      .prepare(`SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
       .bind(...kw.binds, pageSize, offset)
       .all();
     const rows = await Promise.all((results || []).map(async (row: any) => ({
       ...row,
       permission_template_code: normalizePermissionTemplateCode(row?.role || null, row?.permission_template_code),
       permissions: await getUserPermissionMap(env.DB, Number(row?.id || 0), row?.role || null, row?.permission_template_code || null),
+      ...normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value),
       permission_codes: ALL_PERMISSION_CODES,
       permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES,
     })));
@@ -61,7 +63,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { username, password, role, permissions, permission_template_code } = await request.json<any>();
+    const { username, password, role, permissions, permission_template_code, data_scope_type, data_scope_value } = await request.json<any>();
 
     const u = String(username || "").trim();
     const p = String(password || "");
@@ -88,17 +90,18 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
     const created = newId
       ? await env.DB
-          .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code FROM users WHERE id=?")
+          .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value FROM users WHERE id=?")
           .bind(newId)
           .first<any>()
       : null;
 
     if (newId) {
       const template = await setUserPermissionTemplate(env.DB, newId, r, permission_template_code);
+      const dataScope = await setUserDataScope(env.DB, newId, data_scope_type, data_scope_value);
       if (permissions && typeof permissions === 'object') await setUserPermissions(env.DB, newId, permissions, actor.username);
-      if (created) created.permission_template_code = template;
+      if (created) Object.assign(created, { permission_template_code: template, ...dataScope });
     }
-    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {} } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {} };
+    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {}, ...(newId ? await getUserDataScope(env.DB, newId) : normalizeUserDataScope(data_scope_type, data_scope_value)) } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {}, ...normalizeUserDataScope(data_scope_type, data_scope_value) };
     await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
     return json(true, enriched);
@@ -110,12 +113,12 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { id, role, is_active, reset_password, permissions, permission_template_code } = await request.json<any>();
+    const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value } = await request.json<any>();
 
     const uid = Number(id);
     if (!uid) return json(false, null, "id 无效", 400);
 
-    const target = await env.DB.prepare("SELECT id, username, role, is_active, must_change_password, permission_template_code FROM users WHERE id=?").bind(uid).first<any>();
+    const target = await env.DB.prepare("SELECT id, username, role, is_active, must_change_password, permission_template_code, data_scope_type, data_scope_value FROM users WHERE id=?").bind(uid).first<any>();
     if (!target) return json(false, null, "用户不存在", 404);
 
     // 禁止禁用自己（避免把自己踢出系统）
@@ -170,13 +173,17 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       await setUserPermissions(env.DB, uid, permissions, actor.username);
       changes.permissions = permissions;
     }
+    if (typeof data_scope_type !== 'undefined' || typeof data_scope_value !== 'undefined') {
+      const scope = await setUserDataScope(env.DB, uid, data_scope_type, data_scope_value);
+      changes.data_scope = scope;
+    }
 
     const after = await env.DB
-      .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code FROM users WHERE id=?")
+      .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value FROM users WHERE id=?")
       .bind(uid)
       .first<any>();
 
-    const enrichedAfter = { ...after, permission_template_code: await getUserTemplateCode(env.DB, uid, after?.role || target.role), permissions: await getUserPermissionMap(env.DB, uid, after?.role || target.role, after?.permission_template_code || null) };
+    const enrichedAfter = { ...after, permission_template_code: await getUserTemplateCode(env.DB, uid, after?.role || target.role), permissions: await getUserPermissionMap(env.DB, uid, after?.role || target.role, after?.permission_template_code || null), ...(await getUserDataScope(env.DB, uid)) };
     await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after: enrichedAfter, changes });
 
     return json(true, enrichedAfter);

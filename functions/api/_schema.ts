@@ -92,6 +92,9 @@ export async function ensureCoreSchema(db: D1Database) {
       is_active INTEGER NOT NULL DEFAULT 1,
       must_change_password INTEGER NOT NULL DEFAULT 1,
       token_version INTEGER NOT NULL DEFAULT 0,
+      permission_template_code TEXT,
+      data_scope_type TEXT NOT NULL DEFAULT 'all',
+      data_scope_value TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
@@ -138,6 +141,7 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_target_code_created_at ON audit_log(target_code, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_search_text_norm ON audit_log(search_text_norm)",
+    "CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value ON users(data_scope_type, data_scope_value)",
 
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (

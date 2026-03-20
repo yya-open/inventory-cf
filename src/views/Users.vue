@@ -3,227 +3,92 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px">
       <div>
         <span style="font-weight:700">用户管理</span>
-        <span style="margin-left:10px; color:#999; font-size:12px">管理员可创建账号、分配权限、禁用账号、重置密码</span>
+        <span style="margin-left:10px; color:#999; font-size:12px">管理员可创建账号、分配权限、禁用账号、重置密码，并配置数据可见范围</span>
       </div>
-      <el-button
-        type="primary"
-        @click="openCreate"
-      >
-        新增用户
-      </el-button>
+      <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
     <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
-      <el-input
-        v-model="keyword"
-        clearable
-        style="width:240px"
-        placeholder="搜索：账号"
-        @keyup.enter="reload"
-      />
-      <el-select
-        v-model="sortBy"
-        style="width:170px"
-        @change="reload"
-      >
-        <el-option
-          label="账号"
-          value="username"
-        />
-        <el-option
-          label="角色"
-          value="role"
-        />
-        <el-option
-          label="状态"
-          value="is_active"
-        />
-        <el-option
-          label="创建时间"
-          value="created_at"
-        />
+      <el-input v-model="keyword" clearable style="width:240px" placeholder="搜索：账号" @keyup.enter="reload" />
+      <el-select v-model="sortBy" style="width:170px" @change="reload">
+        <el-option label="账号" value="username" />
+        <el-option label="角色" value="role" />
+        <el-option label="状态" value="is_active" />
+        <el-option label="创建时间" value="created_at" />
       </el-select>
-      <el-select
-        v-model="sortDir"
-        style="width:120px"
-        @change="reload"
-      >
-        <el-option
-          label="升序"
-          value="asc"
-        />
-        <el-option
-          label="降序"
-          value="desc"
-        />
+      <el-select v-model="sortDir" style="width:120px" @change="reload">
+        <el-option label="升序" value="asc" />
+        <el-option label="降序" value="desc" />
       </el-select>
-      <el-button
-        type="primary"
-        plain
-        @click="reload"
-      >
-        查询
-      </el-button>
-      <el-button @click="resetSearch">
-        重置
-      </el-button>
-      <el-tag
-        v-if="total"
-        type="info"
-        style="margin-left:auto"
-      >
-        共 {{ total }} 条
-      </el-tag>
+      <el-button type="primary" plain @click="reload">查询</el-button>
+      <el-button @click="resetSearch">重置</el-button>
+      <el-tag v-if="total" type="info" style="margin-left:auto">共 {{ total }} 条</el-tag>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      border
-    >
-      <el-table-column
-        label="#"
-        width="70"
-      >
-        <template #default="{ $index }">
-          {{ (page - 1) * pageSize + $index + 1 }}
-        </template>
+    <el-table v-loading="loading" :data="rows" border>
+      <el-table-column label="#" width="70">
+        <template #default="{ $index }">{{ (page - 1) * pageSize + $index + 1 }}</template>
       </el-table-column>
-      <el-table-column
-        prop="username"
-        label="账号"
-        width="160"
-      />
-      <el-table-column
-        prop="role"
-        label="角色"
-        width="140"
-      >
+      <el-table-column prop="username" label="账号" width="160" />
+      <el-table-column prop="role" label="角色" width="140">
         <template #default="{ row }">
-          <el-tag :type="row.role==='admin'?'danger':row.role==='operator'?'warning':'info'">
-            {{ roleText(row.role) }}
-          </el-tag>
+          <el-tag :type="row.role==='admin'?'danger':row.role==='operator'?'warning':'info'">{{ roleText(row.role) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column
-        prop="is_active"
-        label="状态"
-        width="110"
-      >
+      <el-table-column prop="is_active" label="状态" width="110">
         <template #default="{ row }">
-          <el-tag :type="row.is_active? 'success':'info'">
-            {{ row.is_active ? "启用" : "禁用" }}
-          </el-tag>
+          <el-tag :type="row.is_active? 'success':'info'">{{ row.is_active ? '启用' : '禁用' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column
-        prop="must_change_password"
-        label="需改密码"
-        width="110"
-      >
+      <el-table-column label="可见范围" min-width="180">
         <template #default="{ row }">
-          <el-tag :type="row.must_change_password? 'warning':'success'">
-            {{ row.must_change_password ? "是" : "否" }}
-          </el-tag>
+          <el-tag :type="row.data_scope_type === 'department' ? 'warning' : 'success'">{{ dataScopeLabel(row.data_scope_type, row.data_scope_value) }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column
-        label="创建时间"
-        min-width="170"
-      >
+      <el-table-column prop="must_change_password" label="需改密码" width="110">
         <template #default="{ row }">
-          {{ formatBeijingDateTime(row.created_at) }}
+          <el-tag :type="row.must_change_password? 'warning':'success'">{{ row.must_change_password ? '是' : '否' }}</el-tag>
         </template>
       </el-table-column>
-      <el-table-column
-        label="操作"
-        min-width="260"
-      >
+      <el-table-column label="创建时间" min-width="170">
+        <template #default="{ row }">{{ formatBeijingDateTime(row.created_at) }}</template>
+      </el-table-column>
+      <el-table-column label="操作" min-width="260">
         <template #default="{ row }">
           <div style="display:flex; gap:8px; flex-wrap:wrap">
-            <el-button
-              size="small"
-              @click="openEdit(row)"
-            >
-              权限/状态
-            </el-button>
-            <el-button
-              size="small"
-              type="warning"
-              plain
-              @click="openReset(row)"
-            >
-              重置密码
-            </el-button>
-            <el-button
-              v-if="auth.user?.role==='admin'"
-              size="small"
-              type="danger"
-              plain
-              :disabled="row.id===auth.user?.id"
-              @click="delUser(row)"
-            >
-              删除
-            </el-button>
+            <el-button size="small" @click="openEdit(row)">权限/状态</el-button>
+            <el-button size="small" type="warning" plain @click="openReset(row)">重置密码</el-button>
+            <el-button v-if="auth.user?.role==='admin'" size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
           </div>
         </template>
       </el-table-column>
     </el-table>
 
-    <div
-      v-if="total"
-      style="display:flex; justify-content:flex-end; margin-top:12px"
-    >
-      <el-pagination
-        background
-        layout="total, sizes, prev, pager, next, jumper"
-        :total="total"
-        :page-size="pageSize"
-        :current-page="page"
-        :page-sizes="[20,50,100,200]"
-        @current-change="(p:number)=>{ page=p; load(); }"
-        @size-change="(s:number)=>{ pageSize=s; page=1; load(); }"
-      />
+    <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
+      <el-pagination background layout="total, sizes, prev, pager, next, jumper" :total="total" :page-size="pageSize" :current-page="page" :page-sizes="[20,50,100,200]" @current-change="(p:number)=>{ page=p; load(); }" @size-change="(s:number)=>{ pageSize=s; page=1; load(); }" />
     </div>
 
-    <!-- Create -->
-    <el-dialog
-      v-model="showCreate"
-      title="新增用户"
-      width="460px"
-    >
-      <el-form label-width="90px">
-        <el-form-item label="账号">
-          <el-input v-model="form.username" />
-        </el-form-item>
+    <el-dialog v-model="showCreate" title="新增用户" width="520px">
+      <el-form label-width="100px">
+        <el-form-item label="账号"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="密码">
-          <el-input
-            v-model="form.password"
-            type="password"
-            show-password
-          />
-          <div style="color:#999; font-size:12px; margin-top:6px">
-            密码长度需为 6-64 位，且必须同时包含字母和数字
-          </div>
+          <el-input v-model="form.password" type="password" show-password />
+          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
         <el-form-item label="角色">
-          <el-select
-            v-model="form.role"
-            style="width:100%"
-          >
-            <el-option
-              label="管理员"
-              value="admin"
-            />
-            <el-option
-              label="操作员"
-              value="operator"
-            />
-            <el-option
-              label="只读"
-              value="viewer"
-            />
+          <el-select v-model="form.role" style="width:100%">
+            <el-option label="管理员" value="admin" />
+            <el-option label="操作员" value="operator" />
+            <el-option label="只读" value="viewer" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="数据范围">
+          <el-select v-model="form.data_scope_type" style="width:100%">
+            <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.data_scope_type === 'department'" label="部门">
+          <el-input v-model="form.data_scope_value" placeholder="如：研发部" />
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -240,50 +105,28 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showCreate=false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="createUser"
-        >
-          保存
-        </el-button>
+        <el-button @click="showCreate=false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="createUser">保存</el-button>
       </template>
     </el-dialog>
 
-    <!-- Edit -->
-    <el-dialog
-      v-model="showEdit"
-      title="权限/状态"
-      width="460px"
-    >
-      <el-form label-width="90px">
-        <el-form-item label="账号">
-          <el-input
-            :model-value="editing?.username"
-            disabled
-          />
-        </el-form-item>
+    <el-dialog v-model="showEdit" title="权限/状态" width="520px">
+      <el-form label-width="100px">
+        <el-form-item label="账号"><el-input :model-value="editing?.username" disabled /></el-form-item>
         <el-form-item label="角色">
-          <el-select
-            v-model="editRole"
-            style="width:100%"
-          >
-            <el-option
-              label="管理员"
-              value="admin"
-            />
-            <el-option
-              label="操作员"
-              value="operator"
-            />
-            <el-option
-              label="只读"
-              value="viewer"
-            />
+          <el-select v-model="editRole" style="width:100%">
+            <el-option label="管理员" value="admin" />
+            <el-option label="操作员" value="operator" />
+            <el-option label="只读" value="viewer" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="数据范围">
+          <el-select v-model="editDataScopeType" style="width:100%">
+            <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editDataScopeType === 'department'" label="部门">
+          <el-input v-model="editDataScopeValue" placeholder="如：研发部" />
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -293,13 +136,7 @@
             <el-button @click="applyEditTemplate">套用</el-button>
           </div>
         </el-form-item>
-        <el-form-item label="状态">
-          <el-switch
-            v-model="editActive"
-            active-text="启用"
-            inactive-text="禁用"
-          />
-        </el-form-item>
+        <el-form-item label="状态"><el-switch v-model="editActive" active-text="启用" inactive-text="禁用" /></el-form-item>
         <el-form-item label="细分权限">
           <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
             <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!editPermissions[code]" @change="(v:any)=>editPermissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
@@ -307,51 +144,22 @@
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showEdit=false">
-          取消
-        </el-button>
-        <el-button
-          type="primary"
-          :loading="saving"
-          @click="saveEdit"
-        >
-          保存
-        </el-button>
+        <el-button @click="showEdit=false">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
       </template>
     </el-dialog>
 
-    <!-- Reset -->
-    <el-dialog
-      v-model="showReset"
-      title="重置密码"
-      width="460px"
-    >
-      <div style="color:#666; margin-bottom:10px">
-        将为账号 <b>{{ editing?.username }}</b> 设置新密码，并要求下次登录修改。
-      </div>
+    <el-dialog v-model="showReset" title="重置密码" width="460px">
+      <div style="color:#666; margin-bottom:10px">将为账号 <b>{{ editing?.username }}</b> 设置新密码，并要求下次登录修改。</div>
       <el-form label-width="90px">
         <el-form-item label="新密码">
-          <el-input
-            v-model="resetPwd"
-            type="password"
-            show-password
-          />
-          <div style="color:#999; font-size:12px; margin-top:6px">
-            密码长度需为 6-64 位，且必须同时包含字母和数字
-          </div>
+          <el-input v-model="resetPwd" type="password" show-password />
+          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
       </el-form>
       <template #footer>
-        <el-button @click="showReset=false">
-          取消
-        </el-button>
-        <el-button
-          type="warning"
-          :loading="saving"
-          @click="doReset"
-        >
-          确认重置
-        </el-button>
+        <el-button @click="showReset=false">取消</el-button>
+        <el-button type="warning" :loading="saving" @click="doReset">确认重置</el-button>
       </template>
     </el-dialog>
   </el-card>
@@ -364,9 +172,10 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
-import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionCode, type PermissionTemplateCode } from "../utils/permissions";
+import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
+import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
 
-type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean> };
+type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department'; data_scope_value?: string | null };
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -386,13 +195,15 @@ const showCreate = ref(false);
 const showEdit = ref(false);
 const showReset = ref(false);
 
-const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean> });
+const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean>, data_scope_type: 'all' as 'all' | 'department', data_scope_value: '' });
 
 const editing = ref<Row|null>(null);
 const editRole = ref<"admin"|"operator"|"viewer">("viewer");
 const editActive = ref(true);
 const editPermissions = ref<Record<string, boolean>>({});
 const editTemplateCode = ref<PermissionTemplateCode>(getDefaultPermissionTemplate("viewer"));
+const editDataScopeType = ref<'all' | 'department'>('all');
+const editDataScopeValue = ref('');
 const resetPwd = ref("");
 
 function roleText(r: string) {
@@ -439,7 +250,7 @@ function applyEditTemplate() {
 }
 
 function openCreate() {
-  form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")) };
+  form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")), data_scope_type: 'all', data_scope_value: '' };
   showCreate.value = true;
 }
 
@@ -447,9 +258,11 @@ async function createUser() {
   if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
   const pv = validatePassword(form.value.password);
   if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value);
+  if (normalizedScope.data_scope_type === 'department' && !normalizedScope.data_scope_value) return ElMessage.warning('请填写部门范围');
   saving.value = true;
   try {
-    await apiPost<any>("/api/users", form.value);
+    await apiPost<any>("/api/users", { ...form.value, ...normalizedScope });
     ElMessage.success("创建成功");
     showCreate.value = false;
     await load();
@@ -466,14 +279,19 @@ function openEdit(row: Row) {
   editActive.value = !!row.is_active;
   editTemplateCode.value = normalizePermissionTemplateCode(row.role, row.permission_template_code);
   editPermissions.value = { ...(row.permissions || buildTemplatePermissionMap(row.role, row.permission_template_code)) };
+  const scope = normalizeDataScope(row.data_scope_type, row.data_scope_value);
+  editDataScopeType.value = scope.data_scope_type;
+  editDataScopeValue.value = scope.data_scope_value;
   showEdit.value = true;
 }
 
 async function saveEdit() {
   if (!editing.value) return;
+  const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value);
+  if (normalizedScope.data_scope_type === 'department' && !normalizedScope.data_scope_value) return ElMessage.warning('请填写部门范围');
   saving.value = true;
   try {
-    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value });
+    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
     ElMessage.success("已更新");
     showEdit.value = false;
     await load();
@@ -507,14 +325,10 @@ async function doReset() {
   }
 }
 
-
 async function delUser(row: Row) {
   try {
-    await ElMessageBox.confirm(
-      `确定要删除用户「${row.username}」吗？\n删除后无法恢复。`,
-      "删除用户",
-      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
-    );
+    await ElMessageBox.confirm(`确定要删除用户「${row.username}」吗？
+删除后无法恢复。`, "删除用户", { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" });
   } catch {
     return;
   }
