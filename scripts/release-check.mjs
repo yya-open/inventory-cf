@@ -4,7 +4,6 @@ import path from 'node:path';
 const root = process.cwd();
 const manifestPath = path.join(root, 'sql', 'migrations.manifest.json');
 const schemaStatusPath = path.join(root, 'functions', 'api', 'services', 'schema-status.ts');
-const wranglerPath = path.join(root, 'wrangler.toml');
 const functionsDir = path.join(root, 'functions');
 
 function fail(message) {
@@ -44,8 +43,7 @@ try {
   if (!fs.existsSync(functionsDir)) fail('缺少 functions 目录');
   else ok('Functions 目录存在');
 
-  if (!fs.existsSync(wranglerPath)) fail('缺少 wrangler.toml；Pages Functions 本地编译校验不可用');
-  else ok('wrangler.toml 已就位');
+  ok('不依赖 wrangler.toml；Pages Functions 编译使用 CLI 参数');
 
   if (process.exitCode) process.exit(process.exitCode);
 
