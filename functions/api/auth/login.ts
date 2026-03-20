@@ -1,6 +1,7 @@
 import { buildAuthCookie, json, signJwt, errorResponse, JWT_TTL_SECONDS } from "../../_auth";
 import { verifyPassword } from "../../_password";
 import { sqlNowStored, sqlStoredMinutesAgo, sqlStoredMinutesFromNow } from "../_time";
+import { getUserPermissionMap } from "../../_permissions";
 
 function getClientIp(request: Request) {
   const ip =
@@ -209,7 +210,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, JWT_TTL_SECONDS);
     const res = json(true, {
-      user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password },
+      user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permissions: await getUserPermissionMap(env.DB, row.id, row.role) },
     });
     res.headers.append("Set-Cookie", buildAuthCookie(token));
     return res;

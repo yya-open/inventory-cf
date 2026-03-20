@@ -41,6 +41,9 @@
           <el-menu-item index="/system/settings">
             系统配置
           </el-menu-item>
+          <el-menu-item index="/system/tools">
+            运维工具
+          </el-menu-item>
         </el-menu>
 
         <!-- 配件仓菜单 -->

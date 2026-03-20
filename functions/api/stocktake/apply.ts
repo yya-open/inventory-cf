@@ -1,11 +1,12 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { requirePermission } from '../../_permissions';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeAdjustTxNo } from '../services/stocktake';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requirePermission(env, request, 'stocktake_apply', 'admin');
     const body = await request.json().catch(() => ({} as any));
     const st_id = Number((body as any).id);
     if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });

@@ -599,13 +599,10 @@ async function exportSelectedQrCards() {
 
 
 async function confirmBatchRisk(title: string, message: string) {
-  await ElMessageBox.prompt(message, title, {
+  await ElMessageBox.confirm(message, title, {
     type: 'warning',
     confirmButtonText: '确认继续',
     cancelButtonText: '取消',
-    inputPlaceholder: '请输入“确认”后继续',
-    inputPattern: /^确认$/,
-    inputErrorMessage: '请输入“确认”',
   });
 }
 

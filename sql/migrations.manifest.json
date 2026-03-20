@@ -118,5 +118,10 @@
     "id": "202603200020_snapshot_counters_search_atomic_settings",
     "file": "sql/migrate_snapshot_counters_search_atomic_settings.sql",
     "description": "pc latest snapshot, search normalization, dictionary counters, and atomic settings meta"
+  },
+  {
+    "id": "202603200030_admin_tools_jobs_permissions",
+    "file": "sql/migrate_admin_tools_jobs_permissions.sql",
+    "description": "admin tools, async jobs, request error logs, and user fine-grained permissions"
   }
 ]

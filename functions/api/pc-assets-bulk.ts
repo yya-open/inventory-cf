@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed } from './_pc';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
@@ -9,7 +10,7 @@ const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requirePermission(env, request, 'bulk_operation', 'admin');
     const url = new URL(request.url);
     await ensurePcSchemaIfAllowed(env.DB, env, url);
     const body = await request.json<any>().catch(() => ({} as any));

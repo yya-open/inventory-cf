@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
@@ -125,6 +126,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
 
     if (Number(asset.archived || 0) === 1) {
+      await requirePermission(env, request, 'asset_purge', 'admin');
       const purgeSummary = await purgeArchivedAsset(env.DB, 'monitor', id);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);

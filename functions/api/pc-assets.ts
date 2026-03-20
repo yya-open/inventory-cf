@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
 import { ensurePcSchemaIfAllowed } from './_pc';
@@ -122,6 +123,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (!asset) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
 
     if (Number(asset.archived || 0) === 1) {
+      await requirePermission(env, request, 'asset_purge', 'admin');
       const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason', 'department']);

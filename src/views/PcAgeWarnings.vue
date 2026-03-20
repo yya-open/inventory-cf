@@ -318,67 +318,22 @@ async function createScrap() {
   }
 }
 
-async function requestWarningExport(scope: 'current' | 'all') {
-  const filters = currentFilters();
-  const params = new URLSearchParams();
-  params.set('scope', scope);
-  params.set('age_years', String(filters.ageYears));
-  params.set('page', String(page.value));
-  params.set('page_size', String(pageSize.value));
-  if (filters.status) params.set('status', filters.status);
-  if (filters.keyword) params.set('keyword', filters.keyword);
-  if (scope === 'all') params.set('max_rows', '10000');
-  return apiGet<any>(`/api/pc-age-warnings/export?${params.toString()}`);
-}
-
-function exportWarningRows(rowsToExport: any[], filename: string, startNo = 1) {
-  exportToXlsx({
-    filename,
-    headers: [
-      { key: '序号', title: '序号' },
-      { key: '品牌', title: '品牌' },
-      { key: '型号', title: '型号' },
-      { key: '序列号', title: '序列号' },
-      { key: '出厂时间', title: '出厂时间' },
-      { key: '机龄', title: '机龄' },
-      { key: '保修到期', title: '保修到期' },
-      { key: '状态', title: '状态' },
-      { key: '领用人', title: '领用人' },
-      { key: '工号', title: '工号' },
-      { key: '部门', title: '部门' },
-      { key: '备注', title: '备注' },
-    ],
-    rows: rowsToExport.map((r: any, index: number) => ({
-      序号: startNo + index,
-      品牌: r.brand,
-      型号: r.model,
-      序列号: r.serial_no,
-      出厂时间: r.manufacture_date,
-      机龄: `${calcAgeYears(r.manufacture_date)} 年`,
-      保修到期: r.warranty_end || '',
-      状态: statusLabel(r.status),
-      领用人: r.last_employee_name || '',
-      工号: r.last_employee_no || '',
-      部门: r.last_department || '',
-      备注: r.remark || '',
-    })),
-    sheetName: '预警',
-  });
-}
-
 async function exportExcel(all: boolean) {
   const loadingRef = all ? exportingAll : exporting;
   try {
     loadingRef.value = true;
-    const response: any = await requestWarningExport(all ? 'all' : 'current');
-    const data = response?.data || [];
-    if (!data.length) return ElMessage.warning(all ? '当前筛选结果没有可导出的预警数据' : '当前页没有可导出的预警数据');
-    exportWarningRows(data, all ? `电脑仓_报废预警_筛选结果_${data.length}条.xlsx` : `电脑仓_报废预警_当前页.xlsx`, all ? 1 : (page.value - 1) * pageSize.value + 1);
-    if (all && response?.limited) {
-      ElMessage.warning(`筛选结果较多，已导出前 ${data.length} 条（共 ${Number(response?.total || data.length)} 条）`);
-      return;
-    }
-    ElMessage.success(all ? '筛选结果已导出' : '当前页已导出');
+    const filters = currentFilters();
+    const request_json: Record<string, any> = {
+      scope: all ? 'all' : 'current',
+      age_years: filters.ageYears,
+      page: page.value,
+      page_size: pageSize.value,
+      max_rows: all ? 10000 : undefined,
+    };
+    if (filters.status) request_json.status = filters.status;
+    if (filters.keyword) request_json.keyword = filters.keyword;
+    await apiPost('/api/jobs', { job_type: 'PC_AGE_WARNING_EXPORT', permission_scope: 'async_job_manage', request_json });
+    ElMessage.success(all ? '已创建筛选结果导出任务，请前往 系统 > 运维工具 下载' : '已创建当前页导出任务，请前往 系统 > 运维工具 下载');
   } catch (e: any) {
     ElMessage.error(e?.message || '导出失败');
   } finally {

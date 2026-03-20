@@ -225,6 +225,11 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="细分权限">
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
+            <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!form.permissions[code]" @change="(v:any)=>form.permissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
+          </div>
+        </el-form-item>
       </el-form>
       <template #footer>
         <el-button @click="showCreate=false">
@@ -278,6 +283,11 @@
             active-text="启用"
             inactive-text="禁用"
           />
+        </el-form-item>
+        <el-form-item label="细分权限">
+          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
+            <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!editPermissions[code]" @change="(v:any)=>editPermissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
+          </div>
         </el-form-item>
       </el-form>
       <template #footer>
@@ -338,8 +348,9 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
+import { ALL_PERMISSION_CODES, PERMISSION_LABEL, type PermissionCode } from "../utils/permissions";
 
-type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string };
+type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permissions?: Record<string, boolean> };
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -358,11 +369,12 @@ const showCreate = ref(false);
 const showEdit = ref(false);
 const showReset = ref(false);
 
-const form = ref({ username:"", password:"", role:"viewer" as any });
+const form = ref({ username:"", password:"", role:"viewer" as any, permissions: {} as Record<string, boolean> });
 
 const editing = ref<Row|null>(null);
 const editRole = ref<"admin"|"operator"|"viewer">("viewer");
 const editActive = ref(true);
+const editPermissions = ref<Record<string, boolean>>({});
 const resetPwd = ref("");
 
 function roleText(r: string) {
@@ -401,7 +413,7 @@ function resetSearch() {
 }
 
 function openCreate() {
-  form.value = { username:"", password:"", role:"viewer" as any };
+  form.value = { username:"", password:"", role:"viewer" as any, permissions: {} };
   showCreate.value = true;
 }
 
@@ -426,6 +438,7 @@ function openEdit(row: Row) {
   editing.value = row;
   editRole.value = row.role;
   editActive.value = !!row.is_active;
+  editPermissions.value = { ...(row.permissions || {}) };
   showEdit.value = true;
 }
 
@@ -433,7 +446,7 @@ async function saveEdit() {
   if (!editing.value) return;
   saving.value = true;
   try {
-    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value });
+    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permissions: editPermissions.value });
     ElMessage.success("已更新");
     showEdit.value = false;
     await load();

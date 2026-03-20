@@ -4,7 +4,7 @@ export const JWT_TTL_SECONDS = 24 * 3600;
 export const REFRESH_THRESHOLD_SECONDS = 12 * 3600;
 export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
-export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number };
+export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean> };
 
 function b64uEncode(bytes: Uint8Array) {
   let s = "";

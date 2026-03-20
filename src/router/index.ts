@@ -27,6 +27,7 @@ const MonitorAssets = () => import("../views/MonitorAssets.vue");
 const MonitorTx = () => import("../views/MonitorTx.vue");
 const SystemHome = () => import("../views/SystemHome.vue");
 const SystemSettings = () => import("../views/SystemSettings.vue");
+const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
@@ -67,6 +68,7 @@ const router = createRouter({
         { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },
         { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
         { path: "settings", component: SystemSettings, meta: { role: "admin", title: "系统配置" } },
+        { path: "tools", component: SystemOpsTools, meta: { role: "admin", title: "运维工具" } },
       ],
     },
 

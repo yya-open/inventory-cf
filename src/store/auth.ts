@@ -2,8 +2,10 @@ import { reactive } from "vue";
 import { apiGet, apiPost, apiRequestJson } from "../api/client";
 import type { Role } from "../utils/roles";
 import { hasRole } from "../utils/roles";
+import type { PermissionCode } from "../utils/permissions";
+import { hasPermission } from "../utils/permissions";
 
-export type User = { id: number; username: string; role: Role; must_change_password?: number };
+export type User = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean> };
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
 export const useAuth = () => state;
@@ -24,3 +26,4 @@ export async function loginWithCaptcha(username: string, password: string, turns
 }
 export function logout() { apiPost('/api/auth/logout', {}).catch(() => {}); state.user = null; }
 export function can(min: Role) { return hasRole(state.user?.role, min); }
+export function canPerm(code: PermissionCode) { return hasPermission(state.user, code); }

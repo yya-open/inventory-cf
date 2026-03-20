@@ -4,6 +4,7 @@ import { sqlNowStored } from "./_time";
 import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
+import { ALL_PERMISSION_CODES, getUserPermissionMap, setUserPermissions } from "../_permissions";
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -43,8 +44,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
       .prepare(`SELECT id, username, role, is_active, must_change_password, created_at FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
       .bind(...kw.binds, pageSize, offset)
       .all();
+    const rows = await Promise.all((results || []).map(async (row: any) => ({
+      ...row,
+      permissions: await getUserPermissionMap(env.DB, Number(row?.id || 0), row?.role || null),
+      permission_codes: ALL_PERMISSION_CODES,
+    })));
 
-    return Response.json({ ok: true, data: results, total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw });
+    return Response.json({ ok: true, data: rows, total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw, permission_codes: ALL_PERMISSION_CODES });
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -53,7 +59,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { username, password, role } = await request.json<any>();
+    const { username, password, role, permissions } = await request.json<any>();
 
     const u = String(username || "").trim();
     const p = String(password || "");
@@ -85,9 +91,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
           .first<any>()
       : null;
 
-    await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: created ?? { username: u, role: r } });
+    if (newId && permissions && typeof permissions === 'object') {
+      await setUserPermissions(env.DB, newId, permissions, actor.username);
+    }
+    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r) : {} } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permissions: permissions || {} };
+    await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
-    return json(true, created ?? { id: newId, username: u, role: r, is_active: 1, must_change_password: 1 });
+    return json(true, enriched);
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -96,7 +106,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { id, role, is_active, reset_password } = await request.json<any>();
+    const { id, role, is_active, reset_password, permissions } = await request.json<any>();
 
     const uid = Number(id);
     if (!uid) return json(false, null, "id 无效", 400);
@@ -147,15 +157,20 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       await env.DB.prepare("UPDATE users SET is_active=? WHERE id=?").bind(is_active ? 1 : 0, uid).run();
       changes.is_active = is_active ? 1 : 0;
     }
+    if (permissions && typeof permissions === 'object') {
+      await setUserPermissions(env.DB, uid, permissions, actor.username);
+      changes.permissions = permissions;
+    }
 
     const after = await env.DB
       .prepare("SELECT id, username, role, is_active, must_change_password, created_at FROM users WHERE id=?")
       .bind(uid)
       .first<any>();
 
-    await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after, changes });
+    const enrichedAfter = { ...after, permissions: await getUserPermissionMap(env.DB, uid, after?.role || target.role) };
+    await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after: enrichedAfter, changes });
 
-    return json(true, after);
+    return json(true, enrichedAfter);
   } catch (e: any) {
     return errorResponse(e);
   }

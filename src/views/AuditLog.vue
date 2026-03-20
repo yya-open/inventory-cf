@@ -1117,11 +1117,11 @@ function buildAuditParams(targetPage: number, targetPageSize: number) {
   return params;
 }
 
-async function requestAuditExport(scope: 'current' | 'all') {
+async function createAuditExportJob(scope: 'current' | 'all') {
   const params = buildAuditParams(page.value, pageSize.value);
-  params.set('scope', scope);
-  if (scope === 'all') params.set('max_rows', '5000');
-  return apiGet(`/api/audit/export?${params.toString()}`);
+  const request_json: Record<string, any> = { scope, max_rows: scope === 'all' ? 5000 : undefined };
+  params.forEach((v, k) => { request_json[k] = v; });
+  return apiPost('/api/jobs', { job_type: 'AUDIT_EXPORT', permission_scope: 'audit_export', request_json });
 }
 
 function exportAuditRows(rowsToExport: any[], filename: string) {
@@ -1151,15 +1151,8 @@ function exportAuditRows(rowsToExport: any[], filename: string) {
 
 async function exportFilteredRows() {
   try {
-    const response: any = await requestAuditExport('all');
-    const rowsToExport = response?.data || [];
-    if (!rowsToExport.length) return ElMessage.warning('当前筛选结果没有可导出的审计记录');
-    exportAuditRows(rowsToExport, `审计日志_筛选结果_${rowsToExport.length}条.xlsx`);
-    if (response?.limited) {
-      ElMessage.warning(`筛选结果较多，已导出前 ${rowsToExport.length} 条（共 ${Number(response?.total || rowsToExport.length)} 条）`);
-      return;
-    }
-    ElMessage.success('筛选结果已导出');
+    await createAuditExportJob('all');
+    ElMessage.success('已创建审计导出任务，请前往 系统 > 运维工具 下载');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出筛选结果失败');
   }
@@ -1167,11 +1160,8 @@ async function exportFilteredRows() {
 
 async function exportCurrentRows() {
   try {
-    const response: any = await requestAuditExport('current');
-    const rowsToExport = response?.data || [];
-    if (!rowsToExport.length) return ElMessage.warning('当前页没有可导出的审计记录');
-    exportAuditRows(rowsToExport, `审计日志_当前页_${rowsToExport.length}条.xlsx`);
-    ElMessage.success('当前页审计日志已导出');
+    await createAuditExportJob('current');
+    ElMessage.success('已创建当前页审计导出任务，请前往 系统 > 运维工具 下载');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出当前页失败');
   }

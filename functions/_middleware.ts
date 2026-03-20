@@ -59,6 +59,38 @@ function wrapD1(db: D1Database, t: ReturnType<typeof createTiming>): D1Database 
   }) as any;
 }
 
+
+async function logErrorRequest(context: any, t: ReturnType<typeof createTiming>, res: Response) {
+  try {
+    if (res.status < 500) return;
+    const db = (context.env as any)?.DB as D1Database | undefined;
+    if (!db) return;
+    const url = new URL(context.request.url);
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS request_error_log (
+         id INTEGER PRIMARY KEY AUTOINCREMENT,
+         method TEXT,
+         path TEXT,
+         status INTEGER,
+         total_ms INTEGER,
+         sql_ms INTEGER,
+         auth_ms INTEGER,
+         created_at TEXT DEFAULT (${sqlNowStored()})
+       )`
+    ).run();
+    await db.prepare(
+      `INSERT INTO request_error_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
+    ).bind(
+      context.request.method,
+      url.pathname + (url.search || ''),
+      res.status,
+      Math.round(t.total() || 0),
+      Math.round(t.get('sql') || 0),
+      Math.round(t.get('auth') || 0),
+    ).run();
+  } catch {}
+}
 async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, res: Response) {
   try {
     const total = t.total();
@@ -142,6 +174,7 @@ export async function onRequest(context: any) {
 
     res = new Response(res.body, { status: res.status, statusText: res.statusText, headers });
     await logSlowRequest(context, t, res);
+    await logErrorRequest(context, t, res);
   }
 
   return res;
