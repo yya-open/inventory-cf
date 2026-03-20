@@ -198,7 +198,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onMounted, watch } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";

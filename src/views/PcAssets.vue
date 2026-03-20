@@ -171,7 +171,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countPcAssets, listPcAssets } from '../api/assetLedgers';

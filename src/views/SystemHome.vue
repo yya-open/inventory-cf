@@ -19,7 +19,7 @@
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="审计日志" desc="查看用户操作记录、筛选与导出" @open="go('/system/audit')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="用户管理" desc="新增/编辑用户、角色管理" @open="go('/system/users')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="系统配置" desc="设置扫码现场体验、默认页大小等系统级规则" @open="go('/system/settings')" /></el-col>
-        <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px">
+                <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px">
           <el-card shadow="never" style="border-radius: 12px; height: 100%">
             <div style="font-weight:700; margin-bottom: 8px">运维工具</div>
             <div style="color:#777; font-size: 12px; margin-bottom: 10px">自动巡检、修复中心、异步任务、健康检查</div>
@@ -35,27 +35,27 @@
             <el-button type="primary" plain size="small" @click="go('/system/tools')">打开</el-button>
           </el-card>
         </el-col>
+        <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="发布前检查" desc="发布前统一确认数据库版本、巡检问题、失败任务与 5xx 情况" @open="go('/system/release-check')" /></el-col>
       </el-row>
     </el-card>
   </div>
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, onMounted, reactive } from 'vue';
+import { defineComponent, h, onMounted, reactive, resolveComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { getSystemHealth } from '../api/systemHealth';
-import { ElButton, ElCard } from 'element-plus';
 
 const HomeCard = defineComponent({
   name: 'HomeCard',
   props: { title: { type: String, required: true }, desc: { type: String, required: true } },
   emits: ['open'],
   setup(props, { emit }) {
-    return () => h(ElCard, { shadow: 'never', style: 'border-radius: 12px; height: 100%' }, {
+    return () => h(resolveComponent('ElCard'), { shadow: 'never', style: 'border-radius: 12px; height: 100%' }, {
       default: () => [
         h('div', { style: 'font-weight:700; margin-bottom: 8px' }, props.title),
         h('div', { style: 'color:#777; font-size: 12px; margin-bottom: 12px' }, props.desc),
-        h(ElButton, { type: 'primary', plain: true, size: 'small', onClick: () => emit('open') }, () => '打开'),
+        h(resolveComponent('ElButton'), { type: 'primary', plain: true, size: 'small', onClick: () => emit('open') }, () => '打开'),
       ]
     });
   }

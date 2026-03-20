@@ -28,12 +28,13 @@ const MonitorTx = () => import("../views/MonitorTx.vue");
 const SystemHome = () => import("../views/SystemHome.vue");
 const SystemSettings = () => import("../views/SystemSettings.vue");
 const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
+const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "../utils/el-services";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -69,6 +70,7 @@ const router = createRouter({
         { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
         { path: "settings", component: SystemSettings, meta: { role: "admin", title: "系统配置" } },
         { path: "tools", component: SystemOpsTools, meta: { role: "admin", title: "运维工具" } },
+        { path: "release-check", component: SystemReleaseCheck, meta: { role: "admin", title: "发布前检查" } },
       ],
     },
 

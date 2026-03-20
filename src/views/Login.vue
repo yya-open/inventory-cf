@@ -85,7 +85,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "../utils/el-services";
 import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";

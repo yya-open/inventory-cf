@@ -229,7 +229,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onMounted } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiDelete } from "../api/client";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";

@@ -16,7 +16,11 @@
     "migrate:status": "node scripts/migrations.mjs status",
     "migrate:apply": "node scripts/migrations.mjs apply",
     "migrate:bundle": "node scripts/migrations.mjs bundle",
-    "perf:explain": "python3 scripts/explain_queries.py"
+    "perf:explain": "python3 scripts/explain_queries.py",
+    "build:functions": "npx --yes wrangler pages functions build functions --outdir .wrangler/pages-functions --project-directory . --build-output-directory dist",
+    "test:smoke": "vitest run tests/e2e.public.test.ts tests/e2e.system-ops.smoke.test.ts tests/e2e.backup-drill.smoke.test.ts tests/migrationRegression.test.ts --pool=threads --maxWorkers=1",
+    "check:release": "node scripts/release-check.mjs",
+    "verify:release": "npm run check:release && npm run typecheck && npm run build && npm run build:functions && npm run test:smoke"
   },
   "dependencies": {
     "element-plus": "^2.7.8",

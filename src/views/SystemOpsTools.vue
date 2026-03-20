@@ -119,7 +119,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onMounted } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDownload } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 

@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost } from '../api/client';
 import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
 import { exportToXlsx } from '../utils/excel';

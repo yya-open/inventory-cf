@@ -361,7 +361,7 @@
 import { onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionCode, type PermissionTemplateCode } from "../utils/permissions";

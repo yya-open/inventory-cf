@@ -44,6 +44,9 @@
           <el-menu-item index="/system/tools">
             运维工具
           </el-menu-item>
+          <el-menu-item index="/system/release-check">
+            发布前检查
+          </el-menu-item>
         </el-menu>
 
         <!-- 配件仓菜单 -->
@@ -271,7 +274,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
 import { getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";

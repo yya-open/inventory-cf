@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { ref, computed } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";

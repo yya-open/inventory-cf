@@ -638,7 +638,7 @@
 
 <script setup lang="ts">
 import { ref, computed, watch, onMounted } from "vue";
-import { ElMessageBox } from "element-plus";
+import { ElMessageBox } from "../utils/el-services";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";

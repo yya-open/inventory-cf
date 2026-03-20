@@ -169,7 +169,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";

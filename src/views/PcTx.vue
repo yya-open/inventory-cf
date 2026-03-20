@@ -250,7 +250,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { can, useAuth } from "../store/auth";

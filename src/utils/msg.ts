@@ -1,4 +1,4 @@
-import { ElMessage } from "element-plus";
+import { ElMessage } from "./el-services";
 
 // Always pass a full options object to avoid edge-case runtime errors.
 const D_SUCCESS = 2000;
