@@ -28,10 +28,26 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!schema.ok && !['scan_all'].includes(String(action || ''))) return json(false, schema, schema.message, 409);
     let data: any = null;
     if (action === 'scan_all') data = await forceRefreshRepairScan(env.DB);
-    else if (action === 'repair_pc_latest_state') data = await repairPcLatestState(env.DB);
-    else if (action === 'repair_dictionary_counters') data = await repairDictionaryCounters(env.DB);
-    else if (action === 'repair_audit_materialized') data = await repairAuditMaterialized(env.DB);
-    else if (action === 'repair_search_norm') data = await repairSearchNormalize(env.DB);
+    else if (action === 'repair_pc_latest_state') {
+      const result = await repairPcLatestState(env.DB);
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { result, after };
+    }
+    else if (action === 'repair_dictionary_counters') {
+      const result = await repairDictionaryCounters(env.DB);
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { result, after };
+    }
+    else if (action === 'repair_audit_materialized') {
+      const result = await repairAuditMaterialized(env.DB);
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { result, after };
+    }
+    else if (action === 'repair_search_norm') {
+      const result = await repairSearchNormalize(env.DB);
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { result, after };
+    }
     else if (action === 'repair_all') {
       const preview = await forceRefreshRepairScan(env.DB);
       const [a, b, c, d] = await Promise.all([

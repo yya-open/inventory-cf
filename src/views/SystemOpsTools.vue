@@ -26,11 +26,30 @@
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px">
           <el-button :loading="scanning" @click="scanAll">先扫描</el-button>
           <el-button type="primary" :loading="running==='repair_all'" :disabled="!schema.ok" @click="runRepair('repair_all')">一键全量修复</el-button>
-          <el-button :loading="running==='repair_pc_latest_state'" :disabled="!schema.ok" @click="runRepair('repair_pc_latest_state')">重建电脑快照</el-button>
-          <el-button :loading="running==='repair_dictionary_counters'" :disabled="!schema.ok" @click="runRepair('repair_dictionary_counters')">重算字典引用</el-button>
-          <el-button :loading="running==='repair_audit_materialized'" :disabled="!schema.ok" @click="runRepair('repair_audit_materialized')">回填审计物化</el-button>
-          <el-button :loading="running==='repair_search_norm'" :disabled="!schema.ok" @click="runRepair('repair_search_norm')">重建搜索规范化</el-button>
+          <el-button :loading="running==='repair_pc_latest_state'" :disabled="!schema.ok" @click="runRepair('repair_pc_latest_state')">{{ repairButtonLabel('repair_pc_latest_state', '重建电脑快照') }}</el-button>
+          <el-button :loading="running==='repair_dictionary_counters'" :disabled="!schema.ok" @click="runRepair('repair_dictionary_counters')">{{ repairButtonLabel('repair_dictionary_counters', '重算字典引用') }}</el-button>
+          <el-button :loading="running==='repair_audit_materialized'" :disabled="!schema.ok" @click="runRepair('repair_audit_materialized')">{{ repairButtonLabel('repair_audit_materialized', '回填审计物化') }}</el-button>
+          <el-button :loading="running==='repair_search_norm'" :disabled="!schema.ok" @click="runRepair('repair_search_norm')">{{ repairButtonLabel('repair_search_norm', '重建搜索规范化') }}</el-button>
         </div>
+
+        <el-alert
+          v-if="issueRows.length"
+          type="warning"
+          show-icon
+          :closable="false"
+          :title="`当前有 ${issueRows.length} 类问题待处理`"
+          :description="issueRows.map(row => `${row.label} ${row.affected_count} 条`).join('；')"
+          style="margin-bottom:12px"
+        />
+        <el-alert
+          v-else
+          type="success"
+          show-icon
+          :closable="false"
+          title="当前巡检结果正常"
+          description="电脑快照、字典引用计数、审计物化字段、搜索规范化均已通过检查。"
+          style="margin-bottom:12px"
+        />
 
         <el-row :gutter="12" style="margin-bottom:12px">
           <el-col :span="6"><el-card shadow="never"><div>扫描到的问题类型</div><div style="font-size:26px; font-weight:700">{{ scan.total_problem_count }}</div></el-card></el-col>
@@ -53,9 +72,32 @@
               <span v-else style="color:#999">—</span>
             </template>
           </el-table-column>
+          <el-table-column label="快捷操作" width="140">
+            <template #default="{ row }">
+              <el-button
+                v-if="row.status==='warn' && repairActionForScanKey(row.key)"
+                link
+                type="warning"
+                :disabled="!schema.ok"
+                @click="quickRepair(row.key)"
+              >立即修复</el-button>
+              <span v-else style="color:#999">—</span>
+            </template>
+          </el-table-column>
         </el-table>
 
-        <el-alert v-if="lastRepair" type="success" :closable="false" :title="lastRepair" style="margin-top:12px" />
+        <el-card v-if="lastRepair.detail" shadow="never" style="margin-top:12px; background:#f6ffed; border-color:#d9f7be">
+          <div style="display:flex; justify-content:space-between; gap:12px; flex-wrap:wrap; margin-bottom:8px">
+            <div style="font-weight:700; color:#389e0d">{{ lastRepair.title }}</div>
+            <div style="font-size:12px; color:#666">{{ lastRepair.finishedAt || '' }}</div>
+          </div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom:8px">
+            <el-tag type="success">{{ lastRepair.processed }}</el-tag>
+            <el-tag :type="lastRepair.remainingProblems > 0 ? 'warning' : 'success'">剩余 {{ lastRepair.remainingProblems }} 类问题</el-tag>
+            <el-tag :type="lastRepair.remainingRows > 0 ? 'warning' : 'success'">剩余 {{ lastRepair.remainingRows }} 条记录</el-tag>
+          </div>
+          <div style="color:#666; line-height:1.8">{{ lastRepair.detail }}</div>
+        </el-card>
       </el-tab-pane>
 
       <el-tab-pane label="异步任务" name="jobs">
@@ -108,23 +150,48 @@
       </el-tab-pane>
     </el-tabs>
 
-    <el-dialog v-model="diffDialog.visible" width="720px" :title="diffDialog.title || '差异明细'">
+    <el-dialog v-model="diffDialog.visible" width="760px" :title="diffDialog.title || '差异明细'">
       <div v-if="!diffDialog.rows.length" style="color:#999">暂无明细</div>
       <el-table v-else :data="diffDialog.rows" border size="small">
-        <el-table-column v-for="col in diffDialog.columns" :key="col" :prop="col" :label="columnLabel(col)" min-width="120" />
+        <el-table-column v-for="col in diffDialog.columns" :key="col" :prop="col" :label="columnLabel(col)" min-width="120">
+          <template #default="{ row }">
+            <template v-if="col==='mismatch_fields'">
+              <div style="display:flex; gap:6px; flex-wrap:wrap">
+                <el-tag v-for="item in toTagList(row[col])" :key="item" size="small" type="warning">{{ columnLabel(item) }}</el-tag>
+              </div>
+            </template>
+            <template v-else>{{ formatCell(row[col]) }}</template>
+          </template>
+        </el-table-column>
       </el-table>
     </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted } from 'vue';
-import { ElMessage } from "../utils/el-services";
-import { apiGet, apiPost, apiPut, apiDownload } from '../api/client';
+import { computed, onMounted, reactive, ref } from 'vue';
+import { ElMessage } from '../utils/el-services';
+import { apiDownload, apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 
 const autoScanMinutes = 15;
 type JobRow = { id:number; job_type:string; status:string; created_by_name?:string; message?:string; created_at?:string; retry_count?:number; max_retries?:number; retain_until?:string };
+
+type RepairAction = 'repair_all' | 'repair_pc_latest_state' | 'repair_dictionary_counters' | 'repair_audit_materialized' | 'repair_search_norm';
+const repairKeyToAction: Record<string, RepairAction | undefined> = {
+  pc_latest_state: 'repair_pc_latest_state',
+  dictionary_counters: 'repair_dictionary_counters',
+  audit_materialized: 'repair_audit_materialized',
+  search_norm: 'repair_search_norm',
+};
+const repairActionTitle: Record<RepairAction, string> = {
+  repair_all: '一键全量修复',
+  repair_pc_latest_state: '重建电脑快照',
+  repair_dictionary_counters: '重算字典引用',
+  repair_audit_materialized: '回填审计物化',
+  repair_search_norm: '重建搜索规范化',
+};
+
 const tab = ref('repair');
 const schema = reactive<any>({ ok: true, missing: [] });
 const dashboard = reactive<any>({ slow_request_count: 0, error_request_count: 0, async_job_count: 0, queued_job_count: 0, failed_job_count: 0, repair_problem_count: 0 });
@@ -135,18 +202,50 @@ const errorRows = ref<any[]>([]);
 const jobs = ref<JobRow[]>([]);
 const scanning = ref(false);
 const running = ref('');
-const lastRepair = ref('');
+const lastRepair = reactive<any>({ title: '', detail: '', processed: '', remainingProblems: 0, remainingRows: 0, finishedAt: '' });
 const jobFilter = reactive({ status: '', job_type: '', mine: false });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
+
+const issueRows = computed(() => Array.isArray(scan.items) ? scan.items.filter((row: any) => row.status === 'warn' && Number(row.affected_count || 0) > 0) : []);
 
 function formatTime(v?: string | null) {
   if (!v) return '';
   return String(v).replace('T', ' ').replace(/\.\d+Z?$/, '');
 }
 
+function formatCell(value: any) {
+  if (value === null || value === undefined || value === '') return '—';
+  if (Array.isArray(value)) return value.join(', ');
+  if (typeof value === 'object') return JSON.stringify(value);
+  return String(value);
+}
+
+function toTagList(value: any) {
+  return String(value ?? '').split(',').map((s) => s.trim()).filter(Boolean);
+}
+
 function columnLabel(key: string) {
   const map: Record<string, string> = {
-    id: 'ID', serial_no: '序列号', brand: '品牌', model: '型号', dictionary_key: '字典类型', label: '字典值', expected: '期望计数', actual: '实际计数', asset_type: '资产类型', code: '编号', action: '动作', entity: '实体', entity_id: '实体ID'
+    id: 'ID',
+    serial_no: '序列号',
+    brand: '品牌',
+    model: '型号',
+    dictionary_key: '字典类型',
+    label: '字典值',
+    expected: '期望计数',
+    actual: '实际计数',
+    asset_type: '资产类型',
+    code: '编号',
+    action: '动作',
+    entity: '实体',
+    entity_id: '实体ID',
+    mismatch_fields: '差异字段',
+    module_code: '模块',
+    high_risk: '高风险',
+    target_name: '目标名称',
+    target_code: '目标编号',
+    summary_text: '摘要',
+    search_text_norm: '搜索字段',
   };
   return map[key] || key;
 }
@@ -154,6 +253,53 @@ function columnLabel(key: string) {
 function applySchema(data:any) { Object.assign(schema, data || {}); }
 function applyDashboard(data:any) { Object.assign(dashboard, data || {}); }
 function applyScan(data:any) { Object.assign(scan, { total_problem_count: 0, affected_rows: 0, items: [], ...data }); }
+
+function getScanRowByAction(action: RepairAction) {
+  const key = Object.keys(repairKeyToAction).find((k) => repairKeyToAction[k] === action);
+  return Array.isArray(scan.items) ? scan.items.find((row: any) => row.key === key) : null;
+}
+
+function repairButtonLabel(action: RepairAction, label: string) {
+  const row = getScanRowByAction(action);
+  const count = Number(row?.affected_count || 0);
+  return count > 0 ? `${label}（${count}）` : label;
+}
+
+function repairActionForScanKey(key: string) {
+  return repairKeyToAction[key];
+}
+
+function quickRepair(key: string) {
+  const action = repairActionForScanKey(key);
+  if (action) runRepair(action);
+}
+
+function buildLastRepair(action: RepairAction, data: any, message?: string) {
+  const after = data?.after || scan;
+  const remainingProblems = Number(after?.total_problem_count || 0);
+  const remainingRows = Number(after?.affected_rows || 0);
+  let processed = '';
+  let detail = message || '修复完成';
+  if (action === 'repair_all') {
+    const repair = data?.repair || {};
+    processed = `电脑快照 ${Number(repair?.pc_latest_state?.repaired || 0)} / 字典计数 ${Number(repair?.dictionary_counters?.rows || 0)} / 审计物化 ${Number(repair?.audit_materialized?.repaired || 0)} / 搜索规范化 ${Number(repair?.search_norm?.repaired || 0)}`;
+    detail = `本次已执行全部修复动作。修复后自动重新巡检，当前剩余 ${remainingProblems} 类问题，共 ${remainingRows} 条记录。`;
+  } else {
+    const result = data?.result || {};
+    const count = Number(result?.repaired || result?.rows || 0);
+    const unit = action === 'repair_dictionary_counters' ? '行' : '条';
+    processed = `已处理 ${count} ${unit}`;
+    detail = `${repairActionTitle[action]}已执行完成。修复后自动重新巡检，当前剩余 ${remainingProblems} 类问题，共 ${remainingRows} 条记录。`;
+  }
+  Object.assign(lastRepair, {
+    title: repairActionTitle[action],
+    detail,
+    processed,
+    remainingProblems,
+    remainingRows,
+    finishedAt: formatTime(new Date().toISOString()),
+  });
+}
 
 async function loadBase() {
   const r:any = await apiGet('/api/system-tools');
@@ -193,13 +339,14 @@ async function scanAll() {
   }
 }
 
-async function runRepair(action: string) {
+async function runRepair(action: RepairAction) {
   running.value = action;
   try {
     const r:any = await apiPost('/api/system-tools', { action });
-    lastRepair.value = r.message || '修复完成';
     if (action === 'repair_all' && r.data?.after) applyScan(r.data.after);
+    else if (r.data?.after) applyScan(r.data.after);
     else await scanAll();
+    buildLastRepair(action, r.data || {}, r.message);
     await Promise.all([loadBase(), loadHealth()]);
     ElMessage.success(r.message || '修复完成');
   } finally {

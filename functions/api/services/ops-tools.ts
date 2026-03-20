@@ -117,40 +117,16 @@ export async function repairDictionaryCounters(db: D1Database) {
   return { rows: Number(row?.c || 0) };
 }
 
-function normalizeAuditStoredText(value: any) {
-  return String(value ?? '').trim();
-}
-
-function computeAuditMaterializedSync(row: any, payload: any) {
-  const normalizedAction = normalizeAuditAction(String(row?.action || ''));
-  const moduleCode = resolveAuditModuleCode(normalizedAction, row?.entity ?? null);
-  const highRisk = Number(isAuditHighRisk(normalizedAction) || 0);
-  const materialized = materializeAuditFields(normalizedAction, row?.entity ?? null, row?.entity_id ?? null, payload);
-  const diffKeys: string[] = [];
-  const compareText = (key: string, actual: any, expected: any) => {
-    if (normalizeAuditStoredText(actual) !== normalizeAuditStoredText(expected)) diffKeys.push(key);
-  };
-  compareText('module_code', row?.module_code, moduleCode);
-  if (Number(row?.high_risk || 0) !== highRisk) diffKeys.push('high_risk');
-  compareText('target_name', row?.target_name, materialized.target_name);
-  compareText('target_code', row?.target_code, materialized.target_code);
-  compareText('summary_text', row?.summary_text, materialized.summary_text);
-  compareText('search_text_norm', row?.search_text_norm, materialized.search_text_norm);
-  return { normalizedAction, moduleCode, highRisk, materialized, diffKeys };
-}
-
 export async function repairAuditMaterialized(db: D1Database) {
   const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id ASC`).all<any>();
   const statements: D1PreparedStatement[] = [];
   let count = 0;
   for (const row of results || []) {
-    let payload: any = null;
-    try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
-    const sync = computeAuditMaterializedSync(row, payload);
-    if (!sync.diffKeys.length) continue;
+    const diff = computeAuditMaterializedDiff(row);
+    if (!diff.mismatch_fields.length) continue;
     statements.push(db.prepare(
       `UPDATE audit_log SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=? WHERE id=?`
-    ).bind(sync.moduleCode, sync.highRisk, sync.materialized.target_name, sync.materialized.target_code, sync.materialized.summary_text, sync.materialized.search_text_norm, row.id));
+    ).bind(diff.expected.module_code, diff.expected.high_risk, diff.expected.target_name, diff.expected.target_code, diff.expected.summary_text, diff.expected.search_text_norm, row.id));
     count += 1;
     if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
   }
@@ -179,6 +155,39 @@ export async function repairSearchNormalize(db: D1Database) {
   }
   if (monStatements.length) await db.batch(monStatements);
   return { repaired };
+}
+
+function normalizeNullableText(value: any) {
+  const text = String(value ?? '').trim();
+  return text || null;
+}
+
+function computeAuditMaterializedDiff(row: any) {
+  let payload: any = null;
+  try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
+  const action = normalizeAuditAction(String(row?.action || ''));
+  const expectedFields = materializeAuditFields(action, row?.entity ?? null, row?.entity_id ?? null, payload);
+  const expected = {
+    module_code: resolveAuditModuleCode(action, row?.entity ?? null),
+    high_risk: Number(isAuditHighRisk(action)),
+    target_name: normalizeNullableText(expectedFields.target_name),
+    target_code: normalizeNullableText(expectedFields.target_code),
+    summary_text: normalizeNullableText(expectedFields.summary_text),
+    search_text_norm: normalizeNullableText(expectedFields.search_text_norm),
+  };
+  const current = {
+    module_code: String(row?.module_code || '').trim() || null,
+    high_risk: Number(row?.high_risk || 0),
+    target_name: normalizeNullableText(row?.target_name),
+    target_code: normalizeNullableText(row?.target_code),
+    summary_text: normalizeNullableText(row?.summary_text),
+    search_text_norm: normalizeNullableText(row?.search_text_norm),
+  };
+  const mismatch_fields: string[] = [];
+  for (const key of Object.keys(expected) as (keyof typeof expected)[]) {
+    if ((current as any)[key] !== (expected as any)[key]) mismatch_fields.push(String(key));
+  }
+  return { expected, current, mismatch_fields };
 }
 
 function normalizeCounterLabel(value: any) {
@@ -284,27 +293,30 @@ async function scanAuditMaterialized(db: D1Database): Promise<RepairScanItem> {
   const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
   const diffs: any[] = [];
   for (const row of results || []) {
-    let payload: any = null;
-    try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
-    const sync = computeAuditMaterializedSync(row, payload);
-    if (!sync.diffKeys.length) continue;
+    const diff = computeAuditMaterializedDiff(row);
+    if (!diff.mismatch_fields.length) continue;
     diffs.push({
-      id: row?.id,
-      action: row?.action,
-      entity: row?.entity,
-      entity_id: row?.entity_id,
-      mismatch_fields: sync.diffKeys.join(', '),
+      id: row.id,
+      action: row.action,
+      entity: row.entity,
+      entity_id: row.entity_id,
+      mismatch_fields: diff.mismatch_fields.join(', '),
     });
+    if (diffs.length >= 20) break;
   }
-  const count = diffs.length;
+  const row = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
+  let count = 0;
+  for (const item of row.results || []) {
+    if (computeAuditMaterializedDiff(item).mismatch_fields.length) count += 1;
+  }
   return {
     key: 'audit_materialized',
     label: '审计物化字段',
     affected_count: count,
     status: count > 0 ? 'warn' : 'ok',
-    detail: count > 0 ? `发现 ${count} 条审计记录与当前物化规则不一致` : '审计物化字段完整',
+    detail: count > 0 ? `发现 ${count} 条审计记录存在物化展示/搜索字段差异` : '审计物化字段完整',
     recommendation: count > 0 ? '建议执行“回填审计物化”' : '无需处理',
-    examples: diffs.slice(0, 20),
+    examples: diffs,
   };
 }
 
@@ -363,14 +375,16 @@ export function buildRepairResultSummary(action: string, data: any) {
   if (action === 'scan_all') {
     return `扫描完成：${Number(data?.total_problem_count || 0)} 类问题，影响 ${Number(data?.affected_rows || 0)} 条记录`;
   }
+  const afterProblems = Number(data?.after?.total_problem_count || 0);
+  const afterRows = Number(data?.after?.affected_rows || 0);
   if (action === 'repair_all') {
     const repair = data?.repair || {};
-    return `全量修复完成：电脑快照 ${Number(repair?.pc_latest_state?.repaired || 0)}，字典计数 ${Number(repair?.dictionary_counters?.rows || 0)}，审计物化 ${Number(repair?.audit_materialized?.repaired || 0)}，搜索规范化 ${Number(repair?.search_norm?.repaired || 0)}`;
+    return `全量修复完成：电脑快照 ${Number(repair?.pc_latest_state?.repaired || 0)}，字典计数 ${Number(repair?.dictionary_counters?.rows || 0)}，审计物化 ${Number(repair?.audit_materialized?.repaired || 0)}，搜索规范化 ${Number(repair?.search_norm?.repaired || 0)}；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
   }
-  if (action === 'repair_pc_latest_state') return `电脑快照重建完成：${Number(data?.repaired || 0)} 条`;
-  if (action === 'repair_dictionary_counters') return `字典引用计数重算完成：${Number(data?.rows || 0)} 行`;
-  if (action === 'repair_audit_materialized') return `审计物化回填完成：${Number(data?.repaired || 0)} 条`;
-  if (action === 'repair_search_norm') return `搜索规范化重建完成：${Number(data?.repaired || 0)} 条`;
+  if (action === 'repair_pc_latest_state') return `电脑快照重建完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
+  if (action === 'repair_dictionary_counters') return `字典引用计数重算完成：${Number(data?.result?.rows || data?.rows || 0)} 行；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
+  if (action === 'repair_audit_materialized') return `审计物化回填完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
+  if (action === 'repair_search_norm') return `搜索规范化重建完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
   return '执行完成';
 }
 
