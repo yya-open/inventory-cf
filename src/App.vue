@@ -47,6 +47,9 @@
           <el-menu-item index="/system/release-check">
             发布前检查
           </el-menu-item>
+          <el-menu-item index="/system/docs">
+            系统交付文档
+          </el-menu-item>
         </el-menu>
 
         <!-- 配件仓菜单 -->
@@ -228,6 +231,24 @@
         <el-main class="app-main">
           <div class="page-wrap">
             <el-alert v-if="schemaStatus.loaded && !schemaStatus.ok" type="error" :closable="false" show-icon style="margin-bottom:12px" :title="schemaStatus.message || '数据库结构未升级到当前版本，请先执行迁移'" />
+            <el-alert
+              v-if="opsAlert.visible"
+              :type="opsAlert.type"
+              :closable="false"
+              show-icon
+              style="margin-bottom:12px"
+            >
+              <template #title>
+                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap">
+                  <div>{{ opsAlert.title }}</div>
+                  <div style="display:flex; gap:8px; flex-wrap:wrap">
+                    <el-button size="small" @click="router.push('/system/tools')">打开运维工具</el-button>
+                    <el-button size="small" plain @click="router.push('/system/release-check')">打开发布前检查</el-button>
+                  </div>
+                </div>
+              </template>
+              <div>{{ opsAlert.detail }}</div>
+            </el-alert>
             <router-view />
           </div>
         </el-main>
@@ -276,7 +297,7 @@ import { computed, ref, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
-import { getSystemSchemaStatus } from "./api/systemHealth";
+import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 
@@ -364,6 +385,7 @@ function doLogout() {
 
 const showChange = ref(false);
 const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
+const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: string; detail: string }>({ visible: false, type: 'warning', title: '', detail: '' });
 
 async function loadSchemaStatus() {
   if (!auth.user || simpleLayout.value) return;
@@ -381,7 +403,34 @@ async function loadSchemaStatus() {
   }
 }
 
-watch(() => [route.path, auth.user?.id], () => { loadSchemaStatus(); }, { immediate: true });
+async function loadOpsAlert() {
+  if (!auth.user || simpleLayout.value || auth.user.role !== 'admin') {
+    opsAlert.visible = false;
+    return;
+  }
+  try {
+    const r:any = await getSystemHealth();
+    const alerts = r.data?.alerts || {};
+    const active = Number(alerts.active_count || 0);
+    if (!active) {
+      opsAlert.visible = false;
+      return;
+    }
+    const parts:string[] = [];
+    if (alerts.schema_issue) parts.push('Schema 未就绪');
+    if (alerts.scan_issue) parts.push(`巡检发现 ${Number(r.data?.scan?.total_problem_count || 0)} 类问题`);
+    if (Number(alerts.failed_jobs || 0) > 0) parts.push(`失败异步任务 ${Number(alerts.failed_jobs || 0)} 个`);
+    if (Number(alerts.error_5xx_last_24h || 0) > 0) parts.push(`近 24h 发生 ${Number(alerts.error_5xx_last_24h || 0)} 次 5xx`);
+    opsAlert.visible = true;
+    opsAlert.type = alerts.schema_issue ? 'error' : 'warning';
+    opsAlert.title = `系统当前有 ${active} 项主动告警`;
+    opsAlert.detail = parts.join('；');
+  } catch {
+    opsAlert.visible = false;
+  }
+}
+
+watch(() => [route.path, auth.user?.id], () => { loadSchemaStatus(); loadOpsAlert(); }, { immediate: true });
 
 const oldP = ref("");
 const newP = ref("");

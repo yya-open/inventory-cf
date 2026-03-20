@@ -5,6 +5,7 @@ const root = process.cwd();
 const manifestPath = path.join(root, 'sql', 'migrations.manifest.json');
 const schemaStatusPath = path.join(root, 'functions', 'api', 'services', 'schema-status.ts');
 const functionsDir = path.join(root, 'functions');
+const perfBudgetScript = path.join(root, 'scripts', 'perf-budget-check.mjs');
 
 function fail(message) {
   console.error(`✘ ${message}`);
@@ -43,6 +44,9 @@ try {
   if (!fs.existsSync(functionsDir)) fail('缺少 functions 目录');
   else ok('Functions 目录存在');
 
+  if (!fs.existsSync(perfBudgetScript)) fail('缺少 scripts/perf-budget-check.mjs');
+  else ok('性能预算检查脚本存在');
+
   ok('不依赖 wrangler.toml；Pages Functions 编译使用 CLI 参数');
 
   if (process.exitCode) process.exit(process.exitCode);
@@ -60,6 +64,7 @@ try {
 
   console.log('\n建议执行:');
   console.log('  npm run verify:release');
+  console.log('  npm run check:perf-budget');
   console.log('  npm run migrate:status -- --db <your_db> --remote');
 } catch (error) {
   fail(error instanceof Error ? error.message : String(error));

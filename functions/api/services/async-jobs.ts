@@ -190,7 +190,36 @@ export async function processAsyncJob(db: D1Database, id: number) {
   }
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null } = {}) {
+function toMs(value: any) {
+  if (!value) return 0;
+  const ts = Date.parse(String(value));
+  return Number.isFinite(ts) ? ts : 0;
+}
+
+function mapAsyncJobRow(row: any) {
+  const createdMs = toMs(row?.created_at);
+  const startedMs = toMs(row?.started_at);
+  const finishedMs = toMs(row?.finished_at || row?.canceled_at);
+  const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
+  const resultSize = row?.result_text == null ? 0 : Buffer.byteLength(String(row.result_text), 'utf8');
+  const progress = String(row?.status) === 'success' ? 100
+    : String(row?.status) === 'failed' ? 100
+    : String(row?.status) === 'canceled' ? 100
+    : String(row?.status) === 'running' ? 55
+    : 5;
+  const expiresInMs = row?.retain_until ? Math.max(0, toMs(row.retain_until) - Date.now()) : 0;
+  return {
+    ...row,
+    duration_ms: durationMs,
+    progress_pct: progress,
+    result_size: resultSize,
+    expires_in_ms: expiresInMs,
+    is_expired: !!row?.result_deleted_at || (!!row?.retain_until && expiresInMs <= 0),
+    age_ms: createdMs ? Math.max(0, Date.now() - createdMs) : 0,
+  };
+}
+
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null } = {}) {
   await cleanupAsyncJobHousekeeping(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
@@ -198,9 +227,10 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   if (options.status) { where.push(`status=?`); binds.push(String(options.status)); }
   if (options.job_type) { where.push(`job_type=?`); binds.push(String(options.job_type)); }
   if (options.created_by) { where.push(`created_by=?`); binds.push(Number(options.created_by)); }
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+  if (options.days) { where.push(`created_at >= datetime('now','+8 hours', ?)`); binds.push(`-${Math.max(1, Math.min(90, Number(options.days || 7)))} day`); }
+  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_text, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
-  return results || [];
+  return (results || []).map(mapAsyncJobRow);
 }
 
 export async function getAsyncJob(db: D1Database, id: number) {

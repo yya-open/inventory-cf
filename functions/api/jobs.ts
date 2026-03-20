@@ -13,8 +13,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 100)));
     const jobStatus = (url.searchParams.get('status') || '').trim() || null;
     const jobType = (url.searchParams.get('job_type') || '').trim() || null;
+    const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 7)));
     const mineOnly = ['1', 'true'].includes(String(url.searchParams.get('mine') || '').toLowerCase());
-    return json(true, await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, created_by: mineOnly ? actor.id : null }));
+    return json(true, await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null }));
   } catch (e: any) {
     return errorResponse(e);
   }

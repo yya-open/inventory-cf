@@ -1,7 +1,7 @@
 import { sqlNowStored } from '../_time';
 import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
-import { isAuditHighRisk, materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode } from '../_audit';
+import { materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode, isAuditHighRisk } from '../_audit';
 import { normalizeSearchText } from '../_search';
 import { getSchemaStatus } from './schema-status';
 
@@ -26,6 +26,15 @@ export type RepairScanResult = {
 
 const OPS_SCAN_KEY = 'repair_center';
 const AUTO_SCAN_INTERVAL_MINUTES = 15;
+
+const REPAIR_ACTION_LABEL: Record<string, string> = {
+  scan_all: '执行巡检扫描',
+  repair_all: '一键全量修复',
+  repair_pc_latest_state: '重建电脑快照',
+  repair_dictionary_counters: '重算字典引用',
+  repair_audit_materialized: '回填审计物化',
+  repair_search_norm: '重建搜索规范化',
+};
 
 export async function ensureRequestErrorLogTable(db: D1Database) {
   await db.prepare(
@@ -54,6 +63,30 @@ export async function ensureOpsScanStateTable(db: D1Database) {
     )`
   ).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_ops_scan_state_updated_at ON ops_scan_state(updated_at DESC)`).run();
+}
+
+export async function ensureAdminRepairHistoryTable(db: D1Database) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS admin_repair_history (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      action_key TEXT NOT NULL,
+      action_label TEXT NOT NULL,
+      actor_id INTEGER,
+      actor_name TEXT,
+      before_problem_count INTEGER NOT NULL DEFAULT 0,
+      before_affected_rows INTEGER NOT NULL DEFAULT 0,
+      repaired_count INTEGER NOT NULL DEFAULT 0,
+      after_problem_count INTEGER NOT NULL DEFAULT 0,
+      after_affected_rows INTEGER NOT NULL DEFAULT 0,
+      success INTEGER NOT NULL DEFAULT 1,
+      result_summary TEXT,
+      detail_json TEXT,
+      error_text TEXT,
+      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+    )`
+  ).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_created_at ON admin_repair_history(created_at DESC, id DESC)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_action_key ON admin_repair_history(action_key, id DESC)`).run();
 }
 
 async function isRepairScanStale(db: D1Database) {
@@ -102,94 +135,6 @@ async function persistRepairScan(db: D1Database, scan: RepairScanResult) {
   ).bind(OPS_SCAN_KEY, Number(scan.total_problem_count || 0), Number(scan.affected_rows || 0), serialized).run();
 }
 
-export async function repairPcLatestState(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id FROM pc_assets ORDER BY id ASC`).all<any>();
-  const ids = (results || []).map((r: any) => Number(r?.id || 0)).filter(Boolean);
-  for (let i = 0; i < ids.length; i += 200) {
-    await rebuildPcLatestStateForAssets(db, ids.slice(i, i + 200));
-  }
-  return { repaired: ids.length };
-}
-
-export async function repairDictionaryCounters(db: D1Database) {
-  await syncSystemDictionaryUsageCounters(db);
-  const row = await db.prepare(`SELECT COUNT(*) AS c FROM dictionary_usage_counters`).first<any>();
-  return { rows: Number(row?.c || 0) };
-}
-
-export async function repairAuditMaterialized(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id ASC`).all<any>();
-  const statements: D1PreparedStatement[] = [];
-  let count = 0;
-  for (const row of results || []) {
-    const diff = computeAuditMaterializedDiff(row);
-    if (!diff.mismatch_fields.length) continue;
-    statements.push(db.prepare(
-      `UPDATE audit_log SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=? WHERE id=?`
-    ).bind(diff.expected.module_code, diff.expected.high_risk, diff.expected.target_name, diff.expected.target_code, diff.expected.summary_text, diff.expected.search_text_norm, row.id));
-    count += 1;
-    if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
-  }
-  if (statements.length) await db.batch(statements);
-  return { repaired: count };
-}
-
-export async function repairSearchNormalize(db: D1Database) {
-  let repaired = 0;
-  const { results: pcRows } = await db.prepare(`SELECT id, serial_no, brand, model, disk_capacity, memory_size, remark FROM pc_assets ORDER BY id ASC`).all<any>();
-  const pcStatements: D1PreparedStatement[] = [];
-  for (const row of pcRows || []) {
-    pcStatements.push(db.prepare(`UPDATE pc_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.serial_no, row?.brand, row?.model, row?.remark, row?.disk_capacity, row?.memory_size), row.id
-    ));
-    repaired += 1;
-  }
-  if (pcStatements.length) await db.batch(pcStatements);
-  const { results: monitorRows } = await db.prepare(`SELECT id, asset_code, sn, brand, model, size_inch, remark, department, employee_name FROM monitor_assets ORDER BY id ASC`).all<any>();
-  const monStatements: D1PreparedStatement[] = [];
-  for (const row of monitorRows || []) {
-    monStatements.push(db.prepare(`UPDATE monitor_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.asset_code, row?.sn, row?.brand, row?.model, row?.size_inch, row?.remark, row?.department, row?.employee_name), row.id
-    ));
-    repaired += 1;
-  }
-  if (monStatements.length) await db.batch(monStatements);
-  return { repaired };
-}
-
-function normalizeNullableText(value: any) {
-  const text = String(value ?? '').trim();
-  return text || null;
-}
-
-function computeAuditMaterializedDiff(row: any) {
-  let payload: any = null;
-  try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
-  const action = normalizeAuditAction(String(row?.action || ''));
-  const expectedFields = materializeAuditFields(action, row?.entity ?? null, row?.entity_id ?? null, payload);
-  const expected = {
-    module_code: resolveAuditModuleCode(action, row?.entity ?? null),
-    high_risk: Number(isAuditHighRisk(action)),
-    target_name: normalizeNullableText(expectedFields.target_name),
-    target_code: normalizeNullableText(expectedFields.target_code),
-    summary_text: normalizeNullableText(expectedFields.summary_text),
-    search_text_norm: normalizeNullableText(expectedFields.search_text_norm),
-  };
-  const current = {
-    module_code: String(row?.module_code || '').trim() || null,
-    high_risk: Number(row?.high_risk || 0),
-    target_name: normalizeNullableText(row?.target_name),
-    target_code: normalizeNullableText(row?.target_code),
-    summary_text: normalizeNullableText(row?.summary_text),
-    search_text_norm: normalizeNullableText(row?.search_text_norm),
-  };
-  const mismatch_fields: string[] = [];
-  for (const key of Object.keys(expected) as (keyof typeof expected)[]) {
-    if ((current as any)[key] !== (expected as any)[key]) mismatch_fields.push(String(key));
-  }
-  return { expected, current, mismatch_fields };
-}
-
 function normalizeCounterLabel(value: any) {
   return String(value ?? '').trim();
 }
@@ -234,6 +179,103 @@ async function computeExpectedDictionaryCounterMaps(db: D1Database) {
   addCounterRows(counts.asset_archive_reason, archiveReasonRows);
   addCounterRows(counts.department, departmentRows);
   return counts;
+}
+
+function computeAuditMaterializedFields(row: any) {
+  let payload: any = null;
+  try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
+  const action = normalizeAuditAction(String(row?.action || ''));
+  const materialized = materializeAuditFields(action, row?.entity ?? null, row?.entity_id ?? null, payload);
+  return {
+    action,
+    module_code: resolveAuditModuleCode(action, row?.entity ?? null),
+    high_risk: Number(isAuditHighRisk(action)),
+    target_name: materialized.target_name || null,
+    target_code: materialized.target_code || null,
+    summary_text: materialized.summary_text || null,
+    search_text_norm: materialized.search_text_norm || null,
+  };
+}
+
+function collectAuditMaterializedDiff(row: any) {
+  const expected = computeAuditMaterializedFields(row);
+  const mismatches: string[] = [];
+  const fields: Array<keyof typeof expected> = ['module_code', 'high_risk', 'target_name', 'target_code', 'summary_text', 'search_text_norm'];
+  for (const field of fields) {
+    const actual = field === 'high_risk'
+      ? Number(row?.[field] || 0)
+      : String(row?.[field] ?? '').trim();
+    const want = field === 'high_risk'
+      ? Number(expected[field] || 0)
+      : String(expected[field] ?? '').trim();
+    if (actual !== want) mismatches.push(field);
+  }
+  return { expected, mismatch_fields: mismatches };
+}
+
+export async function repairPcLatestState(db: D1Database) {
+  const { results } = await db.prepare(`SELECT id FROM pc_assets ORDER BY id ASC`).all<any>();
+  const ids = (results || []).map((r: any) => Number(r?.id || 0)).filter(Boolean);
+  for (let i = 0; i < ids.length; i += 200) {
+    await rebuildPcLatestStateForAssets(db, ids.slice(i, i + 200));
+  }
+  return { repaired: ids.length };
+}
+
+export async function repairDictionaryCounters(db: D1Database) {
+  await syncSystemDictionaryUsageCounters(db);
+  const row = await db.prepare(`SELECT COUNT(*) AS c FROM dictionary_usage_counters`).first<any>();
+  return { repaired: Number(row?.c || 0), rows: Number(row?.c || 0) };
+}
+
+export async function repairAuditMaterialized(db: D1Database) {
+  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id ASC`).all<any>();
+  const statements: D1PreparedStatement[] = [];
+  let count = 0;
+  for (const row of results || []) {
+    const diff = collectAuditMaterializedDiff(row);
+    if (!diff.mismatch_fields.length) continue;
+    statements.push(db.prepare(
+      `UPDATE audit_log
+       SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=?
+       WHERE id=?`
+    ).bind(
+      diff.expected.module_code,
+      diff.expected.high_risk,
+      diff.expected.target_name,
+      diff.expected.target_code,
+      diff.expected.summary_text,
+      diff.expected.search_text_norm,
+      row.id,
+    ));
+    count += 1;
+    if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
+  }
+  if (statements.length) await db.batch(statements);
+  return { repaired: count };
+}
+
+export async function repairSearchNormalize(db: D1Database) {
+  let repaired = 0;
+  const { results: pcRows } = await db.prepare(`SELECT id, serial_no, brand, model, disk_capacity, memory_size, remark FROM pc_assets ORDER BY id ASC`).all<any>();
+  const pcStatements: D1PreparedStatement[] = [];
+  for (const row of pcRows || []) {
+    pcStatements.push(db.prepare(`UPDATE pc_assets SET search_text_norm=? WHERE id=?`).bind(
+      normalizeSearchText(row?.serial_no, row?.brand, row?.model, row?.remark, row?.disk_capacity, row?.memory_size), row.id
+    ));
+    repaired += 1;
+  }
+  if (pcStatements.length) await db.batch(pcStatements);
+  const { results: monitorRows } = await db.prepare(`SELECT id, asset_code, sn, brand, model, size_inch, remark, department, employee_name FROM monitor_assets ORDER BY id ASC`).all<any>();
+  const monStatements: D1PreparedStatement[] = [];
+  for (const row of monitorRows || []) {
+    monStatements.push(db.prepare(`UPDATE monitor_assets SET search_text_norm=? WHERE id=?`).bind(
+      normalizeSearchText(row?.asset_code, row?.sn, row?.brand, row?.model, row?.size_inch, row?.remark, row?.department, row?.employee_name), row.id
+    ));
+    repaired += 1;
+  }
+  if (monStatements.length) await db.batch(monStatements);
+  return { repaired };
 }
 
 async function scanPcLatestState(db: D1Database): Promise<RepairScanItem> {
@@ -293,30 +335,24 @@ async function scanAuditMaterialized(db: D1Database): Promise<RepairScanItem> {
   const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
   const diffs: any[] = [];
   for (const row of results || []) {
-    const diff = computeAuditMaterializedDiff(row);
+    const diff = collectAuditMaterializedDiff(row);
     if (!diff.mismatch_fields.length) continue;
     diffs.push({
       id: row.id,
       action: row.action,
       entity: row.entity,
       entity_id: row.entity_id,
-      mismatch_fields: diff.mismatch_fields.join(', '),
+      mismatch_fields: diff.mismatch_fields,
     });
-    if (diffs.length >= 20) break;
-  }
-  const row = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
-  let count = 0;
-  for (const item of row.results || []) {
-    if (computeAuditMaterializedDiff(item).mismatch_fields.length) count += 1;
   }
   return {
     key: 'audit_materialized',
     label: '审计物化字段',
-    affected_count: count,
-    status: count > 0 ? 'warn' : 'ok',
-    detail: count > 0 ? `发现 ${count} 条审计记录存在物化展示/搜索字段差异` : '审计物化字段完整',
-    recommendation: count > 0 ? '建议执行“回填审计物化”' : '无需处理',
-    examples: diffs,
+    affected_count: diffs.length,
+    status: diffs.length > 0 ? 'warn' : 'ok',
+    detail: diffs.length > 0 ? `发现 ${diffs.length} 条审计记录缺少或不匹配物化展示/搜索字段` : '审计物化字段完整',
+    recommendation: diffs.length > 0 ? '建议执行“回填审计物化”' : '无需处理',
+    examples: diffs.slice(0, 20),
   };
 }
 
@@ -371,27 +407,95 @@ export async function getAutoRepairScan(db: D1Database): Promise<RepairScanResul
   return (await readStoredRepairScan(db)) || await forceRefreshRepairScan(db);
 }
 
+export function actionLabel(action: string) {
+  return REPAIR_ACTION_LABEL[action] || action;
+}
+
+function summarizeRepairedCount(action: string, result: any) {
+  if (action === 'repair_all') {
+    const repair = result?.repair || {};
+    return Number(repair?.pc_latest_state?.repaired || 0)
+      + Number(repair?.dictionary_counters?.repaired || repair?.dictionary_counters?.rows || 0)
+      + Number(repair?.audit_materialized?.repaired || 0)
+      + Number(repair?.search_norm?.repaired || 0);
+  }
+  if (action === 'repair_pc_latest_state') return Number(result?.repaired || 0);
+  if (action === 'repair_dictionary_counters') return Number(result?.repaired || result?.rows || 0);
+  if (action === 'repair_audit_materialized') return Number(result?.repaired || 0);
+  if (action === 'repair_search_norm') return Number(result?.repaired || 0);
+  return 0;
+}
+
 export function buildRepairResultSummary(action: string, data: any) {
   if (action === 'scan_all') {
     return `扫描完成：${Number(data?.total_problem_count || 0)} 类问题，影响 ${Number(data?.affected_rows || 0)} 条记录`;
   }
-  const afterProblems = Number(data?.after?.total_problem_count || 0);
-  const afterRows = Number(data?.after?.affected_rows || 0);
+  const after = action === 'repair_all' ? data?.after : data?.after_scan;
+  const remaining = Number(after?.total_problem_count || 0);
+  const repaired = summarizeRepairedCount(action, data);
   if (action === 'repair_all') {
-    const repair = data?.repair || {};
-    return `全量修复完成：电脑快照 ${Number(repair?.pc_latest_state?.repaired || 0)}，字典计数 ${Number(repair?.dictionary_counters?.rows || 0)}，审计物化 ${Number(repair?.audit_materialized?.repaired || 0)}，搜索规范化 ${Number(repair?.search_norm?.repaired || 0)}；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
+    return `全量修复完成：共处理 ${repaired} 项，修复后剩余 ${remaining} 类问题 / ${Number(after?.affected_rows || 0)} 条记录`;
   }
-  if (action === 'repair_pc_latest_state') return `电脑快照重建完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
-  if (action === 'repair_dictionary_counters') return `字典引用计数重算完成：${Number(data?.result?.rows || data?.rows || 0)} 行；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
-  if (action === 'repair_audit_materialized') return `审计物化回填完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
-  if (action === 'repair_search_norm') return `搜索规范化重建完成：${Number(data?.result?.repaired || data?.repaired || 0)} 条；剩余 ${afterProblems} 类问题/${afterRows} 条记录`;
-  return '执行完成';
+  return `${actionLabel(action)}完成：处理 ${repaired} 条，修复后剩余 ${remaining} 类问题 / ${Number(after?.affected_rows || 0)} 条记录`;
+}
+
+export async function recordRepairHistory(db: D1Database, input: {
+  action: string;
+  actor_id?: number | null;
+  actor_name?: string | null;
+  before_scan?: RepairScanResult | null;
+  after_scan?: RepairScanResult | null;
+  result?: any;
+  summary?: string | null;
+  success?: boolean;
+  error_text?: string | null;
+}) {
+  await ensureAdminRepairHistoryTable(db);
+  const before = input.before_scan || { total_problem_count: 0, affected_rows: 0 } as any;
+  const after = input.after_scan || { total_problem_count: 0, affected_rows: 0 } as any;
+  await db.prepare(
+    `INSERT INTO admin_repair_history (
+      action_key, action_label, actor_id, actor_name,
+      before_problem_count, before_affected_rows,
+      repaired_count, after_problem_count, after_affected_rows,
+      success, result_summary, detail_json, error_text, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
+  ).bind(
+    input.action,
+    actionLabel(input.action),
+    input.actor_id ?? null,
+    input.actor_name ?? null,
+    Number(before.total_problem_count || 0),
+    Number(before.affected_rows || 0),
+    summarizeRepairedCount(input.action, input.result),
+    Number(after.total_problem_count || 0),
+    Number(after.affected_rows || 0),
+    input.success === false ? 0 : 1,
+    input.summary || null,
+    input.result == null ? null : JSON.stringify(input.result),
+    input.error_text || null,
+  ).run();
+}
+
+export async function listRepairHistory(db: D1Database, limit = 20) {
+  await ensureAdminRepairHistoryTable(db);
+  const { results } = await db.prepare(
+    `SELECT id, action_key, action_label, actor_id, actor_name,
+            before_problem_count, before_affected_rows, repaired_count,
+            after_problem_count, after_affected_rows, success,
+            result_summary, error_text, created_at
+     FROM admin_repair_history
+     ORDER BY id DESC
+     LIMIT ?`
+  ).bind(Math.max(1, Math.min(100, limit))).all<any>();
+  return results || [];
 }
 
 export async function loadOpsDashboard(db: D1Database) {
   await ensureRequestErrorLogTable(db);
   await ensureOpsScanStateTable(db);
-  const [slow, err, jobs, failedJobs, queuedJobs, schema, scanState] = await Promise.all([
+  await ensureAdminRepairHistoryTable(db);
+  const [slow, err, jobs, failedJobs, queuedJobs, schema, scanState, repairHistory] = await Promise.all([
     db.prepare(`SELECT COUNT(*) AS c FROM slow_request_log`).first<any>().catch(() => ({ c: 0 })),
     db.prepare(`SELECT COUNT(*) AS c FROM request_error_log`).first<any>().catch(() => ({ c: 0 })),
     db.prepare(`SELECT COUNT(*) AS c FROM async_jobs`).first<any>().catch(() => ({ c: 0 })),
@@ -399,6 +503,7 @@ export async function loadOpsDashboard(db: D1Database) {
     db.prepare(`SELECT COUNT(*) AS c FROM async_jobs WHERE status IN ('queued','running')`).first<any>().catch(() => ({ c: 0 })),
     getSchemaStatus(db),
     getAutoRepairScan(db),
+    db.prepare(`SELECT created_at FROM admin_repair_history ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
   ]);
   return {
     slow_request_count: Number((slow as any)?.c || 0),
@@ -409,5 +514,6 @@ export async function loadOpsDashboard(db: D1Database) {
     schema_ok: !!schema.ok,
     repair_problem_count: Number(scanState.total_problem_count || 0),
     last_scan_at: scanState.last_scanned_at || null,
+    last_repair_at: repairHistory?.created_at || null,
   };
 }

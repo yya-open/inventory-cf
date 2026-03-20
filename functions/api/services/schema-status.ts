@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = '202603200050_ops_auto_scan_backup_drill';
+export const REQUIRED_SCHEMA_VERSION = '202603200060_ops_alerts_repair_history';
 
 async function tableExists(db: D1Database, name: string) {
   const row = await db.prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>();
@@ -31,6 +31,7 @@ export async function getSchemaStatus(db: D1Database) {
     { key: 'idx_async_jobs_created_by_status', label: '异步任务索引', ok: await indexExists(db, 'idx_async_jobs_created_by_status'), need: 'idx_async_jobs_created_by_status' },
     { key: 'ops_scan_state', label: '运维自动巡检缓存表', ok: await tableExists(db, 'ops_scan_state'), need: 'ops_scan_state' },
     { key: 'backup_drill_runs', label: '备份恢复演练记录表', ok: await tableExists(db, 'backup_drill_runs'), need: 'backup_drill_runs' },
+    { key: 'admin_repair_history', label: '修复历史表', ok: await tableExists(db, 'admin_repair_history'), need: 'admin_repair_history' },
   ];
 
   let currentVersion: string | null = null;

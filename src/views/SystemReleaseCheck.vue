@@ -5,7 +5,7 @@
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
           <div>
             <div style="font-weight:700; font-size:16px">发布前检查</div>
-            <div style="color:#888; font-size:12px; margin-top:4px">发布前先看数据库版本、健康状态、失败任务与最近错误。</div>
+            <div style="color:#888; font-size:12px; margin-top:4px">发布前先看数据库版本、健康状态、失败任务、最近错误和前端性能预算。</div>
           </div>
           <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
             <el-tag :type="summary.ready ? 'success' : 'danger'">{{ summary.ready ? '可以发布' : '暂不建议发布' }}</el-tag>
@@ -24,7 +24,10 @@
 
     <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
       <template #header>
-        <div style="font-weight:700">检查清单</div>
+        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap">
+          <div style="font-weight:700">检查清单</div>
+          <el-button size="small" plain @click="go('/system/docs')">查看系统交付文档</el-button>
+        </div>
       </template>
       <el-table :data="rows" border size="small">
         <el-table-column prop="name" label="检查项" min-width="180" />
@@ -36,6 +39,20 @@
         <el-table-column prop="detail" label="说明" min-width="320" />
         <el-table-column prop="action" label="建议动作" min-width="240" />
       </el-table>
+    </el-card>
+
+    <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
+      <template #header>
+        <div style="font-weight:700">前端性能预算</div>
+      </template>
+      <el-table :data="budgetRows" border size="small">
+        <el-table-column prop="label" label="预算项" min-width="180" />
+        <el-table-column prop="limitText" label="预算上限" width="140" />
+        <el-table-column prop="description" label="说明" min-width="300" />
+      </el-table>
+      <div style="margin-top:10px; color:#888; font-size:12px">
+        本地执行 <code>npm run check:perf-budget</code> 可在构建后校验预算；<code>npm run verify:release</code> 已自动串上这一步。
+      </div>
     </el-card>
 
     <el-card shadow="never" style="border-radius: 12px">
@@ -56,7 +73,9 @@
 
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, resolveComponent } from 'vue';
+import { useRouter } from 'vue-router';
 import { getSystemHealth, getSystemSchemaStatus } from '../api/systemHealth';
+import { PERFORMANCE_BUDGETS, formatBudgetBytes } from '../constants/performanceBudget';
 
 const MetricCard = defineComponent({
   name: 'MetricCard',
@@ -78,6 +97,8 @@ const MetricCard = defineComponent({
   },
 });
 
+const router = useRouter();
+const go = (path: string) => router.push(path);
 const schema = reactive<any>({ ok: false, required_version: '', current_version: '', message: '' });
 const health = reactive<any>({ scan: { total_problem_count: 0 }, metrics: { failed_async_jobs: 0, error_5xx_last_24h: 0 }, schema: { ok: false } });
 
@@ -125,6 +146,12 @@ const rows = computed(() => [
     action: Number(health.metrics?.error_5xx_last_24h || 0) === 0 ? '无需处理' : '先看错误请求和日志，确认不是新问题再发布',
   },
 ]);
+
+const budgetRows = computed(() => PERFORMANCE_BUDGETS.map((item) => ({
+  label: item.label,
+  limitText: formatBudgetBytes(item.maxBytes),
+  description: item.description,
+})));
 
 async function load(force = false) {
   const [schemaResp, healthResp] = await Promise.all([

@@ -133,5 +133,10 @@
     "id": "202603200050_ops_auto_scan_backup_drill",
     "file": "sql/migrate_ops_auto_scan_backup_drill.sql",
     "description": "ops auto scan cache and backup drill records"
+  },
+  {
+    "id": "202603200060_ops_alerts_repair_history",
+    "file": "sql/migrate_ops_alerts_repair_history.sql",
+    "description": "repair history, alert loop, and ops handoff enhancements"
   }
 ]

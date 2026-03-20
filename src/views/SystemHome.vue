@@ -1,32 +1,42 @@
 <template>
   <div style="max-width: 1180px; margin: 0 auto">
-    <el-card shadow="never" style="border-radius: 12px">
+    <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
       <template #header>
-        <div style="display:flex; align-items:center; justify-content:space-between">
-          <div style="font-weight:700; font-size:16px">系统</div>
-          <div style="display:flex; gap:8px">
+        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+          <div style="font-weight:700">系统</div>
+          <div style="display:flex; gap:8px; flex-wrap:wrap">
             <el-button size="small" @click="go('/stock')">进入配件仓</el-button>
             <el-button size="small" @click="go('/pc/assets')">进入电脑仓</el-button>
           </div>
         </div>
       </template>
 
-      <el-alert title="以下功能为系统级配置/维护项，已从侧边栏主菜单收纳到此页面。" type="info" :closable="false" show-icon style="margin-bottom: 14px" />
+      <el-alert
+        v-if="ops.problem_count || ops.failed_jobs || !ops.schema_ok"
+        type="warning"
+        :closable="false"
+        show-icon
+        style="margin-bottom: 14px"
+        :title="`当前有 ${Number(ops.problem_count || 0) + Number(ops.failed_jobs || 0) + (!ops.schema_ok ? 1 : 0)} 项系统关注点`"
+      >
+        <div>Schema {{ ops.schema_ok ? '正常' : '异常' }}；待处理问题 {{ ops.problem_count }}；失败任务 {{ ops.failed_jobs }}；最近巡检 {{ formatTime(ops.last_scan_at) || '-' }}</div>
+      </el-alert>
 
+      <div style="color:#888; font-size:12px; margin-bottom: 12px">以下功能为系统级配置/维护项，已从侧边栏主菜单收纳到此页面。</div>
       <el-row :gutter="12">
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="Excel 导入配件" desc="批量导入配件基础数据（SKU/名称/品牌/型号…）" @open="go('/import/items')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="备份 / 恢复" desc="创建备份、恢复任务、下载备份文件" @open="go('/system/backup')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="审计日志" desc="查看用户操作记录、筛选与导出" @open="go('/system/audit')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="用户管理" desc="新增/编辑用户、角色管理" @open="go('/system/users')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="系统配置" desc="设置扫码现场体验、默认页大小等系统级规则" @open="go('/system/settings')" /></el-col>
-                <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px">
+        <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px">
           <el-card shadow="never" style="border-radius: 12px; height: 100%">
             <div style="font-weight:700; margin-bottom: 8px">运维工具</div>
             <div style="color:#777; font-size: 12px; margin-bottom: 10px">自动巡检、修复中心、异步任务、健康检查</div>
             <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px">
               <el-tag :type="ops.schema_ok ? 'success' : 'danger'">{{ ops.schema_ok ? 'Schema 正常' : 'Schema 异常' }}</el-tag>
-              <el-tag type="warning">待处理 {{ ops.problem_count }}</el-tag>
-              <el-tag type="info">失败任务 {{ ops.failed_jobs }}</el-tag>
+              <el-tag :type="ops.problem_count ? 'warning' : 'success'">待处理 {{ ops.problem_count }}</el-tag>
+              <el-tag :type="ops.failed_jobs ? 'warning' : 'info'">失败任务 {{ ops.failed_jobs }}</el-tag>
             </div>
             <div style="color:#999; font-size:12px; line-height:1.7; min-height:52px">
               <div>最近巡检：{{ formatTime(ops.last_scan_at) || '-' }}</div>
@@ -36,6 +46,7 @@
           </el-card>
         </el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="发布前检查" desc="发布前统一确认数据库版本、巡检问题、失败任务与 5xx 情况" @open="go('/system/release-check')" /></el-col>
+        <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="系统交付文档" desc="发布顺序、运维按钮说明、常见异常处理与备份恢复 SOP" @open="go('/system/docs')" /></el-col>
       </el-row>
     </el-card>
   </div>
@@ -56,9 +67,9 @@ const HomeCard = defineComponent({
         h('div', { style: 'font-weight:700; margin-bottom: 8px' }, props.title),
         h('div', { style: 'color:#777; font-size: 12px; margin-bottom: 12px' }, props.desc),
         h(resolveComponent('ElButton'), { type: 'primary', plain: true, size: 'small', onClick: () => emit('open') }, () => '打开'),
-      ]
+      ],
     });
-  }
+  },
 });
 
 const router = useRouter();

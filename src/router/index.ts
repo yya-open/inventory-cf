@@ -29,6 +29,7 @@ const SystemHome = () => import("../views/SystemHome.vue");
 const SystemSettings = () => import("../views/SystemSettings.vue");
 const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
 const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
+const SystemDocs = () => import("../views/SystemDocs.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
@@ -71,6 +72,7 @@ const router = createRouter({
         { path: "settings", component: SystemSettings, meta: { role: "admin", title: "系统配置" } },
         { path: "tools", component: SystemOpsTools, meta: { role: "admin", title: "运维工具" } },
         { path: "release-check", component: SystemReleaseCheck, meta: { role: "admin", title: "发布前检查" } },
+        { path: "docs", component: SystemDocs, meta: { role: "admin", title: "系统交付文档" } },
       ],
     },
 
