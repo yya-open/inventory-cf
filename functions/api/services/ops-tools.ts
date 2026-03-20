@@ -57,20 +57,20 @@ export async function repairAuditMaterialized(db: D1Database) {
 
 export async function repairSearchNormalize(db: D1Database) {
   let repaired = 0;
-  const { results: pcRows } = await db.prepare(`SELECT id, asset_code, serial_no, brand, model, cpu, remark FROM pc_assets ORDER BY id ASC`).all<any>();
+  const { results: pcRows } = await db.prepare(`SELECT id, serial_no, brand, model, disk_capacity, memory_size, remark FROM pc_assets ORDER BY id ASC`).all<any>();
   const pcStatements: D1PreparedStatement[] = [];
   for (const row of pcRows || []) {
     pcStatements.push(db.prepare(`UPDATE pc_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.asset_code, row?.serial_no, row?.brand, row?.model, row?.cpu, row?.remark), row.id
+      normalizeSearchText(row?.serial_no, row?.brand, row?.model, row?.remark, row?.disk_capacity, row?.memory_size), row.id
     ));
     repaired += 1;
   }
   if (pcStatements.length) await db.batch(pcStatements);
-  const { results: monitorRows } = await db.prepare(`SELECT id, asset_code, serial_no, brand, model, remark, department, employee_name FROM monitor_assets ORDER BY id ASC`).all<any>();
+  const { results: monitorRows } = await db.prepare(`SELECT id, asset_code, sn, brand, model, size_inch, remark, department, employee_name FROM monitor_assets ORDER BY id ASC`).all<any>();
   const monStatements: D1PreparedStatement[] = [];
   for (const row of monitorRows || []) {
     monStatements.push(db.prepare(`UPDATE monitor_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.asset_code, row?.serial_no, row?.brand, row?.model, row?.remark, row?.department, row?.employee_name), row.id
+      normalizeSearchText(row?.asset_code, row?.sn, row?.brand, row?.model, row?.size_inch, row?.remark, row?.department, row?.employee_name), row.id
     ));
     repaired += 1;
   }
