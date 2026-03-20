@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = '202603200040_ops_guard_health';
+export const REQUIRED_SCHEMA_VERSION = '202603200050_ops_auto_scan_backup_drill';
 
 async function tableExists(db: D1Database, name: string) {
   const row = await db.prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name=?`).bind(name).first<any>();
@@ -21,54 +21,16 @@ async function tableHasColumn(db: D1Database, table: string, column: string) {
 
 export async function getSchemaStatus(db: D1Database) {
   const checks = [
-    {
-      key: 'pc_asset_latest_state',
-      label: '电脑快照表',
-      ok: await tableExists(db, 'pc_asset_latest_state'),
-      need: 'pc_asset_latest_state',
-    },
-    {
-      key: 'dictionary_usage_counters',
-      label: '字典引用计数表',
-      ok: await tableExists(db, 'dictionary_usage_counters'),
-      need: 'dictionary_usage_counters',
-    },
-    {
-      key: 'system_settings_meta',
-      label: '系统配置元信息',
-      ok: await tableExists(db, 'system_settings_meta'),
-      need: 'system_settings_meta',
-    },
-    {
-      key: 'users.permission_template_code',
-      label: '用户权限模板字段',
-      ok: await tableHasColumn(db, 'users', 'permission_template_code'),
-      need: 'users.permission_template_code',
-    },
-    {
-      key: 'async_jobs.retry_count',
-      label: '异步任务重试字段',
-      ok: await tableHasColumn(db, 'async_jobs', 'retry_count'),
-      need: 'async_jobs.retry_count',
-    },
-    {
-      key: 'async_jobs.cancel_requested',
-      label: '异步任务取消字段',
-      ok: await tableHasColumn(db, 'async_jobs', 'cancel_requested'),
-      need: 'async_jobs.cancel_requested',
-    },
-    {
-      key: 'async_jobs.retain_until',
-      label: '异步任务保留期字段',
-      ok: await tableHasColumn(db, 'async_jobs', 'retain_until'),
-      need: 'async_jobs.retain_until',
-    },
-    {
-      key: 'idx_async_jobs_created_by_status',
-      label: '异步任务索引',
-      ok: await indexExists(db, 'idx_async_jobs_created_by_status'),
-      need: 'idx_async_jobs_created_by_status',
-    },
+    { key: 'pc_asset_latest_state', label: '电脑快照表', ok: await tableExists(db, 'pc_asset_latest_state'), need: 'pc_asset_latest_state' },
+    { key: 'dictionary_usage_counters', label: '字典引用计数表', ok: await tableExists(db, 'dictionary_usage_counters'), need: 'dictionary_usage_counters' },
+    { key: 'system_settings_meta', label: '系统配置元信息', ok: await tableExists(db, 'system_settings_meta'), need: 'system_settings_meta' },
+    { key: 'users.permission_template_code', label: '用户权限模板字段', ok: await tableHasColumn(db, 'users', 'permission_template_code'), need: 'users.permission_template_code' },
+    { key: 'async_jobs.retry_count', label: '异步任务重试字段', ok: await tableHasColumn(db, 'async_jobs', 'retry_count'), need: 'async_jobs.retry_count' },
+    { key: 'async_jobs.cancel_requested', label: '异步任务取消字段', ok: await tableHasColumn(db, 'async_jobs', 'cancel_requested'), need: 'async_jobs.cancel_requested' },
+    { key: 'async_jobs.retain_until', label: '异步任务保留期字段', ok: await tableHasColumn(db, 'async_jobs', 'retain_until'), need: 'async_jobs.retain_until' },
+    { key: 'idx_async_jobs_created_by_status', label: '异步任务索引', ok: await indexExists(db, 'idx_async_jobs_created_by_status'), need: 'idx_async_jobs_created_by_status' },
+    { key: 'ops_scan_state', label: '运维自动巡检缓存表', ok: await tableExists(db, 'ops_scan_state'), need: 'ops_scan_state' },
+    { key: 'backup_drill_runs', label: '备份恢复演练记录表', ok: await tableExists(db, 'backup_drill_runs'), need: 'backup_drill_runs' },
   ];
 
   let currentVersion: string | null = null;

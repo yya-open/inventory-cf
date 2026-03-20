@@ -44,7 +44,8 @@ export async function ensureAsyncJobsTable(db: D1Database) {
 
 function csvEscape(v: any) {
   const s = String(v ?? '');
-  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  if (/[",
+]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
 
@@ -87,12 +88,8 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
         csvEscape((row as any).summary_text || ''),
       ].join(','));
     }
-    return {
-      text: '\ufeff' + lines.join('\n'),
-      filename: `audit_export_${Date.now()}.csv`,
-      contentType: 'text/csv; charset=utf-8',
-      message: `已生成 ${rows.length} 条审计导出`,
-    };
+    return { text: '﻿' + lines.join('
+'), filename: `audit_export_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
   }
 
   const url = new URL('https://local/export');
@@ -106,23 +103,11 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
   const lines = [['品牌','型号','序列号','出厂时间','状态','领用人','工号','部门','备注'].join(',')];
   for (const row of rows) {
     lines.push([
-      csvEscape((row as any).brand),
-      csvEscape((row as any).model),
-      csvEscape((row as any).serial_no),
-      csvEscape((row as any).manufacture_date),
-      csvEscape((row as any).status),
-      csvEscape((row as any).last_employee_name || ''),
-      csvEscape((row as any).last_employee_no || ''),
-      csvEscape((row as any).last_department || ''),
-      csvEscape((row as any).remark || ''),
+      csvEscape((row as any).brand), csvEscape((row as any).model), csvEscape((row as any).serial_no), csvEscape((row as any).manufacture_date), csvEscape((row as any).status), csvEscape((row as any).last_employee_name || ''), csvEscape((row as any).last_employee_no || ''), csvEscape((row as any).last_department || ''), csvEscape((row as any).remark || ''),
     ].join(','));
   }
-  return {
-    text: '\ufeff' + lines.join('\n'),
-    filename: `pc_age_warnings_${Date.now()}.csv`,
-    contentType: 'text/csv; charset=utf-8',
-    message: `已生成 ${rows.length} 条报废预警导出`,
-  };
+  return { text: '﻿' + lines.join('
+'), filename: `pc_age_warnings_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条报废预警导出` };
 }
 
 export async function cleanupExpiredAsyncJobResults(db: D1Database) {
@@ -141,8 +126,33 @@ export async function cleanupExpiredAsyncJobResults(db: D1Database) {
   return Number((res as any)?.meta?.changes || 0);
 }
 
-export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }) {
+export async function cleanupAsyncJobHousekeeping(db: D1Database) {
   await ensureAsyncJobsTable(db);
+  const expiredResults = await cleanupExpiredAsyncJobResults(db);
+  const purgeFinished = await db.prepare(
+    `DELETE FROM async_jobs
+     WHERE status IN ('success','failed','canceled')
+       AND COALESCE(result_text,'')=''
+       AND COALESCE(finished_at, canceled_at, updated_at, created_at) < datetime('now','+8 hours','-30 day')`
+  ).run();
+  const staleQueued = await db.prepare(
+    `UPDATE async_jobs
+     SET status='canceled',
+         canceled_at=${sqlNowStored()},
+         updated_at=${sqlNowStored()},
+         message=CASE WHEN COALESCE(message,'')='' THEN '任务排队超时，已自动取消' ELSE message || '（排队超时自动取消）' END
+     WHERE status='queued'
+       AND created_at < datetime('now','+8 hours','-1 day')`
+  ).run();
+  return {
+    expired_results: expiredResults,
+    purged_rows: Number((purgeFinished as any)?.meta?.changes || 0),
+    auto_canceled: Number((staleQueued as any)?.meta?.changes || 0),
+  };
+}
+
+export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }) {
+  await cleanupAsyncJobHousekeeping(db);
   const retainDays = Math.max(1, Math.min(30, Number(input.retain_days || 7)));
   const maxRetries = Math.max(0, Math.min(5, Number(input.max_retries ?? 1)));
   const res = await db.prepare(
@@ -153,7 +163,7 @@ export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJob
 }
 
 export async function processAsyncJob(db: D1Database, id: number) {
-  await ensureAsyncJobsTable(db);
+  await cleanupAsyncJobHousekeeping(db);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
@@ -171,9 +181,7 @@ export async function processAsyncJob(db: D1Database, id: number) {
       return;
     }
     await db.prepare(
-      `UPDATE async_jobs
-       SET status='success', result_text=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
-       WHERE id=?`
+      `UPDATE async_jobs SET status='success', result_text=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
     ).bind(result.text, result.contentType, result.filename, result.message, id).run();
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
@@ -181,31 +189,25 @@ export async function processAsyncJob(db: D1Database, id: number) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
       return;
     }
-    await db.prepare(
-      `UPDATE async_jobs
-       SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()}
-       WHERE id=?`
-    ).bind(String(error?.message || error || '任务执行失败'), id).run();
+    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(error?.message || error || '任务执行失败'), id).run();
   }
 }
 
 export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null } = {}) {
-  await cleanupExpiredAsyncJobResults(db);
+  await cleanupAsyncJobHousekeeping(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
   const binds: any[] = [];
   if (options.status) { where.push(`status=?`); binds.push(String(options.status)); }
   if (options.job_type) { where.push(`job_type=?`); binds.push(String(options.job_type)); }
   if (options.created_by) { where.push(`created_by=?`); binds.push(Number(options.created_by)); }
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at
-               FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''}
-               ORDER BY id DESC LIMIT ?`;
+  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return results || [];
 }
 
 export async function getAsyncJob(db: D1Database, id: number) {
-  await cleanupExpiredAsyncJobResults(db);
+  await cleanupAsyncJobHousekeeping(db);
   await ensureAsyncJobsTable(db);
   return await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
 }
@@ -217,13 +219,7 @@ export async function cancelAsyncJob(db: D1Database, id: number) {
   if (String(row.status) === 'success') throw Object.assign(new Error('任务已完成，不能取消'), { status: 409 });
   if (String(row.status) === 'failed') throw Object.assign(new Error('任务已失败，请直接重试'), { status: 409 });
   const res = await db.prepare(
-    `UPDATE async_jobs
-     SET cancel_requested=1,
-         status=CASE WHEN status='queued' THEN 'canceled' ELSE status END,
-         canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END,
-         updated_at=${sqlNowStored()},
-         message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END
-     WHERE id=?`
+    `UPDATE async_jobs SET cancel_requested=1, status=CASE WHEN status='queued' THEN 'canceled' ELSE status END, canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END, updated_at=${sqlNowStored()}, message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END WHERE id=?`
   ).bind(id).run();
   return Number((res as any)?.meta?.changes || 0) > 0;
 }
@@ -237,20 +233,6 @@ export async function retryAsyncJob(db: D1Database, id: number) {
   const maxRetries = Number(row.max_retries || 1);
   if (retryCount >= maxRetries) throw Object.assign(new Error(`已超过最大重试次数（${maxRetries}）`), { status: 409 });
   await db.prepare(
-    `UPDATE async_jobs
-     SET status='queued',
-         cancel_requested=0,
-         canceled_at=NULL,
-         error_text=NULL,
-         message='任务已重新排队',
-         started_at=NULL,
-         finished_at=NULL,
-         result_text=NULL,
-         result_content_type=NULL,
-         result_filename=NULL,
-         result_deleted_at=NULL,
-         retry_count=COALESCE(retry_count,0)+1,
-         updated_at=${sqlNowStored()}
-     WHERE id=?`
+    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
 }

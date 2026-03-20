@@ -26,6 +26,49 @@
 
     <el-divider />
 
+
+    <el-row :gutter="16" style="margin-bottom:16px">
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" style="border:1px solid #f0f0f0">
+          <template #header>
+            <div style="display:flex; justify-content:space-between; align-items:center">
+              <span style="font-weight:700">恢复演练 SOP</span>
+              <el-tag type="warning" effect="light">建议每月一次</el-tag>
+            </div>
+          </template>
+          <ol style="margin:0; padding-left:18px; color:#666; line-height:1.8; font-size:13px">
+            <li>先下载一份最新完整备份，建议启用 gzip。</li>
+            <li>在隔离环境上传备份，先执行“恢复前校验”。</li>
+            <li>用 merge 或 merge_upsert 模式恢复，避免直接替换生产数据。</li>
+            <li>验证用户、台账、盘点、审计、字典和系统配置是否完整。</li>
+            <li>记录演练结果、问题和耗时，确认恢复 SOP 可执行。</li>
+          </ol>
+          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px">
+            <el-button plain @click="downloadDrillSop">下载 SOP</el-button>
+            <el-button type="primary" plain @click="openDrillDialog">记录本次演练</el-button>
+          </div>
+        </el-card>
+      </el-col>
+      <el-col :xs="24" :md="12">
+        <el-card shadow="never" style="border:1px solid #f0f0f0">
+          <template #header>
+            <div style="display:flex; justify-content:space-between; align-items:center">
+              <span style="font-weight:700">最近恢复演练</span>
+              <el-button link type="primary" @click="loadBackupDrills">刷新</el-button>
+            </div>
+          </template>
+          <div v-if="lastBackupDrillAt" style="color:#666; font-size:12px; margin-bottom:8px">最近一次：{{ lastBackupDrillAt }}</div>
+          <el-table :data="backupDrills" border size="small" max-height="240">
+            <el-table-column prop="drill_at" label="演练时间" width="180" />
+            <el-table-column prop="outcome" label="结果" width="90" />
+            <el-table-column prop="operator_name" label="执行人" width="110" />
+            <el-table-column prop="scenario" label="场景" width="140" />
+            <el-table-column prop="note" label="备注" min-width="180" show-overflow-tooltip />
+          </el-table>
+        </el-card>
+      </el-col>
+    </el-row>
+
     <el-row :gutter="16">
       <el-col
         :xs="24"
@@ -573,11 +616,28 @@
         </el-card>
       </el-col>
     </el-row>
+  <el-dialog v-model="drillDialog" title="记录恢复演练" width="520px">
+    <el-form label-width="90px">
+      <el-form-item label="场景"><el-input v-model="drillForm.scenario" placeholder="restore_drill / validate_only" /></el-form-item>
+      <el-form-item label="结果">
+        <el-select v-model="drillForm.outcome" style="width:100%">
+          <el-option label="成功" value="success" />
+          <el-option label="警告" value="warn" />
+          <el-option label="失败" value="failed" />
+        </el-select>
+      </el-form-item>
+      <el-form-item label="备注"><el-input v-model="drillForm.note" type="textarea" :rows="4" maxlength="500" show-word-limit /></el-form-item>
+    </el-form>
+    <template #footer>
+      <el-button @click="drillDialog=false">取消</el-button>
+      <el-button type="primary" @click="saveBackupDrill">保存</el-button>
+    </template>
+  </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onMounted } from "vue";
 import { ElMessageBox } from "element-plus";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost } from "../api/client";
@@ -1091,4 +1151,57 @@ async function pauseJob() {
     pausing.value = false;
   }
 }
+
+
+type BackupDrillRow = { id:number; drill_at:string; outcome:string; scenario:string; operator_name?:string; note?:string };
+const backupDrills = ref<BackupDrillRow[]>([]);
+const lastBackupDrillAt = ref('');
+const drillDialog = ref(false);
+const drillForm = ref({ scenario: 'restore_drill', outcome: 'success', note: '' });
+
+function downloadDrillSop() {
+  const content = [
+    '备份/恢复演练 SOP',
+    '',
+    '1. 下载最新完整备份（推荐 gzip）。',
+    '2. 在隔离环境导入备份文件并执行恢复前校验。',
+    '3. 采用 merge 或 merge_upsert 模式恢复。',
+    '4. 验证用户、电脑台账、显示器台账、盘点、审计日志、系统配置。',
+    '5. 记录演练时间、结果、问题、恢复耗时。',
+  ].join('\n');
+  const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = 'backup_restore_drill_sop.txt';
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function openDrillDialog() {
+  drillDialog.value = true;
+}
+
+async function loadBackupDrills() {
+  try {
+    const r:any = await apiGet('/api/backup-drills');
+    backupDrills.value = Array.isArray(r.data) ? r.data : [];
+    lastBackupDrillAt.value = backupDrills.value[0]?.drill_at || '';
+  } catch {}
+}
+
+async function saveBackupDrill() {
+  try {
+    await apiPost('/api/backup-drills', drillForm.value);
+    msgSuccess('演练记录已保存');
+    drillDialog.value = false;
+    drillForm.value = { scenario: 'restore_drill', outcome: 'success', note: '' };
+    await loadBackupDrills();
+  } catch (e:any) {
+    msgError(e?.message || '保存演练记录失败');
+  }
+}
+
+onMounted(loadBackupDrills);
+
 </script>
