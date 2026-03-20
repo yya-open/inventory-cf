@@ -1,7 +1,7 @@
 import { sqlNowStored } from '../_time';
 import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
-import { materializeAuditFields, normalizeAuditAction } from '../_audit';
+import { isAuditHighRisk, materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode } from '../_audit';
 import { normalizeSearchText } from '../_search';
 import { getSchemaStatus } from './schema-status';
 
@@ -117,18 +117,40 @@ export async function repairDictionaryCounters(db: D1Database) {
   return { rows: Number(row?.c || 0) };
 }
 
+function normalizeAuditStoredText(value: any) {
+  return String(value ?? '').trim();
+}
+
+function computeAuditMaterializedSync(row: any, payload: any) {
+  const normalizedAction = normalizeAuditAction(String(row?.action || ''));
+  const moduleCode = resolveAuditModuleCode(normalizedAction, row?.entity ?? null);
+  const highRisk = Number(isAuditHighRisk(normalizedAction) || 0);
+  const materialized = materializeAuditFields(normalizedAction, row?.entity ?? null, row?.entity_id ?? null, payload);
+  const diffKeys: string[] = [];
+  const compareText = (key: string, actual: any, expected: any) => {
+    if (normalizeAuditStoredText(actual) !== normalizeAuditStoredText(expected)) diffKeys.push(key);
+  };
+  compareText('module_code', row?.module_code, moduleCode);
+  if (Number(row?.high_risk || 0) !== highRisk) diffKeys.push('high_risk');
+  compareText('target_name', row?.target_name, materialized.target_name);
+  compareText('target_code', row?.target_code, materialized.target_code);
+  compareText('summary_text', row?.summary_text, materialized.summary_text);
+  compareText('search_text_norm', row?.search_text_norm, materialized.search_text_norm);
+  return { normalizedAction, moduleCode, highRisk, materialized, diffKeys };
+}
+
 export async function repairAuditMaterialized(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json FROM audit_log ORDER BY id ASC`).all<any>();
+  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id ASC`).all<any>();
   const statements: D1PreparedStatement[] = [];
   let count = 0;
   for (const row of results || []) {
     let payload: any = null;
     try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
-    const action = normalizeAuditAction(String(row?.action || ''));
-    const materialized = materializeAuditFields(action, row?.entity ?? null, row?.entity_id ?? null, payload);
+    const sync = computeAuditMaterializedSync(row, payload);
+    if (!sync.diffKeys.length) continue;
     statements.push(db.prepare(
-      `UPDATE audit_log SET target_name=?, target_code=?, summary_text=?, search_text_norm=? WHERE id=?`
-    ).bind(materialized.target_name, materialized.target_code, materialized.summary_text, materialized.search_text_norm, row.id));
+      `UPDATE audit_log SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=? WHERE id=?`
+    ).bind(sync.moduleCode, sync.highRisk, sync.materialized.target_name, sync.materialized.target_code, sync.materialized.summary_text, sync.materialized.search_text_norm, row.id));
     count += 1;
     if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
   }
@@ -259,19 +281,30 @@ async function scanDictionaryCounters(db: D1Database): Promise<RepairScanItem> {
 }
 
 async function scanAuditMaterialized(db: D1Database): Promise<RepairScanItem> {
-  const row = await db.prepare(`SELECT COUNT(*) AS c FROM audit_log WHERE COALESCE(module_code,'')='' OR COALESCE(summary_text,'')='' OR COALESCE(search_text_norm,'')=''`).first<any>().catch(() => ({ c: 0 }));
-  const count = Number(row?.c || 0);
-  const examples = count > 0
-    ? (await db.prepare(`SELECT id, action, entity, entity_id FROM audit_log WHERE COALESCE(module_code,'')='' OR COALESCE(summary_text,'')='' OR COALESCE(search_text_norm,'')='' ORDER BY id DESC LIMIT 10`).all<any>()).results || []
-    : [];
+  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
+  const diffs: any[] = [];
+  for (const row of results || []) {
+    let payload: any = null;
+    try { payload = row?.payload_json ? JSON.parse(String(row.payload_json)) : null; } catch {}
+    const sync = computeAuditMaterializedSync(row, payload);
+    if (!sync.diffKeys.length) continue;
+    diffs.push({
+      id: row?.id,
+      action: row?.action,
+      entity: row?.entity,
+      entity_id: row?.entity_id,
+      mismatch_fields: sync.diffKeys.join(', '),
+    });
+  }
+  const count = diffs.length;
   return {
     key: 'audit_materialized',
     label: '审计物化字段',
     affected_count: count,
     status: count > 0 ? 'warn' : 'ok',
-    detail: count > 0 ? `发现 ${count} 条审计记录缺少物化展示/搜索字段` : '审计物化字段完整',
+    detail: count > 0 ? `发现 ${count} 条审计记录与当前物化规则不一致` : '审计物化字段完整',
     recommendation: count > 0 ? '建议执行“回填审计物化”' : '无需处理',
-    examples,
+    examples: diffs.slice(0, 20),
   };
 }
 
