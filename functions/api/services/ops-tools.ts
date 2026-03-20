@@ -90,39 +90,118 @@ async function scanPcLatestState(db: D1Database) {
   };
 }
 
+function normalizeCounterLabel(value: any) {
+  return String(value ?? '').trim();
+}
+
+function addCounterRows(target: Record<string, number>, rows: any[] | undefined | null) {
+  for (const row of rows || []) {
+    const label = normalizeCounterLabel(row?.label);
+    if (!label) continue;
+    target[label] = Number(target[label] || 0) + Number(row?.c || 0);
+  }
+}
+
+async function computeExpectedDictionaryCounterMaps(db: D1Database) {
+  const counts: Record<string, Record<string, number>> = {
+    pc_brand: {},
+    monitor_brand: {},
+    asset_archive_reason: {},
+    department: {},
+  };
+
+  const [{ results: pcBrandRows }, { results: monitorBrandRows }, { results: archiveReasonRows }, { results: departmentRows }] = await Promise.all([
+    db.prepare(
+      `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
+       FROM pc_assets
+       GROUP BY TRIM(COALESCE(brand, ''))`
+    ).all<any>(),
+    db.prepare(
+      `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
+       FROM monitor_assets
+       GROUP BY TRIM(COALESCE(brand, ''))`
+    ).all<any>(),
+    db.prepare(
+      `SELECT label, SUM(c) AS c
+       FROM (
+         SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
+         FROM pc_assets
+         WHERE archived=1
+         GROUP BY TRIM(COALESCE(archived_reason, ''))
+         UNION ALL
+         SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
+         FROM monitor_assets
+         WHERE archived=1
+         GROUP BY TRIM(COALESCE(archived_reason, ''))
+       ) t
+       GROUP BY label`
+    ).all<any>(),
+    db.prepare(
+      `SELECT label, SUM(c) AS c
+       FROM (
+         SELECT TRIM(COALESCE(current_department, '')) AS label, COUNT(*) AS c
+         FROM pc_asset_latest_state
+         GROUP BY TRIM(COALESCE(current_department, ''))
+         UNION ALL
+         SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
+         FROM monitor_assets
+         GROUP BY TRIM(COALESCE(department, ''))
+       ) t
+       GROUP BY label`
+    ).all<any>(),
+  ]);
+
+  addCounterRows(counts.pc_brand, pcBrandRows);
+  addCounterRows(counts.monitor_brand, monitorBrandRows);
+  addCounterRows(counts.asset_archive_reason, archiveReasonRows);
+  addCounterRows(counts.department, departmentRows);
+  return counts;
+}
+
 async function scanDictionaryCounters(db: D1Database) {
-  const expectedByKey = new Map<string, number>();
-  const queries = [
-    [`SELECT 'pc_brand' AS dictionary_key, COUNT(*) AS c FROM (SELECT TRIM(COALESCE(brand,'')) AS k FROM pc_assets GROUP BY TRIM(COALESCE(brand,'')))`, 'pc_brand'],
-    [`SELECT 'monitor_brand' AS dictionary_key, COUNT(*) AS c FROM (SELECT TRIM(COALESCE(brand,'')) AS k FROM monitor_assets GROUP BY TRIM(COALESCE(brand,'')))`, 'monitor_brand'],
-    [`SELECT 'asset_archive_reason' AS dictionary_key, COUNT(*) AS c FROM (
-      SELECT TRIM(COALESCE(archived_reason,'')) AS k FROM pc_assets WHERE archived=1 GROUP BY TRIM(COALESCE(archived_reason,''))
-      UNION ALL
-      SELECT TRIM(COALESCE(archived_reason,'')) AS k FROM monitor_assets WHERE archived=1 GROUP BY TRIM(COALESCE(archived_reason,''))
-    )`, 'asset_archive_reason'],
-    [`SELECT 'department' AS dictionary_key, COUNT(*) AS c FROM (
-      SELECT TRIM(COALESCE(current_department,'')) AS k FROM pc_asset_latest_state GROUP BY TRIM(COALESCE(current_department,''))
-      UNION ALL
-      SELECT TRIM(COALESCE(department,'')) AS k FROM monitor_assets GROUP BY TRIM(COALESCE(department,''))
-    )`, 'department'],
-  ] as const;
-  for (const [sql, key] of queries) {
-    const row = await db.prepare(sql).first<any>().catch(() => ({ c: 0 }));
-    expectedByKey.set(key, Number(row?.c || 0));
+  const expected = await computeExpectedDictionaryCounterMaps(db);
+  const { results } = await db.prepare(
+    `SELECT dictionary_key, label, reference_count FROM dictionary_usage_counters`
+  ).all<any>().catch(() => ({ results: [] }));
+
+  const actual: Record<string, Record<string, number>> = {
+    pc_brand: {},
+    monitor_brand: {},
+    asset_archive_reason: {},
+    department: {},
+  };
+  for (const row of results || []) {
+    const key = String(row?.dictionary_key || '');
+    if (!actual[key]) continue;
+    const label = normalizeCounterLabel(row?.label);
+    if (!label) continue;
+    actual[key][label] = Number(row?.reference_count || 0);
   }
-  const { results } = await db.prepare(`SELECT dictionary_key, COUNT(*) AS c FROM dictionary_usage_counters GROUP BY dictionary_key`).all<any>().catch(() => ({ results: [] }));
-  let mismatch = 0;
+
+  const mismatchedKeys: string[] = [];
   for (const key of ['pc_brand', 'monitor_brand', 'asset_archive_reason', 'department']) {
-    const actual = Number((results || []).find((item: any) => item?.dictionary_key === key)?.c || 0);
-    if (actual !== Number(expectedByKey.get(key) || 0)) mismatch += 1;
+    const expectedMap = expected[key] || {};
+    const actualMap = actual[key] || {};
+    const labels = new Set([...Object.keys(expectedMap), ...Object.keys(actualMap)]);
+    let hasMismatch = false;
+    for (const label of labels) {
+      if (Number(expectedMap[label] || 0) !== Number(actualMap[label] || 0)) {
+        hasMismatch = true;
+        break;
+      }
+    }
+    if (hasMismatch) mismatchedKeys.push(key);
   }
+
   return {
     key: 'dictionary_counters',
     label: '字典引用计数',
-    affected_count: mismatch,
-    status: mismatch > 0 ? 'warn' : 'ok',
-    detail: mismatch > 0 ? `发现 ${mismatch} 类字典计数与实际引用不一致` : '字典引用计数正常',
-    recommendation: mismatch > 0 ? '建议执行“重算字典引用”' : '无需处理',
+    affected_count: mismatchedKeys.length,
+    status: mismatchedKeys.length > 0 ? 'warn' : 'ok',
+    detail: mismatchedKeys.length > 0
+      ? `发现 ${mismatchedKeys.length} 类字典计数与实际引用不一致：${mismatchedKeys.join('、')}`
+      : '字典引用计数正常',
+    recommendation: mismatchedKeys.length > 0 ? '建议执行“重算字典引用”' : '无需处理',
   };
 }
 
