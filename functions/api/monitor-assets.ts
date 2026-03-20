@@ -122,8 +122,25 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const id = Number(body?.id || url.searchParams.get('id') || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 
+
+    const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
     const asset = await getAssetById(env.DB, 'monitor', id);
     if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
+
+    if (previewOnly) {
+      const refs = await getRelatedRecordCounts(env.DB, 'monitor', id);
+      const hasRefs = hasRelatedHistory('monitor', refs);
+      const settings = await getSystemSettings(env.DB);
+      const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
+      const operation = Number(asset.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
+      return Response.json({ ok: true, preview: true, data: {
+        operation,
+        archived: Number(asset.archived || 0) === 1,
+        related_total: relatedTotal,
+        related_counts: refs,
+        reason: operation === 'purge' ? '归档资产将被彻底删除并级联清理历史记录' : operation === 'archive' ? '存在历史记录或系统策略禁用物理删除，将自动归档' : '满足物理删除条件',
+      } });
+    }
 
     if (Number(asset.archived || 0) === 1) {
       await requirePermission(env, request, 'asset_purge', 'admin');

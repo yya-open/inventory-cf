@@ -8,6 +8,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requirePermission(env, request, 'stocktake_apply', 'admin');
     const body = await request.json().catch(() => ({} as any));
+    const previewOnly = Boolean((body as any).preview_only);
     const st_id = Number((body as any).id);
     if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
 
@@ -34,6 +35,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const rows = (
       await env.DB.prepare(`SELECT * FROM stocktake_line WHERE stocktake_id=? AND counted_qty IS NOT NULL`).bind(st_id).all<any>()
     ).results || [];
+
+    const preview = {
+      counted_rows: rows.length,
+      adjusted_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) !== 0).length,
+      increase_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) > 0).length,
+      decrease_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) < 0).length,
+    };
+    if (previewOnly) {
+      return Response.json({ ok: true, preview: true, data: {
+        stocktake_id: st_id,
+        st_no: st.st_no,
+        status,
+        ...preview,
+      } });
+    }
 
     let adjusted = 0;
     const warehouseId = Number(st.warehouse_id);

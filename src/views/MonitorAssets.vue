@@ -1058,17 +1058,21 @@ async function saveAsset() {
 async function removeAsset(row: MonitorAsset) {
   const isArchived = Number(row.archived || 0) === 1;
   try {
-    await ElMessageBox.confirm(
-      isArchived
-        ? `确认彻底删除归档显示器：${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）？删除后将同时清理该显示器的历史记录，且不可恢复。`
-        : `确认删除显示器台账：${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）？`,
-      isArchived ? '彻底删除确认' : '删除确认',
-      {
-        type: 'warning',
-        confirmButtonText: isArchived ? '确认彻底删除' : '确认删除',
-        cancelButtonText: '取消',
-      }
-    );
+    const preview: any = await apiDelete('/api/monitor-assets', { id: row.id, preview_only: true });
+    const operation = String(preview?.data?.operation || (isArchived ? 'purge' : 'delete'));
+    const relatedTotal = Number(preview?.data?.related_total || 0);
+    const reason = String(preview?.data?.reason || '');
+    const label = `${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）`;
+    const message = operation === 'purge'
+      ? `确认彻底删除归档显示器：${label}？本次将清理 ${relatedTotal} 条关联记录。${reason}`
+      : operation === 'archive'
+        ? `确认删除显示器台账：${label}？预检结果：本次不会物理删除，而会自动归档。${reason}`
+        : `确认删除显示器台账：${label}？预检结果：满足物理删除条件。`;
+    await ElMessageBox.confirm(message, operation === 'purge' ? '彻底删除预检' : '删除预检', {
+      type: 'warning',
+      confirmButtonText: operation === 'purge' ? '确认彻底删除' : '确认删除',
+      cancelButtonText: '取消',
+    });
     loading.value = true;
     const result: any = await apiDelete('/api/monitor-assets', { id: row.id });
     ElMessage.success(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));

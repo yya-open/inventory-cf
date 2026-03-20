@@ -225,6 +225,14 @@
             />
           </el-select>
         </el-form-item>
+        <el-form-item label="权限模板">
+          <div style="display:flex; gap:8px; width:100%">
+            <el-select v-model="form.permission_template_code" style="flex:1">
+              <el-option v-for="item in permissionTemplateOptions" :key="item.code" :label="item.label" :value="item.code" />
+            </el-select>
+            <el-button @click="applyCreateTemplate">套用</el-button>
+          </div>
+        </el-form-item>
         <el-form-item label="细分权限">
           <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
             <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!form.permissions[code]" @change="(v:any)=>form.permissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
@@ -276,6 +284,14 @@
               value="viewer"
             />
           </el-select>
+        </el-form-item>
+        <el-form-item label="权限模板">
+          <div style="display:flex; gap:8px; width:100%">
+            <el-select v-model="editTemplateCode" style="flex:1">
+              <el-option v-for="item in permissionTemplateOptions" :key="item.code" :label="item.label" :value="item.code" />
+            </el-select>
+            <el-button @click="applyEditTemplate">套用</el-button>
+          </div>
         </el-form-item>
         <el-form-item label="状态">
           <el-switch
@@ -348,9 +364,9 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "element-plus";
 import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
-import { ALL_PERMISSION_CODES, PERMISSION_LABEL, type PermissionCode } from "../utils/permissions";
+import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionCode, type PermissionTemplateCode } from "../utils/permissions";
 
-type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permissions?: Record<string, boolean> };
+type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean> };
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -364,17 +380,19 @@ const sortBy = ref("created_at");
 const sortDir = ref<"asc"|"desc">("desc");
 
 const auth = useAuth();
+const permissionTemplateOptions = ALL_PERMISSION_TEMPLATE_CODES.map((code) => ({ code, label: PERMISSION_TEMPLATE_LABEL[code] }));
 
 const showCreate = ref(false);
 const showEdit = ref(false);
 const showReset = ref(false);
 
-const form = ref({ username:"", password:"", role:"viewer" as any, permissions: {} as Record<string, boolean> });
+const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean> });
 
 const editing = ref<Row|null>(null);
 const editRole = ref<"admin"|"operator"|"viewer">("viewer");
 const editActive = ref(true);
 const editPermissions = ref<Record<string, boolean>>({});
+const editTemplateCode = ref<PermissionTemplateCode>(getDefaultPermissionTemplate("viewer"));
 const resetPwd = ref("");
 
 function roleText(r: string) {
@@ -412,8 +430,16 @@ function resetSearch() {
   reload();
 }
 
+function applyCreateTemplate() {
+  form.value.permissions = buildTemplatePermissionMap(form.value.role, form.value.permission_template_code);
+}
+
+function applyEditTemplate() {
+  editPermissions.value = buildTemplatePermissionMap(editRole.value, editTemplateCode.value);
+}
+
 function openCreate() {
-  form.value = { username:"", password:"", role:"viewer" as any, permissions: {} };
+  form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")) };
   showCreate.value = true;
 }
 
@@ -438,7 +464,8 @@ function openEdit(row: Row) {
   editing.value = row;
   editRole.value = row.role;
   editActive.value = !!row.is_active;
-  editPermissions.value = { ...(row.permissions || {}) };
+  editTemplateCode.value = normalizePermissionTemplateCode(row.role, row.permission_template_code);
+  editPermissions.value = { ...(row.permissions || buildTemplatePermissionMap(row.role, row.permission_template_code)) };
   showEdit.value = true;
 }
 
@@ -446,7 +473,7 @@ async function saveEdit() {
   if (!editing.value) return;
   saving.value = true;
   try {
-    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permissions: editPermissions.value });
+    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value });
     ElMessage.success("已更新");
     showEdit.value = false;
     await load();

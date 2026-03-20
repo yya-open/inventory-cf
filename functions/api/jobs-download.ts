@@ -9,7 +9,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!id) return json(false, null, 'id 无效', 400);
     const row = await getAsyncJob(env.DB, id);
     if (!row) return json(false, null, '任务不存在', 404);
-    if (String(row.status) !== 'success' || !row.result_text) return json(false, null, '任务尚未完成', 400);
+    if (String(row.status) !== 'success') return json(false, null, '任务尚未完成', 400);
+    if (!row.result_text) {
+      if (row.result_deleted_at) return json(false, null, '结果文件已过保留期，请重试重新生成', 410);
+      return json(false, null, '任务结果不可用', 400);
+    }
     return new Response(String(row.result_text), {
       headers: {
         'content-type': String(row.result_content_type || 'text/plain; charset=utf-8'),

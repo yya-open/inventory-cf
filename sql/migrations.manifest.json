@@ -123,5 +123,10 @@
     "id": "202603200030_admin_tools_jobs_permissions",
     "file": "sql/migrate_admin_tools_jobs_permissions.sql",
     "description": "admin tools, async jobs, request error logs, and user fine-grained permissions"
+  },
+  {
+    "id": "202603200040_ops_guard_health",
+    "file": "sql/migrate_ops_guard_health.sql",
+    "description": "permission templates, async job retry/cancel/retention, and health checks"
   }
 ]

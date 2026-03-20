@@ -224,6 +224,7 @@
 
         <el-main class="app-main">
           <div class="page-wrap">
+            <el-alert v-if="schemaStatus.loaded && !schemaStatus.ok" type="error" :closable="false" show-icon style="margin-bottom:12px" :title="schemaStatus.message || '数据库结构未升级到当前版本，请先执行迁移'" />
             <router-view />
           </div>
         </el-main>
@@ -268,10 +269,10 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from "vue";
+import { computed, ref, reactive, watch } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "element-plus";
-import { apiPost } from "./api/client";
+import { apiGet, apiPost } from "./api/client";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 
@@ -358,6 +359,26 @@ function doLogout() {
 }
 
 const showChange = ref(false);
+const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
+
+async function loadSchemaStatus() {
+  if (!auth.user || simpleLayout.value) return;
+  try {
+    const r:any = await apiGet('/api/system-schema-status');
+    schemaStatus.loaded = true;
+    schemaStatus.ok = !!r.data?.ok;
+    schemaStatus.message = String(r.data?.message || '');
+    schemaStatus.required_version = r.data?.required_version;
+    schemaStatus.current_version = r.data?.current_version;
+  } catch (e:any) {
+    schemaStatus.loaded = true;
+    schemaStatus.ok = true;
+    schemaStatus.message = '';
+  }
+}
+
+watch(() => [route.path, auth.user?.id], () => { loadSchemaStatus(); }, { immediate: true });
+
 const oldP = ref("");
 const newP = ref("");
 const changing = ref(false);

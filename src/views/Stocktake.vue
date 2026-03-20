@@ -872,11 +872,15 @@ async function confirmApplyStocktake(){
   if (!detail.value) return;
   applying.value = true;
   try{
+    const preview:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id, preview_only: true });
+    const info = preview?.data || {};
+    await ElMessageBox.confirm(`将应用盘点单 ${info.st_no || detail.value.stocktake.st_no}。预检结果：已录入 ${info.counted_rows || 0} 行，其中需调整 ${info.adjusted_rows || 0} 行，盘盈 ${info.increase_rows || 0} 行，盘亏 ${info.decrease_rows || 0} 行。确认继续？`, '应用盘点预检', { type: 'warning', confirmButtonText: '确认应用', cancelButtonText: '取消' });
     const r:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id });
     ElMessage.success(`已应用：生成 ${r.adjusted} 条调整记录`);
     applyPreviewVisible.value = false;
     await refreshDetail();
   }catch(e:any){
+    if (e === 'cancel' || e === 'close') return;
     ElMessage.error(e.message || "应用失败");
   }finally{
     applying.value = false;
