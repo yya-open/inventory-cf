@@ -4,6 +4,8 @@ import { sqlNowStored, sqlStoredDaysAgo } from './_time';
 const DEFAULT_RETENTION_DAYS = 180;
 const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 
+export type AuditModuleCode = 'STOCK' | 'STOCKTAKE' | 'ITEM' | 'USER' | 'AUDIT' | 'ADMIN' | 'PC' | 'MONITOR' | 'OTHER';
+
 async function ensureRetentionState(db: D1Database) {
   try {
     const row = await db.prepare('SELECT id, retention_days, last_cleanup_at FROM audit_retention_state WHERE id=1').first<any>();
@@ -50,6 +52,33 @@ export function normalizeAuditAction(action: string) {
   return normalized || 'UNKNOWN';
 }
 
+export function resolveAuditModuleCode(action: string | null | undefined, entity: string | null | undefined): AuditModuleCode {
+  const actionUpper = String(action || '').trim().toUpperCase();
+  const entityLower = String(entity || '').trim().toLowerCase();
+  if (actionUpper.startsWith('STOCKTAKE') || entityLower.includes('stocktake')) return 'STOCKTAKE';
+  if (actionUpper.startsWith('STOCK_') || ['stock', 'stock_tx'].includes(entityLower)) return 'STOCK';
+  if (actionUpper.startsWith('ITEM_') || entityLower === 'items') return 'ITEM';
+  if (actionUpper.startsWith('USER_') || entityLower === 'users') return 'USER';
+  if (actionUpper.startsWith('AUDIT_') || entityLower === 'audit_log') return 'AUDIT';
+  if (actionUpper.startsWith('ADMIN_') || ['restore_job', 'backup', 'schema'].includes(entityLower)) return 'ADMIN';
+  if (actionUpper.startsWith('PC_') || entityLower.startsWith('pc_')) return 'PC';
+  if (actionUpper.startsWith('MONITOR_') || entityLower.startsWith('monitor_')) return 'MONITOR';
+  return 'OTHER';
+}
+
+export function isAuditHighRisk(action: string | null | undefined) {
+  const actionUpper = String(action || '').trim().toUpperCase();
+  return Number(
+    actionUpper.includes('DELETE')
+      || actionUpper.includes('ARCHIVE')
+      || actionUpper.includes('SCRAP')
+      || actionUpper.includes('ROLLBACK')
+      || actionUpper.includes('RESET_PASSWORD')
+      || actionUpper.includes('RESTORE')
+      || actionUpper.includes('CLEAR')
+  );
+}
+
 function getIp(request: Request) {
   const h = request.headers;
   const cf = h.get('CF-Connecting-IP') || h.get('cf-connecting-ip');
@@ -69,21 +98,25 @@ export async function logAudit(
   payload?: any,
 ) {
   try {
+    const normalizedAction = normalizeAuditAction(action);
+    const normalizedEntity = entity ?? null;
     const ip = getIp(request);
     const ua = request.headers.get('user-agent');
     const payload_json = payload === undefined ? null : JSON.stringify(payload);
     await db.prepare(
-      `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua, created_at)
-       VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+      `INSERT INTO audit_log (user_id, username, action, entity, entity_id, payload_json, ip, ua, module_code, high_risk, created_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
     ).bind(
       user?.id ?? null,
       user?.username ?? null,
-      normalizeAuditAction(action),
-      entity ?? null,
+      normalizedAction,
+      normalizedEntity,
       entity_id === undefined || entity_id === null ? null : String(entity_id),
       payload_json,
       ip,
       ua,
+      resolveAuditModuleCode(normalizedAction, normalizedEntity),
+      isAuditHighRisk(normalizedAction),
     ).run();
     await maybeCleanupAudit(db);
   } catch {

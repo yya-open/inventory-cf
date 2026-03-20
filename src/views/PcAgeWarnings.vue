@@ -21,18 +21,9 @@
               class="ui-toolbar-select"
               @change="onSearch"
             >
-              <el-option
-                label="在库"
-                value="IN_STOCK"
-              />
-              <el-option
-                label="已领用"
-                value="ASSIGNED"
-              />
-              <el-option
-                label="已回收"
-                value="RECYCLED"
-              />
+              <el-option label="在库" value="IN_STOCK" />
+              <el-option label="已领用" value="ASSIGNED" />
+              <el-option label="已回收" value="RECYCLED" />
             </el-select>
 
             <el-input
@@ -44,15 +35,8 @@
             />
 
             <div class="ui-toolbar-actions">
-              <el-button
-                type="primary"
-                @click="onSearch"
-              >
-                查询
-              </el-button>
-              <el-button @click="reset">
-                重置
-              </el-button>
+              <el-button type="primary" @click="onSearch">查询</el-button>
+              <el-button @click="reset">重置</el-button>
             </div>
           </div>
         </div>
@@ -72,28 +56,9 @@
             >
               生成报废单（选中）
             </el-button>
-            <el-button
-              type="success"
-              plain
-              :loading="exporting"
-              @click="exportExcel(false)"
-            >
-              导出Excel（当前页）
-            </el-button>
-            <el-button
-              type="success"
-              :loading="exportingAll"
-              @click="exportExcel(true)"
-            >
-              导出Excel（全部）
-            </el-button>
-            <el-button
-              type="info"
-              plain
-              @click="$router.push('/pc/assets')"
-            >
-              返回台账
-            </el-button>
+            <el-button type="success" plain :loading="exporting" @click="exportExcel(false)">导出Excel（当前页）</el-button>
+            <el-button type="success" :loading="exportingAll" @click="exportExcel(true)">导出Excel（全部）</el-button>
+            <el-button type="info" plain @click="$router.push('/pc/assets')">返回台账</el-button>
           </div>
         </div>
       </div>
@@ -105,114 +70,50 @@
       border
       @selection-change="onSelectionChange"
     >
-      <el-table-column
-        type="selection"
-        width="48"
-      />
-      <el-table-column
-        label="序号"
-        width="80"
-        align="center"
-      >
+      <el-table-column type="selection" width="48" />
+      <el-table-column label="序号" width="80" align="center">
         <template #default="{ $index }">
           {{ getRowNumber($index) }}
         </template>
       </el-table-column>
-      <el-table-column
-        label="电脑"
-        min-width="260"
-      >
+      <el-table-column label="电脑" min-width="260">
         <template #default="{row}">
-          <div style="font-weight:600">
-            {{ row.brand }} · {{ row.model }}
-          </div>
-          <div style="color:#999;font-size:12px">
-            SN：{{ row.serial_no }}
-          </div>
+          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
+          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
         </template>
       </el-table-column>
-
-      <el-table-column
-        label="出厂时间"
-        width="140"
-      >
+      <el-table-column label="出厂时间" width="140">
         <template #default="{row}">
           <span style="font-weight:600">{{ row.manufacture_date || '-' }}</span>
         </template>
       </el-table-column>
-
-      <el-table-column
-        label="机龄"
-        width="110"
-      >
+      <el-table-column label="机龄" width="110">
         <template #default="{row}">
-          <el-tag
-            type="danger"
-            effect="dark"
-          >
-            {{ calcAgeYears(row.manufacture_date) }} 年
-          </el-tag>
+          <el-tag type="danger" effect="dark">{{ calcAgeYears(row.manufacture_date) }} 年</el-tag>
         </template>
       </el-table-column>
-
-      <el-table-column
-        label="保修"
-        width="140"
-      >
+      <el-table-column label="保修" width="140">
         <template #default="{row}">
           <span>{{ row.warranty_end || '-' }}</span>
         </template>
       </el-table-column>
-
-      <el-table-column
-        label="状态"
-        width="120"
-      >
+      <el-table-column label="状态" width="120">
         <template #default="{row}">
-          <el-tag
-            v-if="row.status==='IN_STOCK'"
-            type="success"
-          >
-            在库
-          </el-tag>
-          <el-tag
-            v-else-if="row.status==='ASSIGNED'"
-            type="warning"
-          >
-            已领用
-          </el-tag>
-          <el-tag
-            v-else
-            type="info"
-          >
-            已回收
-          </el-tag>
+          <el-tag v-if="row.status==='IN_STOCK'" type="success">在库</el-tag>
+          <el-tag v-else-if="row.status==='ASSIGNED'" type="warning">已领用</el-tag>
+          <el-tag v-else type="info">已回收</el-tag>
         </template>
       </el-table-column>
-
-      <el-table-column
-        label="当前领用人"
-        width="220"
-      >
+      <el-table-column label="当前领用人" width="220">
         <template #default="{row}">
           <div v-if="row.status==='ASSIGNED'">
-            <div style="font-weight:600">
-              {{ row.last_employee_name || '-' }}
-            </div>
-            <div style="color:#999;font-size:12px">
-              {{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}
-            </div>
+            <div style="font-weight:600">{{ row.last_employee_name || '-' }}</div>
+            <div style="color:#999;font-size:12px">{{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}</div>
           </div>
           <span v-else>-</span>
         </template>
       </el-table-column>
-
-      <el-table-column
-        prop="remark"
-        label="备注"
-        min-width="220"
-        show-overflow-tooltip
-      />
+      <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
     </el-table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px">
@@ -223,50 +124,80 @@
         background
         layout="total, sizes, prev, pager, next, jumper"
         :page-sizes="[20, 50, 100, 200]"
-        @current-change="onPageChange"
-        @size-change="onPageSizeChange"
+        @current-change="handlePageChange"
+        @size-change="handlePageSizeChange"
       />
     </div>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
-import { ElMessage, ElMessageBox } from "element-plus";
-import { apiGet, apiPost } from "../api/client";
-import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
-import { exportToXlsx } from "../utils/excel";
+import { ref, onMounted } from 'vue';
+import { ElMessage, ElMessageBox } from 'element-plus';
+import { apiGet, apiPost } from '../api/client';
+import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
+import { exportToXlsx } from '../utils/excel';
+import { usePagedAssetList } from '../composables/usePagedAssetList';
+
+type WarningFilters = {
+  ageYears: number;
+  status: string;
+  keyword: string;
+};
 
 const ageYears = ref(Number(getCachedSystemSettings().pc_scrap_warning_years || 5));
-
-const rows = ref<any[]>([]);
-const loading = ref(false);
-
-const page = ref(1);
-const pageSize = ref(50);
-const total = ref(0);
-
-// PERF: total 统计缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
-const totalCache = new Map<string, number>();
-let totalTimer: any = null;
-
-function filterKey() {
-  return `age_years=${ageYears.value}&status=${status.value || ""}&keyword=${keyword.value.trim()}`;
-}
-
-const status = ref<string>("");
-const keyword = ref<string>("");
-
+const status = ref<string>('');
+const keyword = ref<string>('');
 const exporting = ref(false);
 const exportingAll = ref(false);
-
 const selectedIds = ref<number[]>([]);
 const scrapLoading = ref(false);
 
-function clearTotals() {
-  totalCache.clear();
-  total.value = 0;
+function currentFilters(): WarningFilters {
+  return {
+    ageYears: Number(ageYears.value || 5),
+    status: String(status.value || '').trim(),
+    keyword: String(keyword.value || '').trim(),
+  };
 }
+
+const {
+  rows,
+  loading,
+  page,
+  pageSize,
+  total,
+  reload,
+  onPageChange,
+  onPageSizeChange,
+  clearTotalCache,
+} = usePagedAssetList<WarningFilters, any>({
+  initialPageSize: 50,
+  totalDebounceMs: 250,
+  createFilterKey: (filters) => `age_years=${filters.ageYears}&status=${filters.status}&keyword=${filters.keyword}`,
+  fetchPage: async ({ filters, page, pageSize }) => {
+    const qs = new URLSearchParams();
+    qs.set('age_years', String(filters.ageYears));
+    qs.set('page', String(page));
+    qs.set('page_size', String(pageSize));
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.keyword) qs.set('keyword', filters.keyword);
+    qs.set('fast', '1');
+    const result = await apiGet<{ data: any[]; total: number | null }>(`/api/pc-assets?${qs.toString()}`);
+    return {
+      rows: Array.isArray((result as any)?.data) ? (result as any).data : [],
+      total: typeof (result as any)?.total === 'number' ? Number((result as any).total || 0) : null,
+    };
+  },
+  fetchTotal: async (filters) => {
+    const qs = new URLSearchParams();
+    qs.set('age_years', String(filters.ageYears));
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.keyword) qs.set('keyword', filters.keyword);
+    const result = await apiGet<{ total: number }>(`/api/pc-assets-count?${qs.toString()}`);
+    return Number((result as any)?.total || 0);
+  },
+});
 
 function getRowNumber(index: number) {
   return (page.value - 1) * pageSize.value + index + 1;
@@ -274,57 +205,73 @@ function getRowNumber(index: number) {
 
 function onSearch() {
   page.value = 1;
-  load();
+  void reload(currentFilters());
 }
 
 function reset() {
-  status.value = "";
-  keyword.value = "";
+  status.value = '';
+  keyword.value = '';
   page.value = 1;
-  clearTotals();
-  load();
+  clearTotalCache();
+  void reload(currentFilters());
 }
-
-function onPageChange() {
-  load();
-}
-function onPageSizeChange() {
-  page.value = 1;
-  load();
-}
-
 
 function onSelectionChange(list: any[]) {
   selectedIds.value = (list || []).map((r: any) => Number(r.id)).filter((x) => Number.isFinite(x) && x > 0);
 }
 
+function handlePageChange(nextPage: number) {
+  return onPageChange(currentFilters(), nextPage);
+}
+
+function handlePageSizeChange(nextSize: number) {
+  return onPageSizeChange(currentFilters(), nextSize);
+}
+
+function calcAgeYears(dateStr: string) {
+  if (!dateStr) return '-';
+  const d = new Date(dateStr);
+  if (Number.isNaN(d.getTime())) return '-';
+  const now = new Date();
+  let y = now.getFullYear() - d.getFullYear();
+  const m = now.getMonth() - d.getMonth();
+  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) y -= 1;
+  return y < 0 ? 0 : y;
+}
+
+function statusLabel(value: string) {
+  if (value === 'IN_STOCK') return '在库';
+  if (value === 'ASSIGNED') return '已领用';
+  if (value === 'RECYCLED') return '已回收';
+  if (value === 'SCRAPPED') return '已报废';
+  return value || '-';
+}
+
 async function createScrap() {
   if (!selectedIds.value.length) return;
 
-  let reason = "";
+  let reason = '';
   try {
-    const { value } = await ElMessageBox.prompt("请输入报废原因（可选）", "生成报废单", {
-      confirmButtonText: "生成并导出",
-      cancelButtonText: "取消",
-      inputPlaceholder: "例如：超过使用年限 / 无法维修 / 配置过低等",
-      inputType: "textarea",
-      inputValue: "",
+    const { value } = await ElMessageBox.prompt('请输入报废原因（可选）', '生成报废单', {
+      confirmButtonText: '生成并导出',
+      cancelButtonText: '取消',
+      inputPlaceholder: '例如：超过使用年限 / 无法维修 / 配置过低等',
+      inputType: 'textarea',
+      inputValue: '',
     });
-    reason = String(value || "").trim();
+    reason = String(value || '').trim();
   } catch {
     return;
   }
 
   try {
     scrapLoading.value = true;
-
-    const r = await apiPost<any>("/api/pc-scrap", { asset_ids: selectedIds.value, reason });
+    const r = await apiPost<any>('/api/pc-scrap', { asset_ids: selectedIds.value, reason });
     const scrapNo = (r as any)?.scrap_no;
-    if (!scrapNo) throw new Error("生成报废单失败");
+    if (!scrapNo) throw new Error('生成报废单失败');
 
     const detail = await apiGet<any>(`/api/pc-scrap?scrap_no=${encodeURIComponent(scrapNo)}`);
     const list = (detail as any)?.data || [];
-
     const data = list.map((x: any) => ({
       报废单号: x.scrap_no,
       报废日期: x.scrap_date,
@@ -333,240 +280,125 @@ async function createScrap() {
       序列号: x.serial_no,
       出厂时间: x.manufacture_date,
       机龄: `${calcAgeYears(x.manufacture_date)} 年`,
-      保修到期: x.warranty_end || "",
-      硬盘: x.disk_capacity || "",
-      内存: x.memory_size || "",
-      备注: x.remark || "",
-      报废原因: x.reason || "",
+      保修到期: x.warranty_end || '',
+      硬盘: x.disk_capacity || '',
+      内存: x.memory_size || '',
+      备注: x.remark || '',
+      报废原因: x.reason || '',
     }));
 
     exportToXlsx({
       filename: `电脑仓_报废单_${scrapNo}.xlsx`,
       headers: [
-        { key: "报废单号", title: "报废单号" },
-        { key: "报废日期", title: "报废日期" },
-        { key: "品牌", title: "品牌" },
-        { key: "型号", title: "型号" },
-        { key: "序列号", title: "序列号" },
-        { key: "出厂时间", title: "出厂时间" },
-        { key: "机龄", title: "机龄" },
-        { key: "保修到期", title: "保修到期" },
-        { key: "硬盘", title: "硬盘" },
-        { key: "内存", title: "内存" },
-        { key: "备注", title: "备注" },
-        { key: "报废原因", title: "报废原因" },
+        { key: '报废单号', title: '报废单号' },
+        { key: '报废日期', title: '报废日期' },
+        { key: '品牌', title: '品牌' },
+        { key: '型号', title: '型号' },
+        { key: '序列号', title: '序列号' },
+        { key: '出厂时间', title: '出厂时间' },
+        { key: '机龄', title: '机龄' },
+        { key: '保修到期', title: '保修到期' },
+        { key: '硬盘', title: '硬盘' },
+        { key: '内存', title: '内存' },
+        { key: '备注', title: '备注' },
+        { key: '报废原因', title: '报废原因' },
       ],
       rows: data,
-      sheetName: "报废单",
+      sheetName: '报废单',
     });
 
     ElMessage.success(`已报废并导出报废单：${scrapNo}`);
     selectedIds.value = [];
-    load();
+    clearTotalCache();
+    await reload(currentFilters());
   } catch (e: any) {
-    ElMessage.error(e?.message || "生成报废单失败");
+    ElMessage.error(e?.message || '生成报废单失败');
   } finally {
     scrapLoading.value = false;
   }
 }
 
-function calcAgeYears(dateStr: string) {
-  if (!dateStr) return "-";
-  const d = new Date(dateStr);
-  if (isNaN(d.getTime())) return "-";
-  const now = new Date();
-  let y = now.getFullYear() - d.getFullYear();
-  const m = now.getMonth() - d.getMonth();
-  if (m < 0 || (m === 0 && now.getDate() < d.getDate())) y -= 1;
-  return y < 0 ? 0 : y;
+async function requestWarningExport(scope: 'current' | 'all') {
+  const filters = currentFilters();
+  const params = new URLSearchParams();
+  params.set('scope', scope);
+  params.set('age_years', String(filters.ageYears));
+  params.set('page', String(page.value));
+  params.set('page_size', String(pageSize.value));
+  if (filters.status) params.set('status', filters.status);
+  if (filters.keyword) params.set('keyword', filters.keyword);
+  if (scope === 'all') params.set('max_rows', '10000');
+  return apiGet<any>(`/api/pc-age-warnings/export?${params.toString()}`);
 }
 
-async function load() {
-  try {
-    if (totalTimer) {
-      clearTimeout(totalTimer);
-      totalTimer = null;
-    }
-    loading.value = true;
-    const qs = new URLSearchParams();
-    qs.set("age_years", String(ageYears.value));
-    qs.set("page", String(page.value));
-    qs.set("page_size", String(pageSize.value));
-    if (status.value) qs.set("status", status.value);
-    if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
-
-    // PERF: 首屏优先，跳过 COUNT(*)，total 异步补齐
-    qs.set("fast", "1");
-
-    const j = await apiGet<{ ok: boolean; data: any[]; total: number | null }>(`/api/pc-assets?${qs.toString()}`);
-    rows.value = Array.isArray(j.data) ? j.data : [];
-
-    const key = filterKey();
-    if (totalCache.has(key)) {
-      total.value = Number(totalCache.get(key) || 0);
-      return;
-    }
-
-    if ((j as any).total === null || typeof (j as any).total === "undefined") {
-      if (totalTimer) clearTimeout(totalTimer);
-      totalTimer = setTimeout(() => {
-        const qs2 = new URLSearchParams();
-        qs2.set("age_years", String(ageYears.value));
-        if (status.value) qs2.set("status", status.value);
-        if (keyword.value.trim()) qs2.set("keyword", keyword.value.trim());
-        apiGet(`/api/pc-assets-count?${qs2.toString()}`)
-          .then((r: any) => {
-            const v = Number(r.total || 0);
-            totalCache.set(filterKey(), v);
-            total.value = v;
-          })
-          .catch(() => {});
-      }, 250);
-    } else {
-      const v = Number((j as any).total || 0);
-      totalCache.set(key, v);
-      total.value = v;
-    }
-  } catch (e: any) {
-    rows.value = [];
-    ElMessage.error(e?.message || "加载失败");
-  } finally {
-    loading.value = false;
-  }
-}
-
-async function exportExcel(all: boolean) {
-  if (!all) {
-    try {
-      scrapLoading.value = true;
-      const data = rows.value.map((r) => ({
-        ID: r.id,
-        品牌: r.brand,
-        型号: r.model,
-        序列号: r.serial_no,
-        出厂时间: r.manufacture_date,
-        机龄: `${calcAgeYears(r.manufacture_date)} 年`,
-        保修到期: r.warranty_end || "",
-        状态: r.status,
-        领用人: r.last_employee_name || "",
-        工号: r.last_employee_no || "",
-        部门: r.last_department || "",
-        备注: r.remark || "",
-      }));
-      exportToXlsx({
-        filename: `电脑仓_报废预警_当前页.xlsx`,
-        headers: [
-          { key: "ID", title: "ID" },
-          { key: "品牌", title: "品牌" },
-          { key: "型号", title: "型号" },
-          { key: "序列号", title: "序列号" },
-          { key: "出厂时间", title: "出厂时间" },
-          { key: "机龄", title: "机龄" },
-          { key: "保修到期", title: "保修到期" },
-          { key: "状态", title: "状态" },
-          { key: "领用人", title: "领用人" },
-          { key: "工号", title: "工号" },
-          { key: "部门", title: "部门" },
-          { key: "备注", title: "备注" },
-        ],
-        rows: data,
-        sheetName: "预警",
-      });
-      ElMessage.success("已导出（当前页）");
-    } catch (e: any) {
-      ElMessage.error(e?.message || "导出失败");
-    } finally {
-      exporting.value = false;
-    }
-    return;
-  }
-
-  // 导出全部：分页拉取（最多 5000 条，避免一次性太大）
-  try {
-    exportingAll.value = true;
-    const maxRows = 5000;
-    const size = 200;
-    let p = 1;
-    let allRows: any[] = [];
-    let totalLocal = 0;
-    while (allRows.length < maxRows) {
-      const qs = new URLSearchParams();
-      qs.set("age_years", String(ageYears.value));
-      qs.set("page", String(p));
-      qs.set("page_size", String(size));
-      if (status.value) qs.set("status", status.value);
-      if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
-      const j = await apiGet<{ ok: boolean; data: any[]; total: number }>(`/api/pc-assets?${qs.toString()}`);
-      const part = j.data || [];
-      totalLocal = Number((j as any).total || 0);
-      if (!part.length) break;
-      allRows = allRows.concat(part);
-      if (allRows.length >= totalLocal) break;
-      p += 1;
-    }
-
-    if (!allRows.length) {
-      ElMessage.warning("没有可导出的数据");
-      return;
-    }
-
-    if (allRows.length >= maxRows && totalLocal > maxRows) {
-      ElMessage.warning(`数据较多，仅导出前 ${maxRows} 条（共 ${totalLocal} 条）`);
-    }
-
-    const data = allRows.slice(0, maxRows).map((r) => ({
-      ID: r.id,
+function exportWarningRows(rowsToExport: any[], filename: string, startNo = 1) {
+  exportToXlsx({
+    filename,
+    headers: [
+      { key: '序号', title: '序号' },
+      { key: '品牌', title: '品牌' },
+      { key: '型号', title: '型号' },
+      { key: '序列号', title: '序列号' },
+      { key: '出厂时间', title: '出厂时间' },
+      { key: '机龄', title: '机龄' },
+      { key: '保修到期', title: '保修到期' },
+      { key: '状态', title: '状态' },
+      { key: '领用人', title: '领用人' },
+      { key: '工号', title: '工号' },
+      { key: '部门', title: '部门' },
+      { key: '备注', title: '备注' },
+    ],
+    rows: rowsToExport.map((r: any, index: number) => ({
+      序号: startNo + index,
       品牌: r.brand,
       型号: r.model,
       序列号: r.serial_no,
       出厂时间: r.manufacture_date,
       机龄: `${calcAgeYears(r.manufacture_date)} 年`,
-      保修到期: r.warranty_end || "",
-      状态: r.status,
-      领用人: r.last_employee_name || "",
-      工号: r.last_employee_no || "",
-      部门: r.last_department || "",
-      备注: r.remark || "",
-    }));
+      保修到期: r.warranty_end || '',
+      状态: statusLabel(r.status),
+      领用人: r.last_employee_name || '',
+      工号: r.last_employee_no || '',
+      部门: r.last_department || '',
+      备注: r.remark || '',
+    })),
+    sheetName: '预警',
+  });
+}
 
-    exportToXlsx({
-      filename: `电脑仓_报废预警_全部.xlsx`,
-      headers: [
-        { key: "ID", title: "ID" },
-        { key: "品牌", title: "品牌" },
-        { key: "型号", title: "型号" },
-        { key: "序列号", title: "序列号" },
-        { key: "出厂时间", title: "出厂时间" },
-        { key: "机龄", title: "机龄" },
-        { key: "保修到期", title: "保修到期" },
-        { key: "状态", title: "状态" },
-        { key: "领用人", title: "领用人" },
-        { key: "工号", title: "工号" },
-        { key: "部门", title: "部门" },
-        { key: "备注", title: "备注" },
-      ],
-      rows: data,
-      sheetName: "预警",
-    });
-    ElMessage.success("已导出（全部）");
+async function exportExcel(all: boolean) {
+  const loadingRef = all ? exportingAll : exporting;
+  try {
+    loadingRef.value = true;
+    const response: any = await requestWarningExport(all ? 'all' : 'current');
+    const data = response?.data || [];
+    if (!data.length) return ElMessage.warning(all ? '当前筛选结果没有可导出的预警数据' : '当前页没有可导出的预警数据');
+    exportWarningRows(data, all ? `电脑仓_报废预警_筛选结果_${data.length}条.xlsx` : `电脑仓_报废预警_当前页.xlsx`, all ? 1 : (page.value - 1) * pageSize.value + 1);
+    if (all && response?.limited) {
+      ElMessage.warning(`筛选结果较多，已导出前 ${data.length} 条（共 ${Number(response?.total || data.length)} 条）`);
+      return;
+    }
+    ElMessage.success(all ? '筛选结果已导出' : '当前页已导出');
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    ElMessage.error(e?.message || '导出失败');
   } finally {
-    exportingAll.value = false;
+    loadingRef.value = false;
   }
 }
 
 onMounted(async () => {
-  load();
+  await reload(currentFilters());
   try {
     const settings = await fetchSystemSettings();
-    const nextYears = Number(settings?.pc_scrap_warning_years || ageYears.value || 5);
+    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
     if (nextYears !== ageYears.value) {
       ageYears.value = nextYears;
       page.value = 1;
-      clearTotals();
-      await load();
+      clearTotalCache();
+      await reload(currentFilters());
     }
-  } catch {}
+  } catch {
+    // ignore and keep cached fallback
+  }
 });
 </script>

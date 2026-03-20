@@ -108,5 +108,10 @@
     "id": "202603190020_asset_fk_cascade_and_archive_reason_indexes",
     "file": "sql/migrate_asset_fk_cascade_and_archive_reason_indexes.sql",
     "description": "exact archive reason indexes and cascading asset history foreign keys"
+  },
+  {
+    "id": "202603200010_audit_materialized_and_pc_warning_index",
+    "file": "sql/migrate_audit_materialized_and_pc_warning_index.sql",
+    "description": "materialize audit module/high-risk fields and add pc age-warning index"
   }
 ]

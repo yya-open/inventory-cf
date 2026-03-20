@@ -59,10 +59,10 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       const dictionaryKey = parseDictionaryKey(body?.dictionary_key);
       if (!dictionaryKey) throw Object.assign(new Error('缺少字典类型'), { status: 400 });
       const before = await listSystemDictionaryItems(env.DB, dictionaryKey);
-      const ids = Array.isArray(body?.items)
-        ? body.items.map((item: any) => Number(item?.id || 0)).filter((id: number) => id > 0)
+      const orderedItems = Array.isArray(body?.items)
+        ? body.items.map((item: any) => ({ id: Number(item?.id || 0), updated_at: item?.updated_at || null })).filter((item: any) => item.id > 0)
         : [];
-      const items = await reorderSystemDictionaryItems(env.DB, dictionaryKey, ids, user.username || null);
+      const items = await reorderSystemDictionaryItems(env.DB, dictionaryKey, orderedItems, user.username || null);
       await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_REORDER', 'system_dictionary_items', dictionaryKey, {
         dictionary_key: dictionaryKey,
         before: before.map((item) => ({ id: item.id, label: item.label, sort_order: item.sort_order })),
@@ -87,7 +87,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     const user = await requireAuth(env, request, 'admin');
     const body = await request.json().catch(() => ({}));
     requireConfirm(body, '删除', '二次确认不通过');
-    const deleted = await deleteSystemDictionaryItem(env.DB, Number(body?.id || 0));
+    const deleted = await deleteSystemDictionaryItem(env.DB, Number(body?.id || 0), body?.updated_at || null);
     await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_DELETE', 'system_dictionary_items', deleted.id, deleted);
     return json(true, deleted, '删除成功');
   } catch (e: any) {

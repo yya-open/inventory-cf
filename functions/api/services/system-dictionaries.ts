@@ -48,6 +48,11 @@ function normalizeComparable(value: any) {
   return normalizeLabel(value).toLowerCase();
 }
 
+function normalizeVersion(value: any) {
+  const version = String(value || '').trim();
+  return version || null;
+}
+
 function toInt(value: any, fallback: number, min = 0, max = 999999) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -244,7 +249,7 @@ function normalizeRow(row: any, reference_count = 0): SystemDictionaryItem {
     enabled: toBoolInt(row?.enabled, 1),
     reference_count: toInt(reference_count, 0, 0, 999999999),
     created_at: row?.created_at || undefined,
-    updated_at: row?.updated_at || undefined,
+    updated_at: normalizeVersion(row?.updated_at) || undefined,
     updated_by: row?.updated_by || null,
   };
 }
@@ -318,6 +323,10 @@ export async function updateSystemDictionaryItem(db: D1Database, input: Partial<
   const id = Number(input?.id || 0);
   if (!id) throw Object.assign(new Error('缺少字典项ID'), { status: 400 });
   const old = await getSystemDictionaryItemById(db, id);
+  const expectedUpdatedAt = normalizeVersion(input?.updated_at);
+  if (expectedUpdatedAt && normalizeVersion(old.updated_at) && expectedUpdatedAt !== normalizeVersion(old.updated_at)) {
+    throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
+  }
   const key = (String(input?.dictionary_key || old.dictionary_key).trim() || old.dictionary_key) as SystemDictionaryKey;
   if (!ALL_DICTIONARY_KEYS.includes(key)) throw Object.assign(new Error('字典类型不支持'), { status: 400 });
   const label = normalizeLabel(input?.label ?? old.label);
@@ -328,44 +337,76 @@ export async function updateSystemDictionaryItem(db: D1Database, input: Partial<
   if (dup) throw Object.assign(new Error('该字典值已存在'), { status: 400 });
   const sortOrder = toInt(input?.sort_order, old.sort_order, 0, 999999);
   const enabled = toBoolInt(input?.enabled, old.enabled);
-  await db.prepare(
+  const result = await db.prepare(
     `UPDATE system_dictionary_items
      SET dictionary_key=?, label=?, normalized_label=?, sort_order=?, enabled=?, updated_at=${sqlNowStored()}, updated_by=?
-     WHERE id=?`
-  ).bind(key, label, normalized, sortOrder, enabled, updatedBy || null, id).run();
+     WHERE id=? AND updated_at=?`
+  ).bind(key, label, normalized, sortOrder, enabled, updatedBy || null, id, normalizeVersion(old.updated_at)).run();
+  if (Number((result as any)?.meta?.changes || 0) === 0) {
+    throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
+  }
   return getSystemDictionaryItemById(db, id);
 }
 
 
-export async function reorderSystemDictionaryItems(db: D1Database, key: SystemDictionaryKey, orderedIds: number[], updatedBy: string | null) {
+export async function reorderSystemDictionaryItems(
+  db: D1Database,
+  key: SystemDictionaryKey,
+  orderedItems: Array<number | Partial<Pick<SystemDictionaryItem, 'id' | 'updated_at'>>>,
+  updatedBy: string | null,
+) {
   if (!ALL_DICTIONARY_KEYS.includes(key)) throw Object.assign(new Error('字典类型不支持'), { status: 400 });
   await bootstrapDictionaryIfNeeded(db, key);
   const { results } = await db.prepare(
-    `SELECT id FROM system_dictionary_items WHERE dictionary_key=? ORDER BY sort_order ASC, id ASC`
+    `SELECT id, updated_at FROM system_dictionary_items WHERE dictionary_key=? ORDER BY sort_order ASC, id ASC`
   ).bind(key).all<any>();
-  const existingIds = (results || []).map((row: any) => Number(row?.id || 0)).filter(Boolean);
-  const nextIds = orderedIds.map((id) => Number(id || 0)).filter(Boolean);
+  const currentRows = (results || []).map((row: any) => ({ id: Number(row?.id || 0), updated_at: normalizeVersion(row?.updated_at) }));
+  const existingIds = currentRows.map((row) => row.id).filter(Boolean);
+  const nextItems = (orderedItems || []).map((item: any) => ({
+    id: Number(typeof item === 'number' ? item : item?.id || 0),
+    updated_at: normalizeVersion(typeof item === 'number' ? null : item?.updated_at),
+  })).filter((item) => item.id > 0);
+  const nextIds = nextItems.map((item) => item.id);
   if (!nextIds.length) throw Object.assign(new Error('缺少排序数据'), { status: 400 });
   if (existingIds.length !== nextIds.length) throw Object.assign(new Error('排序项数量不匹配，请刷新后重试'), { status: 400 });
   const existingSet = new Set(existingIds);
   if (new Set(nextIds).size !== nextIds.length || nextIds.some((id) => !existingSet.has(id))) {
     throw Object.assign(new Error('排序数据无效，请刷新后重试'), { status: 400 });
   }
-  const statements = nextIds.map((id, index) => db.prepare(
+  const currentMap = new Map(currentRows.map((row) => [row.id, row.updated_at]));
+  for (const item of nextItems) {
+    const currentUpdatedAt = currentMap.get(item.id) || null;
+    if (item.updated_at && currentUpdatedAt && item.updated_at !== currentUpdatedAt) {
+      throw Object.assign(new Error('字典顺序已被其他管理员修改，请刷新后重试'), { status: 409 });
+    }
+  }
+  const statements = nextItems.map((item, index) => db.prepare(
     `UPDATE system_dictionary_items
      SET sort_order=?, updated_at=${sqlNowStored()}, updated_by=?
-     WHERE id=? AND dictionary_key=?`
-  ).bind((index + 1) * 10, updatedBy || null, id, key));
-  if (statements.length) await db.batch(statements);
+     WHERE id=? AND dictionary_key=? AND updated_at=?`
+  ).bind((index + 1) * 10, updatedBy || null, item.id, key, currentMap.get(item.id) || null));
+  if (statements.length) {
+    const results = await db.batch(statements);
+    const changed = (results || []).reduce((sum: number, row: any) => sum + Number(row?.meta?.changes || 0), 0);
+    if (changed !== statements.length) {
+      throw Object.assign(new Error('字典顺序已被其他管理员修改，请刷新后重试'), { status: 409 });
+    }
+  }
   return listSystemDictionaryItems(db, key);
 }
 
-export async function deleteSystemDictionaryItem(db: D1Database, id: number) {
+export async function deleteSystemDictionaryItem(db: D1Database, id: number, expectedUpdatedAt?: string | null) {
   const row = await getSystemDictionaryItemById(db, id);
+  if (expectedUpdatedAt && normalizeVersion(row.updated_at) && normalizeVersion(expectedUpdatedAt) !== normalizeVersion(row.updated_at)) {
+    throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
+  }
   if (Number(row.reference_count || 0) > 0) {
     throw Object.assign(new Error('该字典项已被引用，无法删除，可先停用'), { status: 400 });
   }
-  await db.prepare(`DELETE FROM system_dictionary_items WHERE id=?`).bind(id).run();
+  const result = await db.prepare(`DELETE FROM system_dictionary_items WHERE id=? AND updated_at=?`).bind(id, normalizeVersion(row.updated_at)).run();
+  if (Number((result as any)?.meta?.changes || 0) === 0) {
+    throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
+  }
   return row;
 }
 

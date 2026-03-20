@@ -36,17 +36,17 @@ export async function updateSystemDictionaryItem(payload: Partial<SystemDictiona
   return (result?.data || {}) as SystemDictionaryItem;
 }
 
-export async function deleteSystemDictionaryItem(id: number) {
-  const result: any = await apiDelete('/api/system-dictionaries', { id, confirm: '删除' });
+export async function deleteSystemDictionaryItem(id: number, updated_at?: string | null) {
+  const result: any = await apiDelete('/api/system-dictionaries', { id, updated_at: updated_at || null, confirm: '删除' });
   return (result?.data || {}) as SystemDictionaryItem;
 }
 
 
-export async function reorderSystemDictionaryItems(dictionaryKey: SystemDictionaryKey, items: Array<Pick<SystemDictionaryItem, 'id' | 'sort_order'>>) {
+export async function reorderSystemDictionaryItems(dictionaryKey: SystemDictionaryKey, items: Array<Pick<SystemDictionaryItem, 'id' | 'sort_order' | 'updated_at'>>) {
   const result: any = await apiPut('/api/system-dictionaries', {
     action: 'reorder',
     dictionary_key: dictionaryKey,
-    items: items.map((item) => ({ id: item.id, sort_order: item.sort_order })),
+    items: items.map((item: any) => ({ id: item.id, sort_order: item.sort_order, updated_at: item.updated_at || null })),
   });
   return (result?.data || { items: [], grouped: {} }) as SystemDictionaryResponse;
 }

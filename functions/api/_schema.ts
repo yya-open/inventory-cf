@@ -122,12 +122,16 @@ export async function ensureCoreSchema(db: D1Database) {
       payload_json TEXT,
       ip TEXT,
       ua TEXT,
+      module_code TEXT,
+      high_risk INTEGER NOT NULL DEFAULT 0,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_action_created_at ON audit_log(action, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(username, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_module_created_at ON audit_log(module_code, created_at)",
+    "CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at)",
 
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (

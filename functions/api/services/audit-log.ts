@@ -22,7 +22,7 @@ export type AuditListFilters = {
 
 const MODULE_CODES: AuditModuleCode[] = ['STOCK', 'STOCKTAKE', 'ITEM', 'USER', 'AUDIT', 'ADMIN', 'PC', 'MONITOR', 'OTHER'];
 
-export const AUDIT_MODULE_SQL = `
+const AUDIT_MODULE_FALLBACK_SQL = `
 CASE
   WHEN UPPER(COALESCE(a.action, '')) LIKE 'STOCKTAKE%' OR LOWER(COALESCE(a.entity, '')) LIKE '%stocktake%' THEN 'STOCKTAKE'
   WHEN UPPER(COALESCE(a.action, '')) LIKE 'STOCK_%' OR LOWER(COALESCE(a.entity, '')) IN ('stock', 'stock_tx') THEN 'STOCK'
@@ -35,7 +35,7 @@ CASE
   ELSE 'OTHER'
 END`;
 
-export const AUDIT_HIGH_RISK_SQL = `
+const AUDIT_HIGH_RISK_FALLBACK_SQL = `
 CASE
   WHEN INSTR(UPPER(COALESCE(a.action, '')), 'DELETE') > 0
     OR INSTR(UPPER(COALESCE(a.action, '')), 'ARCHIVE') > 0
@@ -46,6 +46,9 @@ CASE
     OR INSTR(UPPER(COALESCE(a.action, '')), 'CLEAR') > 0
   THEN 1 ELSE 0
 END`;
+
+export const AUDIT_MODULE_SQL = `COALESCE(NULLIF(a.module_code, ''), ${AUDIT_MODULE_FALLBACK_SQL})`;
+export const AUDIT_HIGH_RISK_SQL = `COALESCE(a.high_risk, ${AUDIT_HIGH_RISK_FALLBACK_SQL})`;
 
 function toBool(value: string | null) {
   if (value == null) return false;

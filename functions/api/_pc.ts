@@ -78,6 +78,7 @@ export async function ensurePcSchema(db: D1Database) {
   }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)").run();
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).
@@ -119,6 +120,7 @@ try {
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)"),
     ]);
   }
 } catch {

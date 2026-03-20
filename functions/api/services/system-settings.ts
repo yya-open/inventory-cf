@@ -17,6 +17,7 @@ export type SystemSettings = {
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
   public_inventory_scan_mode_default: PublicScanMode;
+  settings_updated_at?: string | null;
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
@@ -33,6 +34,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
   public_inventory_scan_mode_default: 'scanner',
+  settings_updated_at: null,
 };
 
 const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
@@ -42,7 +44,7 @@ const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
   'dictionary_monitor_brand_options',
 ];
 
-const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key));
+const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key) && key !== 'settings_updated_at');
 
 export async function ensureSystemSettingsTable(db: D1Database) {
   await db.prepare(
@@ -89,6 +91,11 @@ function normalizeScanMode(value: any, fallback: PublicScanMode, legacyScanner?:
   return fallback;
 }
 
+function normalizeVersion(value: any) {
+  const version = String(value || '').trim();
+  return version || null;
+}
+
 export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettings, any>> | null | undefined): SystemSettings {
   const source = input || {};
   return {
@@ -105,13 +112,21 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_continuous_mode_default: toBoolean(source.public_inventory_continuous_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_continuous_mode_default),
     public_inventory_retry_hint: toBoolean(source.public_inventory_retry_hint, DEFAULT_SYSTEM_SETTINGS.public_inventory_retry_hint),
     public_inventory_scan_mode_default: normalizeScanMode(source.public_inventory_scan_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scan_mode_default, source.public_inventory_scanner_mode_default),
+    settings_updated_at: normalizeVersion(source.settings_updated_at),
   };
+}
+
+async function getSystemSettingsVersion(db: D1Database) {
+  await ensureSystemSettingsTable(db);
+  const row = await db.prepare(`SELECT MAX(updated_at) AS updated_at FROM system_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`).bind(...SETTING_KEYS).first<any>();
+  return normalizeVersion(row?.updated_at);
 }
 
 export async function getSystemSettings(db: D1Database): Promise<SystemSettings> {
   await ensureSystemSettingsTable(db);
-  const rows = await db.prepare(`SELECT key, value_json FROM system_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`).bind(...SETTING_KEYS).all<any>();
+  const rows = await db.prepare(`SELECT key, value_json, updated_at FROM system_settings WHERE key IN (${SETTING_KEYS.map(() => '?').join(',')})`).bind(...SETTING_KEYS).all<any>();
   const patch: Record<string, any> = {};
+  let latestUpdatedAt: string | null = null;
   for (const row of rows?.results || []) {
     const key = String(row?.key || '').trim();
     if (!key) continue;
@@ -120,16 +135,24 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
     } catch {
       patch[key] = row?.value_json;
     }
+    const updatedAt = normalizeVersion(row?.updated_at);
+    if (updatedAt && (!latestUpdatedAt || updatedAt > latestUpdatedAt)) latestUpdatedAt = updatedAt;
   }
   patch.asset_archive_reason_options = await getEnabledDictionaryLabels(db, 'asset_archive_reason');
   patch.dictionary_department_options = await getEnabledDictionaryLabels(db, 'department');
   patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
   patch.dictionary_monitor_brand_options = await getEnabledDictionaryLabels(db, 'monitor_brand');
+  patch.settings_updated_at = latestUpdatedAt;
   return normalizeSystemSettings(patch as any);
 }
 
 export async function updateSystemSettings(db: D1Database, patch: Partial<SystemSettings>, updatedBy: string | null) {
   await ensureSystemSettingsTable(db);
+  const expectedUpdatedAt = normalizeVersion(patch?.settings_updated_at);
+  const currentVersion = await getSystemSettingsVersion(db);
+  if (expectedUpdatedAt && currentVersion && expectedUpdatedAt !== currentVersion) {
+    throw Object.assign(new Error('系统配置已被其他管理员更新，请刷新后重试'), { status: 409 });
+  }
   const next = normalizeSystemSettings({ ...(await getSystemSettings(db)), ...patch });
   for (const key of SETTING_KEYS) {
     await db.prepare(

@@ -162,9 +162,7 @@ export async function ensureMonitorSchema(db: D1Database) {
           count INTEGER NOT NULL DEFAULT 0,
           updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
           archived INTEGER NOT NULL DEFAULT 0,
-          archived_at TEXT,
-      archived INTEGER NOT NULL DEFAULT 0,
-      archived_at TEXT
+          archived_at TEXT
         )
       `)
       .run();

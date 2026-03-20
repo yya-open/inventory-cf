@@ -89,8 +89,9 @@ export function buildPcAssetQuery(url: URL) {
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - ageYears);
     const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
-    clauses.push("a.status<>'SCRAPPED' AND a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
+    clauses.push("a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
     binds.push(cutoffStr);
+    if (!status) clauses.push("a.status IN ('IN_STOCK','ASSIGNED','RECYCLED')");
   }
 
   return {

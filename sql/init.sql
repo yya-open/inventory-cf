@@ -133,6 +133,8 @@ CREATE TABLE IF NOT EXISTS audit_log (
   payload_json TEXT,
   ip TEXT,
   ua TEXT,
+  module_code TEXT,
+  high_risk INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 CREATE INDEX IF NOT EXISTS idx_audit_log_created_at ON audit_log(created_at);
@@ -140,6 +142,8 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_entity ON audit_log(entity, entity_id);
 
 CREATE INDEX IF NOT EXISTS idx_audit_log_action_created_at ON audit_log(action, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(username, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_module_created_at ON audit_log(module_code, created_at);
+CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at);
 
 -- =========================
 -- 仓库2：电脑仓（资产化管理）
@@ -184,6 +188,7 @@ CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id);
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

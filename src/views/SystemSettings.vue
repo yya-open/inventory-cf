@@ -446,7 +446,7 @@ async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
   if (!hasPendingReorder(key)) return true;
   reorderLoadingMap.value = { ...reorderLoadingMap.value, [key]: true };
   try {
-    const response = await reorderSystemDictionaryItems(key, dictionaryRows(key).map((item) => ({ id: item.id, sort_order: item.sort_order })));
+    const response = await reorderSystemDictionaryItems(key, dictionaryRows(key).map((item) => ({ id: item.id, sort_order: item.sort_order, updated_at: item.updated_at } as any)));
     replaceDictionaryRows(key, response?.grouped?.[key] || dictionaryRows(key), false);
     markReorderDirty(key, false);
     if (!quiet) ElMessage.success('排序已保存');
@@ -474,6 +474,7 @@ async function saveDictionary(row: SystemDictionaryItem) {
       label,
       sort_order: row.sort_order,
       enabled: row.enabled,
+      updated_at: row.updated_at,
     });
     upsertDictionaryRow(saved);
     ElMessage.success('字典项已保存');
@@ -517,7 +518,7 @@ async function removeDictionary(row: SystemDictionaryItem) {
   });
   rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: true };
   try {
-    await deleteSystemDictionaryItem(row.id);
+    await deleteSystemDictionaryItem(row.id, row.updated_at);
     removeLocalDictionaryRow(row);
     ElMessage.success('字典项已删除');
   } catch (e: any) {
