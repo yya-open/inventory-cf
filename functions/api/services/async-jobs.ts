@@ -44,8 +44,7 @@ export async function ensureAsyncJobsTable(db: D1Database) {
 
 function csvEscape(v: any) {
   const s = String(v ?? '');
-  if (/[",
-]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
+  if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
 }
 
@@ -88,8 +87,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
         csvEscape((row as any).summary_text || ''),
       ].join(','));
     }
-    return { text: '﻿' + lines.join('
-'), filename: `audit_export_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
+    return { text: '﻿' + lines.join('\n'), filename: `audit_export_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
   }
 
   const url = new URL('https://local/export');
@@ -106,8 +104,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
       csvEscape((row as any).brand), csvEscape((row as any).model), csvEscape((row as any).serial_no), csvEscape((row as any).manufacture_date), csvEscape((row as any).status), csvEscape((row as any).last_employee_name || ''), csvEscape((row as any).last_employee_no || ''), csvEscape((row as any).last_department || ''), csvEscape((row as any).remark || ''),
     ].join(','));
   }
-  return { text: '﻿' + lines.join('
-'), filename: `pc_age_warnings_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条报废预警导出` };
+  return { text: '﻿' + lines.join('\n'), filename: `pc_age_warnings_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条报废预警导出` };
 }
 
 export async function cleanupExpiredAsyncJobResults(db: D1Database) {
