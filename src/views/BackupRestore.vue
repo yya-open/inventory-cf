@@ -694,6 +694,7 @@ import { ElMessageBox } from "../utils/el-services";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiDownload, apiPostForm, apiGet, apiPost, apiPut } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
+import { scheduleOnIdle } from '../utils/idle';
 import { can } from "../store/auth";
 
 const bk = ref({
@@ -1282,6 +1283,10 @@ async function saveDrillClosure() {
   }
 }
 
-onMounted(loadBackupDrills);
+onMounted(() => {
+  scheduleOnIdle(() => {
+    loadBackupDrills().catch(() => undefined);
+  }, 1200);
+});
 
 </script>

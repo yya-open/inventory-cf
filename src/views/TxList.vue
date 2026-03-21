@@ -231,7 +231,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, computed } from "vue";
+import { ref, onMounted, onActivated, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -279,6 +279,8 @@ const sortDir = ref<string>("desc");
 
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
+const SOFT_REFRESH_TTL_MS = 15_000;
+let lastRefreshAt = 0;
 
 function onSearch(){
   page.value = 1;
@@ -430,6 +432,7 @@ async function load() {
     const j = await apiGet<any>(`/api/tx?${params.toString()}`);
     rows.value = j.data;
     total.value = Number(j.total || 0);
+    lastRefreshAt = Date.now();
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
@@ -511,5 +514,14 @@ async function clearTx() {
 onMounted(async () => {
   await loadItems();
   await load();
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  const task = async () => {
+    if (!items.value.length) await loadItems();
+    await load();
+  };
+  void task();
 });
 </script>

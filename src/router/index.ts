@@ -37,6 +37,7 @@ const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
+import { scheduleOnIdle } from "../utils/idle";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
 const router = createRouter({
@@ -175,3 +176,59 @@ router.beforeEach(async (to) => {
 });
 
 export default router;
+
+
+const prefetchedChunks = new Set<string>();
+
+function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
+  if (!loader || prefetchedChunks.has(key)) return;
+  prefetchedChunks.add(key);
+  scheduleOnIdle(() => {
+    loader().catch(() => {
+      prefetchedChunks.delete(key);
+    });
+  }, 1200);
+}
+
+router.afterEach((to) => {
+  if ((to.meta as any)?.public) return;
+  const auth = useAuth();
+  const tasks = new Map<string, () => Promise<unknown>>();
+  const add = (key: string, loader: () => Promise<unknown>, enabled = true) => {
+    if (enabled) tasks.set(key, loader);
+  };
+  const canAdminAccess = auth.user?.role === 'admin';
+  const canOperate = auth.user?.role === 'admin' || auth.user?.role === 'operator';
+  const canViewParts = canAccessModuleArea(auth.user, 'parts');
+  const canViewPc = canAccessModuleArea(auth.user, 'pc');
+  const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
+  const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
+
+  if (to.path.startsWith('/system')) {
+    add('/system/tools', SystemOpsTools, canAdminAccess);
+    add('/system/settings', SystemSettings, canAdminAccess);
+    add('/system/audit', AuditLog, canAdminAccess);
+    add('/system/backup', BackupRestore, canAdminAccess);
+  } else if (to.path.startsWith('/pc')) {
+    add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
+    add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
+    add('/pc/tx', PcTx, canViewPc && canViewPcLedger);
+    add('/pc/monitor-tx', MonitorTx, canViewPc && canViewMonitorLedger);
+    add('/pc/inventory-logs', PcInventoryLogs, canViewPc && canViewPcLedger);
+    add('/pc/monitor-inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
+    add('/pc/in', PcIn, canOperate && canViewPc && canViewPcLedger);
+    add('/pc/out', PcOut, canOperate && canViewPc && canViewPcLedger);
+    add('/pc/recycle', PcRecycle, canOperate && canViewPc && canViewPcLedger);
+  } else {
+    add('/stock', StockQuery, canViewParts);
+    add('/tx', TxList, canViewParts);
+    add('/warnings', Warnings, canViewParts);
+    add('/in', StockIn, canOperate && canViewParts);
+    add('/out', StockOut, canOperate && canViewParts);
+    add('/batch', BatchTx, canOperate && canViewParts);
+    add('/stocktake', Stocktake, canAdminAccess && canViewParts);
+  }
+
+  tasks.delete(to.path);
+  tasks.forEach((loader, key) => prefetchChunk(key, loader));
+});

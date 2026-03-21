@@ -305,7 +305,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, onMounted, computed } from "vue";
+import { ref, reactive, onMounted, onActivated, computed } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -324,6 +324,8 @@ const pageSize = ref(50);
 const total = ref(0);
 const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
+const SOFT_REFRESH_TTL_MS = 15_000;
+let lastRefreshAt = 0;
 
 const categories = ref<string[]>([]);
 
@@ -414,6 +416,7 @@ async function load() {
       last_tx_at: r.last_tx_at ?? "",
     }));
     total.value = Number((j as any).total || 0);
+    lastRefreshAt = Date.now();
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
@@ -494,5 +497,14 @@ async function exportXlsx() {
 onMounted(async () => {
   await loadMeta();
   await load();
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  const task = async () => {
+    if (!categories.value.length) await loadMeta();
+    await load();
+  };
+  void task();
 });
 </script>

@@ -221,7 +221,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, onActivated, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -378,11 +378,14 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
 });
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
+const SOFT_REFRESH_TTL_MS = 15_000;
+let lastRefreshAt = 0;
 
 
 async function refreshCurrent(keepPage = true, resetTotal = false) {
   if (resetTotal) invalidateTotal();
   await load(currentFilters(), { keepPage });
+  lastRefreshAt = Date.now();
 }
 
 const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
@@ -1403,9 +1406,16 @@ function onSelectionChange(currentPageSelected: MonitorAsset[]) {
 onMounted(async () => {
   persistState();
   await load(currentFilters());
+  lastRefreshAt = Date.now();
   setTimeout(() => {
     loadLocations().catch(() => undefined);
   }, 0);
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  lastRefreshAt = Date.now();
+  void load(currentFilters(), { keepPage: true });
 });
 </script>
 

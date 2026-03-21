@@ -60,6 +60,7 @@ import { useRouter } from 'vue-router';
 import { useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
+import { scheduleOnIdle } from '../utils/idle';
 
 const HomeCard = defineComponent({
   name: 'HomeCard',
@@ -95,5 +96,10 @@ async function loadOpsSummary() {
   ops.overdue_backup_drill_issue_count = Number(r.data?.metrics?.overdue_backup_drill_issue_count || 0);
 }
 
-onMounted(loadOpsSummary);
+onMounted(() => {
+  loadOpsSummary().catch(() => undefined);
+  scheduleOnIdle(() => {
+    loadOpsSummary().catch(() => undefined);
+  }, 1200);
+});
 </script>

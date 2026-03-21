@@ -168,7 +168,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from "vue";
+import { ref, onMounted, onActivated } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
@@ -189,6 +189,8 @@ const loading = ref(false);
 const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
+const SOFT_REFRESH_TTL_MS = 15_000;
+let lastRefreshAt = 0;
 
 function goIn(item_id: number) {
   router.push({ path: "/in", query: { item_id: String(item_id) } });
@@ -230,6 +232,7 @@ async function load() {
     );
     rows.value = j.data || [];
     total.value = Number((j as any).total || 0);
+    lastRefreshAt = Date.now();
   } catch (e: any) {
     ElMessage.error(e?.message || "加载失败");
   } finally {
@@ -254,5 +257,10 @@ onMounted(async () => {
   // 支持旧链接：保留 item_id 等 query 不变；warehouse_id 不再从 query 读取
   void route;
   await load();
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  void load();
 });
 </script>
