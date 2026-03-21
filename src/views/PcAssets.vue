@@ -61,7 +61,9 @@
       @page-size-change="(value) => onPageSizeChange(currentFilters(), value)"
     />
 
+
     <PcAssetEditDialog
+      v-if="lazyEditDialog"
       v-model:visible="editVisible"
       :form="editForm"
       :saving="saving"
@@ -69,11 +71,13 @@
       @save="saveEdit"
     />
     <PcAssetInfoDialog
+      v-if="lazyInfoDialog"
       v-model:visible="infoVisible"
       :row="infoRow"
       @view-audit="openAuditHistory"
     />
     <PcAssetQrDialog
+      v-if="lazyQrDialog"
       v-model:visible="qrVisible"
       :loading="qrLoading"
       :data-url="qrDataUrl"
@@ -87,89 +91,37 @@
       @copy-link="copyQrLink"
       @reset-qr="resetQr"
     />
-
-    <el-dialog
-      v-model="batchStatusVisible"
-      title="批量修改电脑状态"
-      width="420px"
-    >
-      <el-form label-width="90px">
-        <el-form-item label="目标状态">
-          <el-select v-model="batchStatusValue" style="width:100%">
-            <el-option label="在库" value="IN_STOCK" />
-            <el-option label="已回收" value="RECYCLED" />
-            <el-option label="已报废" value="SCRAPPED" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchStatusPreview.total }} 台</el-tag>
-          <el-tag type="success">预计生效 {{ batchStatusPreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchStatusPreview.sameStatus" type="info">状态相同 {{ batchStatusPreview.sameStatus }} 台</el-tag>
-          <el-tag v-if="batchStatusPreview.archived" type="warning">已归档 {{ batchStatusPreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">将对当前已选电脑中“未归档且状态不同”的记录生效。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchStatusVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchStatus">确认</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="batchOwnerVisible" title="批量修改电脑领用人" width="420px">
-      <el-form label-width="90px">
-        <el-form-item label="领用人">
-          <el-input v-model="batchOwnerForm.employee_name" placeholder="请输入领用人姓名" />
-        </el-form-item>
-        <el-form-item label="工号">
-          <el-input v-model="batchOwnerForm.employee_no" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="部门">
-          <el-select v-model="batchOwnerForm.department" filterable allow-create default-first-option clearable style="width:100%" placeholder="可选">
-            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchOwnerPreview.total }} 台</el-tag>
-          <el-tag type="success">预计生效 {{ batchOwnerPreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchOwnerPreview.unassigned" type="info">未领用 {{ batchOwnerPreview.unassigned }} 台</el-tag>
-          <el-tag v-if="batchOwnerPreview.archived" type="warning">已归档 {{ batchOwnerPreview.archived }} 台</el-tag>
-          <el-tag v-if="batchOwnerPreview.sameOwner" type="info">信息相同 {{ batchOwnerPreview.sameOwner }} 台</el-tag>
-        </div>
-        <div class="batch-help">仅对当前已领用且领用信息发生变化的电脑生效，未领用电脑会自动跳过。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchOwnerVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchOwner">确认</el-button>
-      </template>
-    </el-dialog>
-
-    <el-dialog v-model="batchArchiveVisible" title="批量归档电脑" width="460px">
-      <el-form label-width="90px">
-        <el-form-item label="归档原因">
-          <el-select v-model="batchArchiveForm.reason" style="width:100%" placeholder="请选择归档原因" filterable allow-create default-first-option>
-            <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="batchArchiveForm.note" type="textarea" :rows="3" placeholder="可选，补充归档说明" />
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchArchivePreview.total }} 台</el-tag>
-          <el-tag type="success">预计归档 {{ batchArchivePreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchArchivePreview.archived" type="info">已归档 {{ batchArchivePreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">归档后默认列表将不再显示，可通过“显示已归档”查看并恢复。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchArchiveVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchArchive">确认归档</el-button>
-      </template>
-    </el-dialog>
+    <PcAssetBatchStatusDialog
+      v-if="lazyBatchStatusDialog"
+      v-model:visible="batchStatusVisible"
+      v-model:value="batchStatusValue"
+      :loading="batchBusy"
+      :preview="batchStatusPreview"
+      @submit="submitBatchStatus"
+    />
+    <PcAssetBatchOwnerDialog
+      v-if="lazyBatchOwnerDialog"
+      v-model:visible="batchOwnerVisible"
+      :loading="batchBusy"
+      :form="batchOwnerForm"
+      :preview="batchOwnerPreview"
+      :department-options="departmentOptions"
+      @submit="submitBatchOwner"
+    />
+    <PcAssetBatchArchiveDialog
+      v-if="lazyBatchArchiveDialog"
+      v-model:visible="batchArchiveVisible"
+      :loading="batchBusy"
+      :form="batchArchiveForm"
+      :preview="batchArchivePreview"
+      :archive-reason-options="archiveReasonOptions"
+      @submit="submitBatchArchive"
+    />
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onActivated, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onActivated, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -185,9 +137,13 @@ import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVi
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
-import PcAssetEditDialog from '../components/assets/PcAssetEditDialog.vue';
-import PcAssetInfoDialog from '../components/assets/PcAssetInfoDialog.vue';
-import PcAssetQrDialog from '../components/assets/PcAssetQrDialog.vue';
+
+const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
+const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
+const PcAssetQrDialog = defineAsyncComponent(() => import('../components/assets/PcAssetQrDialog.vue'));
+const PcAssetBatchStatusDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchStatusDialog.vue'));
+const PcAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchOwnerDialog.vue'));
+const PcAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchArchiveDialog.vue'));
 
 const STORAGE_KEY = 'inventory:pc-assets:filters';
 const PC_COLUMN_OPTIONS = [
@@ -273,6 +229,17 @@ const batchOwnerVisible = ref(false);
 const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
 const batchArchiveVisible = ref(false);
 const batchArchiveForm = ref({ reason: '停用归档', note: '' });
+
+const lazyEditDialog = ref(false);
+const lazyInfoDialog = ref(false);
+const lazyQrDialog = ref(false);
+const lazyBatchStatusDialog = ref(false);
+const lazyBatchOwnerDialog = ref(false);
+const lazyBatchArchiveDialog = ref(false);
+
+function warmLazyDialog(dialog: { value: boolean }) {
+  if (!dialog.value) dialog.value = true;
+}
 
 const batchStatusPreview = computed(() => {
   const total = selectedRows.value.length;
@@ -472,6 +439,7 @@ function openAuditHistory(row?: PcAsset | null) {
 
 async function openQr(row: PcAsset) {
   qrRow.value = row;
+  warmLazyDialog(lazyQrDialog);
   qrVisible.value = true;
   qrLoading.value = true;
   qrDataUrl.value = '';
@@ -613,11 +581,13 @@ function openEdit(row: PcAsset) {
     memory_size: row.memory_size || '',
     remark: row.remark || '',
   };
+  warmLazyDialog(lazyEditDialog);
   editVisible.value = true;
 }
 
 function openInfo(row: PcAsset) {
   infoRow.value = { ...row };
+  warmLazyDialog(lazyInfoDialog);
   infoVisible.value = true;
 }
 
@@ -783,12 +753,14 @@ async function exportBatchFailures(filename: string, rows: Array<Record<string, 
 function openBatchStatusDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   batchStatusValue.value = 'IN_STOCK';
+  warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 function openBatchOwnerDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
+  warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
@@ -859,6 +831,7 @@ async function batchRestoreSelected() {
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   batchArchiveForm.value = { reason: archiveReasonOptions.value[0] || '停用归档', note: '' };
+  warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 

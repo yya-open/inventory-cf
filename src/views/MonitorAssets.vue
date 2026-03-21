@@ -66,7 +66,9 @@
       @size-change="(value) => onPageSizeChange(currentFilters(), value)"
     />
 
+
     <MonitorAssetFormDialog
+      v-if="lazyAssetDialog"
       v-model:visible="dlgAsset.show"
       :mode="dlgAsset.mode"
       :form="dlgAsset.form"
@@ -77,6 +79,7 @@
     />
 
     <MonitorAssetOperationDialog
+      v-if="lazyOperationDialog"
       v-model:visible="dlgOp.show"
       :title="dlgOp.title"
       :kind="dlgOp.kind"
@@ -88,6 +91,7 @@
     />
 
     <MonitorAssetQrDialog
+      v-if="lazyQrDialog"
       v-model:visible="qrVisible"
       :loading="qrLoading"
       :row="qrRow"
@@ -102,6 +106,7 @@
     />
 
     <MonitorLocationManagerDialog
+      v-if="lazyLocationDialog"
       v-model:visible="dlgLoc.show"
       v-model:new-name="dlgLoc.newName"
       v-model:parent-id="dlgLoc.parentId"
@@ -115,113 +120,50 @@
       @delete-location="deleteLocation"
     />
 
-    <el-dialog
-      v-model="batchStatusVisible"
-      title="批量修改显示器状态"
-      width="420px"
-    >
-      <el-form label-width="90px">
-        <el-form-item label="目标状态">
-          <el-select v-model="batchStatusValue" style="width:100%">
-            <el-option label="在库" value="IN_STOCK" />
-            <el-option label="已回收" value="RECYCLED" />
-            <el-option label="已报废" value="SCRAPPED" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchStatusPreview.total }} 台</el-tag>
-          <el-tag type="success">预计生效 {{ batchStatusPreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchStatusPreview.sameStatus" type="info">状态相同 {{ batchStatusPreview.sameStatus }} 台</el-tag>
-          <el-tag v-if="batchStatusPreview.archived" type="warning">已归档 {{ batchStatusPreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">将对当前已选显示器中“未归档且状态不同”的记录生效。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchStatusVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchStatus">确认</el-button>
-      </template>
-    </el-dialog>
+    <MonitorAssetBatchStatusDialog
+      v-if="lazyBatchStatusDialog"
+      v-model:visible="batchStatusVisible"
+      v-model:value="batchStatusValue"
+      :loading="batchBusy"
+      :preview="batchStatusPreview"
+      @submit="submitBatchStatus"
+    />
 
-    <el-dialog
-      v-model="batchLocationVisible"
-      title="批量修改显示器位置"
-      width="420px"
-    >
-      <el-form label-width="90px">
-        <el-form-item label="目标位置">
-          <el-select v-model="batchLocationValue" clearable style="width:100%" placeholder="请选择位置">
-            <el-option v-for="item in locationOptions" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchLocationPreview.total }} 台</el-tag>
-          <el-tag type="success">预计生效 {{ batchLocationPreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchLocationPreview.sameLocation" type="info">位置相同 {{ batchLocationPreview.sameLocation }} 台</el-tag>
-          <el-tag v-if="batchLocationPreview.archived" type="warning">已归档 {{ batchLocationPreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">将对当前已选显示器中“未归档且位置不同”的记录生效。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchLocationVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchLocation">确认</el-button>
-      </template>
-    </el-dialog>
+    <MonitorAssetBatchLocationDialog
+      v-if="lazyBatchLocationDialog"
+      v-model:visible="batchLocationVisible"
+      v-model:value="batchLocationValue"
+      :loading="batchBusy"
+      :location-options="locationOptions"
+      :preview="batchLocationPreview"
+      @submit="submitBatchLocation"
+    />
 
-    <el-dialog v-model="batchOwnerVisible" title="批量修改显示器领用人" width="420px">
-      <el-form label-width="90px">
-        <el-form-item label="领用人">
-          <el-input v-model="batchOwnerForm.employee_name" placeholder="请输入领用人姓名" />
-        </el-form-item>
-        <el-form-item label="工号">
-          <el-input v-model="batchOwnerForm.employee_no" placeholder="可选" />
-        </el-form-item>
-        <el-form-item label="部门">
-          <el-select v-model="batchOwnerForm.department" filterable allow-create default-first-option clearable style="width:100%" placeholder="可选">
-            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchOwnerPreview.total }} 台</el-tag>
-          <el-tag type="success">预计生效 {{ batchOwnerPreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchOwnerPreview.sameOwner" type="info">信息相同 {{ batchOwnerPreview.sameOwner }} 台</el-tag>
-          <el-tag v-if="batchOwnerPreview.archived" type="warning">已归档 {{ batchOwnerPreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">批量更新后，这些显示器会标记为“已领用”，仅会对领用信息发生变化的记录生效。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchOwnerVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchOwner">确认</el-button>
-      </template>
-    </el-dialog>
+    <MonitorAssetBatchOwnerDialog
+      v-if="lazyBatchOwnerDialog"
+      v-model:visible="batchOwnerVisible"
+      :loading="batchBusy"
+      :form="batchOwnerForm"
+      :preview="batchOwnerPreview"
+      :department-options="departmentOptions"
+      @submit="submitBatchOwner"
+    />
 
-    <el-dialog v-model="batchArchiveVisible" title="批量归档显示器" width="460px">
-      <el-form label-width="90px">
-        <el-form-item label="归档原因">
-          <el-select v-model="batchArchiveForm.reason" style="width:100%" placeholder="请选择归档原因" filterable allow-create default-first-option>
-            <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
-          </el-select>
-        </el-form-item>
-        <el-form-item label="备注">
-          <el-input v-model="batchArchiveForm.note" type="textarea" :rows="3" placeholder="可选，补充归档说明" />
-        </el-form-item>
-        <div class="batch-preview">
-          <el-tag>已选 {{ batchArchivePreview.total }} 台</el-tag>
-          <el-tag type="success">预计归档 {{ batchArchivePreview.eligible }} 台</el-tag>
-          <el-tag v-if="batchArchivePreview.archived" type="info">已归档 {{ batchArchivePreview.archived }} 台</el-tag>
-        </div>
-        <div class="batch-help">归档后默认列表将不再显示，可通过“显示已归档”查看并恢复。</div>
-      </el-form>
-      <template #footer>
-        <el-button @click="batchArchiveVisible=false">取消</el-button>
-        <el-button type="primary" :loading="batchBusy" @click="submitBatchArchive">确认归档</el-button>
-      </template>
-    </el-dialog>
+    <MonitorAssetBatchArchiveDialog
+      v-if="lazyBatchArchiveDialog"
+      v-model:visible="batchArchiveVisible"
+      :loading="batchBusy"
+      :form="batchArchiveForm"
+      :preview="batchArchivePreview"
+      :archive-reason-options="archiveReasonOptions"
+      @submit="submitBatchArchive"
+    />
 
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, onActivated, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onMounted, onActivated, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -237,10 +179,15 @@ import { getCachedSystemSettings } from '../api/systemSettings';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
-import MonitorAssetFormDialog from '../components/assets/MonitorAssetFormDialog.vue';
-import MonitorAssetOperationDialog from '../components/assets/MonitorAssetOperationDialog.vue';
-import MonitorAssetQrDialog from '../components/assets/MonitorAssetQrDialog.vue';
-import MonitorLocationManagerDialog from '../components/assets/MonitorLocationManagerDialog.vue';
+
+const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
+const MonitorAssetOperationDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetOperationDialog.vue'));
+const MonitorAssetQrDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetQrDialog.vue'));
+const MonitorLocationManagerDialog = defineAsyncComponent(() => import('../components/assets/MonitorLocationManagerDialog.vue'));
+const MonitorAssetBatchStatusDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchStatusDialog.vue'));
+const MonitorAssetBatchLocationDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchLocationDialog.vue'));
+const MonitorAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchOwnerDialog.vue'));
+const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchArchiveDialog.vue'));
 
 const STORAGE_KEY = 'inventory:monitor-assets:filters';
 const MONITOR_COLUMN_OPTIONS = [
@@ -401,6 +348,19 @@ const batchOwnerVisible = ref(false);
 const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
 const batchArchiveVisible = ref(false);
 const batchArchiveForm = ref({ reason: '停用归档', note: '' });
+
+const lazyAssetDialog = ref(false);
+const lazyOperationDialog = ref(false);
+const lazyQrDialog = ref(false);
+const lazyLocationDialog = ref(false);
+const lazyBatchStatusDialog = ref(false);
+const lazyBatchLocationDialog = ref(false);
+const lazyBatchOwnerDialog = ref(false);
+const lazyBatchArchiveDialog = ref(false);
+
+function warmLazyDialog(dialog: { value: boolean }) {
+  if (!dialog.value) dialog.value = true;
+}
 
 const batchStatusPreview = computed(() => {
   const total = selectedRows.value.length;
@@ -642,18 +602,21 @@ async function exportBatchFailures(filename: string, rows: Array<Record<string, 
 function openBatchStatusDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchStatusValue.value = 'IN_STOCK';
+  warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 function openBatchLocationDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchLocationValue.value = '';
+  warmLazyDialog(lazyBatchLocationDialog);
   batchLocationVisible.value = true;
 }
 
 function openBatchOwnerDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
+  warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
@@ -745,6 +708,7 @@ async function batchRestoreSelected() {
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchArchiveForm.value = { reason: archiveReasonOptions.value[0] || '停用归档', note: '' };
+  warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 
@@ -1031,6 +995,7 @@ const dlgAsset = reactive({
 function openCreate() {
   dlgAsset.mode = 'create';
   dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
+  warmLazyDialog(lazyAssetDialog);
   dlgAsset.show = true;
 }
 
@@ -1046,6 +1011,7 @@ function openEdit(row: MonitorAsset) {
     remark: row.remark || '',
     location_id: row.location_id || '',
   } as any;
+  warmLazyDialog(lazyAssetDialog);
   dlgAsset.show = true;
 }
 
@@ -1132,6 +1098,7 @@ function openIn(row: MonitorAsset) {
   dlgOp.title = '显示器入库';
   dlgOp.asset = row;
   dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  warmLazyDialog(lazyOperationDialog);
   dlgOp.show = true;
 }
 
@@ -1140,6 +1107,7 @@ function openOut(row: MonitorAsset) {
   dlgOp.title = '显示器出库（领用）';
   dlgOp.asset = row;
   dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  warmLazyDialog(lazyOperationDialog);
   dlgOp.show = true;
 }
 
@@ -1148,6 +1116,7 @@ function openReturn(row: MonitorAsset) {
   dlgOp.title = '显示器归还';
   dlgOp.asset = row;
   dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  warmLazyDialog(lazyOperationDialog);
   dlgOp.show = true;
 }
 
@@ -1156,6 +1125,7 @@ function openTransfer(row: MonitorAsset) {
   dlgOp.title = '显示器调拨';
   dlgOp.asset = row;
   dlgOp.form = { location_id: row.location_id || '', employee_no: '', employee_name: '', department: '', remark: '' };
+  warmLazyDialog(lazyOperationDialog);
   dlgOp.show = true;
 }
 
@@ -1241,6 +1211,7 @@ function openAuditHistory(row?: MonitorAsset | null) {
 }
 
 async function openQr(row: MonitorAsset) {
+  warmLazyDialog(lazyQrDialog);
   qrVisible.value = true;
   qrRow.value = { ...row };
   qrLink.value = '';
@@ -1343,6 +1314,7 @@ function buildLocLabel(row: MonitorAsset) {
 }
 
 async function openLocationMgr() {
+  warmLazyDialog(lazyLocationDialog);
   dlgLoc.show = true;
   await refreshLocationMgr();
 }
