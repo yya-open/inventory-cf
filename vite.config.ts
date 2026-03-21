@@ -3,6 +3,9 @@ import vue from '@vitejs/plugin-vue';
 
 export default defineConfig({
   plugins: [vue()],
+  resolve: {
+    extensions: ['.mjs', '.ts', '.tsx', '.js', '.jsx', '.json'],
+  },
   build: {
     rollupOptions: {
       output: {
