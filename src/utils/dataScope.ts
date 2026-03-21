@@ -41,16 +41,18 @@ export function dataScopeLabel(type?: string | null, value?: string | null, valu
 
 export function scopeModeOptions(type?: string | null, value?: string | null, value2?: string | null) {
   const normalized = normalizeDataScope(type, value, value2);
-  if (normalized.data_scope_type === 'department') return ['pc'] as const;
+  if (normalized.data_scope_type === 'department') return ['pc', 'monitor'] as const;
   if (normalized.data_scope_type === 'warehouse') {
     if (normalized.data_scope_value === '配件仓') return ['parts'] as const;
     if (normalized.data_scope_value === '电脑仓') return ['pc'] as const;
+    if (normalized.data_scope_value === '显示器仓') return ['monitor'] as const;
     return [] as const;
   }
   if (normalized.data_scope_type === 'department_warehouse') {
     if (normalized.data_scope_value2 === '配件仓') return ['parts'] as const;
     if (normalized.data_scope_value2 === '电脑仓') return ['pc'] as const;
+    if (normalized.data_scope_value2 === '显示器仓') return ['monitor'] as const;
     return [] as const;
   }
-  return ['parts', 'pc'] as const;
+  return ['parts', 'pc', 'monitor'] as const;
 }

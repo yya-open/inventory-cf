@@ -1,17 +1,22 @@
 import { sqlNowStored, sqlBjDate } from '../_time';
 import { scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
-export type DashboardMode = 'pc' | 'parts';
+export type DashboardMode = 'pc' | 'parts' | 'monitor';
 export type DailySnapshotRow = { day: string; metrics: Record<string, number> };
+
+function addDays(day: string, offset: number) {
+  const [y, m, d] = String(day || '').split('-').map((v) => Number(v || 0));
+  const dt = new Date(Date.UTC(y || 1970, Math.max((m || 1) - 1, 0), d || 1));
+  dt.setUTCDate(dt.getUTCDate() + offset);
+  return `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+}
 
 function listDays(from: string, to: string) {
   const out: string[] = [];
   let cur = from;
   while (cur <= to) {
     out.push(cur);
-    const dt = new Date(`${cur}T00:00:00+08:00`);
-    dt.setUTCDate(dt.getUTCDate() + 1);
-    cur = `${dt.getUTCFullYear()}-${String(dt.getUTCMonth() + 1).padStart(2, '0')}-${String(dt.getUTCDate()).padStart(2, '0')}`;
+    cur = addDays(cur, 1);
   }
   return out;
 }
@@ -81,6 +86,34 @@ async function computePcDay(db: D1Database, day: string, scope?: UserDataScope |
   };
 }
 
+async function computeMonitorDay(db: D1Database, day: string, scope?: UserDataScope | null) {
+  if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) {
+    return { in_qty: 0, out_qty: 0, return_qty: 0, transfer_qty: 0, scrap_qty: 0, tx_count: 0 };
+  }
+  const dept = scope?.data_scope_type === 'department' || scope?.data_scope_type === 'department_warehouse' ? String(scope?.data_scope_value || '').trim() : '';
+  const where = dept ? ` AND TRIM(COALESCE(department,''))=?` : '';
+  const binds = dept ? [dept] : [];
+  const sum = await db.prepare(
+    `SELECT
+      SUM(CASE WHEN tx_type='IN' THEN 1 ELSE 0 END) AS in_qty,
+      SUM(CASE WHEN tx_type='OUT' THEN 1 ELSE 0 END) AS out_qty,
+      SUM(CASE WHEN tx_type='RETURN' THEN 1 ELSE 0 END) AS return_qty,
+      SUM(CASE WHEN tx_type='TRANSFER' THEN 1 ELSE 0 END) AS transfer_qty,
+      SUM(CASE WHEN tx_type='SCRAP' THEN 1 ELSE 0 END) AS scrap_qty,
+      COUNT(*) AS tx_count
+     FROM monitor_tx
+     WHERE ${sqlBjDate('created_at')}=date(?) ${where}`
+  ).bind(day, ...binds).first<any>();
+  return {
+    in_qty: Number(sum?.in_qty || 0),
+    out_qty: Number(sum?.out_qty || 0),
+    return_qty: Number(sum?.return_qty || 0),
+    transfer_qty: Number(sum?.transfer_qty || 0),
+    scrap_qty: Number(sum?.scrap_qty || 0),
+    tx_count: Number(sum?.tx_count || 0),
+  };
+}
+
 async function computePartsDay(db: D1Database, day: string, warehouseId: number, scope?: UserDataScope | null) {
   if (!scopeAllowsAssetWarehouse(scope, '配件仓')) {
     return { in_qty: 0, out_qty: 0, adjust_qty: 0, tx_count: 0 };
@@ -125,7 +158,9 @@ export async function ensureDashboardSnapshots(db: D1Database, params: { mode: D
     if (done.has(day)) continue;
     const metrics = params.mode === 'pc'
       ? await computePcDay(db, day, params.scope)
-      : await computePartsDay(db, day, warehouseId || 1, params.scope);
+      : params.mode === 'monitor'
+        ? await computeMonitorDay(db, day, params.scope)
+        : await computePartsDay(db, day, warehouseId || 1, params.scope);
     await upsertDaySnapshot(db, params.mode, day, warehouseId, params.scope, metrics);
   }
 }

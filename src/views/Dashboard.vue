@@ -25,12 +25,15 @@
         </div>
       </template>
 
-      <div v-if="data" :style="{ display: 'grid', gridTemplateColumns: reportMode === 'pc' ? 'repeat(5, minmax(0,1fr))' : 'repeat(4, minmax(0,1fr))', gap: '12px', marginBottom: '12px' }">
-        <el-card shadow="never"><div style="color:#999;font-size:12px;">入库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.in_qty }}</div></el-card>
-        <el-card shadow="never"><div style="color:#999;font-size:12px;">出库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.out_qty }}</div></el-card>
-        <el-card shadow="never"><div style="color:#999;font-size:12px;">{{ reportMode==='pc' ? '回收/归还数量' : '调整数量' }}</div><div style="font-size:26px;font-weight:700;">{{ reportMode==='pc' ? (data.summary.recycle_qty ?? 0) : (data.summary.adjust_qty ?? 0) }}</div></el-card>
-        <el-card v-if="reportMode==='pc'" shadow="never"><div style="color:#999;font-size:12px;">报废数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.scrap_qty ?? 0 }}</div></el-card>
-        <el-card shadow="never"><div style="color:#999;font-size:12px;">明细笔数</div><div style="font-size:26px;font-weight:700;">{{ data.summary.tx_count }}</div></el-card>
+      <div v-if="data" :style="{ display: 'grid', gridTemplateColumns: summaryColumns, gap: '12px', marginBottom: '12px' }">
+        <el-card shadow="never"><div style="color:#999;font-size:12px;">入库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.in_qty ?? 0 }}</div></el-card>
+        <el-card shadow="never"><div style="color:#999;font-size:12px;">出库数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.out_qty ?? 0 }}</div></el-card>
+        <el-card v-if="reportMode==='parts'" shadow="never"><div style="color:#999;font-size:12px;">调整数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.adjust_qty ?? 0 }}</div></el-card>
+        <el-card v-if="reportMode==='pc'" shadow="never"><div style="color:#999;font-size:12px;">回收/归还数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.recycle_qty ?? 0 }}</div></el-card>
+        <el-card v-if="reportMode==='monitor'" shadow="never"><div style="color:#999;font-size:12px;">归还数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.return_qty ?? 0 }}</div></el-card>
+        <el-card v-if="reportMode==='monitor'" shadow="never"><div style="color:#999;font-size:12px;">调拨数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.transfer_qty ?? 0 }}</div></el-card>
+        <el-card v-if="reportMode==='pc' || reportMode==='monitor'" shadow="never"><div style="color:#999;font-size:12px;">报废数量</div><div style="font-size:26px;font-weight:700;">{{ data.summary.scrap_qty ?? 0 }}</div></el-card>
+        <el-card shadow="never"><div style="color:#999;font-size:12px;">明细笔数</div><div style="font-size:26px;font-weight:700;">{{ data.summary.tx_count ?? 0 }}</div></el-card>
       </div>
 
       <div v-if="data" style="display:grid; grid-template-columns:repeat(4, minmax(0,1fr)); gap:12px; margin-bottom:12px;">
@@ -76,7 +79,7 @@
         <el-card shadow="never">
           <template #header><b>{{ activeTypeLabel }} Top 10</b></template>
           <el-table :data="topTable" size="small" border height="360">
-            <el-table-column prop="sku" :label="reportMode==='pc' ? '型号' : 'SKU'" width="140" />
+            <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
             <el-table-column prop="name" label="名称" min-width="140" />
             <el-table-column prop="qty" label="数量" width="80" />
           </el-table>
@@ -91,7 +94,7 @@
       </div>
 
       <div v-else-if="!reportModeOptions.length" style="padding:16px;">
-        <el-empty description="当前账号的数据范围已限制到未接入看板口径的仓域，请联系管理员调整为电脑仓或配件仓，或保留当前账号仅用于台账访问。" />
+        <el-empty description="当前账号的数据范围已限制到未接入看板口径的仓域，请联系管理员调整为电脑仓、显示器仓或配件仓，或保留当前账号仅用于台账访问。" />
       </div>
       <div v-else style="color:#999; padding:16px;">加载中…</div>
     </el-card>
@@ -110,23 +113,26 @@ import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
 const days = ref(30);
-const reportMode = ref<"parts"|"pc">("parts");
+const reportMode = ref<"parts"|"pc"|"monitor">("parts");
 const data = ref<any|null>(null);
 const loading = ref(false);
 
 const reportModeOptions = computed(() => {
   const allowed = scopeModeOptions(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2);
-  return allowed.map((value) => ({ label: value === 'parts' ? '配件仓' : '电脑仓', value }));
+  return allowed.map((value) => ({ label: value === 'parts' ? '配件仓' : value === 'pc' ? '电脑仓' : '显示器仓', value }));
 });
 const scopeLabel = computed(() => dataScopeLabel(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2));
 const scopeTagType = computed(() => auth.user?.data_scope_type && auth.user?.data_scope_type !== 'all' ? 'warning' : 'success');
 
 const activeType = ref<string>("OUT");
-const typeOptions = computed(() => reportMode.value === "pc"
-  ? [{ label: "出库", value: "OUT" }, { label: "入库", value: "IN" }, { label: "归还", value: "RETURN" }, { label: "回收", value: "RECYCLE" }, { label: "报废", value: "SCRAP" }]
-  : [{ label: "出库", value: "OUT" }, { label: "入库", value: "IN" }]);
-const activeTypeLabel = computed(() => ({ OUT:'出库', IN:'入库', RETURN:'归还', RECYCLE:'回收', SCRAP:'报废' } as Record<string,string>)[activeType.value] || activeType.value);
+const typeOptions = computed(() => {
+  if (reportMode.value === 'pc') return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }, { label: '归还', value: 'RETURN' }, { label: '回收', value: 'RECYCLE' }, { label: '报废', value: 'SCRAP' }];
+  if (reportMode.value === 'monitor') return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }, { label: '归还', value: 'RETURN' }, { label: '调拨', value: 'TRANSFER' }, { label: '报废', value: 'SCRAP' }];
+  return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }];
+});
+const activeTypeLabel = computed(() => ({ OUT:'出库', IN:'入库', RETURN:'归还', RECYCLE:'回收', SCRAP:'报废', TRANSFER: '调拨' } as Record<string,string>)[activeType.value] || activeType.value);
 const governanceArchiveCount = computed(() => Number(data.value?.governance?.archived_pc_count || 0) + Number(data.value?.governance?.archived_monitor_count || 0));
+const summaryColumns = computed(() => reportMode.value === 'parts' ? 'repeat(4, minmax(0,1fr))' : reportMode.value === 'monitor' ? 'repeat(6, minmax(0,1fr))' : 'repeat(5, minmax(0,1fr))');
 
 function pickByType(prefix: string, t: string) {
   const key = `${prefix}_${String(t || '').toLowerCase()}`;
@@ -136,7 +142,15 @@ function pickByType(prefix: string, t: string) {
 const topTable = computed(() => !data.value ? [] : pickByType('top', activeType.value));
 const categoryTable = computed(() => !data.value ? [] : pickByType('category', activeType.value));
 const categoryTitle = computed(() => {
-  if (reportMode.value !== 'pc') return `按分类${activeTypeLabel.value}`;
+  if (reportMode.value === 'parts') return `按分类${activeTypeLabel.value}`;
+  if (reportMode.value === 'monitor') {
+    if (activeType.value === 'OUT') return '按部门出库';
+    if (activeType.value === 'IN') return '按品牌入库';
+    if (activeType.value === 'RETURN') return '按部门归还';
+    if (activeType.value === 'TRANSFER') return '按部门调拨';
+    if (activeType.value === 'SCRAP') return '按报废原因';
+    return '分类';
+  }
   if (activeType.value === 'OUT') return '按部门出库';
   if (activeType.value === 'IN') return '按品牌入库';
   if (activeType.value === 'RETURN') return '按部门归还';
@@ -144,6 +158,13 @@ const categoryTitle = computed(() => {
   if (activeType.value === 'SCRAP') return '按报废原因';
   return '分类';
 });
+
+function normalizeErrorMessage(message?: string) {
+  const raw = String(message || '').trim();
+  if (!raw) return '加载报表失败';
+  if (raw.startsWith('<!DOCTYPE') || raw.startsWith('<html')) return '报表接口执行超限，请刷新后重试；本次已修复快照循环问题，重新部署后应恢复正常。';
+  return raw;
+}
 
 async function refresh(){
   if (!reportModeOptions.value.length) {
@@ -155,7 +176,7 @@ async function refresh(){
     const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}&mode=${reportMode.value}`);
     data.value = r;
   }catch(e:any){
-    ElMessage.error(e.message || "加载报表失败");
+    ElMessage.error(normalizeErrorMessage(e.message));
   }finally{
     loading.value = false;
   }

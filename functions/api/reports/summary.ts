@@ -39,6 +39,14 @@ function snapshotDaily(rows: Array<{ day: string; metrics: Record<string, number
   return rows.map((row) => ({ day: row.day, qty: Number(row?.metrics?.[key] || 0) }));
 }
 
+function responseScope(user: UserDataScope) {
+  return {
+    data_scope_type: user.data_scope_type || 'all',
+    data_scope_value: user.data_scope_value || null,
+    data_scope_value2: user.data_scope_value2 || null,
+  };
+}
+
 async function buildStability(db: D1Database) {
   const [failed_async_jobs, error_5xx_last_24h, active_alert_count, lastBackupDrill, openDrill, overdueDrill] = await Promise.all([
     firstNumber(db, `SELECT COUNT(*) AS c FROM async_jobs WHERE status='failed'`),
@@ -154,7 +162,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         ok: true,
         mode: 'pc',
         range: { from, to, days },
-        scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null, data_scope_value2: user.data_scope_value2 || null },
+        scope: responseScope(user),
         snapshot: { source: 'report_daily_snapshots', day_count: snapshots.length },
         summary,
         governance,
@@ -177,8 +185,78 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       });
     }
 
+    if (mode === 'monitor') {
+      if (!scopeAllowsAssetWarehouse(user, '显示器仓')) {
+        throw Object.assign(new Error('当前账号的数据范围未包含显示器仓，看板不可访问'), { status: 403 });
+      }
+      const snapshots = await readDashboardSnapshots(env.DB, { mode: 'monitor', from, to, scope: user });
+      const summary = {
+        in_qty: snapshotSum(snapshots, 'in_qty'),
+        out_qty: snapshotSum(snapshots, 'out_qty'),
+        return_qty: snapshotSum(snapshots, 'return_qty'),
+        transfer_qty: snapshotSum(snapshots, 'transfer_qty'),
+        scrap_qty: snapshotSum(snapshots, 'scrap_qty'),
+        tx_count: snapshotSum(snapshots, 'tx_count'),
+      };
+      const scopeWhere = departmentScope ? ` AND TRIM(COALESCE(t.department,''))=?` : '';
+      const scopeBinds = departmentScope ? [departmentScope] : [];
+      const qTopMonitor = (txType: string) => env.DB.prepare(
+        `SELECT COALESCE(NULLIF(t.model,''),'(未填型号)') AS sku,
+                COALESCE(NULLIF(t.brand,''),'') || CASE WHEN t.brand IS NOT NULL AND t.brand<>'' THEN ' · ' ELSE '' END || COALESCE(NULLIF(t.sn,''),'(无SN)') AS name,
+                COUNT(*) AS qty
+         FROM monitor_tx t
+         WHERE t.tx_type=? AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere}
+         GROUP BY COALESCE(NULLIF(t.model,''),'(未填型号)'), COALESCE(NULLIF(t.brand,''),''), COALESCE(NULLIF(t.sn,''),'(无SN)')
+         ORDER BY qty DESC, MAX(t.created_at) DESC
+         LIMIT 10`
+      ).bind(txType, from, to, ...scopeBinds).all<any>();
+      const qCatMonitor = (txType: string, expr: string) => env.DB.prepare(
+        `SELECT ${expr} AS category, COUNT(*) AS qty
+         FROM monitor_tx t
+         WHERE t.tx_type=? AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere}
+         GROUP BY category ORDER BY qty DESC LIMIT 20`
+      ).bind(txType, from, to, ...scopeBinds).all<any>();
+      const [topOut, topIn, topReturn, topTransfer, topScrap, catOut, catIn, catReturn, catTransfer, catScrap] = await Promise.all([
+        qTopMonitor('OUT').then((r) => r.results || []),
+        qTopMonitor('IN').then((r) => r.results || []),
+        qTopMonitor('RETURN').then((r) => r.results || []),
+        qTopMonitor('TRANSFER').then((r) => r.results || []),
+        qTopMonitor('SCRAP').then((r) => r.results || []),
+        qCatMonitor('OUT', `COALESCE(NULLIF(t.department,''),'未填部门')`).then((r) => r.results || []),
+        qCatMonitor('IN', `COALESCE(NULLIF(t.brand,''),'未填品牌')`).then((r) => r.results || []),
+        qCatMonitor('RETURN', `COALESCE(NULLIF(t.department,''),'未填部门')`).then((r) => r.results || []),
+        qCatMonitor('TRANSFER', `COALESCE(NULLIF(t.department,''),'未填部门')`).then((r) => r.results || []),
+        qCatMonitor('SCRAP', `COALESCE(NULLIF(t.remark,''),'未填原因')`).then((r) => r.results || []),
+      ]);
+      return Response.json({
+        ok: true,
+        mode: 'monitor',
+        range: { from, to, days },
+        scope: responseScope(user),
+        snapshot: { source: 'report_daily_snapshots', day_count: snapshots.length },
+        summary,
+        governance,
+        stability,
+        top_out: topOut,
+        top_in: topIn,
+        top_return: topReturn,
+        top_transfer: topTransfer,
+        top_scrap: topScrap,
+        daily_out: snapshotDaily(snapshots, 'out_qty'),
+        daily_in: snapshotDaily(snapshots, 'in_qty'),
+        daily_return: snapshotDaily(snapshots, 'return_qty'),
+        daily_transfer: snapshotDaily(snapshots, 'transfer_qty'),
+        daily_scrap: snapshotDaily(snapshots, 'scrap_qty'),
+        category_out: catOut,
+        category_in: catIn,
+        category_return: catReturn,
+        category_transfer: catTransfer,
+        category_scrap: catScrap,
+      });
+    }
+
     if (departmentScope) {
-      throw Object.assign(new Error(`当前账号的数据可见范围包含部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓看板或改为按仓库授权`), { status: 403 });
+      throw Object.assign(new Error(`当前账号的数据可见范围包含部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓/显示器仓看板或改为按仓库授权`), { status: 403 });
     }
     if (!scopeAllowsAssetWarehouse(user, '配件仓')) {
       throw Object.assign(new Error('当前账号的数据范围未包含配件仓，看板不可访问'), { status: 403 });
@@ -231,7 +309,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       ok: true,
       mode: 'parts',
       range: { from, to, days },
-      scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null, data_scope_value2: user.data_scope_value2 || null },
+      scope: responseScope(user),
       snapshot: { source: 'report_daily_snapshots', day_count: snapshots.length },
       summary,
       governance,
