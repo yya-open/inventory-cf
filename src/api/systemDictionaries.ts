@@ -1,6 +1,6 @@
 import { apiDelete, apiGet, apiPost, apiPut } from './client';
 
-export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand';
+export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand' | 'asset_warehouse';
 
 export type SystemDictionaryItem = {
   id: number;

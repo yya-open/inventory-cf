@@ -141,7 +141,7 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_target_code_created_at ON audit_log(target_code, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_search_text_norm ON audit_log(search_text_norm)",
-    "CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value ON users(data_scope_type, data_scope_value)",
+    "CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)",
 
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (
@@ -188,6 +188,20 @@ export async function ensureCoreSchema(db: D1Database) {
       updated_by TEXT
     )`,
     "CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)",
+
+    // Dashboard daily snapshot cache
+    `CREATE TABLE IF NOT EXISTS report_daily_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      snapshot_date TEXT NOT NULL,
+      mode TEXT NOT NULL,
+      warehouse_id INTEGER NOT NULL DEFAULT 0,
+      scope_key TEXT NOT NULL,
+      metrics_json TEXT NOT NULL DEFAULT '{}',
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      UNIQUE(snapshot_date, mode, warehouse_id, scope_key)
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_report_daily_snapshots_lookup ON report_daily_snapshots(mode, warehouse_id, snapshot_date, scope_key)",
 
     // Restore jobs (admin progress restore)
     `CREATE TABLE IF NOT EXISTS restore_job (

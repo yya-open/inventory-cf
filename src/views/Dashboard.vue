@@ -8,11 +8,13 @@
             <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap; color:#888; font-size:12px;">
               <span>经营 + 治理 + 稳定性统一口径</span>
               <el-tag size="small" :type="scopeTagType">{{ scopeLabel }}</el-tag>
+              <el-tag v-if="data?.snapshot?.source" size="small" type="info">日汇总快照 {{ data?.snapshot?.day_count || 0 }} 天</el-tag>
             </div>
           </div>
           <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap;">
-            <el-segmented v-model="reportMode" :options="reportModeOptions" size="small" />
-            <el-select v-model="days" style="width:160px" @change="refresh">
+            <el-segmented v-if="reportModeOptions.length" v-model="reportMode" :options="reportModeOptions" size="small" />
+            <el-tag v-else type="warning">当前数据范围暂无可用看板</el-tag>
+            <el-select v-model="days" style="width:160px" @change="refresh" :disabled="!reportModeOptions.length">
               <el-option :value="7" label="近 7 天" />
               <el-option :value="14" label="近 14 天" />
               <el-option :value="30" label="近 30 天" />
@@ -88,6 +90,9 @@
         </el-card>
       </div>
 
+      <div v-else-if="!reportModeOptions.length" style="padding:16px;">
+        <el-empty description="当前账号的数据范围已限制到未接入看板口径的仓域，请联系管理员调整为电脑仓或配件仓，或保留当前账号仅用于台账访问。" />
+      </div>
       <div v-else style="color:#999; padding:16px;">加载中…</div>
     </el-card>
   </div>
@@ -100,7 +105,7 @@ import { apiGet } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
-import { dataScopeLabel } from "../utils/dataScope";
+import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
 
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
@@ -110,11 +115,11 @@ const data = ref<any|null>(null);
 const loading = ref(false);
 
 const reportModeOptions = computed(() => {
-  if (auth.user?.data_scope_type === 'department') return [{ label: "电脑仓", value: "pc" }];
-  return [{ label: "配件仓", value: "parts" }, { label: "电脑仓", value: "pc" }];
+  const allowed = scopeModeOptions(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2);
+  return allowed.map((value) => ({ label: value === 'parts' ? '配件仓' : '电脑仓', value }));
 });
-const scopeLabel = computed(() => dataScopeLabel(auth.user?.data_scope_type, auth.user?.data_scope_value));
-const scopeTagType = computed(() => auth.user?.data_scope_type === 'department' ? 'warning' : 'success');
+const scopeLabel = computed(() => dataScopeLabel(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2));
+const scopeTagType = computed(() => auth.user?.data_scope_type && auth.user?.data_scope_type !== 'all' ? 'warning' : 'success');
 
 const activeType = ref<string>("OUT");
 const typeOptions = computed(() => reportMode.value === "pc"
@@ -141,6 +146,10 @@ const categoryTitle = computed(() => {
 });
 
 async function refresh(){
+  if (!reportModeOptions.value.length) {
+    data.value = null;
+    return;
+  }
   loading.value = true;
   try{
     const r:any = await apiGet(`/api/reports/summary?warehouse_id=${warehouseId.value}&days=${days.value}&mode=${reportMode.value}`);
@@ -177,6 +186,10 @@ function barWidth(qty:number){
 
 watch(reportModeOptions, (opts) => {
   const allowed = opts.map((x:any) => x.value);
+  if (!allowed.length) {
+    data.value = null;
+    return;
+  }
   if (!allowed.includes(reportMode.value)) reportMode.value = allowed[0] || 'pc';
 }, { immediate: true });
 
@@ -187,7 +200,8 @@ watch(reportMode, () => {
 });
 
 onMounted(async ()=>{
-  if (auth.user?.data_scope_type === 'department') reportMode.value = 'pc';
+  const allowed = reportModeOptions.value.map((x:any) => x.value);
+  if (allowed.length === 1) reportMode.value = allowed[0];
   await refresh();
 });
 </script>

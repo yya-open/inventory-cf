@@ -143,5 +143,10 @@
     "id": "202603210010_user_data_scope_and_drill_closure",
     "file": "sql/migrate_user_data_scope_and_drill_closure.sql",
     "description": "user data visibility scope and backup drill closure fields"
+  },
+  {
+    "id": "202603210020_p1_scope_dictionary_snapshot",
+    "file": "sql/migrate_p1_scope_dictionary_snapshot.sql",
+    "description": "data scope v2, asset warehouse dictionary, and dashboard daily snapshots"
   }
 ]

@@ -11,6 +11,7 @@ export type SystemSettings = {
   dictionary_department_options: string[];
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
+  dictionary_asset_warehouse_options: string[];
   public_inventory_cooldown_seconds: number;
   public_inventory_auto_vibrate: boolean;
   public_inventory_mobile_compact: boolean;
@@ -28,6 +29,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   dictionary_department_options: [],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
+  dictionary_asset_warehouse_options: ['配件仓', '电脑仓', '显示器仓'],
   public_inventory_cooldown_seconds: 30,
   public_inventory_auto_vibrate: true,
   public_inventory_mobile_compact: true,
@@ -42,6 +44,7 @@ const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
   'dictionary_department_options',
   'dictionary_pc_brand_options',
   'dictionary_monitor_brand_options',
+  'dictionary_asset_warehouse_options',
 ];
 
 const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key) && key !== 'settings_updated_at');
@@ -119,6 +122,7 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     dictionary_department_options: toStringArray(source.dictionary_department_options, DEFAULT_SYSTEM_SETTINGS.dictionary_department_options),
     dictionary_pc_brand_options: toStringArray(source.dictionary_pc_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_pc_brand_options),
     dictionary_monitor_brand_options: toStringArray(source.dictionary_monitor_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_monitor_brand_options),
+    dictionary_asset_warehouse_options: toStringArray(source.dictionary_asset_warehouse_options, DEFAULT_SYSTEM_SETTINGS.dictionary_asset_warehouse_options),
     public_inventory_cooldown_seconds: toInt(source.public_inventory_cooldown_seconds, DEFAULT_SYSTEM_SETTINGS.public_inventory_cooldown_seconds, 5, 120),
     public_inventory_auto_vibrate: toBoolean(source.public_inventory_auto_vibrate, DEFAULT_SYSTEM_SETTINGS.public_inventory_auto_vibrate),
     public_inventory_mobile_compact: toBoolean(source.public_inventory_mobile_compact, DEFAULT_SYSTEM_SETTINGS.public_inventory_mobile_compact),
@@ -183,6 +187,7 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
   patch.dictionary_department_options = await getEnabledDictionaryLabels(db, 'department');
   patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
   patch.dictionary_monitor_brand_options = await getEnabledDictionaryLabels(db, 'monitor_brand');
+  patch.dictionary_asset_warehouse_options = await getEnabledDictionaryLabels(db, 'asset_warehouse');
   patch.settings_updated_at = latestUpdatedAt;
   return normalizeSystemSettings(patch as any);
 }

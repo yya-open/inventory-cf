@@ -1,9 +1,9 @@
 import { sqlNowStored } from '../_time';
 import { ensurePcLatestStateTable } from './pc-latest-state';
 
-export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand';
+export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand' | 'asset_warehouse';
 
-type LegacySettingKey = 'asset_archive_reason_options' | 'dictionary_department_options' | 'dictionary_pc_brand_options' | 'dictionary_monitor_brand_options';
+type LegacySettingKey = 'asset_archive_reason_options' | 'dictionary_department_options' | 'dictionary_pc_brand_options' | 'dictionary_monitor_brand_options' | 'dictionary_asset_warehouse_options';
 
 export type SystemDictionaryItem = {
   id: number;
@@ -23,6 +23,7 @@ const DEFAULT_DICTIONARY_VALUES: Record<SystemDictionaryKey, string[]> = {
   department: [],
   pc_brand: ['联想', '戴尔', '惠普', '华为', '苹果'],
   monitor_brand: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
+  asset_warehouse: ['配件仓', '电脑仓', '显示器仓'],
 };
 
 const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
@@ -30,6 +31,7 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
   department: 'dictionary_department_options',
   pc_brand: 'dictionary_pc_brand_options',
   monitor_brand: 'dictionary_monitor_brand_options',
+  asset_warehouse: 'dictionary_asset_warehouse_options',
 };
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
@@ -171,9 +173,10 @@ async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCount
     monitor_brand: {},
     asset_archive_reason: {},
     department: {},
+    asset_warehouse: {},
   };
 
-  const [{ results: pcBrandRows }, { results: monitorBrandRows }, { results: archiveReasonRows }, { results: departmentRows }] = await Promise.all([
+  const [{ results: pcBrandRows }, { results: monitorBrandRows }, { results: archiveReasonRows }, { results: departmentRows }, { results: assetWarehouseRows }] = await Promise.all([
     db.prepare(
       `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
        FROM pc_assets
@@ -212,12 +215,34 @@ async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCount
        ) t
        GROUP BY label`
     ).all<any>(),
+    db.prepare(
+      `SELECT label, SUM(c) AS c
+       FROM (
+         SELECT '电脑仓' AS label, COUNT(*) AS c FROM pc_assets
+         UNION ALL
+         SELECT '显示器仓' AS label, COUNT(*) AS c FROM monitor_assets
+         UNION ALL
+         SELECT '配件仓' AS label, COUNT(*) AS c FROM warehouses
+         UNION ALL
+         SELECT TRIM(COALESCE(data_scope_value, '')) AS label, COUNT(*) AS c
+         FROM users
+         WHERE data_scope_type='warehouse'
+         GROUP BY TRIM(COALESCE(data_scope_value, ''))
+         UNION ALL
+         SELECT TRIM(COALESCE(data_scope_value2, '')) AS label, COUNT(*) AS c
+         FROM users
+         WHERE data_scope_type='department_warehouse'
+         GROUP BY TRIM(COALESCE(data_scope_value2, ''))
+       ) t
+       GROUP BY label`
+    ).all<any>(),
   ]);
 
   addCounts(counts.pc_brand as Record<string, number>, pcBrandRows);
   addCounts(counts.monitor_brand as Record<string, number>, monitorBrandRows);
   addCounts(counts.asset_archive_reason as Record<string, number>, archiveReasonRows);
   addCounts(counts.department as Record<string, number>, departmentRows);
+  addCounts(counts.asset_warehouse as Record<string, number>, assetWarehouseRows);
   return counts;
 }
 
@@ -457,5 +482,6 @@ export function groupDictionaryItems(items: SystemDictionaryItem[]) {
     department: items.filter((item) => item.dictionary_key === 'department'),
     pc_brand: items.filter((item) => item.dictionary_key === 'pc_brand'),
     monitor_brand: items.filter((item) => item.dictionary_key === 'monitor_brand'),
+    asset_warehouse: items.filter((item) => item.dictionary_key === 'asset_warehouse'),
   };
 }

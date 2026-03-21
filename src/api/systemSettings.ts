@@ -20,6 +20,7 @@ export type SystemSettings = PublicSettings & {
   dictionary_department_options: string[];
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
+  dictionary_asset_warehouse_options: string[];
   settings_updated_at?: string | null;
 };
 
@@ -31,6 +32,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   dictionary_department_options: [],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
+  dictionary_asset_warehouse_options: ['配件仓', '电脑仓', '显示器仓'],
   settings_updated_at: null,
   public_inventory_cooldown_seconds: 30,
   public_inventory_auto_vibrate: true,

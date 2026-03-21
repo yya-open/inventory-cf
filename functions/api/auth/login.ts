@@ -212,7 +212,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, JWT_TTL_SECONDS);
     const permission_template_code = await getUserTemplateCode(env.DB, row.id, row.role).catch(() => null);
     const permissions = await getUserPermissionMap(env.DB, row.id, row.role, permission_template_code || undefined);
-    const dataScope = await getUserDataScope(env.DB, row.id).catch(() => ({ data_scope_type: 'all', data_scope_value: null }));
+    const dataScope = await getUserDataScope(env.DB, row.id).catch(() => ({ data_scope_type: 'all', data_scope_value: null, data_scope_value2: null }));
     const res = json(true, {
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permission_template_code, permissions, ...dataScope },
     });

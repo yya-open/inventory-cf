@@ -29,7 +29,7 @@ async function ensureBackupDrillTable(db: D1Database) {
     `ALTER TABLE backup_drill_runs ADD COLUMN rect_due_at TEXT`,
     `ALTER TABLE backup_drill_runs ADD COLUMN rect_closed_at TEXT`,
     `ALTER TABLE backup_drill_runs ADD COLUMN review_note TEXT`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})`,
+    `ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT`,
   ]) {
     try { await db.prepare(sql).run(); } catch {}
   }

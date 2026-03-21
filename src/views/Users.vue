@@ -42,7 +42,7 @@
       </el-table-column>
       <el-table-column label="可见范围" min-width="180">
         <template #default="{ row }">
-          <el-tag :type="row.data_scope_type === 'department' ? 'warning' : 'success'">{{ dataScopeLabel(row.data_scope_type, row.data_scope_value) }}</el-tag>
+          <el-tag :type="row.data_scope_type && row.data_scope_type !== 'all' ? 'warning' : 'success'">{{ dataScopeLabel(row.data_scope_type, row.data_scope_value, row.data_scope_value2) }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="must_change_password" label="需改密码" width="110">
@@ -87,8 +87,15 @@
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="form.data_scope_type === 'department'" label="部门">
-          <el-input v-model="form.data_scope_value" placeholder="如：研发部" />
+        <el-form-item v-if="form.data_scope_type === 'department' || form.data_scope_type === 'department_warehouse'" label="部门">
+          <el-select v-model="form.data_scope_value" filterable clearable style="width:100%" placeholder="请选择部门">
+            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
+          <el-select v-model="form.data_scope_value2" filterable clearable style="width:100%" placeholder="请选择仓库">
+            <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
+          </el-select>
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -125,8 +132,15 @@
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>
-        <el-form-item v-if="editDataScopeType === 'department'" label="部门">
-          <el-input v-model="editDataScopeValue" placeholder="如：研发部" />
+        <el-form-item v-if="editDataScopeType === 'department' || editDataScopeType === 'department_warehouse'" label="部门">
+          <el-select v-model="editDataScopeValue" filterable clearable style="width:100%" placeholder="请选择部门">
+            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
+          </el-select>
+        </el-form-item>
+        <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
+          <el-select v-model="editDataScopeValue2" filterable clearable style="width:100%" placeholder="请选择仓库">
+            <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
+          </el-select>
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -166,7 +180,7 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { computed, onMounted, ref } from "vue";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
@@ -174,8 +188,9 @@ import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
 import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
+import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings } from "../api/systemSettings";
 
-type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department'; data_scope_value?: string | null };
+type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -195,15 +210,19 @@ const showCreate = ref(false);
 const showEdit = ref(false);
 const showReset = ref(false);
 
-const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean>, data_scope_type: 'all' as 'all' | 'department', data_scope_value: '' });
+const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
+const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
+const warehouseOptions = computed(() => systemSettings.value.dictionary_asset_warehouse_options || []);
+const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean>, data_scope_type: 'all' as 'all' | 'department' | 'warehouse' | 'department_warehouse', data_scope_value: '', data_scope_value2: '' });
 
 const editing = ref<Row|null>(null);
 const editRole = ref<"admin"|"operator"|"viewer">("viewer");
 const editActive = ref(true);
 const editPermissions = ref<Record<string, boolean>>({});
 const editTemplateCode = ref<PermissionTemplateCode>(getDefaultPermissionTemplate("viewer"));
-const editDataScopeType = ref<'all' | 'department'>('all');
+const editDataScopeType = ref<'all' | 'department' | 'warehouse' | 'department_warehouse'>('all');
 const editDataScopeValue = ref('');
+const editDataScopeValue2 = ref('');
 const resetPwd = ref("");
 
 function roleText(r: string) {
@@ -250,7 +269,7 @@ function applyEditTemplate() {
 }
 
 function openCreate() {
-  form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")), data_scope_type: 'all', data_scope_value: '' };
+  form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")), data_scope_type: 'all', data_scope_value: '', data_scope_value2: '' };
   showCreate.value = true;
 }
 
@@ -258,8 +277,10 @@ async function createUser() {
   if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
   const pv = validatePassword(form.value.password);
   if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
-  const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value);
-  if (normalizedScope.data_scope_type === 'department' && !normalizedScope.data_scope_value) return ElMessage.warning('请填写部门范围');
+  const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value, form.value.data_scope_value2);
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请选择部门范围');
+  if ((normalizedScope.data_scope_type === 'warehouse' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value2 && normalizedScope.data_scope_type !== 'warehouse') return ElMessage.warning('请选择仓库范围');
+  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
   try {
     await apiPost<any>("/api/users", { ...form.value, ...normalizedScope });
@@ -279,16 +300,19 @@ function openEdit(row: Row) {
   editActive.value = !!row.is_active;
   editTemplateCode.value = normalizePermissionTemplateCode(row.role, row.permission_template_code);
   editPermissions.value = { ...(row.permissions || buildTemplatePermissionMap(row.role, row.permission_template_code)) };
-  const scope = normalizeDataScope(row.data_scope_type, row.data_scope_value);
+  const scope = normalizeDataScope(row.data_scope_type, row.data_scope_value, row.data_scope_value2);
   editDataScopeType.value = scope.data_scope_type;
   editDataScopeValue.value = scope.data_scope_value;
+  editDataScopeValue2.value = scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2;
   showEdit.value = true;
 }
 
 async function saveEdit() {
   if (!editing.value) return;
-  const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value);
-  if (normalizedScope.data_scope_type === 'department' && !normalizedScope.data_scope_value) return ElMessage.warning('请填写部门范围');
+  const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value, editDataScopeValue2.value);
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请选择部门范围');
+  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
+  if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
@@ -344,5 +368,8 @@ async function delUser(row: Row) {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  try { systemSettings.value = await fetchSystemSettings(); } catch {}
+  await load();
+});
 </script>

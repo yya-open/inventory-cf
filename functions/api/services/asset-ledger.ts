@@ -1,7 +1,7 @@
 import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
-import { applyDepartmentDataScopeClause, type UserDataScope } from './data-scope';
+import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
 export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string };
 
@@ -88,6 +88,7 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     clauses.push('a.status=?');
     binds.push(status);
   }
+  if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) clauses.push('1=0');
   applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
 
   if (keyword) {
@@ -147,7 +148,7 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     clauses.push('a.status=?');
     binds.push(status);
   }
-  applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
+  if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) clauses.push('1=0');
   if (locationId) {
     clauses.push('a.location_id=?');
     binds.push(locationId);
@@ -180,7 +181,7 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     pageSize,
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
-    joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
+    joins: '',
   } satisfies QueryParts;
 }
 

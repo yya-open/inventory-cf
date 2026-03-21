@@ -10,6 +10,6 @@ ALTER TABLE backup_drill_runs ADD COLUMN rect_owner TEXT;
 ALTER TABLE backup_drill_runs ADD COLUMN rect_due_at TEXT;
 ALTER TABLE backup_drill_runs ADD COLUMN rect_closed_at TEXT;
 ALTER TABLE backup_drill_runs ADD COLUMN review_note TEXT;
-ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'));
+ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT;
 UPDATE backup_drill_runs SET updated_at=COALESCE(updated_at, created_at, drill_at, datetime('now','+8 hours'));
 CREATE INDEX IF NOT EXISTS idx_backup_drill_runs_follow_up_status ON backup_drill_runs(follow_up_status, rect_due_at, id DESC);

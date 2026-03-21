@@ -234,12 +234,14 @@ const reorderLoadingMap = ref<Record<SystemDictionaryKey, boolean>>({
   department: false,
   pc_brand: false,
   monitor_brand: false,
+  asset_warehouse: false,
 });
 const reorderDirtyMap = ref<Record<SystemDictionaryKey, boolean>>({
   asset_archive_reason: false,
   department: false,
   pc_brand: false,
   monitor_brand: false,
+  asset_warehouse: false,
 });
 const dragState = ref<{ key: SystemDictionaryKey | null; fromIndex: number; fromId: number | null }>({
   key: null,
@@ -251,6 +253,7 @@ const dictionaries = ref<Record<SystemDictionaryKey, SystemDictionaryItem[]>>({
   department: [],
   pc_brand: [],
   monitor_brand: [],
+  asset_warehouse: [],
 });
 const scanModeOptions = [
   { label: '手动', value: 'manual' },
@@ -262,6 +265,7 @@ const dictionaryDefs: Array<{ key: SystemDictionaryKey; title: string; descripti
   { key: 'department', title: '部门字典', description: '用于电脑 / 显示器领用部门下拉建议。' },
   { key: 'pc_brand', title: '电脑品牌字典', description: '用于电脑台账新增、编辑与筛选时的品牌建议。' },
   { key: 'monitor_brand', title: '显示器品牌字典', description: '用于显示器台账新增、编辑与筛选时的品牌建议。' },
+  { key: 'asset_warehouse', title: '资产仓域字典', description: '用于用户可见范围、看板口径与仓域治理配置。' },
 ];
 const createForm = ref<{ dictionary_key: SystemDictionaryKey; label: string; sort_order: number; enabled: 0 | 1 }>({
   dictionary_key: 'department',
@@ -276,6 +280,7 @@ function normalizeGrouped(grouped?: Partial<Record<SystemDictionaryKey, SystemDi
     department: [...(grouped?.department || [])],
     pc_brand: [...(grouped?.pc_brand || [])],
     monitor_brand: [...(grouped?.monitor_brand || [])],
+    asset_warehouse: [...(grouped?.asset_warehouse || [])],
   } as Record<SystemDictionaryKey, SystemDictionaryItem[]>;
 }
 
@@ -364,6 +369,7 @@ function syncFormDictionaryOptions() {
     dictionary_department_options: sortDictionaryList(dictionaryRows('department')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
     dictionary_pc_brand_options: sortDictionaryList(dictionaryRows('pc_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
     dictionary_monitor_brand_options: sortDictionaryList(dictionaryRows('monitor_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
+    dictionary_asset_warehouse_options: sortDictionaryList(dictionaryRows('asset_warehouse')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
   };
 }
 
@@ -373,6 +379,7 @@ function resetReorderState() {
     department: false,
     pc_brand: false,
     monitor_brand: false,
+    asset_warehouse: false,
   };
   clearDictionaryDrag();
 }

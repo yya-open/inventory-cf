@@ -1,6 +1,7 @@
 import { errorResponse } from "../_auth";
 import { sqlBjDate } from "../_time";
-import { requireAuthWithDataScope } from "../services/data-scope";
+import { readDashboardSnapshots } from "../services/report-snapshot";
+import { requireAuthWithDataScope, resolvePartsWarehouseId, scopeAllowsAssetWarehouse, type UserDataScope } from "../services/data-scope";
 
 function ymdInShanghai(offsetDays = 0) {
   const now = new Date();
@@ -24,97 +25,104 @@ async function firstNumber(db: D1Database, sql: string, binds: any[] = []) {
   return Number(row?.c || 0);
 }
 
+function departmentScopeValue(scope?: UserDataScope | null) {
+  return scope?.data_scope_type === 'department' || scope?.data_scope_type === 'department_warehouse'
+    ? String(scope?.data_scope_value || '').trim()
+    : '';
+}
+
+function snapshotSum(rows: Array<{ metrics: Record<string, number> }>, key: string) {
+  return rows.reduce((sum, row) => sum + Number(row?.metrics?.[key] || 0), 0);
+}
+
+function snapshotDaily(rows: Array<{ day: string; metrics: Record<string, number> }>, key: string) {
+  return rows.map((row) => ({ day: row.day, qty: Number(row?.metrics?.[key] || 0) }));
+}
+
+async function buildStability(db: D1Database) {
+  const [failed_async_jobs, error_5xx_last_24h, active_alert_count, lastBackupDrill, openDrill, overdueDrill] = await Promise.all([
+    firstNumber(db, `SELECT COUNT(*) AS c FROM async_jobs WHERE status='failed'`),
+    firstNumber(db, `SELECT COUNT(*) AS c FROM request_error_log WHERE created_at >= datetime('now','+8 hours','-1 day') AND status >= 500`),
+    firstNumber(db, `SELECT COUNT(*) AS c FROM async_jobs WHERE status IN ('failed','queued','running')`),
+    db.prepare(`SELECT drill_at, outcome FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
+    firstNumber(db, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open'`),
+    firstNumber(db, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')`),
+  ]);
+  return {
+    failed_async_jobs,
+    error_5xx_last_24h,
+    active_alert_count,
+    last_backup_drill_at: lastBackupDrill?.drill_at || null,
+    last_backup_drill_outcome: lastBackupDrill?.outcome || null,
+    open_drill_issue_count: openDrill,
+    overdue_drill_issue_count: overdueDrill,
+  };
+}
+
+async function buildGovernance(db: D1Database, scope?: UserDataScope | null, from?: string, to?: string) {
+  const departmentScope = departmentScopeValue(scope);
+  const pcAllowed = scopeAllowsAssetWarehouse(scope, '电脑仓');
+  const monitorAllowed = scopeAllowsAssetWarehouse(scope, '显示器仓');
+  const pcDeptJoin = departmentScope ? `LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id` : '';
+  const pcDeptWhere = departmentScope ? `WHERE TRIM(COALESCE(s.current_department,''))=?` : '';
+  const pcBind = departmentScope ? [departmentScope] : [];
+  const monitorWhere = departmentScope ? `WHERE TRIM(COALESCE(a.department,''))=?` : '';
+  const monitorBind = departmentScope ? [departmentScope] : [];
+  const archiveActions = [pcAllowed ? 'PC_ASSET_ARCHIVE' : null, monitorAllowed ? 'MONITOR_ASSET_ARCHIVE' : null].filter(Boolean) as string[];
+  const restoreActions = [pcAllowed ? 'PC_ASSET_RESTORE' : null, monitorAllowed ? 'MONITOR_ASSET_RESTORE' : null].filter(Boolean) as string[];
+  const purgeActions = [pcAllowed ? 'PC_ASSET_PURGE' : null, monitorAllowed ? 'MONITOR_ASSET_PURGE' : null].filter(Boolean) as string[];
+  const auditCount = (actions: string[]) => actions.length
+    ? firstNumber(db, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN (${actions.map(() => '?').join(',')}) AND ${sqlBjDate('created_at')} BETWEEN date(?) AND date(?)`, [...actions, from, to])
+    : 0;
+  const [archived_pc_count, archived_monitor_count, total_pc_count, total_monitor_count, archive_events_30d, restore_events_30d, purge_events_30d] = await Promise.all([
+    pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere ? `${pcDeptWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, pcBind) : 0,
+    monitorAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere ? `${monitorWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, monitorBind) : 0,
+    pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere}`, pcBind) : 0,
+    monitorAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere}`, monitorBind) : 0,
+    auditCount(archiveActions),
+    auditCount(restoreActions),
+    auditCount(purgeActions),
+  ]);
+  return {
+    archived_pc_count,
+    archived_monitor_count,
+    total_pc_count,
+    total_monitor_count,
+    archive_events_30d,
+    restore_events_30d,
+    purge_events_30d,
+  };
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const user = await requireAuthWithDataScope(env, request, "viewer");
-
     const url = new URL(request.url);
-    const warehouse_id = Number(url.searchParams.get("warehouse_id") ?? 1);
+    const requestedWarehouseId = Number(url.searchParams.get("warehouse_id") ?? 1);
     const days = Number(url.searchParams.get("days") ?? 30);
     const mode = (url.searchParams.get("mode") || "parts").toLowerCase();
     const to = url.searchParams.get("to") ?? ymdInShanghai(0);
     const from = url.searchParams.get("from") ?? ymdInShanghai(-(days - 1));
-    const departmentScope = user.data_scope_type === 'department' ? String(user.data_scope_value || '').trim() : '';
+    const departmentScope = departmentScopeValue(user);
+    const stability = await buildStability(env.DB);
+    const governance = await buildGovernance(env.DB, user, from, to);
 
-    const stability = await (async () => {
-      const [failed_async_jobs, error_5xx_last_24h, active_alert_count, lastBackupDrill, openDrill, overdueDrill] = await Promise.all([
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM async_jobs WHERE status='failed'`),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM request_error_log WHERE created_at >= datetime('now','+8 hours','-1 day') AND status >= 500`),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM async_jobs WHERE status IN ('failed','queued','running')`),
-        env.DB.prepare(`SELECT drill_at, outcome FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open'`),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')`),
-      ]);
-      return {
-        failed_async_jobs,
-        error_5xx_last_24h,
-        active_alert_count,
-        last_backup_drill_at: lastBackupDrill?.drill_at || null,
-        last_backup_drill_outcome: lastBackupDrill?.outcome || null,
-        open_drill_issue_count: openDrill,
-        overdue_drill_issue_count: overdueDrill,
+    if (mode === 'pc') {
+      if (!scopeAllowsAssetWarehouse(user, '电脑仓')) {
+        throw Object.assign(new Error('当前账号的数据范围未包含电脑仓，看板不可访问'), { status: 403 });
+      }
+      const snapshots = await readDashboardSnapshots(env.DB, { mode: 'pc', from, to, scope: user });
+      const summary = {
+        in_qty: snapshotSum(snapshots, 'in_qty'),
+        out_qty: snapshotSum(snapshots, 'out_qty'),
+        recycle_qty: snapshotSum(snapshots, 'return_qty') + snapshotSum(snapshots, 'recycle_qty'),
+        scrap_qty: snapshotSum(snapshots, 'scrap_qty'),
+        adjust_qty: snapshotSum(snapshots, 'return_qty') + snapshotSum(snapshots, 'recycle_qty'),
+        tx_count: snapshotSum(snapshots, 'tx_count'),
       };
-    })();
-
-    const governance = await (async () => {
-      const pcDeptJoin = departmentScope ? `LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id` : '';
-      const pcDeptWhere = departmentScope ? `WHERE TRIM(COALESCE(s.current_department,''))=?` : '';
-      const pcBind = departmentScope ? [departmentScope] : [];
-      const monitorWhere = departmentScope ? `WHERE TRIM(COALESCE(a.department,''))=?` : '';
-      const monitorBind = departmentScope ? [departmentScope] : [];
-      const [archived_pc_count, archived_monitor_count, total_pc_count, total_monitor_count, archive_events_30d, restore_events_30d, purge_events_30d] = await Promise.all([
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere ? `${pcDeptWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, pcBind),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere ? `${monitorWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, monitorBind),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere}`, pcBind),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere}`, monitorBind),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN ('PC_ASSET_ARCHIVE','MONITOR_ASSET_ARCHIVE') AND ${sqlBjDate('created_at')} BETWEEN date(?) AND date(?)`, [from, to]),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN ('PC_ASSET_RESTORE','MONITOR_ASSET_RESTORE') AND ${sqlBjDate('created_at')} BETWEEN date(?) AND date(?)`, [from, to]),
-        firstNumber(env.DB, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN ('PC_ASSET_PURGE','MONITOR_ASSET_PURGE') AND ${sqlBjDate('created_at')} BETWEEN date(?) AND date(?)`, [from, to]),
-      ]);
-      return {
-        archived_pc_count,
-        archived_monitor_count,
-        total_pc_count,
-        total_monitor_count,
-        archive_events_30d,
-        restore_events_30d,
-        purge_events_30d,
-      };
-    })();
-
-    if (mode === 'parts' && departmentScope) {
-      throw Object.assign(new Error(`当前账号的数据可见范围为部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓看板`), { status: 403 });
-    }
-
-    if (mode === "pc") {
       const scopeJoin = departmentScope ? `JOIN pc_asset_latest_state s ON s.asset_id=t.asset_id` : '';
       const scopeWhere = departmentScope ? ` AND TRIM(COALESCE(s.current_department,''))=?` : '';
       const scopeBinds = departmentScope ? [departmentScope] : [];
-      const sum = await env.DB.prepare(
-        `SELECT
-           (SELECT COUNT(*) FROM pc_in t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) AS in_qty,
-           (SELECT COUNT(*) FROM pc_out t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) AS out_qty,
-           (SELECT COUNT(*) FROM pc_recycle t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) AS recycle_qty,
-           (SELECT COUNT(*) FROM pc_scrap t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) AS scrap_qty,
-           (
-             (SELECT COUNT(*) FROM pc_in t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) +
-             (SELECT COUNT(*) FROM pc_out t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) +
-             (SELECT COUNT(*) FROM pc_recycle t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere}) +
-             (SELECT COUNT(*) FROM pc_scrap t ${scopeJoin} WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere})
-           ) AS tx_count`
-      )
-      .bind(
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-        from, to, ...scopeBinds,
-      )
-      .first() as any;
-
       const qTopPc = (table: string, whereExtra = "") => env.DB.prepare(
         `SELECT COALESCE(NULLIF(model,''),'(未填型号)') AS sku,
                 COALESCE(NULLIF(brand,''),'') || CASE WHEN brand IS NOT NULL AND brand<>'' THEN ' · ' ELSE '' END || COALESCE(NULLIF(serial_no,''),'(无SN)') AS name,
@@ -125,31 +133,17 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
          ORDER BY qty DESC, MAX(created_at) DESC
          LIMIT 10`
       );
-      const qDailyPc = (table: string, whereExtra = "") => env.DB.prepare(
-        `SELECT ${sqlBjDate("t.created_at")} AS day, COUNT(*) AS qty
-         FROM ${table} t ${scopeJoin}
-         WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere} ${whereExtra}
-         GROUP BY day ORDER BY day ASC`
-      );
       const qCatPc = (table: string, catExpr: string, whereExtra = "") => env.DB.prepare(
         `SELECT ${catExpr} AS category, COUNT(*) AS qty
          FROM ${table} t ${scopeJoin}
          WHERE ${sqlBjDate("t.created_at")} BETWEEN date(?) AND date(?) ${scopeWhere} ${whereExtra}
          GROUP BY category ORDER BY qty DESC LIMIT 20`
       );
-
       const { results: topOut } = await qTopPc("pc_out").bind(from, to, ...scopeBinds).all();
       const { results: topIn } = await qTopPc("pc_in").bind(from, to, ...scopeBinds).all();
       const { results: topReturn } = await qTopPc("pc_recycle", "AND UPPER(COALESCE(action,''))='RETURN'").bind(from, to, ...scopeBinds).all();
       const { results: topRecycle } = await qTopPc("pc_recycle", "AND UPPER(COALESCE(action,''))='RECYCLE'").bind(from, to, ...scopeBinds).all();
       const { results: topScrap } = await qTopPc("pc_scrap").bind(from, to, ...scopeBinds).all();
-
-      const { results: dailyOut } = await qDailyPc("pc_out").bind(from, to, ...scopeBinds).all();
-      const { results: dailyIn } = await qDailyPc("pc_in").bind(from, to, ...scopeBinds).all();
-      const { results: dailyReturn } = await qDailyPc("pc_recycle", "AND UPPER(COALESCE(action,''))='RETURN'").bind(from, to, ...scopeBinds).all();
-      const { results: dailyRecycle } = await qDailyPc("pc_recycle", "AND UPPER(COALESCE(action,''))='RECYCLE'").bind(from, to, ...scopeBinds).all();
-      const { results: dailyScrap } = await qDailyPc("pc_scrap").bind(from, to, ...scopeBinds).all();
-
       const { results: catOut } = await qCatPc("pc_out", "COALESCE(NULLIF(t.department,''),'未填部门')").bind(from, to, ...scopeBinds).all();
       const { results: catIn } = await qCatPc("pc_in", "COALESCE(NULLIF(t.brand,''),'未填品牌')").bind(from, to, ...scopeBinds).all();
       const { results: catReturn } = await qCatPc("pc_recycle", "COALESCE(NULLIF(t.department,''),'未填部门')", "AND UPPER(COALESCE(t.action,''))='RETURN'").bind(from, to, ...scopeBinds).all();
@@ -158,17 +152,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
       return Response.json({
         ok: true,
-        mode: "pc",
+        mode: 'pc',
         range: { from, to, days },
-        scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null },
-        summary: {
-          in_qty: Number(sum?.in_qty ?? 0),
-          out_qty: Number(sum?.out_qty ?? 0),
-          recycle_qty: Number(sum?.recycle_qty ?? 0),
-          scrap_qty: Number(sum?.scrap_qty ?? 0),
-          adjust_qty: Number(sum?.recycle_qty ?? 0),
-          tx_count: Number(sum?.tx_count ?? 0),
-        },
+        scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null, data_scope_value2: user.data_scope_value2 || null },
+        snapshot: { source: 'report_daily_snapshots', day_count: snapshots.length },
+        summary,
         governance,
         stability,
         top_out: topOut,
@@ -176,11 +164,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         top_return: topReturn,
         top_recycle: topRecycle,
         top_scrap: topScrap,
-        daily_out: dailyOut,
-        daily_in: dailyIn,
-        daily_return: dailyReturn,
-        daily_recycle: dailyRecycle,
-        daily_scrap: dailyScrap,
+        daily_out: snapshotDaily(snapshots, 'out_qty'),
+        daily_in: snapshotDaily(snapshots, 'in_qty'),
+        daily_return: snapshotDaily(snapshots, 'return_qty'),
+        daily_recycle: snapshotDaily(snapshots, 'recycle_qty'),
+        daily_scrap: snapshotDaily(snapshots, 'scrap_qty'),
         category_out: catOut,
         category_in: catIn,
         category_return: catReturn,
@@ -189,16 +177,23 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       });
     }
 
-    const sum = await env.DB.prepare(
-      `SELECT
-         SUM(CASE WHEN type='IN' THEN qty ELSE 0 END) AS in_qty,
-         SUM(CASE WHEN type='OUT' THEN qty ELSE 0 END) AS out_qty,
-         SUM(CASE WHEN type='ADJUST' THEN qty ELSE 0 END) AS adjust_qty,
-         COUNT(*) AS tx_count
-       FROM stock_tx
-       WHERE warehouse_id=? AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)`
-    ).bind(warehouse_id, from, to).first() as any;
-
+    if (departmentScope) {
+      throw Object.assign(new Error(`当前账号的数据可见范围包含部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓看板或改为按仓库授权`), { status: 403 });
+    }
+    if (!scopeAllowsAssetWarehouse(user, '配件仓')) {
+      throw Object.assign(new Error('当前账号的数据范围未包含配件仓，看板不可访问'), { status: 403 });
+    }
+    const warehouse_id = await resolvePartsWarehouseId(env.DB, user, requestedWarehouseId);
+    if (warehouse_id <= 0) {
+      throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403 });
+    }
+    const snapshots = await readDashboardSnapshots(env.DB, { mode: 'parts', from, to, warehouseId: warehouse_id, scope: user });
+    const summary = {
+      in_qty: snapshotSum(snapshots, 'in_qty'),
+      out_qty: snapshotSum(snapshots, 'out_qty'),
+      adjust_qty: snapshotSum(snapshots, 'adjust_qty'),
+      tx_count: snapshotSum(snapshots, 'tx_count'),
+    };
     const { results: topOut } = await env.DB.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
@@ -207,7 +202,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        ORDER BY qty DESC
        LIMIT 10`
     ).bind(warehouse_id, from, to).all();
-
     const { results: topIn } = await env.DB.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
@@ -216,23 +210,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        ORDER BY qty DESC
        LIMIT 10`
     ).bind(warehouse_id, from, to).all();
-
-    const { results: dailyOut } = await env.DB.prepare(
-      `SELECT ${sqlBjDate("created_at")} AS day, SUM(qty) AS qty
-       FROM stock_tx
-       WHERE warehouse_id=? AND type='OUT' AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)
-       GROUP BY day
-       ORDER BY day ASC`
-    ).bind(warehouse_id, from, to).all();
-
-    const { results: dailyIn } = await env.DB.prepare(
-      `SELECT ${sqlBjDate("created_at")} AS day, SUM(qty) AS qty
-       FROM stock_tx
-       WHERE warehouse_id=? AND type='IN' AND ${sqlBjDate("created_at")} BETWEEN date(?) AND date(?)
-       GROUP BY day
-       ORDER BY day ASC`
-    ).bind(warehouse_id, from, to).all();
-
     const { results: catOut } = await env.DB.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
@@ -241,7 +218,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        ORDER BY qty DESC
        LIMIT 20`
     ).bind(warehouse_id, from, to).all();
-
     const { results: catIn } = await env.DB.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
@@ -253,21 +229,17 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     return Response.json({
       ok: true,
-      mode: "parts",
+      mode: 'parts',
       range: { from, to, days },
-      scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null },
-      summary: {
-        in_qty: Number(sum?.in_qty ?? 0),
-        out_qty: Number(sum?.out_qty ?? 0),
-        adjust_qty: Number(sum?.adjust_qty ?? 0),
-        tx_count: Number(sum?.tx_count ?? 0),
-      },
+      scope: { data_scope_type: user.data_scope_type || 'all', data_scope_value: user.data_scope_value || null, data_scope_value2: user.data_scope_value2 || null },
+      snapshot: { source: 'report_daily_snapshots', day_count: snapshots.length },
+      summary,
       governance,
       stability,
       top_out: topOut,
       top_in: topIn,
-      daily_out: dailyOut,
-      daily_in: dailyIn,
+      daily_out: snapshotDaily(snapshots, 'out_qty'),
+      daily_in: snapshotDaily(snapshots, 'in_qty'),
       category_out: catOut,
       category_in: catIn,
     });

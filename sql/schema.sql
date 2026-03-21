@@ -92,11 +92,12 @@ CREATE TABLE IF NOT EXISTS users (
   permission_template_code TEXT,
   data_scope_type TEXT NOT NULL DEFAULT 'all',
   data_scope_value TEXT,
+  data_scope_value2 TEXT,
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
 CREATE INDEX IF NOT EXISTS idx_users_username ON users(username);
-CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value ON users(data_scope_type, data_scope_value);
+CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2);
 
 -- Login throttle (防爆破/限流)
 CREATE TABLE IF NOT EXISTS auth_login_throttle (
@@ -321,3 +322,16 @@ CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_id ON monitor_tx(asset_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_type ON monitor_tx(tx_type);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_type_created_at ON monitor_tx(tx_type, created_at);
 CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_type_created_at ON monitor_tx(asset_id, tx_type, created_at);
+
+CREATE TABLE IF NOT EXISTS report_daily_snapshots (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  snapshot_date TEXT NOT NULL,
+  mode TEXT NOT NULL,
+  warehouse_id INTEGER NOT NULL DEFAULT 0,
+  scope_key TEXT NOT NULL,
+  metrics_json TEXT NOT NULL DEFAULT '{}',
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  UNIQUE(snapshot_date, mode, warehouse_id, scope_key)
+);
+CREATE INDEX IF NOT EXISTS idx_report_daily_snapshots_lookup ON report_daily_snapshots(mode, warehouse_id, snapshot_date, scope_key);
