@@ -24,6 +24,7 @@ import {
   ElIcon,
   ElInput,
   ElInputNumber,
+  ElLoading,
   ElMain,
   ElMenu,
   ElMenuItem,
@@ -73,6 +74,7 @@ import 'element-plus/es/components/header/style/css';
 import 'element-plus/es/components/icon/style/css';
 import 'element-plus/es/components/input/style/css';
 import 'element-plus/es/components/input-number/style/css';
+import 'element-plus/es/components/loading/style/css';
 import 'element-plus/es/components/main/style/css';
 import 'element-plus/es/components/menu/style/css';
 import 'element-plus/es/components/menu-item/style/css';
@@ -150,6 +152,8 @@ const components = [
 ] as const;
 
 export function installElementPlus(app: App) {
+  const loadingDirective = (ElLoading as any)?.directive;
+  if (loadingDirective) app.directive('loading', loadingDirective);
   components.forEach((component) => {
     if (component.name) app.component(component.name, component);
   });
