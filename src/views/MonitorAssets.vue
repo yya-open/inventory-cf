@@ -55,6 +55,7 @@
       :visible-columns="visibleColumns"
       :column-widths="columnWidths"
       :selected-ids="selectedIds"
+      @open-info="openInfo"
       @in="openIn"
       @out="openOut"
       @row-more="handleRowMore"
@@ -76,6 +77,15 @@
       :saving="assetSaving"
       :brand-options="monitorBrandOptions"
       @save="saveAsset"
+    />
+
+    <MonitorAssetInfoDialog
+      v-if="lazyInfoDialog"
+      v-model:visible="infoVisible"
+      :row="infoRow"
+      :location-text="locationText"
+      :status-text="assetStatusText"
+      @view-audit="openAuditHistory()"
     />
 
     <MonitorAssetOperationDialog
@@ -181,6 +191,7 @@ import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue'
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
+const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
 const MonitorAssetOperationDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetOperationDialog.vue'));
 const MonitorAssetQrDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetQrDialog.vue'));
 const MonitorLocationManagerDialog = defineAsyncComponent(() => import('../components/assets/MonitorLocationManagerDialog.vue'));
@@ -350,6 +361,7 @@ const batchArchiveVisible = ref(false);
 const batchArchiveForm = ref({ reason: '停用归档', note: '' });
 
 const lazyAssetDialog = ref(false);
+const lazyInfoDialog = ref(false);
 const lazyOperationDialog = ref(false);
 const lazyQrDialog = ref(false);
 const lazyLocationDialog = ref(false);
@@ -482,6 +494,7 @@ function handleToolbarMore(command: string) {
 function handleRowMore(command: string, row: MonitorAsset) {
   if (command === 'edit') return openEdit(row);
   if (command === 'qr') return openQr(row);
+  if (command === 'audit') return openAuditHistory(row);
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
   if (command === 'delete') return removeAsset(row);
@@ -999,6 +1012,12 @@ function openCreate() {
   dlgAsset.show = true;
 }
 
+function openInfo(row: MonitorAsset) {
+  infoRow.value = { ...row };
+  warmLazyDialog(lazyInfoDialog);
+  infoVisible.value = true;
+}
+
 function openEdit(row: MonitorAsset) {
   dlgAsset.mode = 'edit';
   dlgAsset.form = {
@@ -1078,6 +1097,9 @@ async function removeAsset(row: MonitorAsset) {
     loading.value = false;
   }
 }
+
+const infoVisible = ref(false);
+const infoRow = ref<MonitorAsset | null>(null);
 
 const dlgOp = reactive({
   show: false,
@@ -1205,8 +1227,9 @@ async function exportSelectedQrPng() {
 }
 
 function openAuditHistory(row?: MonitorAsset | null) {
-  const id = Number(row?.id || 0);
+  const id = Number(row?.id || infoRow.value?.id || 0);
   if (!id) return;
+  infoVisible.value = false;
   router.push({ path: '/system/audit', query: { entity: 'monitor_assets', entity_id: String(id), module: 'MONITOR' } });
 }
 

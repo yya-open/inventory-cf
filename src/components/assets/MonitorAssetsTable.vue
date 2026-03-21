@@ -16,7 +16,11 @@
       </el-table-column>
 
       <template v-for="key in orderedVisibleColumns" :key="key">
-        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" prop="asset_code" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="160" fixed="left" />
+        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="160" fixed="left">
+          <template #default="{ row }">
+            <div class="asset-link strong" @click="emit('open-info', row)">{{ row.asset_code || '-' }}</div>
+          </template>
+        </el-table-column>
         <el-table-column v-else-if="key === 'sn'" column-key="sn" prop="sn" label="SN" :width="getColumnWidth('sn')" :min-width="140" />
         <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="200">
           <template #default="{ row }">
@@ -131,6 +135,7 @@ const props = defineProps<{
   locationText: (row: Record<string, any>) => string;
 }>();
 const emit = defineEmits<{
+  'open-info': [Record<string, any>];
   in: [Record<string, any>];
   out: [Record<string, any>];
   remove: [Record<string, any>];
@@ -176,6 +181,8 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .monitor-op-group.compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .row-more-trigger { padding-left: 0; padding-right: 0; }
 .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.asset-link { cursor: pointer; color: var(--el-color-primary); }
+.strong { font-weight: 600; }
 .archive-tag { margin-left: 8px; }
 .table-subtle { color: #909399; font-size: 12px; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
