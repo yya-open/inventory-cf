@@ -165,6 +165,37 @@ export async function ensureDashboardSnapshots(db: D1Database, params: { mode: D
   }
 }
 
+
+export async function refreshDashboardSnapshots(
+  db: D1Database,
+  params: { mode: DashboardMode; from: string; to: string; warehouseId?: number | null; scope?: UserDataScope | null },
+  options?: { force?: boolean },
+) {
+  await ensureReportSnapshotTable(db);
+  const days = listDays(params.from, params.to);
+  const warehouseId = params.mode === 'parts' ? Number(params.warehouseId || 1) : 0;
+  const key = scopeKey(params.scope);
+  if (options?.force) {
+    await db.prepare(
+      `DELETE FROM report_daily_snapshots WHERE mode=? AND COALESCE(warehouse_id,0)=COALESCE(?,0) AND scope_key=? AND snapshot_date BETWEEN date(?) AND date(?)`
+    ).bind(params.mode, warehouseId, key, params.from, params.to).run();
+  }
+  const placeholders = days.map(() => '?').join(',');
+  const existing = await db.prepare(
+    `SELECT snapshot_date FROM report_daily_snapshots WHERE mode=? AND COALESCE(warehouse_id,0)=COALESCE(?,0) AND scope_key=? AND snapshot_date IN (${placeholders})`
+  ).bind(params.mode, warehouseId, key, ...days).all<any>();
+  const done = new Set((existing.results || []).map((row: any) => String(row?.snapshot_date || '')));
+  for (const day of days) {
+    if (!options?.force && done.has(day)) continue;
+    const metrics = params.mode === 'pc'
+      ? await computePcDay(db, day, params.scope)
+      : params.mode === 'monitor'
+        ? await computeMonitorDay(db, day, params.scope)
+        : await computePartsDay(db, day, warehouseId || 1, params.scope);
+    await upsertDaySnapshot(db, params.mode, day, warehouseId, params.scope, metrics);
+  }
+}
+
 export async function readDashboardSnapshots(db: D1Database, params: { mode: DashboardMode; from: string; to: string; warehouseId?: number | null; scope?: UserDataScope | null }): Promise<DailySnapshotRow[]> {
   await ensureDashboardSnapshots(db, params);
   const warehouseId = params.mode === 'parts' ? Number(params.warehouseId || 1) : 0;

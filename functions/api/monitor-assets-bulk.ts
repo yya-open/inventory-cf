@@ -11,6 +11,7 @@ import {
   bulkUpdateMonitorStatus,
 } from './services/asset-bulk';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
+import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -26,6 +27,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'archive') {
       const meta = parseArchiveMeta(body);
+      await assertArchiveReasonDictionaryValue(env.DB, meta.reason, '归档原因');
       const result = await bulkArchiveAssets(env.DB, 'monitor', ids, meta.reason, meta.note || null, user.username || null);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
@@ -106,6 +108,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
+      await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
       const result = await bulkUpdateMonitorOwner(env.DB, ids, owner);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);

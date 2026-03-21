@@ -83,9 +83,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="数据范围">
-          <el-select v-model="form.data_scope_type" style="width:100%">
+          <div style="display:flex; gap:8px; width:100%">
+            <el-select v-model="form.data_scope_type" style="flex:1">
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+            </el-select>
+            <el-button @click="previewCreateScope">预览范围</el-button>
+          </div>
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'department' || form.data_scope_type === 'department_warehouse'" label="部门">
           <el-select v-model="form.data_scope_value" filterable clearable style="width:100%" placeholder="请选择部门">
@@ -128,9 +131,12 @@
           </el-select>
         </el-form-item>
         <el-form-item label="数据范围">
-          <el-select v-model="editDataScopeType" style="width:100%">
+          <div style="display:flex; gap:8px; width:100%">
+            <el-select v-model="editDataScopeType" style="flex:1">
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
-          </el-select>
+            </el-select>
+            <el-button @click="previewEditScope">预览范围</el-button>
+          </div>
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'department' || editDataScopeType === 'department_warehouse'" label="部门">
           <el-select v-model="editDataScopeValue" filterable clearable style="width:100%" placeholder="请选择部门">
@@ -160,6 +166,37 @@
       <template #footer>
         <el-button @click="showEdit=false">取消</el-button>
         <el-button type="primary" :loading="saving" @click="saveEdit">保存</el-button>
+      </template>
+    </el-dialog>
+
+
+    <el-dialog v-model="showScopePreview" title="数据可见范围预览" width="680px">
+      <div v-if="scopePreview" style="display:flex; flex-direction:column; gap:12px">
+        <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <el-tag type="warning">{{ scopePreview.scope_label }}</el-tag>
+          <el-tag v-for="item in scopePreview.route_meta?.report_modes || []" :key="item.value" type="success">看板：{{ item.label }}</el-tag>
+        </div>
+        <el-alert type="info" :closable="false" show-icon>
+          <template #default>
+            <div v-for="tip in scopePreview.tips || []" :key="tip">{{ tip }}</div>
+          </template>
+        </el-alert>
+        <el-row :gutter="12">
+          <el-col :span="8"><el-card shadow="never"><div style="color:#999">电脑台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div style="color:#999">显示器台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div style="color:#999">配件条目</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.parts_items ?? 0 }}</div></el-card></el-col>
+        </el-row>
+        <el-table :data="scopePreview.routes || []" border>
+          <el-table-column prop="label" label="模块" min-width="180" />
+          <el-table-column label="是否可见" width="110">
+            <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '可见' : '不可见' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column prop="reason" label="说明" min-width="220" />
+        </el-table>
+      </div>
+      <div v-else style="color:#999">暂无预览数据</div>
+      <template #footer>
+        <el-button @click="showScopePreview=false">关闭</el-button>
       </template>
     </el-dialog>
 
@@ -209,6 +246,8 @@ const permissionTemplateOptions = ALL_PERMISSION_TEMPLATE_CODES.map((code) => ({
 const showCreate = ref(false);
 const showEdit = ref(false);
 const showReset = ref(false);
+const showScopePreview = ref(false);
+const scopePreview = ref<any | null>(null);
 
 const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
@@ -258,6 +297,35 @@ function resetSearch() {
   sortBy.value = "created_at";
   sortDir.value = "desc";
   reload();
+}
+
+
+function createScopePayload() {
+  const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value, form.value.data_scope_value2);
+  return { data_scope_type: normalizedScope.data_scope_type, data_scope_value: normalizedScope.data_scope_value, data_scope_value2: normalizedScope.data_scope_value2 };
+}
+
+function editScopePayload() {
+  const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value, editDataScopeValue2.value);
+  return { data_scope_type: normalizedScope.data_scope_type, data_scope_value: normalizedScope.data_scope_value, data_scope_value2: normalizedScope.data_scope_value2 };
+}
+
+async function previewScope(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string }) {
+  try {
+    const r = await apiPost<any>('/api/users/preview-scope', payload);
+    scopePreview.value = r.data || null;
+    showScopePreview.value = true;
+  } catch (e: any) {
+    ElMessage.error(e.message || '预览失败');
+  }
+}
+
+function previewCreateScope() {
+  previewScope(createScopePayload());
+}
+
+function previewEditScope() {
+  previewScope(editScopePayload());
 }
 
 function applyCreateTemplate() {

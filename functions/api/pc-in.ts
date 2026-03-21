@@ -2,6 +2,7 @@ import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, pcInNo } from "./_pc";
 import { createPcAssetAndInRecord } from "./services/asset-write";
+import { assertPcBrandDictionaryValue } from './services/master-data';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
@@ -13,6 +14,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const body = await request.json<any>();
 
     const brand = must(body?.brand, "品牌", 120);
+    await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
     const serial_no = must(body?.serial_no, "序列号", 120);
     const model = must(body?.model, "型号", 160);
     const manufacture_date = must(body?.manufacture_date, "出厂时间", 40);

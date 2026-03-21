@@ -6,8 +6,20 @@ import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions } from "../_permissions";
 import { getUserDataScope, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
+import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
+
+async function assertScopeDictionaryConstraints(db: D1Database, type: any, value: any, value2: any) {
+  const scope = normalizeUserDataScope(type, value, value2);
+  if (scope.data_scope_type === 'department') await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
+  if (scope.data_scope_type === 'warehouse') await assertWarehouseDictionaryValue(db, scope.data_scope_value, '仓库范围');
+  if (scope.data_scope_type === 'department_warehouse') {
+    await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
+    await assertWarehouseDictionaryValue(db, scope.data_scope_value2, '仓库范围');
+  }
+  return scope;
+}
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
@@ -75,6 +87,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     if (!["admin", "operator", "viewer"].includes(r)) return json(false, null, "role 无效", 400);
 
     const ph = await hashPassword(pv.password);
+    const validatedScope = await assertScopeDictionaryConstraints(env.DB, data_scope_type, data_scope_value, data_scope_value2);
 
     let newId: number | null = null;
     try {
@@ -97,11 +110,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
     if (newId) {
       const template = await setUserPermissionTemplate(env.DB, newId, r, permission_template_code);
-      const dataScope = await setUserDataScope(env.DB, newId, data_scope_type, data_scope_value, data_scope_value2);
+      const dataScope = await setUserDataScope(env.DB, newId, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
       if (permissions && typeof permissions === 'object') await setUserPermissions(env.DB, newId, permissions, actor.username);
       if (created) Object.assign(created, { permission_template_code: template, ...dataScope });
     }
-    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {}, ...(newId ? await getUserDataScope(env.DB, newId) : normalizeUserDataScope(data_scope_type, data_scope_value, data_scope_value2)) } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {}, ...normalizeUserDataScope(data_scope_type, data_scope_value, data_scope_value2) };
+    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {}, ...(newId ? await getUserDataScope(env.DB, newId) : validatedScope) } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {}, ...validatedScope };
     await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
     return json(true, enriched);
@@ -174,7 +187,8 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       changes.permissions = permissions;
     }
     if (typeof data_scope_type !== 'undefined' || typeof data_scope_value !== 'undefined' || typeof data_scope_value2 !== 'undefined') {
-      const scope = await setUserDataScope(env.DB, uid, data_scope_type, data_scope_value, data_scope_value2);
+      const validatedScope = await assertScopeDictionaryConstraints(env.DB, data_scope_type, data_scope_value, data_scope_value2);
+      const scope = await setUserDataScope(env.DB, uid, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
       changes.data_scope = scope;
     }
 

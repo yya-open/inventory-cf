@@ -8,6 +8,7 @@
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>
+        <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '预计算中' : '预计算看板快照' }}</el-button>
         <el-button @click="reloadAll">刷新</el-button>
       </div>
     </div>
@@ -210,6 +211,7 @@ const repairHistory = ref<any[]>([]);
 const scanning = ref(false);
 const running = ref('');
 const lastRepair = ref('');
+const snapshotPrecomputing = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
 
@@ -226,6 +228,19 @@ function formatDuration(ms?: number | null) {
   if (value >= 1000 * 60) return `${Math.floor(value / 1000 / 60)}分钟`;
   if (value >= 1000) return `${Math.floor(value / 1000)}秒`;
   return `${value}ms`;
+}
+
+
+async function runSnapshotPrecompute() {
+  snapshotPrecomputing.value = true;
+  try {
+    const r = await apiPost<any>('/api/reports/precompute', { days: 90, force: true });
+    ElMessage.success(r?.message || '看板快照预计算完成');
+  } catch (e: any) {
+    ElMessage.error(e.message || '看板快照预计算失败');
+  } finally {
+    snapshotPrecomputing.value = false;
+  }
 }
 
 function formatBytes(value?: number | null) {

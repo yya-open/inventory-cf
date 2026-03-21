@@ -23,6 +23,7 @@ import {
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { requireAuthWithDataScope } from './services/data-scope';
+import { assertMonitorBrandDictionaryValue } from './services/master-data';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -50,6 +51,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const body = await request.json<any>().catch(() => ({} as any));
     const payload = parseMonitorAssetInput(body);
+    await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
     await assertUnique(env.DB, 'SELECT id FROM monitor_assets WHERE asset_code=?', [payload.asset_code], '资产编号已存在');
 
     const result = await env.DB
@@ -84,6 +86,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该显示器已归档，请先恢复归档后再编辑'), { status: 400 });
 
     const payload = parseMonitorAssetInput(body);
+    await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
     await assertUnique(env.DB, 'SELECT id FROM monitor_assets WHERE asset_code=? AND id<>?', [payload.asset_code, id], '资产编号已存在');
 
     await env.DB

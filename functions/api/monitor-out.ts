@@ -2,6 +2,7 @@ import { requireAuth, errorResponse } from "../_auth";
 import { ensureMonitorSchemaIfAllowed, monitorTxNo } from "./_monitor";
 import { must, optional, normalizeText } from "./_pc";
 import { logAudit } from "./_audit";
+import { assertDepartmentDictionaryValue } from './services/master-data';
 import {
   applyMonitorMovement,
   assertMonitorMovementAllowed,
@@ -25,6 +26,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const employee_no = must(body?.employee_no, "工号", 80);
     const employee_name = must(body?.employee_name, "姓名", 120);
     const department = must(body?.department, "部门", 120);
+    await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
     const is_employed = optional(body?.is_employed, 20);
     const to_location_id = Number(body?.location_id || body?.to_location_id || 0) || null;
     const remark = optional(body?.remark, 1000);

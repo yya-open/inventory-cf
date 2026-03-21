@@ -9,6 +9,7 @@
               <span>经营 + 治理 + 稳定性统一口径</span>
               <el-tag size="small" :type="scopeTagType">{{ scopeLabel }}</el-tag>
               <el-tag v-if="data?.snapshot?.source" size="small" type="info">日汇总快照 {{ data?.snapshot?.day_count || 0 }} 天</el-tag>
+              <el-tag v-if="detailRefreshing" size="small" type="warning">明细补载中</el-tag>
               <span v-if="lastUpdatedLabel" class="dashboard-header__hint">{{ lastUpdatedLabel }}</span>
             </div>
           </div>
@@ -26,7 +27,7 @@
         </div>
       </template>
 
-      <div v-if="data" class="dashboard-content" v-loading="refreshing && !isUsingWarmCache" element-loading-text="正在刷新数据…">
+      <div v-if="data" class="dashboard-content" v-loading="summaryRefreshing && !isUsingWarmCache" element-loading-text="正在刷新摘要…">
         <div :style="{ display: 'grid', gridTemplateColumns: summaryColumns, gap: '12px', marginBottom: '12px' }">
           <el-card shadow="never"><div class="metric-card__label">入库数量</div><div class="metric-card__value">{{ data.summary.in_qty ?? 0 }}</div></el-card>
           <el-card shadow="never"><div class="metric-card__label">出库数量</div><div class="metric-card__value">{{ data.summary.out_qty ?? 0 }}</div></el-card>
@@ -78,7 +79,7 @@
             </div>
           </el-card>
 
-          <el-card shadow="never">
+          <el-card shadow="never" v-loading="detailRefreshing && !isUsingWarmDetailCache" element-loading-text="正在补载明细…">
             <template #header><b>{{ activeTypeLabel }} Top 10</b></template>
             <el-table :data="topTable" size="small" border height="360">
               <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
@@ -115,17 +116,34 @@ import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
 
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
-const days = ref(30);
-const reportMode = ref<"parts"|"pc"|"monitor">("parts");
-const data = ref<any|null>(null);
-const refreshing = ref(false);
-const isUsingWarmCache = ref(false);
-const cacheStamp = ref(0);
+const DASHBOARD_PREF_KEY = 'inventory:dashboard:prefs:v1';
 const CACHE_TTL_MS = 45_000;
-const dashboardCache = new Map<string, { data: any; fetchedAt: number }>();
-const pendingRequests = new Map<string, Promise<any>>();
-let activeRequestId = 0;
-let activeController: AbortController | null = null;
+const DETAIL_KEYS = [
+  'top_out', 'top_in', 'top_return', 'top_recycle', 'top_transfer', 'top_scrap',
+  'category_out', 'category_in', 'category_return', 'category_recycle', 'category_transfer', 'category_scrap',
+] as const;
+
+type ReportMode = 'parts' | 'pc' | 'monitor';
+
+const days = ref(30);
+const reportMode = ref<ReportMode>('parts');
+const data = ref<any | null>(null);
+const summaryRefreshing = ref(false);
+const detailRefreshing = ref(false);
+const refreshing = computed(() => summaryRefreshing.value);
+const isUsingWarmCache = ref(false);
+const isUsingWarmDetailCache = ref(false);
+const summaryCacheStamp = ref(0);
+const detailCacheStamp = ref(0);
+const summaryCache = new Map<string, { data: any; fetchedAt: number }>();
+const detailCache = new Map<string, { data: any; fetchedAt: number }>();
+const pendingSummaryRequests = new Map<string, Promise<any>>();
+const pendingDetailRequests = new Map<string, Promise<any>>();
+let activeSummaryRequestId = 0;
+let activeDetailRequestId = 0;
+let activeSummaryController: AbortController | null = null;
+let activeDetailController: AbortController | null = null;
+const prefsReady = ref(false);
 
 const reportModeOptions = computed(() => {
   const allowed = scopeModeOptions(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2);
@@ -134,15 +152,37 @@ const reportModeOptions = computed(() => {
 const scopeLabel = computed(() => dataScopeLabel(auth.user?.data_scope_type, auth.user?.data_scope_value, auth.user?.data_scope_value2));
 const scopeTagType = computed(() => auth.user?.data_scope_type && auth.user?.data_scope_type !== 'all' ? 'warning' : 'success');
 
-const activeType = ref<string>("OUT");
+const activeType = ref<string>('OUT');
 const typeOptions = computed(() => {
   if (reportMode.value === 'pc') return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }, { label: '归还', value: 'RETURN' }, { label: '回收', value: 'RECYCLE' }, { label: '报废', value: 'SCRAP' }];
   if (reportMode.value === 'monitor') return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }, { label: '归还', value: 'RETURN' }, { label: '调拨', value: 'TRANSFER' }, { label: '报废', value: 'SCRAP' }];
   return [{ label: '出库', value: 'OUT' }, { label: '入库', value: 'IN' }];
 });
-const activeTypeLabel = computed(() => ({ OUT:'出库', IN:'入库', RETURN:'归还', RECYCLE:'回收', SCRAP:'报废', TRANSFER: '调拨' } as Record<string,string>)[activeType.value] || activeType.value);
+const activeTypeLabel = computed(() => ({ OUT: '出库', IN: '入库', RETURN: '归还', RECYCLE: '回收', SCRAP: '报废', TRANSFER: '调拨' } as Record<string, string>)[activeType.value] || activeType.value);
 const governanceArchiveCount = computed(() => Number(data.value?.governance?.archived_pc_count || 0) + Number(data.value?.governance?.archived_monitor_count || 0));
 const summaryColumns = computed(() => reportMode.value === 'parts' ? 'repeat(4, minmax(0,1fr))' : reportMode.value === 'monitor' ? 'repeat(6, minmax(0,1fr))' : 'repeat(5, minmax(0,1fr))');
+
+function readDashboardPrefs() {
+  if (typeof window === 'undefined') return;
+  try {
+    const raw = window.localStorage.getItem(DASHBOARD_PREF_KEY);
+    if (!raw) return;
+    const parsed = JSON.parse(raw);
+    const storedDays = Number(parsed?.days || 0);
+    if ([7, 14, 30, 90].includes(storedDays)) days.value = storedDays;
+  } catch {
+    // ignore
+  }
+}
+
+function writeDashboardPrefs() {
+  if (typeof window === 'undefined') return;
+  try {
+    window.localStorage.setItem(DASHBOARD_PREF_KEY, JSON.stringify({ days: days.value }));
+  } catch {
+    // ignore
+  }
+}
 
 function buildCacheKey(mode = reportMode.value, dayCount = days.value) {
   return JSON.stringify({
@@ -155,13 +195,23 @@ function buildCacheKey(mode = reportMode.value, dayCount = days.value) {
   });
 }
 
-function getCachedPayload(mode = reportMode.value, dayCount = days.value) {
-  void cacheStamp.value;
-  return dashboardCache.get(buildCacheKey(mode, dayCount)) || null;
+function getCachedSummary(mode = reportMode.value, dayCount = days.value) {
+  void summaryCacheStamp.value;
+  return summaryCache.get(buildCacheKey(mode, dayCount)) || null;
 }
 
-function isCacheFresh(mode = reportMode.value, dayCount = days.value) {
-  const cached = getCachedPayload(mode, dayCount);
+function getCachedDetail(mode = reportMode.value, dayCount = days.value) {
+  void detailCacheStamp.value;
+  return detailCache.get(buildCacheKey(mode, dayCount)) || null;
+}
+
+function isSummaryFresh(mode = reportMode.value, dayCount = days.value) {
+  const cached = getCachedSummary(mode, dayCount);
+  return !!cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS;
+}
+
+function isDetailFresh(mode = reportMode.value, dayCount = days.value) {
+  const cached = getCachedDetail(mode, dayCount);
   return !!cached && (Date.now() - cached.fetchedAt) < CACHE_TTL_MS;
 }
 
@@ -190,7 +240,7 @@ const categoryTitle = computed(() => {
   return '分类';
 });
 const lastUpdatedLabel = computed(() => {
-  const cached = getCachedPayload();
+  const cached = getCachedSummary();
   if (!cached?.fetchedAt) return '';
   const dt = new Date(cached.fetchedAt);
   const hh = String(dt.getHours()).padStart(2, '0');
@@ -206,29 +256,110 @@ function normalizeErrorMessage(message?: string) {
   return raw;
 }
 
-async function fetchDashboard(mode = reportMode.value, dayCount = days.value, force = false, signal?: AbortSignal) {
+function emptyDetailPayload() {
+  return Object.fromEntries(DETAIL_KEYS.map((key) => [key, []]));
+}
+
+function mergeDashboardPayload(summary: any, detail?: any) {
+  return {
+    ...(summary || {}),
+    ...emptyDetailPayload(),
+    ...(detail || {}),
+    mode: summary?.mode || detail?.mode || reportMode.value,
+    range: summary?.range || detail?.range || data.value?.range || { from: '', to: '', days: days.value },
+    scope: summary?.scope || data.value?.scope || null,
+    snapshot: summary?.snapshot || data.value?.snapshot || null,
+    summary: summary?.summary || data.value?.summary || {},
+    governance: summary?.governance || data.value?.governance || {},
+    stability: summary?.stability || data.value?.stability || {},
+  };
+}
+
+async function fetchSummary(mode = reportMode.value, dayCount = days.value, force = false, signal?: AbortSignal) {
   const cacheKey = buildCacheKey(mode, dayCount);
   if (!force) {
-    const pending = pendingRequests.get(cacheKey);
+    const pending = pendingSummaryRequests.get(cacheKey);
     if (pending) return pending;
   }
   const url = `/api/reports/summary?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
-    dashboardCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
-    cacheStamp.value += 1;
+    summaryCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
+    summaryCacheStamp.value += 1;
     return result;
   }).finally(() => {
-    pendingRequests.delete(cacheKey);
+    pendingSummaryRequests.delete(cacheKey);
   });
-  pendingRequests.set(cacheKey, requestPromise);
+  pendingSummaryRequests.set(cacheKey, requestPromise);
+  return requestPromise;
+}
+
+async function fetchDetail(mode = reportMode.value, dayCount = days.value, force = false, signal?: AbortSignal) {
+  const cacheKey = buildCacheKey(mode, dayCount);
+  if (!force) {
+    const pending = pendingDetailRequests.get(cacheKey);
+    if (pending) return pending;
+  }
+  const url = `/api/reports/detail?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
+  const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
+    detailCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
+    detailCacheStamp.value += 1;
+    return result;
+  }).finally(() => {
+    pendingDetailRequests.delete(cacheKey);
+  });
+  pendingDetailRequests.set(cacheKey, requestPromise);
   return requestPromise;
 }
 
 async function prefetchOtherModes() {
   const candidates = reportModeOptions.value.map((item: any) => item.value).filter((mode: string) => mode !== reportMode.value);
   for (const mode of candidates) {
-    if (isCacheFresh(mode, days.value) || pendingRequests.has(buildCacheKey(mode, days.value))) continue;
-    fetchDashboard(mode, days.value, false).catch(() => {});
+    if (isSummaryFresh(mode as ReportMode, days.value) || pendingSummaryRequests.has(buildCacheKey(mode as ReportMode, days.value))) continue;
+    fetchSummary(mode as ReportMode, days.value, false).catch(() => {});
+  }
+}
+
+async function loadDetail(mode = reportMode.value, dayCount = days.value, force = false, silent = false) {
+  const currentSelection = mode === reportMode.value && dayCount === days.value;
+  const cachedDetail = getCachedDetail(mode, dayCount);
+  if (currentSelection) {
+    isUsingWarmDetailCache.value = !!cachedDetail;
+    if (cachedDetail) {
+      const summary = getCachedSummary(mode, dayCount)?.data || data.value;
+      data.value = mergeDashboardPayload(summary, cachedDetail.data);
+    }
+  }
+  if (!force && cachedDetail && isDetailFresh(mode, dayCount)) {
+    if (currentSelection) detailRefreshing.value = false;
+    return cachedDetail.data;
+  }
+
+  let requestId = 0;
+  let controller: AbortController | undefined;
+  if (currentSelection) {
+    activeDetailRequestId += 1;
+    requestId = activeDetailRequestId;
+    if (activeDetailController) activeDetailController.abort();
+    activeDetailController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+    controller = activeDetailController || undefined;
+    detailRefreshing.value = true;
+  }
+
+  try {
+    const detail = await fetchDetail(mode, dayCount, force, controller?.signal);
+    if (!currentSelection) return detail;
+    if (requestId !== activeDetailRequestId) return detail;
+    if (mode !== reportMode.value || dayCount !== days.value) return detail;
+    const summary = getCachedSummary(mode, dayCount)?.data || data.value;
+    data.value = mergeDashboardPayload(summary, detail);
+    isUsingWarmDetailCache.value = false;
+    return detail;
+  } catch (e: any) {
+    if (e?.name === 'AbortError') return null;
+    if (!silent && currentSelection) ElMessage.warning(normalizeErrorMessage(e.message || '看板明细补载失败'));
+    return null;
+  } finally {
+    if (currentSelection && requestId === activeDetailRequestId) detailRefreshing.value = false;
   }
 }
 
@@ -239,31 +370,37 @@ async function refresh(force = false) {
   }
   const mode = reportMode.value;
   const dayCount = days.value;
-  const cached = getCachedPayload(mode, dayCount);
-  isUsingWarmCache.value = !!cached;
-  if (cached) data.value = cached.data;
-  if (!force && cached && isCacheFresh(mode, dayCount)) {
-    refreshing.value = false;
-    prefetchOtherModes();
+  const cachedSummary = getCachedSummary(mode, dayCount);
+  const cachedDetail = getCachedDetail(mode, dayCount);
+  isUsingWarmCache.value = !!cachedSummary;
+  isUsingWarmDetailCache.value = !!cachedDetail;
+  if (cachedSummary) data.value = mergeDashboardPayload(cachedSummary.data, cachedDetail?.data);
+
+  if (!force && cachedSummary && isSummaryFresh(mode, dayCount)) {
+    summaryRefreshing.value = false;
+    void loadDetail(mode, dayCount, false, true);
+    void prefetchOtherModes();
     return;
   }
 
-  activeRequestId += 1;
-  const requestId = activeRequestId;
-  if (activeController) activeController.abort();
-  activeController = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  refreshing.value = true;
+  activeSummaryRequestId += 1;
+  const requestId = activeSummaryRequestId;
+  if (activeSummaryController) activeSummaryController.abort();
+  activeSummaryController = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  summaryRefreshing.value = true;
   try {
-    const result = await fetchDashboard(mode, dayCount, force, activeController?.signal);
-    if (requestId !== activeRequestId) return;
-    data.value = result;
+    const summary = await fetchSummary(mode, dayCount, force, activeSummaryController?.signal || undefined);
+    if (requestId !== activeSummaryRequestId) return;
+    if (mode !== reportMode.value || dayCount !== days.value) return;
+    data.value = mergeDashboardPayload(summary, cachedDetail?.data);
     isUsingWarmCache.value = false;
+    void loadDetail(mode, dayCount, force, true);
   } catch (e: any) {
     if (e?.name === 'AbortError') return;
     ElMessage.error(normalizeErrorMessage(e.message));
   } finally {
-    if (requestId === activeRequestId) refreshing.value = false;
-    prefetchOtherModes();
+    if (requestId === activeSummaryRequestId) summaryRefreshing.value = false;
+    void prefetchOtherModes();
   }
 }
 
@@ -273,8 +410,8 @@ const seriesFilled = computed(() => {
   const map = new Map<string, number>();
   for (const r of raw) map.set(r.day, Number(r.qty));
   const out: any[] = [];
-  const to = String(data.value.range.to || "");
-  const from = String(data.value.range.from || "");
+  const to = String(data.value.range.to || '');
+  const from = String(data.value.range.from || '');
   if (!from || !to) return raw;
   let cur = from;
   while (cur <= to) {
@@ -299,8 +436,14 @@ watch(reportModeOptions, (opts) => {
   if (!allowed.includes(reportMode.value)) reportMode.value = allowed[0] || 'pc';
 }, { immediate: true });
 
+watch(days, () => {
+  if (!prefsReady.value) return;
+  writeDashboardPrefs();
+});
+
 watch([reportMode, days, () => warehouseId.value], () => {
-  refresh(false);
+  if (!prefsReady.value) return;
+  void refresh(false);
 });
 
 watch(reportMode, () => {
@@ -309,8 +452,10 @@ watch(reportMode, () => {
 });
 
 onMounted(async () => {
+  readDashboardPrefs();
   const allowed = reportModeOptions.value.map((x: any) => x.value);
   if (allowed.length === 1) reportMode.value = allowed[0];
+  prefsReady.value = true;
   await refresh(false);
 });
 </script>

@@ -22,6 +22,7 @@ import {
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { requireAuthWithDataScope } from './services/data-scope';
+import { assertPcBrandDictionaryValue } from './services/master-data';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -66,6 +67,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该电脑已归档，请先恢复归档后再编辑'), { status: 400 });
 
     const payload = parsePcAssetInput(body);
+    await assertPcBrandDictionaryValue(env.DB, payload.brand, '电脑品牌');
     await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE serial_no=? AND id<>?', [payload.serial_no, id], '序列号已存在');
 
     await env.DB

@@ -10,6 +10,7 @@ import {
   toAssetStatusAfterOut,
 } from "./_pc";
 import { applyPcOut } from "./services/asset-write";
+import { assertDepartmentDictionaryValue } from './services/master-data';
 
 type Item = {
   employee_no: string;
@@ -40,6 +41,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const it: any = items[i] || {};
         const employee_no = must(it?.employee_no, "员工工号", 60);
         const department = must(it?.department, "部门", 120);
+        await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
         const employee_name = must(it?.employee_name, "员工姓名", 120);
         const is_employed = optional(it?.is_employed, 40);
         const config_date = optional(it?.config_date, 40);

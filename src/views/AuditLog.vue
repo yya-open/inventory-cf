@@ -844,6 +844,29 @@ const payloadSummaryEntries = computed(() => {
 
 const payloadDiffEntries = computed(() => {
   const payload = parsedPayload.value as any;
+  const fieldDiffs = Array.isArray(payload?.field_diffs) ? payload.field_diffs : [];
+  if (fieldDiffs.length) {
+    return fieldDiffs
+      .filter((item: any) => {
+        const key = String(item?.key || '');
+        const last = key.split('.').filter(Boolean).pop() || key;
+        return !HIDDEN_PAYLOAD_KEYS.has(key) && !HIDDEN_PAYLOAD_KEYS.has(last);
+      })
+      .map((item: any) => {
+        const key = String(item?.key || '');
+        const last = key.split('.').filter(Boolean).pop() || key;
+        const baseLabel = fieldLabel(last);
+        const label = key && key !== last ? `${baseLabel}（${key}）` : baseLabel;
+        return {
+          key,
+          label,
+          before: formatAuditValue(item?.before),
+          after: formatAuditValue(item?.after),
+        };
+      })
+      .filter((item: any) => item.before !== item.after);
+  }
+
   const before = payload?.before;
   const after = payload?.after;
   if (!before || !after || typeof before !== 'object' || typeof after !== 'object') return [] as Array<{ key: string; label: string; before: string; after: string }>;

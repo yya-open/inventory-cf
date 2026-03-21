@@ -88,6 +88,56 @@ function pickFirstText(...values: any[]) {
   return null;
 }
 
+function isPlainObject(value: any) {
+  return !!value && Object.prototype.toString.call(value) === '[object Object]';
+}
+
+function isHiddenDiffKey(path: string) {
+  const lower = String(path || '').toLowerCase();
+  return ['password', 'password_hash', 'hashed_password', 'reset_password'].some((token) => lower.includes(token));
+}
+
+function flattenAuditValue(value: any, prefix = '', depth = 0, out: Record<string, any> = {}) {
+  if (!prefix && !isPlainObject(value)) return out;
+  if (depth >= 2 || value === null || Array.isArray(value) || !isPlainObject(value)) {
+    if (prefix) out[prefix] = value;
+    return out;
+  }
+  const entries = Object.entries(value);
+  if (!entries.length && prefix) {
+    out[prefix] = value;
+    return out;
+  }
+  for (const [key, child] of entries) {
+    const path = prefix ? `${prefix}.${key}` : key;
+    if (isHiddenDiffKey(path)) continue;
+    if (isPlainObject(child) && depth < 2) flattenAuditValue(child, path, depth + 1, out);
+    else out[path] = child;
+  }
+  return out;
+}
+
+function buildAuditFieldDiffs(payload: any) {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') return null;
+  if (Array.isArray(payload.field_diffs) && payload.field_diffs.length) return payload.field_diffs;
+  const before = payload.before;
+  const after = payload.after;
+  if (!isPlainObject(before) || !isPlainObject(after)) return null;
+  const flatBefore = flattenAuditValue(before);
+  const flatAfter = flattenAuditValue(after);
+  const keys = Array.from(new Set([...Object.keys(flatBefore), ...Object.keys(flatAfter)])).filter((key) => !isHiddenDiffKey(key));
+  const diffs = keys.map((key) => ({ key, before: flatBefore[key] ?? null, after: flatAfter[key] ?? null }))
+    .filter((item) => JSON.stringify(item.before ?? null) !== JSON.stringify(item.after ?? null));
+  return diffs.length ? diffs : null;
+}
+
+function enrichAuditPayload(payload: any) {
+  if (!payload || Array.isArray(payload) || typeof payload !== 'object') return payload;
+  const fieldDiffs = buildAuditFieldDiffs(payload);
+  if (!fieldDiffs?.length) return payload;
+  return { ...payload, field_diffs: fieldDiffs };
+}
+
 export function materializeAuditFields(action: string, entity: string | null | undefined, entityId: string | number | null | undefined, payload?: any) {
   const p = payload && typeof payload === 'object' ? payload : {};
   const after = p.after && typeof p.after === 'object' ? p.after : {};
@@ -161,8 +211,9 @@ export async function logAudit(
     const normalizedEntity = entity ?? null;
     const ip = getIp(request);
     const ua = request.headers.get('user-agent');
-    const payload_json = payload === undefined ? null : JSON.stringify(payload);
-    const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entity_id, payload);
+    const enrichedPayload = enrichAuditPayload(payload);
+    const payload_json = enrichedPayload === undefined ? null : JSON.stringify(enrichedPayload);
+    const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entity_id, enrichedPayload);
     await db.prepare(
       `INSERT INTO audit_log (
          user_id, username, action, entity, entity_id, payload_json, ip, ua,

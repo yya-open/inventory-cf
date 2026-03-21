@@ -2,6 +2,7 @@ import { requireAuth, errorResponse } from "../_auth";
 import { logAudit } from "./_audit";
 import { ensurePcSchema, must, optional, pcInNo } from "./_pc";
 import { createPcAssetAndInRecord } from "./services/asset-write";
+import { assertPcBrandDictionaryValue } from './services/master-data';
 
 type Item = {
   brand: string;
@@ -33,6 +34,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       try {
         const it: any = items[i] || {};
         const brand = must(it?.brand, "品牌", 120);
+        await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
         const serial_no = must(it?.serial_no, "序列号", 120);
         const model = must(it?.model, "型号", 160);
         const snKey = String(serial_no || "").trim();
