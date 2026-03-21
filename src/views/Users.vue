@@ -96,7 +96,7 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
-          <el-select v-model="form.data_scope_value2" filterable clearable style="width:100%" placeholder="请选择仓库">
+          <el-select v-model="createWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
@@ -144,7 +144,7 @@
           </el-select>
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
-          <el-select v-model="editDataScopeValue2" filterable clearable style="width:100%" placeholder="请选择仓库">
+          <el-select v-model="editWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
@@ -217,7 +217,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
@@ -252,6 +252,21 @@ const scopePreview = ref<any | null>(null);
 const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const warehouseOptions = computed(() => systemSettings.value.dictionary_asset_warehouse_options || []);
+const createWarehouseScopeValue = computed({
+  get: () => form.value.data_scope_type === 'warehouse' ? form.value.data_scope_value : form.value.data_scope_value2,
+  set: (value: string) => {
+    if (form.value.data_scope_type === 'warehouse') form.value.data_scope_value = value || '';
+    else form.value.data_scope_value2 = value || '';
+  },
+});
+
+const editWarehouseScopeValue = computed({
+  get: () => editDataScopeType.value === 'warehouse' ? editDataScopeValue.value : editDataScopeValue2.value,
+  set: (value: string) => {
+    if (editDataScopeType.value === 'warehouse') editDataScopeValue.value = value || '';
+    else editDataScopeValue2.value = value || '';
+  },
+});
 const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean>, data_scope_type: 'all' as 'all' | 'department' | 'warehouse' | 'department_warehouse', data_scope_value: '', data_scope_value2: '' });
 
 const editing = ref<Row|null>(null);
@@ -263,6 +278,32 @@ const editDataScopeType = ref<'all' | 'department' | 'warehouse' | 'department_w
 const editDataScopeValue = ref('');
 const editDataScopeValue2 = ref('');
 const resetPwd = ref("");
+
+watch(() => form.value.data_scope_type, (type) => {
+  if (type === 'all') {
+    form.value.data_scope_value = '';
+    form.value.data_scope_value2 = '';
+    return;
+  }
+  if (type === 'department') form.value.data_scope_value2 = '';
+  if (type === 'warehouse') {
+    form.value.data_scope_value = form.value.data_scope_value || form.value.data_scope_value2 || '';
+    form.value.data_scope_value2 = '';
+  }
+});
+
+watch(editDataScopeType, (type) => {
+  if (type === 'all') {
+    editDataScopeValue.value = '';
+    editDataScopeValue2.value = '';
+    return;
+  }
+  if (type === 'department') editDataScopeValue2.value = '';
+  if (type === 'warehouse') {
+    editDataScopeValue.value = editDataScopeValue.value || editDataScopeValue2.value || '';
+    editDataScopeValue2.value = '';
+  }
+});
 
 function roleText(r: string) {
   return r==="admin" ? "管理员" : r==="operator" ? "操作员" : "只读";
@@ -277,7 +318,8 @@ async function load() {
     qs.set("sort_by", String(sortBy.value || "created_at"));
     qs.set("sort_dir", String(sortDir.value || "desc"));
     if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
-    const r = await apiGet<{ ok:boolean; data: Row[]; total:number }>("/api/users?" + qs.toString());
+    qs.set("_ts", String(Date.now()));
+    const r = await apiGet<{ ok:boolean; data: Row[]; total:number }>("/api/users?" + qs.toString(), { cache: "no-store" });
     rows.value = r.data || [];
     total.value = Number((r as any).total || 0);
   } catch (e:any) {
@@ -351,7 +393,9 @@ async function createUser() {
   if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
   try {
-    await apiPost<any>("/api/users", { ...form.value, ...normalizedScope });
+    const r = await apiPost<any>("/api/users", { ...form.value, ...normalizedScope });
+    rows.value = [r.data as any, ...rows.value].slice(0, pageSize.value);
+    total.value += 1;
     ElMessage.success("创建成功");
     showCreate.value = false;
     await load();
@@ -383,7 +427,8 @@ async function saveEdit() {
   if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
   try {
-    await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
+    const r = await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
+    rows.value = rows.value.map((item) => item.id === editing.value?.id ? ({ ...(item as any), ...(r.data as any) }) : item);
     ElMessage.success("已更新");
     showEdit.value = false;
     await load();
