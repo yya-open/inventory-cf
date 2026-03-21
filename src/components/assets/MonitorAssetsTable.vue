@@ -11,7 +11,9 @@
       @header-dragend="handleHeaderDragend"
     >
       <el-table-column type="selection" width="48" fixed="left" />
-      <el-table-column prop="id" label="ID" width="70" fixed="left" />
+      <el-table-column label="序号" width="78" fixed="left" align="center">
+        <template #default="{ $index }">{{ sequenceNumber($index) }}</template>
+      </el-table-column>
 
       <template v-for="key in orderedVisibleColumns" :key="key">
         <el-table-column v-if="key === 'assetCode'" column-key="assetCode" prop="asset_code" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="160" fixed="left" />
@@ -143,6 +145,7 @@ const orderedVisibleColumns = computed(() => props.visibleColumns);
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
+const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 
 async function syncSelection() {
   if (!tableRef.value) return;

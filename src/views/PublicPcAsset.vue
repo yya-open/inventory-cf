@@ -490,7 +490,7 @@ onBeforeUnmount(() => {
 .next-title{font-weight:700}.next-subtitle{font-size:12px;color:#7a7a7a;margin-top:4px}
 .camera-panel{margin-top:12px;padding:12px;border:1px solid rgba(64,158,255,.18);border-radius:14px;background:rgba(64,158,255,.04)}
 .camera-frame{position:relative;overflow:hidden;border-radius:12px;background:#0f1720;min-height:220px}
-.camera-video{width:100%;height:min(46vh,320px);object-fit:cover;display:block}
+.camera-video{width:100%;height:min(40vh,280px);object-fit:cover;display:block}
 .camera-overlay{position:absolute;inset:0;pointer-events:none;border:2px solid rgba(255,255,255,.42);border-radius:12px;box-shadow:inset 0 0 0 9999px rgba(0,0,0,.10)}
 .camera-actions{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
 .camera-error{margin-top:8px;color:#d03050;font-size:12px;line-height:1.6}
@@ -509,7 +509,8 @@ onBeforeUnmount(() => {
   .public-actions :deep(.el-button){flex:1 1 calc(50% - 6px);min-height:46px}
   .scan-mode-switch{width:100%}
   .camera-panel{padding:10px}
-  .camera-video{height:260px}
+  .camera-frame{min-height:180px}
+  .camera-video{height:min(32vh,220px)}
   .public-next-body{flex-direction:column;align-items:stretch}
   .public-next-body :deep(.el-button){width:100%}
   :deep(.el-descriptions__label){width:98px}
