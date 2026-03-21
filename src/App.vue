@@ -47,6 +47,9 @@
           <el-menu-item index="/system/release-check">
             发布前检查
           </el-menu-item>
+          <el-menu-item index="/system/performance">
+            性能面板
+          </el-menu-item>
           <el-menu-item index="/system/docs">
             系统交付文档
           </el-menu-item>

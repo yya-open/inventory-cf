@@ -8,7 +8,7 @@
       <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>
-        <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '预计算中' : '预计算看板快照' }}</el-button>
+        <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '提交中' : '提交快照预计算任务' }}</el-button>
         <el-button @click="reloadAll">刷新</el-button>
       </div>
     </div>
@@ -43,6 +43,7 @@
 
         <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px">
           <el-button :loading="scanning" @click="scanAll">先扫描</el-button>
+          <el-button @click="queueDeepScan">异步深度巡检</el-button>
           <el-button type="primary" :loading="running==='repair_all'" :disabled="!schema.ok" @click="runRepair('repair_all')">一键全量修复</el-button>
           <el-button :loading="running==='repair_pc_latest_state'" :disabled="!schema.ok" @click="runRepair('repair_pc_latest_state')">{{ actionButtonText('repair_pc_latest_state', '重建电脑快照') }}</el-button>
           <el-button :loading="running==='repair_dictionary_counters'" :disabled="!schema.ok" @click="runRepair('repair_dictionary_counters')">{{ actionButtonText('repair_dictionary_counters', '重算字典引用') }}</el-button>
@@ -85,7 +86,7 @@
       <el-tab-pane label="异步任务" name="jobs">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
           <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="loadJobs"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:180px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:200px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /></el-select>
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
@@ -234,10 +235,11 @@ function formatDuration(ms?: number | null) {
 async function runSnapshotPrecompute() {
   snapshotPrecomputing.value = true;
   try {
-    const r = await apiPost<any>('/api/reports/precompute', { days: 90, force: true });
-    ElMessage.success(r?.message || '看板快照预计算完成');
+    const r = await apiPost<any>('/api/jobs', { job_type: 'DASHBOARD_PRECOMPUTE', request_json: { days: 90, force: true }, retain_days: 7, max_retries: 1 });
+    ElMessage.success(r?.message || '已提交看板快照预计算任务');
+    await loadJobs();
   } catch (e: any) {
-    ElMessage.error(e.message || '看板快照预计算失败');
+    ElMessage.error(e.message || '提交看板快照预计算任务失败');
   } finally {
     snapshotPrecomputing.value = false;
   }
@@ -335,6 +337,16 @@ async function loadHealth() {
 
 async function reloadAll() {
   await Promise.all([loadBase(), loadObservability(), loadHealth()]);
+}
+
+async function queueDeepScan() {
+  try {
+    const r:any = await apiPost('/api/jobs', { job_type: 'OPS_SCAN_REFRESH', request_json: {}, retain_days: 7, max_retries: 1 });
+    ElMessage.success(r.message || '已提交深度巡检任务');
+    await loadJobs();
+  } catch (e:any) {
+    ElMessage.error(e.message || '提交深度巡检任务失败');
+  }
 }
 
 async function scanAll() {

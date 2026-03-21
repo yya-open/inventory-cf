@@ -78,6 +78,7 @@ async function logErrorRequest(context: any, t: ReturnType<typeof createTiming>,
          created_at TEXT DEFAULT (${sqlNowStored()})
        )`
     ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)`).run();
     await db.prepare(
       `INSERT INTO request_error_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
@@ -128,6 +129,7 @@ async function logSlowRequest(context: any, t: ReturnType<typeof createTiming>, 
              created_at TEXT DEFAULT (${sqlNowStored()})
            )`
         ).run();
+        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status)`).run();
         await db.prepare(
           `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
            VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`

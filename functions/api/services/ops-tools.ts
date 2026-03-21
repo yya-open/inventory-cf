@@ -36,6 +36,22 @@ const REPAIR_ACTION_LABEL: Record<string, string> = {
   repair_search_norm: '重建搜索规范化',
 };
 
+export async function ensureSlowRequestLogTable(db: D1Database) {
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS slow_request_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      method TEXT,
+      path TEXT,
+      status INTEGER,
+      total_ms INTEGER,
+      sql_ms INTEGER,
+      auth_ms INTEGER,
+      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+    )`
+  ).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status)`).run();
+}
+
 export async function ensureRequestErrorLogTable(db: D1Database) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS request_error_log (
@@ -49,6 +65,7 @@ export async function ensureRequestErrorLogTable(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
     )`
   ).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)`).run();
 }
 
 export async function ensureOpsScanStateTable(db: D1Database) {

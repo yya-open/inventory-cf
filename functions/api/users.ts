@@ -53,11 +53,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const where = kw.sql ? `WHERE ${kw.sql}` : "";
 
     await Promise.all([ensureUserPermissionsTable(env.DB), ensureUserPermissionTemplateColumn(env.DB)]);
-    const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM users ${where}`).bind(...kw.binds).first<any>();
-    const { results } = await env.DB
-      .prepare(`SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
-      .bind(...kw.binds, pageSize, offset)
-      .all();
+    const [totalRow, listResult] = await Promise.all([
+      env.DB.prepare(`SELECT COUNT(*) as c FROM users ${where}`).bind(...kw.binds).first<any>(),
+      env.DB
+        .prepare(`SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
+        .bind(...kw.binds, pageSize, offset)
+        .all(),
+    ]);
+    const { results } = listResult as any;
     const userIds = (results || []).map((row: any) => Number(row?.id || 0)).filter(Boolean);
     const permissionOverrides = new Map<number, Record<string, boolean>>();
     if (userIds.length) {

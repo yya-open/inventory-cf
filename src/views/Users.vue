@@ -181,6 +181,16 @@
             <div v-for="tip in scopePreview.tips || []" :key="tip">{{ tip }}</div>
           </template>
         </el-alert>
+        <el-card shadow="never">
+          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
+            <div style="font-weight:700">权限策略测试器</div>
+            <el-select v-model="previewTargetPath" style="min-width:280px; flex:1" placeholder="请选择要测试的入口">
+              <el-option v-for="item in scopePreview.route_checks || []" :key="item.path" :label="item.label" :value="item.path" />
+            </el-select>
+            <el-tag v-if="previewRouteResult" :type="previewRouteResult.enabled ? 'success' : 'danger'">{{ previewRouteResult.enabled ? '允许访问' : '将被拦截' }}</el-tag>
+          </div>
+          <div style="margin-top:8px; color:#666">{{ previewRouteResult?.reason || '请选择一个入口查看策略结果' }}</div>
+        </el-card>
         <el-row :gutter="12">
           <el-col :span="8"><el-card shadow="never"><div style="color:#999">电脑台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
           <el-col :span="8"><el-card shadow="never"><div style="color:#999">显示器台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
@@ -192,6 +202,13 @@
             <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'info'">{{ row.enabled ? '可见' : '不可见' }}</el-tag></template>
           </el-table-column>
           <el-table-column prop="reason" label="说明" min-width="220" />
+        </el-table>
+        <el-table :data="scopePreview.route_checks || []" border>
+          <el-table-column prop="label" label="入口" min-width="220" />
+          <el-table-column label="策略结果" width="120">
+            <template #default="{ row }"><el-tag :type="row.enabled ? 'success' : 'danger'">{{ row.enabled ? '允许' : '拦截' }}</el-tag></template>
+          </el-table-column>
+          <el-table-column prop="reason" label="命中规则" min-width="260" />
         </el-table>
       </div>
       <div v-else style="color:#999">暂无预览数据</div>
@@ -248,6 +265,8 @@ const showEdit = ref(false);
 const showReset = ref(false);
 const showScopePreview = ref(false);
 const scopePreview = ref<any | null>(null);
+const previewTargetPath = ref('');
+const previewRouteResult = computed(() => (scopePreview.value?.route_checks || []).find((item:any) => item.path === previewTargetPath.value) || null);
 
 const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
@@ -352,10 +371,11 @@ function editScopePayload() {
   return { data_scope_type: normalizedScope.data_scope_type, data_scope_value: normalizedScope.data_scope_value, data_scope_value2: normalizedScope.data_scope_value2 };
 }
 
-async function previewScope(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string }) {
+async function previewScope(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string; role: string }) {
   try {
     const r = await apiPost<any>('/api/users/preview-scope', payload);
     scopePreview.value = r.data || null;
+    previewTargetPath.value = scopePreview.value?.route_checks?.find((item:any) => item.enabled)?.path || scopePreview.value?.route_checks?.[0]?.path || '';
     showScopePreview.value = true;
   } catch (e: any) {
     ElMessage.error(e.message || '预览失败');
@@ -363,11 +383,11 @@ async function previewScope(payload: { data_scope_type: string; data_scope_value
 }
 
 function previewCreateScope() {
-  previewScope(createScopePayload());
+  previewScope({ ...createScopePayload(), role: form.value.role });
 }
 
 function previewEditScope() {
-  previewScope(editScopePayload());
+  previewScope({ ...editScopePayload(), role: editRole.value });
 }
 
 function applyCreateTemplate() {

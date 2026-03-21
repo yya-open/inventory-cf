@@ -1,8 +1,10 @@
 import { sqlNowStored } from '../_time';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
+import { precomputeDashboardSnapshots } from './dashboard-report';
+import { getAutoRepairScan } from './ops-tools';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -65,6 +67,16 @@ async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limi
 }
 
 async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any) {
+  if (type === 'DASHBOARD_PRECOMPUTE') {
+    const result = await precomputeDashboardSnapshots(db, { days: Number(requestJson?.days || 90), force: requestJson?.force === true || requestJson?.force === 1 || requestJson?.force === '1' });
+    return { text: JSON.stringify(result, null, 2), filename: `dashboard_precompute_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: `看板快照预计算完成：执行 ${result.runs} 个范围任务` };
+  }
+
+  if (type === 'OPS_SCAN_REFRESH') {
+    const result = await getAutoRepairScan(db, { forceRefresh: true });
+    return { text: JSON.stringify(result, null, 2), filename: `ops_scan_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: `深度巡检完成：发现 ${Number(result?.total_problem_count || 0)} 类问题` };
+  }
+
   if (type === 'AUDIT_EXPORT') {
     const url = new URL('https://local/export');
     for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));

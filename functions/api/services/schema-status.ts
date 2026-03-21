@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202603200060_ops_alerts_repair_history";
+export const REQUIRED_SCHEMA_VERSION = "202603210030_p3_perf_indexes";
 
 type SchemaStatus = {
   ok: boolean;
@@ -44,6 +44,9 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'ops_scan_state', label: '运维自动巡检缓存表', ok: tables.has('ops_scan_state'), need: 'ops_scan_state' },
     { key: 'backup_drill_runs', label: '备份恢复演练记录表', ok: tables.has('backup_drill_runs'), need: 'backup_drill_runs' },
     { key: 'admin_repair_history', label: '修复历史表', ok: tables.has('admin_repair_history'), need: 'admin_repair_history' },
+    { key: 'idx_report_daily_snapshots_scope_day', label: '看板快照组合索引', ok: indexes.has('idx_report_daily_snapshots_scope_day'), need: 'idx_report_daily_snapshots_scope_day' },
+    { key: 'idx_slow_request_log_created_path', label: '慢请求聚合索引', ok: indexes.has('idx_slow_request_log_created_path'), need: 'idx_slow_request_log_created_path' },
+    { key: 'idx_request_error_log_created_status', label: '错误请求聚合索引', ok: indexes.has('idx_request_error_log_created_status'), need: 'idx_request_error_log_created_status' },
   ];
 
   let currentVersion: string | null = null;

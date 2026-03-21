@@ -47,6 +47,7 @@
           </el-card>
         </el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="发布前检查" desc="发布前统一确认数据库版本、巡检问题、失败任务与 5xx 情况" @open="go('/system/release-check')" /></el-col>
+        <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="性能面板" desc="查看最近慢请求、错误路径、接口 P95，并持续定位性能瓶颈" @open="go('/system/performance')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="系统交付文档" desc="发布顺序、运维按钮说明、常见异常处理与备份恢复 SOP" @open="go('/system/docs')" /></el-col>
       </el-row>
     </el-card>

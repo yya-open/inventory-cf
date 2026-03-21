@@ -7,7 +7,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await requireAuth(env, request, 'admin');
     const body = await request.json().catch(() => ({} as any));
     const scope = normalizeUserDataScope(body?.data_scope_type, body?.data_scope_value, body?.data_scope_value2);
-    return Response.json({ ok: true, data: await buildScopePreview(env.DB, scope) });
+    const role = ['admin', 'operator', 'viewer'].includes(String(body?.role || '')) ? String(body?.role) as any : 'viewer';
+    return Response.json({ ok: true, data: await buildScopePreview(env.DB, scope, role) });
   } catch (e: any) {
     return errorResponse(e);
   }
