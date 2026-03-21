@@ -4,7 +4,7 @@ import type { PagedResponse } from '../api/assetLedgers';
 type AssetPageOptions<TFilters, TItem> = {
   createFilterKey: (filters: TFilters) => string;
   fetchPage: (filters: TFilters, page: number, pageSize: number, fast: boolean, signal?: AbortSignal) => Promise<PagedResponse<TItem>>;
-  fetchTotal: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
+  fetchTotal?: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
 };
 
 export function useAssetLedgerPage<TFilters, TItem>(options: AssetPageOptions<TFilters, TItem>) {

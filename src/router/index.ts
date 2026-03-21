@@ -1,5 +1,4 @@
 import { createRouter, createWebHistory } from "vue-router";
-import SystemPerformance from "../views/SystemPerformance.vue";
 const StockQuery = () => import("../views/StockQuery.vue");
 const StockIn = () => import("../views/StockIn.vue");
 const StockOut = () => import("../views/StockOut.vue");
@@ -29,6 +28,7 @@ const MonitorTx = () => import("../views/MonitorTx.vue");
 const SystemHome = () => import("../views/SystemHome.vue");
 const SystemSettings = () => import("../views/SystemSettings.vue");
 const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
+const SystemPerformance = () => import("../views/SystemPerformance.vue");
 const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
 const SystemDocs = () => import("../views/SystemDocs.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");

@@ -224,16 +224,13 @@
 import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { countMonitorAssets, listAllLocations, listEnabledLocations, listMonitorAssets } from '../api/assetLedgers';
+import { listAllLocations, listEnabledLocations, listMonitorAssets } from '../api/assetLedgers';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
-import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
-import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
@@ -277,6 +274,26 @@ const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
+
+let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
+let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
+let qrCardUtilsPromise: Promise<typeof import('../utils/qrCards')> | null = null;
+let locationsLoadingPromise: Promise<void> | null = null;
+
+function loadQrCodeLib() {
+  qrCodeLibPromise ||= import('qrcode');
+  return qrCodeLibPromise;
+}
+
+function loadExcelUtils() {
+  excelUtilsPromise ||= import('../utils/excel');
+  return excelUtilsPromise;
+}
+
+function loadQrCardUtils() {
+  qrCardUtilsPromise ||= import('../utils/qrCards');
+  return qrCardUtilsPromise;
+}
 
 const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
@@ -333,30 +350,29 @@ async function handleMaybeMissingSchema(error: any) {
   ElMessage.success('初始化完成，请重试操作');
 }
 
-async function loadLocations() {
-  try {
-    locations.value = await listEnabledLocations();
-  } catch (error: any) {
-    await handleMaybeMissingSchema(error);
-  }
+async function loadLocations(force = false) {
+  if (!force && (locations.value.length || locationsLoadingPromise)) return locationsLoadingPromise;
+  const task = (async () => {
+    try {
+      locations.value = await listEnabledLocations();
+    } catch (error: any) {
+      await handleMaybeMissingSchema(error);
+    } finally {
+      locationsLoadingPromise = null;
+    }
+  })();
+  locationsLoadingPromise = task;
+  return task;
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: async (filters, currentPage, currentPageSize, fast) => {
+  fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
     try {
-      return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
     } catch (error: any) {
       await handleMaybeMissingSchema(error);
-      return await listMonitorAssets(filters, currentPage, currentPageSize, fast);
-    }
-  },
-  fetchTotal: async (filters) => {
-    try {
-      return await countMonitorAssets(filters);
-    } catch (error: any) {
-      await handleMaybeMissingSchema(error);
-      return await countMonitorAssets(filters);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
     }
   },
 });
@@ -533,6 +549,7 @@ async function exportSelectedQrLinks() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
     batchBusy.value = true;
+    const { exportToXlsx } = await loadExcelUtils();
     const linkRows = [];
     for (const row of selectedRows.value) {
       const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
@@ -588,6 +605,7 @@ async function exportSelectedQrCards() {
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    const { downloadQrCardsHtml } = await loadQrCardUtils();
     await downloadQrCardsHtml(`显示器二维码卡片_${records.length}条`, '显示器二维码卡片', records);
     ElMessage.success('二维码卡片已导出，可直接打印');
   } catch (error: any) {
@@ -606,8 +624,9 @@ async function confirmBatchRisk(title: string, message: string) {
   });
 }
 
-function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
+async function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
   if (!rows.length) return;
+  const { exportToXlsx } = await loadExcelUtils();
   exportToXlsx({
     filename,
     sheetName: '失败明细',
@@ -782,7 +801,7 @@ async function batchDeleteSelected() {
     const purged = Math.max(0, success - archived);
     if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台显示器（其中归档 ${archived} 台，彻底删除 ${purged} 台）` : `已删除 ${success} 台显示器`);
     else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
-    if (failedRecords.length) exportBatchFailures(`显示器批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
+    if (failedRecords.length) await exportBatchFailures(`显示器批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
     await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
@@ -796,6 +815,7 @@ async function exportSelectedRows() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的显示器');
   try {
     exportBusy.value = true;
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: `显示器台账_已选_${selectedCount.value}条.xlsx`,
       sheetName: '已选台账',
@@ -833,6 +853,7 @@ async function exportExcel() {
     exportBusy.value = true;
     if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: '显示器台账.xlsx',
       sheetName: '显示器台账',
@@ -872,6 +893,7 @@ async function exportArchiveRecords() {
     const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档显示器记录');
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: `显示器归档记录_${rowsToExport.length}条.xlsx`,
       sheetName: '显示器归档',
@@ -903,7 +925,8 @@ async function exportArchiveRecords() {
   }
 }
 
-function downloadMonitorTemplate() {
+async function downloadMonitorTemplate() {
+  const { downloadTemplate } = await loadExcelUtils();
   downloadTemplate({
     filename: '显示器台账导入模板.xlsx',
     headers: [
@@ -935,6 +958,7 @@ async function onImportMonitorFile(uploadFile: any) {
   if (!file) return;
   try {
     importBusy.value = true;
+    const { parseXlsx } = await loadExcelUtils();
     const excelRows = await parseXlsx(file);
     if (!excelRows.length) return ElMessage.warning('Excel里没有可导入的数据');
 
@@ -1197,6 +1221,7 @@ async function exportSelectedQrPng() {
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    const { downloadQrCardsPng } = await loadQrCardUtils();
     await downloadQrCardsPng(`显示器二维码图版_${records.length}条`, '显示器二维码图版', records);
     ElMessage.success('二维码图版(PNG)已导出');
   } catch (error: any) {
@@ -1224,7 +1249,10 @@ async function openQr(row: MonitorAsset) {
     const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`);
     const link = String(result?.url || '');
     qrLink.value = link;
-    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    if (link) {
+      const QRCode = await loadQrCodeLib();
+      qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    }
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
   } finally {
@@ -1266,7 +1294,10 @@ async function resetQr() {
     const result: any = await apiPost(`/api/monitor-assets-reset-qr?id=${id}`, {});
     const link = String(result?.url || '');
     qrLink.value = link;
-    if (link) qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    if (link) {
+      const QRCode = await loadQrCodeLib();
+      qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+    }
     ElMessage.success('已重置');
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
@@ -1314,6 +1345,7 @@ async function openLocationMgr() {
 }
 
 async function refreshLocationMgr() {
+  await loadLocations(true);
   dlgLoc.rows = (await listAllLocations()).map((item) => ({ ...item })) as MonitorAsset[];
   locations.value = dlgLoc.rows as any;
 }
@@ -1370,8 +1402,10 @@ function onSelectionChange(currentPageSelected: MonitorAsset[]) {
 
 onMounted(async () => {
   persistState();
-  await loadLocations();
   await load(currentFilters());
+  setTimeout(() => {
+    loadLocations().catch(() => undefined);
+  }, 0);
 });
 </script>
 

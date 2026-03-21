@@ -172,15 +172,12 @@
 import { computed, onMounted, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import QRCode from 'qrcode';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { countPcAssets, listPcAssets } from '../api/assetLedgers';
+import { listPcAssets } from '../api/assetLedgers';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
-import { downloadTemplate, exportToXlsx, parseXlsx } from '../utils/excel';
-import { downloadQrCardsHtml, downloadQrCardsPng } from '../utils/qrCards';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
@@ -221,6 +218,25 @@ const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_r
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 
+let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
+let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
+let qrCardUtilsPromise: Promise<typeof import('../utils/qrCards')> | null = null;
+
+function loadQrCodeLib() {
+  qrCodeLibPromise ||= import('qrcode');
+  return qrCodeLibPromise;
+}
+
+function loadExcelUtils() {
+  excelUtilsPromise ||= import('../utils/excel');
+  return excelUtilsPromise;
+}
+
+function loadQrCardUtils() {
+  qrCardUtilsPromise ||= import('../utils/qrCards');
+  return qrCardUtilsPromise;
+}
+
 
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
@@ -232,8 +248,7 @@ const currentFilters = (): PcFilters => ({
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<PcFilters, PcAsset>({
   createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
-  fetchTotal: (filters, signal) => countPcAssets(filters, signal),
+  fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
 });
 
 pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
@@ -435,6 +450,7 @@ async function exportSelectedQrPng() {
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    const { downloadQrCardsPng } = await loadQrCardUtils();
     await downloadQrCardsPng(`电脑二维码图版_${records.length}条`, '电脑二维码图版', records);
     ElMessage.success('二维码图版(PNG)已导出');
   } catch (error: any) {
@@ -460,6 +476,7 @@ async function openQr(row: PcAsset) {
   try {
     const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
     qrLink.value = result.url;
+    const QRCode = await loadQrCodeLib();
     qrDataUrl.value = await QRCode.toDataURL(result.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
@@ -476,6 +493,7 @@ async function resetQr() {
     qrLoading.value = true;
     const result: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(qrRow.value.id))}`, {});
     qrLink.value = result.url;
+    const QRCode = await loadQrCodeLib();
     qrDataUrl.value = await QRCode.toDataURL(result.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
     ElMessage.success('已重置，新二维码已生成');
   } catch (error: any) {
@@ -505,7 +523,7 @@ function mmToPx(mm: number, dpi = 300) {
   return Math.round((mm / 25.4) * dpi);
 }
 
-function downloadLabel() {
+async function downloadLabel() {
   if (!qrLink.value) return;
   const row = qrRow.value || {};
   const title = `${row.brand || ''} ${row.model || ''}`.trim() || '电脑信息';
@@ -538,6 +556,8 @@ function downloadLabel() {
   const qrSize = Math.min(qrAreaHeight, Math.round(width * 0.52));
   const qrX = Math.round((width - qrSize) / 2);
   const qrY = qrAreaTop + Math.round((qrAreaHeight - qrSize) / 2);
+
+  const QRCode = await loadQrCodeLib();
 
   QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 3, errorCorrectionLevel: 'Q' })
     .then((dataUrl: string) => {
@@ -672,6 +692,7 @@ async function exportSelectedQrLinks() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
     batchBusy.value = true;
+    const { exportToXlsx } = await loadExcelUtils();
     const linkRows = [];
     for (const row of selectedRows.value) {
       const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
@@ -725,6 +746,7 @@ async function exportSelectedQrCards() {
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
+    const { downloadQrCardsHtml } = await loadQrCardUtils();
     await downloadQrCardsHtml(`电脑二维码卡片_${records.length}条`, '电脑二维码卡片', records);
     ElMessage.success('二维码卡片已导出，可直接打印');
   } catch (error: any) {
@@ -743,8 +765,9 @@ async function confirmBatchRisk(title: string, message: string) {
   });
 }
 
-function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
+async function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
   if (!rows.length) return;
+  const { exportToXlsx } = await loadExcelUtils();
   exportToXlsx({
     filename,
     sheetName: '失败明细',
@@ -894,7 +917,7 @@ async function batchDeleteSelected() {
     const purged = Math.max(0, success - archived);
     if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台电脑（其中归档 ${archived} 台，彻底删除 ${purged} 台）` : `已删除 ${success} 台电脑`);
     else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
-    if (failedRecords.length) exportBatchFailures(`电脑批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
+    if (failedRecords.length) await exportBatchFailures(`电脑批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
     await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
@@ -908,6 +931,7 @@ async function exportSelectedRows() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的电脑');
   try {
     exportBusy.value = true;
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: `电脑台账_已选_${selectedCount.value}条.xlsx`,
       sheetName: '已选台账',
@@ -945,6 +969,7 @@ async function exportExcel() {
     exportBusy.value = true;
     if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: '电脑台账_仓库2.xlsx',
       sheetName: '台账',
@@ -984,6 +1009,7 @@ async function exportArchiveRecords() {
     const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档电脑记录');
+    const { exportToXlsx } = await loadExcelUtils();
     exportToXlsx({
       filename: `电脑归档记录_${rowsToExport.length}条.xlsx`,
       sheetName: '电脑归档',
@@ -1012,7 +1038,8 @@ async function exportArchiveRecords() {
   }
 }
 
-function downloadAssetTemplate() {
+async function downloadAssetTemplate() {
+  const { downloadTemplate } = await loadExcelUtils();
   downloadTemplate({
     filename: '电脑台账导入模板.xlsx',
     headers: [
@@ -1046,6 +1073,7 @@ async function onImportAssetsFile(uploadFile: any) {
   if (!file) return;
   try {
     importBusy.value = true;
+    const { parseXlsx } = await loadExcelUtils();
     const excelRows = await parseXlsx(file);
     const items = excelRows
       .map((row) => ({
