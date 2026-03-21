@@ -49,6 +49,9 @@ const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
 
 const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key) && key !== 'settings_updated_at');
 
+const SYSTEM_SETTINGS_CACHE_TTL_MS = 30_000;
+let systemSettingsCache: { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> } | null = null;
+
 export async function ensureSystemSettingsTable(db: D1Database) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS system_settings (
@@ -164,7 +167,7 @@ async function getSettingsMetaRow(db: D1Database) {
   return db.prepare(`SELECT id, version, settings_json, updated_at FROM system_settings_meta WHERE id=1`).first<any>();
 }
 
-export async function getSystemSettings(db: D1Database): Promise<SystemSettings> {
+async function readSystemSettings(db: D1Database): Promise<SystemSettings> {
   await ensureSystemSettingsTable(db);
   const meta = await getSettingsMetaRow(db);
   let patch: Record<string, any> = {};
@@ -190,6 +193,25 @@ export async function getSystemSettings(db: D1Database): Promise<SystemSettings>
   patch.dictionary_asset_warehouse_options = await getEnabledDictionaryLabels(db, 'asset_warehouse');
   patch.settings_updated_at = latestUpdatedAt;
   return normalizeSystemSettings(patch as any);
+}
+
+export async function getSystemSettings(db: D1Database, options?: { force?: boolean }): Promise<SystemSettings> {
+  const force = !!options?.force;
+  const now = Date.now();
+  if (!force && systemSettingsCache?.value && systemSettingsCache.expiresAt > now) return systemSettingsCache.value;
+  if (!force && systemSettingsCache?.pending) return systemSettingsCache.pending;
+  const pending = readSystemSettings(db).then((value) => {
+    systemSettingsCache = { value, expiresAt: Date.now() + SYSTEM_SETTINGS_CACHE_TTL_MS };
+    return value;
+  }).finally(() => {
+    if (systemSettingsCache?.pending) systemSettingsCache.pending = undefined;
+  });
+  systemSettingsCache = { value: systemSettingsCache?.value, expiresAt: systemSettingsCache?.expiresAt || 0, pending };
+  return pending;
+}
+
+export function invalidateSystemSettingsCache() {
+  systemSettingsCache = null;
 }
 
 export async function updateSystemSettings(db: D1Database, patch: Partial<SystemSettings>, updatedBy: string | null) {
@@ -218,7 +240,8 @@ export async function updateSystemSettings(db: D1Database, patch: Partial<System
        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=${sqlNowStored()}, updated_by=excluded.updated_by`
     ).bind(key, JSON.stringify(next[key]), updatedBy || null).run();
   }
-  return getSystemSettings(db);
+  invalidateSystemSettingsCache();
+  return getSystemSettings(db, { force: true });
 }
 
 export function getPublicSettingsPayload(settings: SystemSettings) {

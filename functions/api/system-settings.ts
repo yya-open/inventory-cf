@@ -7,7 +7,8 @@ type Env = { DB: D1Database; JWT_SECRET?: string };
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, 'viewer');
-    const data = await getSystemSettings(env.DB);
+    const force = new URL(request.url).searchParams.get('force') === '1';
+    const data = await getSystemSettings(env.DB, { force });
     return json(true, data);
   } catch (e: any) {
     return errorResponse(e);

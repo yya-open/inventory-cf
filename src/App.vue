@@ -394,11 +394,17 @@ function doLogout() {
 }
 
 const showChange = ref(false);
+const needsSystemMeta = computed(() => ['/system/home', '/system/tools', '/system/release-check', '/system/dashboard'].includes(route.path));
 const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
 const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: string; detail: string }>({ visible: false, type: 'warning', title: '', detail: '' });
 
 async function loadSchemaStatus() {
-  if (!auth.user || simpleLayout.value) return;
+  if (!auth.user || simpleLayout.value || !needsSystemMeta.value) {
+    schemaStatus.loaded = false;
+    schemaStatus.ok = true;
+    schemaStatus.message = '';
+    return;
+  }
   try {
     const r:any = await getSystemSchemaStatus();
     schemaStatus.loaded = true;
@@ -414,7 +420,7 @@ async function loadSchemaStatus() {
 }
 
 async function loadOpsAlert() {
-  if (!auth.user || simpleLayout.value || auth.user.role !== 'admin') {
+  if (!auth.user || simpleLayout.value || auth.user.role !== 'admin' || !needsSystemMeta.value) {
     opsAlert.visible = false;
     return;
   }
@@ -440,7 +446,7 @@ async function loadOpsAlert() {
   }
 }
 
-watch(() => [route.path, auth.user?.id], () => { loadSchemaStatus(); loadOpsAlert(); }, { immediate: true });
+watch(() => [route.path, auth.user?.id, needsSystemMeta.value], () => { loadSchemaStatus(); loadOpsAlert(); }, { immediate: true });
 
 const oldP = ref("");
 const newP = ref("");

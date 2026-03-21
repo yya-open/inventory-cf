@@ -225,7 +225,7 @@ import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
 import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
-import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings } from "../api/systemSettings";
+import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 
 type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
@@ -374,11 +374,19 @@ function applyCreateTemplate() {
   form.value.permissions = buildTemplatePermissionMap(form.value.role, form.value.permission_template_code);
 }
 
+async function ensureScopeDictionariesLoaded() {
+  if ((departmentOptions.value?.length || 0) > 0 && (warehouseOptions.value?.length || 0) > 0) return;
+  try {
+    systemSettings.value = await fetchSystemSettings();
+  } catch {}
+}
+
 function applyEditTemplate() {
   editPermissions.value = buildTemplatePermissionMap(editRole.value, editTemplateCode.value);
 }
 
 function openCreate() {
+  void ensureScopeDictionariesLoaded();
   form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")), data_scope_type: 'all', data_scope_value: '', data_scope_value2: '' };
   showCreate.value = true;
 }
@@ -407,6 +415,7 @@ async function createUser() {
 }
 
 function openEdit(row: Row) {
+  void ensureScopeDictionariesLoaded();
   editing.value = row;
   editRole.value = row.role;
   editActive.value = !!row.is_active;
@@ -481,8 +490,8 @@ async function delUser(row: Row) {
   }
 }
 
-onMounted(async () => {
-  try { systemSettings.value = await fetchSystemSettings(); } catch {}
-  await load();
+onMounted(() => {
+  systemSettings.value = getCachedSystemSettings();
+  void load();
 });
 </script>

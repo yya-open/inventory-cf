@@ -401,10 +401,13 @@ export async function forceRefreshRepairScan(db: D1Database): Promise<RepairScan
   return { ...scan, scan_source: 'fresh', last_scanned_at: new Date().toISOString() };
 }
 
-export async function getAutoRepairScan(db: D1Database): Promise<RepairScanResult> {
+export async function getAutoRepairScan(db: D1Database, options?: { allowStale?: boolean; forceRefresh?: boolean }): Promise<RepairScanResult> {
+  if (options?.forceRefresh) return await forceRefreshRepairScan(db);
+  const stored = await readStoredRepairScan(db);
+  if (options?.allowStale && stored) return stored;
   const stale = await isRepairScanStale(db);
   if (stale) return await forceRefreshRepairScan(db);
-  return (await readStoredRepairScan(db)) || await forceRefreshRepairScan(db);
+  return stored || await forceRefreshRepairScan(db);
 }
 
 export function actionLabel(action: string) {

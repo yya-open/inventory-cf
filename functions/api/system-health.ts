@@ -7,10 +7,12 @@ import { ensureAsyncJobsTable } from './services/async-jobs';
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requirePermission(env, request, 'ops_tools', 'admin');
+    const url = new URL(request.url);
+    const force = url.searchParams.get('force') === '1';
     await Promise.all([ensureRequestErrorLogTable(env.DB), ensureAsyncJobsTable(env.DB), ensureAdminRepairHistoryTable(env.DB)]);
-    const schema = await getSchemaStatus(env.DB);
-    const scan = await getAutoRepairScan(env.DB);
-    const [pcAssets, latestState, counterRows, failedJobs, errors24h, lastRepair, lastDrill, openDrillIssues, overdueDrillIssues] = await Promise.all([
+    const [schema, scan, pcAssets, latestState, counterRows, failedJobs, errors24h, lastRepair, lastDrill, openDrillIssues, overdueDrillIssues, latestMissing] = await Promise.all([
+      getSchemaStatus(env.DB, { force }),
+      getAutoRepairScan(env.DB, force ? { forceRefresh: true } : { allowStale: true }),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_assets`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_asset_latest_state`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM dictionary_usage_counters`).first<any>().catch(() => ({ c: 0 })),
@@ -20,8 +22,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       env.DB.prepare(`SELECT drill_at, outcome FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open'`).first<any>().catch(() => ({ c: 0 })),
       env.DB.prepare(`SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')`).first<any>().catch(() => ({ c: 0 })),
+      env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE s.asset_id IS NULL`).first<any>().catch(() => ({ c: 0 })),
     ]);
-    const latestMissing = await env.DB.prepare(`SELECT COUNT(*) AS c FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE s.asset_id IS NULL`).first<any>().catch(() => ({ c: 0 }));
     const activeAlerts = [
       !schema.ok ? 1 : 0,
       Number(scan?.total_problem_count || 0) > 0 ? 1 : 0,

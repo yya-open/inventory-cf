@@ -25,9 +25,9 @@ export function invalidateSystemCaches() {
 }
 
 export function getSystemHealth(options?: { force?: boolean }) {
-  return getWithCache<any>('system-health', 15_000, () => apiGet('/api/system-health'), options?.force);
+  return getWithCache<any>('system-health', 30_000, () => apiGet(options?.force ? '/api/system-health?force=1' : '/api/system-health'), options?.force);
 }
 
 export function getSystemSchemaStatus(options?: { force?: boolean }) {
-  return getWithCache<any>('system-schema-status', 15_000, () => apiGet('/api/system-schema-status'), options?.force);
+  return getWithCache<any>('system-schema-status', 60_000, () => apiGet(options?.force ? '/api/system-schema-status?force=1' : '/api/system-schema-status'), options?.force);
 }

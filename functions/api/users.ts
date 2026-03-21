@@ -4,7 +4,7 @@ import { sqlNowStored } from "./_time";
 import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
-import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions } from "../_permissions";
+import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
 import { getUserDataScope, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
 import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
 
@@ -52,19 +52,41 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     });
     const where = kw.sql ? `WHERE ${kw.sql}` : "";
 
+    await Promise.all([ensureUserPermissionsTable(env.DB), ensureUserPermissionTemplateColumn(env.DB)]);
     const totalRow = await env.DB.prepare(`SELECT COUNT(*) as c FROM users ${where}`).bind(...kw.binds).first<any>();
     const { results } = await env.DB
       .prepare(`SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users ${where} ORDER BY ${orderBy} LIMIT ? OFFSET ?`)
       .bind(...kw.binds, pageSize, offset)
       .all();
-    const rows = await Promise.all((results || []).map(async (row: any) => ({
-      ...row,
-      permission_template_code: normalizePermissionTemplateCode(row?.role || null, row?.permission_template_code),
-      permissions: await getUserPermissionMap(env.DB, Number(row?.id || 0), row?.role || null, row?.permission_template_code || null),
-      ...normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2),
-      permission_codes: ALL_PERMISSION_CODES,
-      permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES,
-    })));
+    const userIds = (results || []).map((row: any) => Number(row?.id || 0)).filter(Boolean);
+    const permissionOverrides = new Map<number, Record<string, boolean>>();
+    if (userIds.length) {
+      const placeholders = userIds.map(() => '?').join(',');
+      const { results: permissionRows } = await env.DB.prepare(`SELECT user_id, permission_code, allowed FROM user_permissions WHERE user_id IN (${placeholders})`).bind(...userIds).all<any>();
+      for (const row of permissionRows || []) {
+        const userId = Number(row?.user_id || 0);
+        if (!userId) continue;
+        const code = String(row?.permission_code || '').trim();
+        if (!ALL_PERMISSION_CODES.includes(code as any)) continue;
+        if (!permissionOverrides.has(userId)) permissionOverrides.set(userId, {});
+        permissionOverrides.get(userId)![code] = Number(row?.allowed || 0) === 1;
+      }
+    }
+    const rows = (results || []).map((row: any) => {
+      const templateCode = normalizePermissionTemplateCode(row?.role || null, row?.permission_template_code);
+      const template = getPermissionTemplateMap(row?.role || null, templateCode);
+      const permissions = Object.fromEntries(ALL_PERMISSION_CODES.map((code) => [code, !!template.permissions[code]])) as Record<string, boolean>;
+      const overrides = permissionOverrides.get(Number(row?.id || 0)) || {};
+      for (const [code, allowed] of Object.entries(overrides)) permissions[code] = !!allowed;
+      return {
+        ...row,
+        permission_template_code: templateCode,
+        permissions,
+        ...normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2),
+        permission_codes: ALL_PERMISSION_CODES,
+        permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES,
+      };
+    });
 
     return Response.json({ ok: true, data: rows, total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw, permission_codes: ALL_PERMISSION_CODES, permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES });
   } catch (e: any) {

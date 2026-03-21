@@ -43,6 +43,9 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
 };
 
 const SETTINGS_CACHE_KEY = 'inventory:system-settings-cache';
+const SETTINGS_CLIENT_CACHE_TTL_MS = 30_000;
+type SettingsCacheEntry = { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> };
+let settingsClientCache: SettingsCacheEntry | null = null;
 
 export function mergeSystemSettings(input?: Partial<SystemSettings> | null): SystemSettings {
   return {
@@ -61,14 +64,27 @@ export function cacheSystemSettings(settings: Partial<SystemSettings>) {
   return merged;
 }
 
-export async function fetchSystemSettings() {
-  const result: any = await apiGet('/api/system-settings');
-  return cacheSystemSettings(result?.data || {});
+export async function fetchSystemSettings(options?: { force?: boolean }) {
+  const force = !!options?.force;
+  const now = Date.now();
+  if (!force && settingsClientCache?.value && settingsClientCache.expiresAt > now) return settingsClientCache.value;
+  if (!force && settingsClientCache?.pending) return settingsClientCache.pending;
+  const pending = apiGet<any>(force ? '/api/system-settings?force=1' : '/api/system-settings').then((result: any) => {
+    const value = cacheSystemSettings(result?.data || {});
+    settingsClientCache = { value, expiresAt: Date.now() + SETTINGS_CLIENT_CACHE_TTL_MS };
+    return value;
+  }).finally(() => {
+    if (settingsClientCache?.pending) settingsClientCache.pending = undefined;
+  });
+  settingsClientCache = { value: settingsClientCache?.value, expiresAt: settingsClientCache?.expiresAt || 0, pending };
+  return pending;
 }
 
 export async function saveSystemSettings(payload: Partial<SystemSettings>) {
   const result: any = await apiPut('/api/system-settings', payload);
-  return cacheSystemSettings(result?.data || payload || {});
+  const value = cacheSystemSettings(result?.data || payload || {});
+  settingsClientCache = { value, expiresAt: Date.now() + SETTINGS_CLIENT_CACHE_TTL_MS };
+  return value;
 }
 
 export async function fetchPublicSettings() {
