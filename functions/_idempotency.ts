@@ -10,7 +10,7 @@ export function normalizeClientRequestId(v: any): string | null {
   if (!s) return null;
   if (s.length > 64) return null;
   // allow uuid-like tokens and simple ids
-  if (!/^[a-zA-Z0-9:_\-]+$/.test(s)) return null;
+  if (!/^[a-zA-Z0-9:_-]+$/.test(s)) return null;
   return s;
 }
 
