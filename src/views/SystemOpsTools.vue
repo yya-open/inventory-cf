@@ -192,6 +192,8 @@
 </template>
 
 <script setup lang="ts">
+import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
+import { ElProgress } from 'element-plus';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from '../utils/el-services';
 import { apiGet, apiPost, apiPut, apiDownload } from '../api/client';

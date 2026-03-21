@@ -395,6 +395,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElSegmented, ElUpload } from 'element-plus';
 import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";

@@ -249,6 +249,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElUpload } from 'element-plus';
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";

@@ -189,6 +189,8 @@
 </template>
 
 <script setup lang="ts">
+import { ElDescriptions, ElDescriptionsItem, ElUpload } from 'element-plus';
+import { ElDivider, ElRadioButton, ElRadioGroup } from 'element-plus';
 import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";

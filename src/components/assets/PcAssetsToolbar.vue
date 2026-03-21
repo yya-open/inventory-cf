@@ -150,6 +150,8 @@
 </template>
 
 <script setup lang="ts">
+import { ElSegmented, ElUpload } from 'element-plus';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
@@ -217,7 +219,7 @@ const archiveModeOptions = [
   { label: '在用', value: 'active' },
   { label: '归档', value: 'archived' },
   { label: '全部', value: 'all' },
-] as const;
+];
 
 function openImportPicker() {
   const root = importUploadRef.value?.$el as HTMLElement | undefined;

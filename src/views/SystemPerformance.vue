@@ -100,6 +100,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElSkeleton } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from '../utils/el-services';
 import { getSystemPerformance } from '../api/systemPerformance';

@@ -10,18 +10,11 @@ import {
   ElCol,
   ElContainer,
   ElDatePicker,
-  ElDescriptions,
-  ElDescriptionsItem,
   ElDialog,
-  ElDivider,
-  ElDropdown,
-  ElDropdownItem,
-  ElDropdownMenu,
   ElEmpty,
   ElForm,
   ElFormItem,
   ElHeader,
-  ElIcon,
   ElInput,
   ElInputNumber,
   ElLoading,
@@ -30,24 +23,12 @@ import {
   ElMenuItem,
   ElOption,
   ElPagination,
-  ElPopover,
-  ElPopconfirm,
-  ElProgress,
-  ElRadio,
-  ElRadioButton,
-  ElRadioGroup,
   ElRow,
-  ElScrollbar,
-  ElSegmented,
   ElSelect,
-  ElSkeleton,
   ElSwitch,
-  ElTabPane,
   ElTable,
   ElTableColumn,
-  ElTabs,
   ElTag,
-  ElUpload,
 } from 'element-plus';
 
 import 'element-plus/es/components/alert/style/css';
@@ -58,6 +39,8 @@ import 'element-plus/es/components/card/style/css';
 import 'element-plus/es/components/checkbox/style/css';
 import 'element-plus/es/components/checkbox-group/style/css';
 import 'element-plus/es/components/col/style/css';
+import 'element-plus/es/components/collapse/style/css';
+import 'element-plus/es/components/collapse-item/style/css';
 import 'element-plus/es/components/container/style/css';
 import 'element-plus/es/components/date-picker/style/css';
 import 'element-plus/es/components/descriptions/style/css';
@@ -93,6 +76,8 @@ import 'element-plus/es/components/scrollbar/style/css';
 import 'element-plus/es/components/select/style/css';
 import 'element-plus/es/components/segmented/style/css';
 import 'element-plus/es/components/skeleton/style/css';
+import 'element-plus/es/components/step/style/css';
+import 'element-plus/es/components/steps/style/css';
 import 'element-plus/es/components/switch/style/css';
 import 'element-plus/es/components/tab-pane/style/css';
 import 'element-plus/es/components/table/style/css';
@@ -112,18 +97,11 @@ const components = [
   ElCol,
   ElContainer,
   ElDatePicker,
-  ElDescriptions,
-  ElDescriptionsItem,
   ElDialog,
-  ElDivider,
-  ElDropdown,
-  ElDropdownItem,
-  ElDropdownMenu,
   ElEmpty,
   ElForm,
   ElFormItem,
   ElHeader,
-  ElIcon,
   ElInput,
   ElInputNumber,
   ElMain,
@@ -131,24 +109,12 @@ const components = [
   ElMenuItem,
   ElOption,
   ElPagination,
-  ElPopover,
-  ElPopconfirm,
-  ElProgress,
-  ElRadio,
-  ElRadioButton,
-  ElRadioGroup,
   ElRow,
-  ElScrollbar,
-  ElSegmented,
   ElSelect,
-  ElSkeleton,
   ElSwitch,
-  ElTabPane,
   ElTable,
   ElTableColumn,
-  ElTabs,
   ElTag,
-  ElUpload,
 ] as const;
 
 export function installElementPlus(app: App) {

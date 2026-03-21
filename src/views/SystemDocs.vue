@@ -82,6 +82,7 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
 </template>
 
 <script setup lang="ts">
+import { ElCollapse, ElCollapseItem, ElStep, ElSteps } from 'element-plus';
 import { useRouter } from 'vue-router';
 
 const router = useRouter();

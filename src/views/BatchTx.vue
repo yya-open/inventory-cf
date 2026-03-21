@@ -204,6 +204,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElTabPane, ElTabs, ElUpload } from 'element-plus';
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { loadXlsx } from "../utils/excel";

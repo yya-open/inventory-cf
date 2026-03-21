@@ -106,6 +106,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElSegmented } from 'element-plus';
 import { ref, computed, onMounted, watch } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";

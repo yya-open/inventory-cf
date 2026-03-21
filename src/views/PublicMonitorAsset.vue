@@ -121,6 +121,8 @@
 </template>
 
 <script setup lang="ts">
+import { ElDescriptions, ElDescriptionsItem, ElSegmented } from 'element-plus';
+import { ElSkeleton } from 'element-plus';
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from "../utils/el-services";
 import { apiGetPublic, apiPostPublic } from '../api/client';

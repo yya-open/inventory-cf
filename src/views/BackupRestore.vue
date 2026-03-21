@@ -689,6 +689,8 @@
 </template>
 
 <script setup lang="ts">
+import { ElUpload } from 'element-plus';
+import { ElDivider, ElProgress, ElRadio, ElRadioGroup } from 'element-plus';
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessageBox } from "../utils/el-services";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";

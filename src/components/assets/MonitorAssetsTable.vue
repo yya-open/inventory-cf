@@ -111,6 +111,7 @@
   </el-card>
 </template>
 <script setup lang="ts">
+import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 const props = defineProps<{

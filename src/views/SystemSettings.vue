@@ -210,6 +210,7 @@
 </template>
 
 <script setup lang="ts">
+import { ElSegmented } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/systemSettings';

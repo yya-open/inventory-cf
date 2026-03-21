@@ -124,6 +124,7 @@
   </div>
 </template>
 <script setup lang="ts">
+import { ElPopover } from 'element-plus';
 import { computed, nextTick, ref, watch } from 'vue';
 const props = defineProps<{
   rows: Array<Record<string, any>>;
