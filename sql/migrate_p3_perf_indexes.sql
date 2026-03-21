@@ -1,3 +1,25 @@
+CREATE TABLE IF NOT EXISTS slow_request_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  method TEXT,
+  path TEXT,
+  status INTEGER,
+  total_ms INTEGER,
+  sql_ms INTEGER,
+  auth_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+
+CREATE TABLE IF NOT EXISTS request_error_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  method TEXT,
+  path TEXT,
+  status INTEGER,
+  total_ms INTEGER,
+  sql_ms INTEGER,
+  auth_ms INTEGER,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+
 CREATE INDEX IF NOT EXISTS idx_users_created_at_id ON users(created_at DESC, id DESC);
 CREATE INDEX IF NOT EXISTS idx_users_username_role_active ON users(username, role, is_active);
 
