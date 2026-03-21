@@ -24,7 +24,8 @@ function normalizeWarehouse(value?: string | null) {
 export function normalizeDataScope(type?: string | null, value?: string | null, value2?: string | null) {
   const rawType = String(type || '').trim().toLowerCase();
   const department = normalizeDepartment(value);
-  const warehouse = normalizeWarehouse(value2 ?? value);
+  const warehouseSource = rawType === 'department_warehouse' ? value2 : (value || value2);
+  const warehouse = normalizeWarehouse(warehouseSource);
   if (rawType === 'department' && department) return { data_scope_type: 'department' as const, data_scope_value: department, data_scope_value2: '' };
   if (rawType === 'warehouse' && warehouse) return { data_scope_type: 'warehouse' as const, data_scope_value: warehouse, data_scope_value2: '' };
   if (rawType === 'department_warehouse' && department && warehouse) return { data_scope_type: 'department_warehouse' as const, data_scope_value: department, data_scope_value2: warehouse };
