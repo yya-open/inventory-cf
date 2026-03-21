@@ -86,6 +86,28 @@ export function scopeAllowsAssetWarehouse(scope: UserDataScope | null | undefine
   return required === warehouseName;
 }
 
+export function assertAssetWarehouseAccess(scope: UserDataScope | null | undefined, warehouseName: '电脑仓' | '显示器仓' | '配件仓', moduleLabel?: string) {
+  if (scopeAllowsAssetWarehouse(scope, warehouseName)) return;
+  const suffix = moduleLabel ? `，无法访问${moduleLabel}` : '';
+  throw Object.assign(new Error(`当前账号的数据范围未包含${warehouseName}${suffix}`), { status: 403 });
+}
+
+export async function assertPartsWarehouseAccess(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null, moduleLabel?: string) {
+  assertAssetWarehouseAccess(scope, '配件仓', moduleLabel);
+  const warehouseId = await resolvePartsWarehouseId(db, scope, requestedWarehouseId);
+  if (warehouseId <= 0) {
+    throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403 });
+  }
+  return warehouseId;
+}
+
+export async function assertPartsStocktakeAccess(db: D1Database, scope: UserDataScope | null | undefined, stocktakeId: number, moduleLabel?: string) {
+  const stocktake = await db.prepare(`SELECT id, warehouse_id FROM stocktake WHERE id=?`).bind(stocktakeId).first<any>();
+  if (!stocktake) return null;
+  await assertPartsWarehouseAccess(db, scope, Number(stocktake.warehouse_id || 0), moduleLabel || '盘点');
+  return stocktake;
+}
+
 export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null) {
   const required = getRequiredWarehouse(scope);
   if (!required) return Number(requestedWarehouseId || 1) || 1;

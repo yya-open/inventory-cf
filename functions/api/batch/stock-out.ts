@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 import { logAudit } from "../_audit";
 import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
 import { sqlNowStored } from "../_time";
@@ -33,10 +34,10 @@ type Body = {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, "operator");
+    const user = await requireAuthWithDataScope(env, request, "operator");
 
     const body = (await request.json().catch(() => ({}))) as Body;
-    const warehouse_id = Number(body.warehouse_id ?? 1);
+    const warehouse_id = await assertPartsWarehouseAccess(env.DB, user, Number(body.warehouse_id ?? 1), "批量出库");
     const header_target = body.target ?? null;
     const header_remark = body.remark ?? null;
     const client_request_id = String(body.client_request_id ?? "").trim() || null;

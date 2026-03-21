@@ -1,6 +1,7 @@
-import { requireAuth, errorResponse, json } from '../../_auth';
+import { errorResponse, json } from '../../_auth';
 import { beijingDateStampCompact } from '../_time';
 import { buildWarningsQuery, getWarehouseName, listWarningsExportRows } from '../services/inventory';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 function csvEscape(v: any) {
   const s = (v ?? '').toString();
@@ -10,10 +11,11 @@ function csvEscape(v: any) {
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return json(false, null, '未绑定 D1 数据库(DB)');
 
     const query = buildWarningsQuery(new URL(request.url));
+    query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '预警导出');
     const [results, warehouseName] = await Promise.all([
       listWarningsExportRows(env.DB, query),
       getWarehouseName(env.DB, query.warehouse_id),

@@ -1,10 +1,13 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { buildTxListQuery, countTxRows, listTxRows } from './services/inventory';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
-    const query = buildTxListQuery(new URL(request.url));
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
+    const url = new URL(request.url);
+    url.searchParams.set('warehouse_id', String(await assertPartsWarehouseAccess(env.DB, user, Number(url.searchParams.get('warehouse_id') || 1), '出入库明细')));
+    const query = buildTxListQuery(url);
     const [total, rows] = await Promise.all([
       countTxRows(env.DB, query),
       listTxRows(env.DB, query),

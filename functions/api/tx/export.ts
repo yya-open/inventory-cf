@@ -1,7 +1,8 @@
-import { requireAuth, errorResponse } from '../../_auth';
+import { errorResponse } from '../../_auth';
 import { logAudit } from '../_audit';
 import { beijingDateStampCompact } from '../_time';
 import { buildTxExportSql, buildTxListQuery } from '../services/inventory';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 /**
  * GET /api/tx/export
@@ -10,10 +11,11 @@ import { buildTxExportSql, buildTxListQuery } from '../services/inventory';
  */
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, 'viewer');
+    const actor = await requireAuthWithDataScope(env, request, 'viewer');
     const url = new URL(request.url);
     const maxRows = Math.min(100000, Math.max(1000, Number(url.searchParams.get('max') || 50000)));
     const pageSize = 1000;
+    url.searchParams.set('warehouse_id', String(await assertPartsWarehouseAccess(env.DB, actor, Number(url.searchParams.get('warehouse_id') || 1), '出入库明细导出')));
     const query = buildTxListQuery(url);
 
     waitUntil(

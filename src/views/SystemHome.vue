@@ -5,8 +5,8 @@
         <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
           <div style="font-weight:700">系统</div>
           <div style="display:flex; gap:8px; flex-wrap:wrap">
-            <el-button size="small" @click="go('/stock')">进入配件仓</el-button>
-            <el-button size="small" @click="go('/pc/assets')">进入电脑仓</el-button>
+            <el-button v-if="canAccessParts" size="small" @click="go('/stock')">进入配件仓</el-button>
+            <el-button v-if="canAccessPc" size="small" @click="go(preferredPcRoute(auth.user))">进入电脑/显示器仓</el-button>
           </div>
         </div>
       </template>
@@ -54,8 +54,10 @@
 </template>
 
 <script setup lang="ts">
-import { defineComponent, h, onMounted, reactive, resolveComponent } from 'vue';
+import { computed, defineComponent, h, onMounted, reactive, resolveComponent } from 'vue';
 import { useRouter } from 'vue-router';
+import { useAuth } from '../store/auth';
+import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
 
 const HomeCard = defineComponent({
@@ -74,6 +76,9 @@ const HomeCard = defineComponent({
 });
 
 const router = useRouter();
+const auth = useAuth();
+const canAccessParts = computed(() => canAccessModuleArea(auth.user, 'parts'));
+const canAccessPc = computed(() => canAccessModuleArea(auth.user, 'pc'));
 const go = (path: string) => router.push(path);
 const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '', open_backup_drill_issue_count: 0, overdue_backup_drill_issue_count: 0 });
 function formatTime(v?: string | null) { return v ? String(v).replace('T', ' ').replace(/\.\d+Z?$/, '') : ''; }

@@ -1,16 +1,18 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeRollbackTxNo } from '../services/stocktake';
+import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requireAuthWithDataScope(env, request, 'admin');
     const { id } = await request.json();
     const st_id = Number(id);
     if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
 
     try {
+      await assertPartsStocktakeAccess(env.DB, user, st_id, '库存盘点');
       const st = await getStocktakeById(env.DB, st_id);
       if (!st) return Response.json({ ok: false, message: '盘点单不存在' }, { status: 404 });
 

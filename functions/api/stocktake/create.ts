@@ -1,12 +1,13 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
 import { createStocktake, generateStocktakeNo } from '../services/stocktake';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requireAuthWithDataScope(env, request, 'admin');
     const { warehouse_id = 1 } = await request.json();
-    const wid = Number(warehouse_id);
+    const wid = await assertPartsWarehouseAccess(env.DB, user, Number(warehouse_id), '库存盘点');
     const stNo = generateStocktakeNo();
     const id = await createStocktake(env.DB, stNo, wid, user.username);
 

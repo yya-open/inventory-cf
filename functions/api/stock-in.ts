@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
 import { GuardRollbackError, isGuardRollback } from "./_write";
@@ -10,8 +11,9 @@ function txNo() {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, "operator");
+    const user = await requireAuthWithDataScope(env, request, "operator");
     const { item_id, warehouse_id = 1, qty, unit_price, source, remark, client_request_id } = await request.json();
+    const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, user, Number(warehouse_id || 1), "配件入库");
 
     const q = Number(qty);
     if (!item_id || !q || q <= 0) return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
@@ -33,7 +35,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ).bind(
           no,
           item_id,
-          warehouse_id,
+          allowedWarehouseId,
           q,
           q,
           refNo || no,
@@ -49,7 +51,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
            WHERE (SELECT changes()) > 0
            ON CONFLICT(item_id, warehouse_id)
            DO UPDATE SET qty = qty + excluded.qty, updated_at=${sqlNowStored()};`
-        ).bind(item_id, warehouse_id, q),
+        ).bind(item_id, allowedWarehouseId, q),
         // 3) Guard: if tx row exists, stock must have been updated exactly once; else updated 0 times.
         // Trigger JSON path error to rollback the whole batch if mismatch.
         env.DB.prepare(
@@ -78,7 +80,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     // Best-effort audit (don't fail the already-committed business operation)
     waitUntil(logAudit(env.DB, request, user, "STOCK_IN", "stock_tx", no, {
       item_id,
-      warehouse_id,
+      warehouse_id: allowedWarehouseId,
       qty: q,
       unit_price: unit_price ?? null,
       source: source ?? null,

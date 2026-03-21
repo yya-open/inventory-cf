@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../../_auth";
+import { errorResponse } from "../../_auth";
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { toSqlRange } from "../_date";
@@ -19,7 +20,7 @@ type ClearBody = {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     // requireAuth returns the authenticated user; we need it for audit logging
-    const actor = await requireAuth(env, request, "admin");
+    const actor = await requireAuthWithDataScope(env, request, "admin");
 
     const body = (await request.json().catch(() => ({}))) as ClearBody;
     const mode = body.mode || "filtered";
@@ -54,8 +55,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     // Optional warehouse filter (when provided, limits deletion to that warehouse)
     if (body.warehouse_id && Number.isFinite(Number(body.warehouse_id))) {
+      const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, actor, Number(body.warehouse_id), '出入库明细清理');
       wh.push("warehouse_id=?");
-      binds.push(Number(body.warehouse_id));
+      binds.push(allowedWarehouseId);
+    } else {
+      await assertPartsWarehouseAccess(env.DB, actor, 1, '出入库明细清理');
     }
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";

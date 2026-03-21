@@ -36,6 +36,7 @@ const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
+import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
 const router = createRouter({
   history: createWebHistory(),
@@ -126,19 +127,47 @@ router.beforeEach(async (to) => {
     }
   }
 
-  // 仓库选择：登录后默认进入“配件仓”；用户可在顶部按钮切换到电脑仓
-  const wh = useWarehouse();
-  if (!wh.active) {
-    setWarehouse("parts");
+  const fallbackPath = firstAccessibleRoute(auth.user);
+  const partsAllowed = canAccessModuleArea(auth.user, 'parts');
+  const pcModuleAllowed = canAccessModuleArea(auth.user, 'pc');
+  const pcAllowed = canAccessPcSection(auth.user, 'pc');
+  const monitorAllowed = canAccessPcSection(auth.user, 'monitor');
+
+  if (isPartsModuleRoute(to.path) && !partsAllowed) {
+    ElMessage.warning('当前账号未授权访问配件仓');
+    return { path: fallbackPath };
   }
-  // 根据路由自动对齐仓库（避免刷新/直链导致菜单错位）
-  if (to.path.startsWith("/pc") && wh.active !== "pc") setWarehouse("pc");
-  // 进入系统模块时不强制切换仓库；离开系统模块才按路径对齐
-  if (!to.path.startsWith("/pc") && !to.path.startsWith("/system") && wh.active !== "parts") setWarehouse("parts");
+  if (isPcModuleRoute(to.path)) {
+    if (!pcModuleAllowed) {
+      ElMessage.warning('当前账号未授权访问电脑/显示器仓');
+      return { path: fallbackPath };
+    }
+    if (isPcOnlyRoute(to.path) && !pcAllowed) {
+      ElMessage.warning('当前账号未授权访问电脑仓');
+      return { path: monitorAllowed ? '/pc/monitors' : fallbackPath };
+    }
+    if (isMonitorOnlyRoute(to.path) && !monitorAllowed) {
+      ElMessage.warning('当前账号未授权访问显示器仓');
+      return { path: pcAllowed ? '/pc/assets' : fallbackPath };
+    }
+  }
+
+  const wh = useWarehouse();
+  const defaultArea = firstAccessibleArea(auth.user);
+  if (!wh.active || (wh.active === 'parts' && !partsAllowed) || (wh.active === 'pc' && !pcModuleAllowed)) {
+    setWarehouse(defaultArea);
+  }
+  if (isPcModuleRoute(to.path) && wh.active !== 'pc') setWarehouse('pc');
+  if (isPartsModuleRoute(to.path) && wh.active !== 'parts') setWarehouse('parts');
+
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
     ElMessage.warning("权限不足");
-    return { path: "/stock" };
+    return { path: fallbackPath };
+  }
+
+  if (to.path === '/pc' || to.path === '/pc/') {
+    return { path: preferredPcRoute(auth.user) };
   }
   return true;
 });

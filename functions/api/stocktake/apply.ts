@@ -3,15 +3,18 @@ import { requirePermission } from '../../_permissions';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeAdjustTxNo } from '../services/stocktake';
+import { assertPartsStocktakeAccess, getUserDataScope } from '../services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requirePermission(env, request, 'stocktake_apply', 'admin');
+    const scopedUser = Object.assign({}, user, await getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null })));
     const body = await request.json().catch(() => ({} as any));
     const previewOnly = Boolean((body as any).preview_only);
     const st_id = Number((body as any).id);
     if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
 
+    await assertPartsStocktakeAccess(env.DB, scopedUser as any, st_id, '库存盘点');
     const st = await getStocktakeById(env.DB, st_id);
     if (!st) return Response.json({ ok: false, message: '盘点单不存在' }, { status: 404 });
 

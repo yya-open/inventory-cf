@@ -1,5 +1,6 @@
-import { requireAuth, errorResponse } from '../../_auth';
+import { errorResponse } from '../../_auth';
 import { getStockForItem } from '../services/inventory';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 /**
  * GET /api/stock/one?item_id=1&warehouse_id=1
@@ -8,11 +9,11 @@ import { getStockForItem } from '../services/inventory';
  */
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
 
     const url = new URL(request.url);
     const item_id = Number(url.searchParams.get('item_id') || 0);
-    const warehouse_id = Number(url.searchParams.get('warehouse_id') || 1);
+    const warehouse_id = await assertPartsWarehouseAccess(env.DB, user, Number(url.searchParams.get('warehouse_id') || 1), '库存查询');
 
     if (!item_id) {
       return Response.json({ ok: false, message: '缺少 item_id' }, { status: 400 });

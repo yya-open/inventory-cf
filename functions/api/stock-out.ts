@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
 import { GuardRollbackError, isGuardRollback } from "./_write";
@@ -15,11 +16,11 @@ function txNo() {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, "operator");
+    const user = await requireAuthWithDataScope(env, request, "operator");
     const { item_id, warehouse_id = 1, qty, target, remark, client_request_id } = await request.json();
 
     const q = Number(qty);
-    const wid = Number(warehouse_id);
+    const wid = await assertPartsWarehouseAccess(env.DB, user, Number(warehouse_id), "配件出库");
 
     const tgt = String(target ?? "").trim();
 

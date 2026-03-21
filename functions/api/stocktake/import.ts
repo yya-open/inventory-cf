@@ -1,10 +1,11 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
+import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requireAuthWithDataScope(env, request, 'admin');
     const body: any = await request.json().catch(() => ({} as any));
     const id = Number(body.id);
     const lines = Array.isArray(body.lines) ? body.lines : [];
@@ -12,6 +13,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
     if (!lines.length) return Response.json({ ok: false, message: '没有导入明细' }, { status: 400 });
 
+    await assertPartsStocktakeAccess(env.DB, user, id, '库存盘点');
     const st = await env.DB.prepare(`SELECT id, status, st_no, warehouse_id FROM stocktake WHERE id=?`).bind(id).first<any>();
     if (!st) return Response.json({ ok: false, message: '盘点单不存在' }, { status: 404 });
     if (String(st.status) !== 'DRAFT') return Response.json({ ok: false, message: '盘点单已应用，不能再导入' }, { status: 400 });

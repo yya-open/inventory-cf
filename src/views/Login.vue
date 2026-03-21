@@ -92,6 +92,7 @@ import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "../utils/el-services";
 import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
+import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";
 
@@ -158,7 +159,7 @@ async function doLogin() {
       return;
     }
     ElMessage.success("登录成功");
-    const redirect = (route.query.redirect as string) || "/stock";
+    const redirect = (route.query.redirect as string) || firstAccessibleRoute(auth.user);
     router.replace(redirect);
   } catch (e: any) {
     if (e?.locked_until_ms) {

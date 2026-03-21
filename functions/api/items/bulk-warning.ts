@@ -1,11 +1,12 @@
-import { requireAuth, errorResponse, json } from "../../_auth";
+import { errorResponse, json } from "../../_auth";
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "admin");
+    const user = await requireAuthWithDataScope(env, request, "admin");
     if (!env.DB) return json(false, null, "未绑定 D1 数据库(DB)");
 
-    const body = await request.json<any>();
+    const body = await request.json() as any;
     const item_ids: number[] = Array.isArray(body?.item_ids) ? body.item_ids.map((x: any) => Number(x)).filter((n: number) => Number.isFinite(n)) : [];
     const mode = String(body?.mode || "set");
     const warehouse_id = Number(body?.warehouse_id || 1);
@@ -13,6 +14,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const delta = Number(body?.delta);
 
     if (!item_ids.length) return Response.json({ ok: false, message: "item_ids 不能为空" }, { status: 400 });
+    await assertPartsWarehouseAccess(env.DB, user, warehouse_id, '预警阈值批量设置');
     if (mode === "set") {
       if (!Number.isFinite(warning_qty) || warning_qty < 0) return Response.json({ ok: false, message: "warning_qty 必须是 >=0 的数字" }, { status: 400 });
     } else if (mode === "add") {

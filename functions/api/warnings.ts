@@ -1,12 +1,14 @@
-import { requireAuth, errorResponse, json } from '../_auth';
+import { errorResponse, json } from '../_auth';
 import { buildWarningsQuery, countWarningsRows, listWarningsRows } from './services/inventory';
+import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return json(false, null, '未绑定 D1 数据库(DB)');
 
     const query = buildWarningsQuery(new URL(request.url));
+    query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '预警中心');
     const [total, rows] = await Promise.all([
       countWarningsRows(env.DB, query),
       listWarningsRows(env.DB, query),

@@ -54,7 +54,7 @@
 
         <!-- 配件仓菜单 -->
         <el-menu
-          v-else-if="warehouse.active === 'parts'"
+          v-else-if="warehouse.active === 'parts' && canAccessPartsArea"
           router
           :default-active="activeMenu"
         >
@@ -113,47 +113,47 @@
           </el-menu-item>
         </el-menu>
 
-        <!-- 电脑仓菜单（布局与配件仓一致，只是菜单项不同） -->
+        <!-- 电脑/显示器仓菜单 -->
         <el-menu
-          v-else
+          v-else-if="canAccessPcArea"
           router
           :default-active="activeMenu"
         >
-          <el-menu-item index="/pc/assets">
+          <el-menu-item v-if="canAccessPcLedger" index="/pc/assets">
             电脑台账
           </el-menu-item>
-          <el-menu-item index="/pc/age-warnings">
+          <el-menu-item v-if="canAccessPcLedger" index="/pc/age-warnings">
             报废预警
           </el-menu-item>
-          <el-menu-item index="/pc/tx">
+          <el-menu-item v-if="canAccessPcLedger" index="/pc/tx">
             电脑出入库明细
           </el-menu-item>
-          <el-menu-item index="/pc/inventory-logs">
+          <el-menu-item v-if="canAccessPcLedger" index="/pc/inventory-logs">
             盘点记录
           </el-menu-item>
-          <el-menu-item index="/pc/monitors">
+          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitors">
             显示器台账
           </el-menu-item>
-          <el-menu-item index="/pc/monitor-tx">
+          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitor-tx">
             显示器出入库明细
           </el-menu-item>
-          <el-menu-item index="/pc/monitor-inventory-logs">
+          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitor-inventory-logs">
             显示器盘点记录
           </el-menu-item>
           <el-menu-item
-            v-if="can('operator')"
+            v-if="can('operator') && canAccessPcLedger"
             index="/pc/in"
           >
             电脑入库
           </el-menu-item>
           <el-menu-item
-            v-if="can('operator')"
+            v-if="can('operator') && canAccessPcLedger"
             index="/pc/out"
           >
             电脑出库
           </el-menu-item>
           <el-menu-item
-            v-if="can('operator')"
+            v-if="can('operator') && canAccessPcLedger"
             index="/pc/recycle"
           >
             电脑回收/归还
@@ -167,7 +167,7 @@
         </el-menu>
 
         <div style="padding: 12px; color: #999; font-size: 12px">
-          当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? "电脑仓" : "配件仓") }}
+          当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? (canAccessPcLedger && canAccessMonitorLedger ? "电脑/显示器仓" : (canAccessPcLedger ? "电脑仓" : "显示器仓")) : "配件仓") }}
         </div>
       </el-aside>
 
@@ -180,6 +180,7 @@
 
             <el-button-group>
               <el-button
+                v-if="canAccessPartsArea"
                 size="small"
                 :type="currentArea==='parts' ? 'primary' : 'default'"
                 @click="switchTo('parts')"
@@ -187,11 +188,12 @@
                 配件仓
               </el-button>
               <el-button
+                v-if="canAccessPcArea"
                 size="small"
                 :type="currentArea==='pc' ? 'primary' : 'default'"
                 @click="switchTo('pc')"
               >
-                电脑仓
+                {{ canAccessPcLedger && canAccessMonitorLedger ? '电脑/显示器仓' : (canAccessPcLedger ? '电脑仓' : '显示器仓') }}
               </el-button>
               <el-button
                 v-if="can('admin')"
@@ -300,6 +302,7 @@ import { apiPost } from "./api/client";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
+import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
 
 const route = useRoute();
 const router = useRouter();
@@ -307,6 +310,11 @@ const auth = useAuth();
 const warehouse = useWarehouse();
 
 const isSystem = computed(() => route.path.startsWith("/system"));
+
+const canAccessPartsArea = computed(() => canAccessModuleArea(auth.user, "parts"));
+const canAccessPcArea = computed(() => canAccessModuleArea(auth.user, "pc"));
+const canAccessPcLedger = computed(() => canAccessPcSection(auth.user, "pc"));
+const canAccessMonitorLedger = computed(() => canAccessPcSection(auth.user, "monitor"));
 
 const currentArea = computed(() => {
   if (isSystem.value) return "system";
@@ -367,10 +375,12 @@ function roleText(r: string) {
 
 function switchTo(k: WarehouseKey) {
   if (!k) return;
+  if (k === "parts" && !canAccessPartsArea.value) return;
+  if (k === "pc" && !canAccessPcArea.value) return;
   // 在系统页面也允许跳回仓库，即使当前 activeWarehouse 与目标一致
   if (!isSystem.value && warehouse.active === k) return;
   setWarehouse(k);
-  router.push(k === "pc" ? "/pc/assets" : "/stock");
+  router.push(k === "pc" ? preferredPcRoute(auth.user) : "/stock");
 }
 
 function switchToSystem() {
