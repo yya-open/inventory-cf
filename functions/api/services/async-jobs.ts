@@ -90,6 +90,8 @@ type QrCardRecord = {
   url: string;
 };
 
+type PreparedQrCardRecord = QrCardRecord & { svg: string };
+
 function inlineSvgMarkup(svg: string, attrs: Record<string, string | number> = {}) {
   const cleaned = String(svg || '').trim().replace(/^<\?xml[^>]*>\s*/i, '');
   if (!cleaned) return '';
@@ -106,12 +108,49 @@ function inlineSvgMarkup(svg: string, attrs: Record<string, string | number> = {
 async function prepareQrCards(records: QrCardRecord[]) {
   return Promise.all(records.map(async (record) => ({
     ...record,
-    svg: await QRCode.toString(record.url, { type: 'svg', width: 220, margin: 2, errorCorrectionLevel: 'Q' }),
+    svg: await QRCode.toString(record.url, { type: 'svg', width: 220, margin: 1, errorCorrectionLevel: 'Q' }),
   })));
+}
+
+function chunkRecords<T>(items: T[], size: number) {
+  const chunks: T[][] = [];
+  for (let index = 0; index < items.length; index += size) chunks.push(items.slice(index, index + size));
+  return chunks;
+}
+
+function renderCardMeta(meta?: Array<{ label: string; value: string }>) {
+  return (meta || []).map((item) => `
+      <div class="meta-row"><span class="k">${escapeHtml(item.label)}</span><span class="v">${escapeHtml(item.value)}</span></div>`).join('');
+}
+
+function renderCardsPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number) {
+  return `
+  <section class="print-page cards-page">
+    <header class="page-header">
+      <div>
+        <div class="page-title">${escapeHtml(pageTitle)}</div>
+        <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
+      </div>
+      <div class="page-hint">A4 横向打印 · 推荐缩放 100%</div>
+    </header>
+    <div class="cards-grid">
+      ${cards.map((record) => `
+        <article class="qr-card">
+          <div class="qr-box">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
+          <div class="card-content">
+            <div class="card-title">${escapeHtml(record.title)}</div>
+            ${record.subtitle ? `<div class="card-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
+            ${record.meta?.length ? `<div class="meta">${renderCardMeta(record.meta)}</div>` : ''}
+            <div class="link">${escapeHtml(record.url)}</div>
+          </div>
+        </article>`).join('')}
+    </div>
+  </section>`;
 }
 
 async function renderQrCardsHtml(title: string, records: QrCardRecord[]) {
   const cards = await prepareQrCards(records);
+  const pages = chunkRecords(cards, 4);
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -119,38 +158,32 @@ async function renderQrCardsHtml(title: string, records: QrCardRecord[]) {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
-body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:24px;background:#f5f7fb;color:#1f2937}
-.page-title{font-size:22px;font-weight:800;margin-bottom:8px}
-.page-sub{color:#6b7280;margin-bottom:20px}
-.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
-.card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:18px;box-shadow:0 10px 24px rgba(15,23,42,.08);break-inside:avoid}
-.qr{display:flex;justify-content:center;padding:8px 0 14px}
-.qr svg{width:200px;height:200px;display:block}
-.title{font-size:18px;font-weight:800;line-height:1.35}
-.subtitle{margin-top:4px;color:#4b5563;font-size:13px}
-.meta{margin-top:12px;border-top:1px dashed #d1d5db;padding-top:10px;display:grid;gap:6px}
-.meta-row{display:flex;justify-content:space-between;gap:12px;font-size:12px}
-.meta-row .k{color:#6b7280}
+@page{size:A4 landscape;margin:10mm}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#eef2f7;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:10px}
+.print-page{width:100%;min-height:calc(210mm - 20mm);background:#fff;padding:0;border-radius:3mm;page-break-after:always;break-after:page}
+.print-page:last-child{page-break-after:auto;break-after:auto}
+.page-header{display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;padding:0 0 5mm 0;border-bottom:1px solid #e5e7eb;margin-bottom:6mm}
+.page-title{font-size:22px;font-weight:800}
+.page-sub,.page-hint{font-size:12px;color:#6b7280}
+.cards-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6mm}
+.qr-card{display:grid;grid-template-columns:38mm minmax(0,1fr);gap:5mm;min-height:84mm;border:1px solid #d1d5db;border-radius:4mm;padding:5mm;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
+.qr-box{display:flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:3mm;padding:2mm;background:#fff}
+.qr-box svg{width:32mm;height:32mm;display:block}
+.card-content{display:flex;flex-direction:column;min-width:0}
+.card-title{font-size:20px;font-weight:800;line-height:1.25;word-break:break-word}
+.card-subtitle{margin-top:2mm;color:#4b5563;font-size:13px;line-height:1.35}
+.meta{margin-top:3mm;padding-top:3mm;border-top:1px dashed #d1d5db;display:grid;gap:1.2mm}
+.meta-row{display:flex;justify-content:space-between;gap:4mm;font-size:12px;line-height:1.35}
+.meta-row .k{color:#6b7280;white-space:nowrap}
 .meta-row .v{font-weight:700;text-align:right;word-break:break-all}
-.link{margin-top:12px;font-size:11px;color:#6b7280;word-break:break-all}
-.tip{margin-top:18px;color:#6b7280;font-size:12px}
-@media print{body{background:#fff;padding:0}.card{box-shadow:none;border-color:#d1d5db}}
+.link{margin-top:auto;padding-top:3mm;font-size:10px;color:#6b7280;word-break:break-all;line-height:1.35}
+@media print{html,body{background:#fff;padding:0}.print-page{border-radius:0;box-shadow:none}.cards-grid{gap:5mm}}
 </style>
 </head>
 <body>
-<div class="page-title">${escapeHtml(title)}</div>
-<div class="page-sub">共 ${cards.length} 张二维码卡片，可直接浏览器打印或另存为 PDF。</div>
-<div class="grid">
-${cards.map((record) => `
-  <section class="card">
-    <div class="qr">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
-    <div class="title">${escapeHtml(record.title)}</div>
-    ${record.subtitle ? `<div class="subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
-    ${record.meta?.length ? `<div class="meta">${record.meta.map((item) => `<div class="meta-row"><span class="k">${escapeHtml(item.label)}</span><span class="v">${escapeHtml(item.value)}</span></div>`).join('')}</div>` : ''}
-    <div class="link">${escapeHtml(record.url)}</div>
-  </section>`).join('')}
-</div>
-<div class="tip">建议打印时选择 A4、纵向、边距窄；如在手机端打开，可直接调用系统分享/打印。</div>
+${pages.map((pageCards, index) => renderCardsPage(title, pageCards, index, pages.length)).join('')}
 </body>
 </html>`;
 }
@@ -175,61 +208,79 @@ function wrapTextSvg(text: any, maxChars: number, maxLines = 2) {
   return lines;
 }
 
-async function renderQrSheetSvg(title: string, records: QrCardRecord[]) {
-  const cards = await prepareQrCards(records);
-  if (!cards.length) return '';
+function renderSheetPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number) {
   const cols = 2;
   const rowsPerPage = 3;
-  const pageSize = cols * rowsPerPage;
-  const pageWidth = 1600;
-  const pageHeight = 2200;
-  const margin = 72;
-  const gapX = 40;
-  const gapY = 40;
+  const pageWidth = 1122;
+  const pageHeight = 794;
+  const margin = 28;
+  const headerHeight = 58;
+  const gapX = 22;
+  const gapY = 18;
   const cardWidth = Math.floor((pageWidth - margin * 2 - gapX) / cols);
-  const cardHeight = Math.floor((pageHeight - margin * 2 - gapY * (rowsPerPage - 1)) / rowsPerPage);
-  const totalPages = Math.ceil(cards.length / pageSize);
-  const pages: string[] = [];
-  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
-    const pageCards = cards.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
-    const pageBody: string[] = [];
-    for (let index = 0; index < pageCards.length; index += 1) {
-      const card = pageCards[index];
-      const col = index % cols;
-      const row = Math.floor(index / cols);
-      const x = margin + col * (cardWidth + gapX);
-      const y = 130 + row * (cardHeight + gapY);
-      const qrSize = 240;
-      const qrX = x + 28;
-      const qrY = y + 34;
-      const textX = qrX + qrSize + 28;
-      const textWidth = cardWidth - (textX - x) - 28;
-      const titleLines = wrapTextSvg(card.title, 18, 2);
-      const subtitleLines = wrapTextSvg(card.subtitle || '', 28, 2);
-      const meta = (card.meta || []).slice(0, 5);
-      const linkLines = wrapTextSvg(card.url, 58, 2);
-      pageBody.push(`
+  const cardHeight = Math.floor((pageHeight - margin * 2 - headerHeight - gapY * (rowsPerPage - 1)) / rowsPerPage);
+  const pageBody: string[] = [];
+  for (let index = 0; index < cards.length; index += 1) {
+    const card = cards[index];
+    const col = index % cols;
+    const row = Math.floor(index / cols);
+    const x = margin + col * (cardWidth + gapX);
+    const y = margin + headerHeight + row * (cardHeight + gapY);
+    const qrSize = 132;
+    const qrX = x + 20;
+    const qrY = y + 18;
+    const textX = qrX + qrSize + 18;
+    const titleLines = wrapTextSvg(card.title, 18, 2);
+    const subtitleLines = wrapTextSvg(card.subtitle || '', 24, 2);
+    const meta = (card.meta || []).slice(0, 4);
+    pageBody.push(`
       <g>
-        <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="28" ry="28" fill="#ffffff" stroke="#e5e7eb" stroke-width="2" />
+        <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="18" ry="18" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" />
+        <rect x="${qrX - 6}" y="${qrY - 6}" width="${qrSize + 12}" height="${qrSize + 12}" rx="12" ry="12" fill="#ffffff" stroke="#e5e7eb" stroke-width="1" />
         ${inlineSvgMarkup(card.svg, { x: qrX, y: qrY, width: qrSize, height: qrSize, preserveAspectRatio: 'xMidYMid meet' })}
-        ${titleLines.map((line, lineIndex) => `<text x="${textX}" y="${y + 76 + lineIndex * 38}" font-size="30" font-weight="700" fill="#111827">${escapeXml(line)}</text>`).join('')}
-        ${subtitleLines.filter(Boolean).map((line, lineIndex) => `<text x="${textX}" y="${y + 152 + lineIndex * 28}" font-size="20" fill="#4b5563">${escapeXml(line)}</text>`).join('')}
+        ${titleLines.map((line, lineIndex) => `<text x="${textX}" y="${y + 42 + lineIndex * 28}" font-size="24" font-weight="700" fill="#111827">${escapeXml(line)}</text>`).join('')}
+        ${subtitleLines.filter(Boolean).map((line, lineIndex) => `<text x="${textX}" y="${y + 96 + lineIndex * 20}" font-size="15" fill="#4b5563">${escapeXml(line)}</text>`).join('')}
         ${meta.map((item, metaIndex) => {
-          const currentY = y + 292 + metaIndex * 30;
-          return `<text x="${qrX}" y="${currentY}" font-size="18" fill="#6b7280">${escapeXml(`${item.label}：`)}</text><text x="${qrX + 86}" y="${currentY}" font-size="18" fill="#111827">${escapeXml(String(item.value || '-'))}</text>`;
+          const currentY = y + 132 + metaIndex * 22;
+          return `<text x="${textX}" y="${currentY}" font-size="14" fill="#6b7280">${escapeXml(`${item.label}：`)}</text><text x="${textX + 60}" y="${currentY}" font-size="14" fill="#111827">${escapeXml(String(item.value || '-'))}</text>`;
         }).join('')}
-        ${linkLines.map((line, lineIndex) => `<text x="${qrX}" y="${y + cardHeight - 34 + lineIndex * 18}" font-size="14" fill="#9ca3af">${escapeXml(line)}</text>`).join('')}
       </g>`);
-    }
-    pages.push(`
-<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth}" height="${pageHeight}" viewBox="0 0 ${pageWidth} ${pageHeight}">
-  <rect width="100%" height="100%" fill="#f5f7fb" />
-  <text x="${margin}" y="54" font-size="40" font-weight="700" fill="#111827">${escapeXml(title)}</text>
-  <text x="${margin}" y="92" font-size="24" fill="#6b7280">第 ${pageIndex + 1} 页 · 共 ${cards.length} 张</text>
-  ${pageBody.join('')}
-</svg>`);
   }
-  return pages.join('\n');
+  return `
+  <section class="print-page sheet-page">
+    <svg class="sheet-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pageWidth} ${pageHeight}" role="img" aria-label="${escapeAttr(pageTitle)} 第 ${pageIndex + 1} 页">
+      <rect width="100%" height="100%" fill="#f8fafc" />
+      <text x="${margin}" y="38" font-size="28" font-weight="700" fill="#111827">${escapeXml(pageTitle)}</text>
+      <text x="${margin}" y="62" font-size="14" fill="#6b7280">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</text>
+      ${pageBody.join('')}
+    </svg>
+  </section>`;
+}
+
+async function renderQrSheetHtml(title: string, records: QrCardRecord[]) {
+  const cards = await prepareQrCards(records);
+  const pages = chunkRecords(cards, 6);
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(title)}</title>
+<style>
+@page{size:A4 landscape;margin:8mm}
+*{box-sizing:border-box}
+html,body{margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:10px}
+.print-page{width:100%;page-break-after:always;break-after:page;background:#fff;border-radius:3mm;overflow:hidden}
+.print-page:last-child{page-break-after:auto;break-after:auto}
+.sheet-svg{display:block;width:100%;height:auto;aspect-ratio:1122 / 794;background:#f8fafc}
+@media print{html,body{background:#fff;padding:0}.print-page{border-radius:0;box-shadow:none}}
+</style>
+</head>
+<body>
+${pages.map((pageCards, index) => renderSheetPage(title, pageCards, index, pages.length)).join('')}
+</body>
+</html>`;
 }
 
 async function listPcAssetsByIds(db: D1Database, ids: number[]) {
@@ -361,8 +412,8 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台电脑');
     const origin = String(requestJson?.origin || '');
     const records = await buildPcQrRecords(db, origin, ids);
-    const svg = await renderQrSheetSvg('电脑二维码图版', records);
-    return { text: svg, filename: `pc_qr_sheet_${Date.now()}.svg`, contentType: 'image/svg+xml; charset=utf-8', message: `已生成 ${records.length} 台电脑的二维码图版（SVG）` };
+    const html = await renderQrSheetHtml('电脑二维码图版', records);
+    return { text: html, filename: `pc_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台电脑的二维码图版打印页` };
   }
 
   if (type === 'MONITOR_QR_CARDS_EXPORT') {
@@ -379,8 +430,8 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台显示器');
     const origin = String(requestJson?.origin || '');
     const records = await buildMonitorQrRecords(db, origin, ids);
-    const svg = await renderQrSheetSvg('显示器二维码图版', records);
-    return { text: svg, filename: `monitor_qr_sheet_${Date.now()}.svg`, contentType: 'image/svg+xml; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版（SVG）` };
+    const html = await renderQrSheetHtml('显示器二维码图版', records);
+    return { text: html, filename: `monitor_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版打印页` };
   }
 
   if (type === 'DASHBOARD_PRECOMPUTE') {

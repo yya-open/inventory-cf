@@ -124,7 +124,7 @@
           <el-table-column label="操作" min-width="220">
             <template #default="{ row }">
               <div style="display:flex; gap:8px; flex-wrap:wrap">
-                <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row.id)">下载</el-button>
+                <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row)">下载</el-button>
                 <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
                 <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
               </div>
@@ -446,7 +446,11 @@ async function cleanupJobs() {
   await loadJobs();
 }
 
-async function downloadJob(id:number) { await apiDownload(`/api/jobs-download?id=${id}`, `job_${id}.csv`); }
+async function downloadJob(row:any) {
+  const id = Number(row?.id || 0);
+  if (!id) return;
+  await apiDownload(`/api/jobs-download?id=${id}`, row?.result_filename || undefined);
+}
 async function retryJob(id:number) {
   await confirmRiskAction({ title: '重试异步任务', actionLabel: '重试失败任务', detail: `任务 #${id} 会重新入队执行。`, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'retry', id });
