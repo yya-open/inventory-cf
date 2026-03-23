@@ -342,3 +342,22 @@ export function toAssetStatusAfterOut(_recycle_date: any) {
   // 兼容旧逻辑：现在出库固定为“已领用”，回收/归还请走独立动作。
   return "ASSIGNED" as const;
 }
+
+
+export async function ensurePcQrColumns(db: D1Database) {
+  for (const ddl of [
+    "ALTER TABLE pc_assets ADD COLUMN qr_key TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN qr_updated_at TEXT",
+  ]) {
+    try {
+      await db.prepare(ddl).run();
+    } catch {
+      // ignore
+    }
+  }
+  try {
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_qr_key ON pc_assets(qr_key)").run();
+  } catch {
+    // ignore
+  }
+}

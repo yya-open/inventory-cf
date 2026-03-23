@@ -98,6 +98,7 @@ import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";
+import { readHitokotoCache, writeHitokotoCache } from "../utils/hitokotoCache";
 
 const route = useRoute();
 const router = useRouter();
@@ -156,14 +157,25 @@ const defaultHitokotoText = "愿你今天录入顺利、盘点顺心，每一笔
 const defaultHitokotoFrom = "欢迎回来";
 const hitokotoText = ref(defaultHitokotoText);
 const hitokotoFrom = ref(defaultHitokotoFrom);
+const HITOKOTO_CACHE_TTL = 15 * 60 * 1000;
+
+function applyHitokoto(text?: string, from?: string) {
+  hitokotoText.value = String(text || '').trim() || defaultHitokotoText;
+  hitokotoFrom.value = String(from || '').trim() || defaultHitokotoFrom;
+}
 
 async function loadHitokoto() {
+  const cached = readHitokotoCache(HITOKOTO_CACHE_TTL);
+  if (cached?.text) {
+    applyHitokoto(cached.text, cached.from);
+    if (cached.fresh) return;
+  }
+
   const controller = new AbortController();
   const timer = window.setTimeout(() => controller.abort(), 3500);
   try {
     const response = await fetch("https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json", {
       method: "GET",
-      cache: "no-store",
       signal: controller.signal,
     });
     if (!response.ok) throw new Error(`HTTP ${response.status}`);
@@ -171,12 +183,13 @@ async function loadHitokoto() {
     const text = typeof data?.hitokoto === "string" ? data.hitokoto.trim() : "";
     const from = [data?.from_who, data?.from].filter(Boolean).join(" · ");
     if (text) {
-      hitokotoText.value = text;
-      hitokotoFrom.value = from || defaultHitokotoFrom;
+      applyHitokoto(text, from || defaultHitokotoFrom);
+      writeHitokotoCache({ text, from: from || defaultHitokotoFrom });
+      return;
     }
+    if (!cached?.text) applyHitokoto();
   } catch {
-    hitokotoText.value = defaultHitokotoText;
-    hitokotoFrom.value = defaultHitokotoFrom;
+    if (!cached?.text) applyHitokoto();
   } finally {
     window.clearTimeout(timer);
   }

@@ -180,6 +180,7 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { listMonitorAssets } from '../api/assetLedgers';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
+import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
@@ -1205,6 +1206,10 @@ const qrRow = ref<MonitorAsset | null>(null);
 const qrLink = ref('');
 const qrDataUrl = ref('');
 
+function monitorQrVersionOf(row?: Partial<MonitorAsset> | null) {
+  return String(row?.qr_updated_at || row?.updated_at || '');
+}
+
 
 async function exportSelectedQrPng() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
@@ -1256,12 +1261,21 @@ async function openQr(row: MonitorAsset) {
   try {
     const id = Number(row?.id || 0);
     if (!id) throw new Error('缺少资产ID');
+    const version = monitorQrVersionOf(row);
+    const cached = getCachedAssetQr('monitor', id, version);
+    if (cached) {
+      qrLink.value = cached.link;
+      qrDataUrl.value = cached.dataUrl;
+      return;
+    }
     const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`);
     const link = String(result?.url || '');
     qrLink.value = link;
     if (link) {
       const QRCode = await loadQrCodeLib();
-      qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+      const dataUrl = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+      qrDataUrl.value = dataUrl;
+      setCachedAssetQr('monitor', id, version, { link, dataUrl });
     }
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
@@ -1301,12 +1315,17 @@ async function resetQr() {
       cancelButtonText: '取消',
     });
     qrLoading.value = true;
+    invalidateAssetQr('monitor', id);
     const result: any = await apiPost(`/api/monitor-assets-reset-qr?id=${id}`, {});
     const link = String(result?.url || '');
     qrLink.value = link;
     if (link) {
       const QRCode = await loadQrCodeLib();
-      qrDataUrl.value = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+      const dataUrl = await QRCode.toDataURL(link, { margin: 1, width: 360 });
+      qrDataUrl.value = dataUrl;
+      const version = new Date().toISOString();
+      qrRow.value = qrRow.value ? { ...qrRow.value, qr_updated_at: version } : qrRow.value;
+      setCachedAssetQr('monitor', id, version, { link, dataUrl });
     }
     ElMessage.success('已重置');
   } catch (error: any) {
@@ -1320,20 +1339,15 @@ async function resetQr() {
 async function initQrKeys() {
   if (initQrBusy.value) return;
   try {
-    await ElMessageBox.confirm('将为所有缺少二维码Key的显示器批量生成Key（分批执行）。继续？', '初始化二维码Key', {
+    await ElMessageBox.confirm('将把“补齐显示器二维码 Key”提交到异步任务中心后台执行。继续？', '初始化二维码Key', {
       type: 'warning',
       confirmButtonText: '继续',
       cancelButtonText: '取消',
     });
     initQrBusy.value = true;
-    let totalUpdated = 0;
-    for (let index = 0; index < 20; index += 1) {
-      const result: any = await apiPost('/api/monitor-assets-init-qr-keys', { batch_size: 50 });
-      const updated = Number(result?.updated || 0);
-      totalUpdated += updated;
-      if (updated <= 0) break;
-    }
-    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 条` : '无需补齐（都已存在）');
+    const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_KEY_INIT', request_json: { batch_size: 50 }, retain_days: 7, max_retries: 1 });
+    const jobId = Number(result?.data?.id || result?.id || 0);
+    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '初始化失败');

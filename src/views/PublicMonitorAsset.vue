@@ -123,12 +123,7 @@
 <script setup lang="ts">
 import { ElDescriptions, ElDescriptionsItem, ElSegmented } from 'element-plus';
 import { ElSkeleton } from 'element-plus';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from "../utils/el-services";
-import { apiGetPublic, apiPostPublic } from '../api/client';
-import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type PublicScanMode, type SystemSettings } from '../api/systemSettings';
-import { buildPublicQuery, enqueuePendingPublicSubmission, flushPendingPublicSubmissions, getWeakNetworkText, isNetworkError, loadPendingPublicSubmissions, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration, type PendingPublicSubmission } from '../utils/publicInventory';
-import { useCameraQrScanner } from '../composables/useCameraQrScanner';
+import { usePublicInventoryPage } from '../composables/usePublicInventoryPage';
 
 const issueOptions = [
   { label: '不在位', value: 'NOT_FOUND' },
@@ -140,117 +135,54 @@ const issueOptions = [
 ];
 const issueSegmentOptions = issueOptions.map((item) => ({ label: item.label, value: item.value }));
 
-const settings = ref<SystemSettings>({ ...DEFAULT_SYSTEM_SETTINGS });
-const loading = ref(true);
-const error = ref('');
-const row = ref<any>(null);
-const id = ref('');
-const key = ref('');
-const token = ref('');
-const submittingOk = ref(false);
-const submittingIssue = ref(false);
-const issueVisible = ref(false);
-const issueForm = ref({ issue_type: '', remark: '' });
-const cooldownLeft = ref(0);
-const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
-const descColumns = computed(() => (viewportWidth.value < 640 ? 1 : 2));
-const isMobile = computed(() => viewportWidth.value < 640);
-const continuousMode = ref(true);
-const scanMode = ref<PublicScanMode>('scanner');
-const nextInput = ref('');
-const nextInputRef = ref<any>(null);
-const cameraVideoRef = ref<HTMLVideoElement | null>(null);
-const recentTargets = ref<string[]>([]);
-const weakNetworkHint = ref('');
-const retryMessage = ref('');
-const retryAction = ref<null | 'refresh' | 'ok' | 'issue'>(null);
-const pendingQueue = ref<PendingPublicSubmission[]>([]);
-const flushingQueue = ref(false);
-const scanModeOptions = computed(() => ([
-  { label: '手动', value: 'manual' },
-  { label: '扫码枪', value: 'scanner' },
-  { label: '摄像头', value: 'camera', disabled: !cameraSupported.value },
-]));
-const nextInputPlaceholder = computed(() => scanMode.value === 'camera' ? '摄像头模式下，也可手动粘贴下一项二维码链接 / token' : '粘贴或扫描下一项二维码链接 / token，扫码枪回车可直接切换');
-const scannerTip = computed(() => {
-  if (scanMode.value === 'camera') {
-    if (!cameraSupported.value) return '当前浏览器不支持摄像头连续扫码，请切换为扫码枪模式。';
-    if (cameraError.value) return cameraError.value;
-    return cameraActive.value ? '摄像头扫码中：对准下一项二维码后会自动切到下一项。' : '摄像头模式已选择：点击“启动摄像头”后即可连续识别二维码。';
-  }
-  if (scanMode.value === 'scanner') return '扫码枪模式已开启：输入框会自动保持焦点，识别到完整二维码链接或 token 后会自动切换。';
-  return '手动模式：可粘贴二维码链接或 token 后按回车或点击按钮切换。';
-});
-let cooldownTimer: any = null;
-let scannerTimer: any = null;
-
-function handleResize() { viewportWidth.value = window.innerWidth; }
-function handleNetworkChange() { weakNetworkHint.value = settings.value.public_inventory_retry_hint ? getWeakNetworkText() : ''; }
-function recentLabel(item: string) {
-  const q = new URLSearchParams(item);
-  return q.get('id') || q.get('token')?.slice(0, 12) || item.slice(0, 14);
-}
-function clearRetry() { retryMessage.value = ''; retryAction.value = null; }
-function refreshPendingQueue() { pendingQueue.value = loadPendingPublicSubmissions('monitor'); }
 const {
-  supported: cameraSupported,
-  active: cameraActive,
-  starting: cameraStarting,
-  error: cameraError,
-  start: startCamera,
-  stop: stopCamera,
-  clearError: clearCameraError,
-} = useCameraQrScanner(cameraVideoRef, (raw) => {
-  if (!continuousMode.value || scanMode.value !== 'camera') return;
-  const target = parsePublicTargetInput(raw);
-  if (!target) return;
-  goNextToTarget(target, 'camera');
+  settings,
+  loading,
+  error,
+  row,
+  submittingOk,
+  submittingIssue,
+  issueVisible,
+  issueForm,
+  cooldownLeft,
+  descColumns,
+  isMobile,
+  continuousMode,
+  scanMode,
+  nextInput,
+  nextInputRef,
+  cameraVideoRef,
+  recentTargets,
+  weakNetworkHint,
+  retryMessage,
+  clearRetry,
+  pendingQueue,
+  flushingQueue,
+  scanModeOptions,
+  nextInputPlaceholder,
+  scannerTip,
+  cameraSupported,
+  cameraActive,
+  cameraStarting,
+  cameraError,
+  toggleCamera,
+  retryCamera,
+  recentLabel,
+  refresh,
+  openRecent,
+  goNextFromInput,
+  submitOk,
+  submitIssue,
+  retryLast,
+  flushPendingQueue,
+} = usePublicInventoryPage({
+  kind: 'monitor',
+  detailPath: '/api/public/monitor-asset',
+  inventoryPath: '/api/public/monitor-asset-inventory',
+  autoFocusAfterSubmit: 'always',
 });
 
-async function toggleCamera() {
-  if (cameraActive.value) stopCamera();
-  else await startCamera();
-}
-
-async function retryCamera() {
-  clearCameraError();
-  await startCamera();
-}
-
-
-function focusNextInput() {
-  nextTick(() => {
-    const target = nextInputRef.value;
-    if (target && typeof target.focus === 'function') target.focus();
-  });
-}
-
-function scheduleScannerAutoGo() {
-  if (!continuousMode.value || scanMode.value !== 'scanner') return;
-  const target = parsePublicTargetInput(nextInput.value);
-  if (!target) return;
-  if (scannerTimer) clearTimeout(scannerTimer);
-  scannerTimer = setTimeout(() => {
-    if (continuousMode.value && scanMode.value === 'scanner' && parsePublicTargetInput(nextInput.value)) {
-      goNextFromInput();
-    }
-  }, 90);
-}
 function locationText(r: any) { return [r?.parent_location_name, r?.location_name].filter(Boolean).join('/') || '-'; }
-
-function startCooldown(seconds = settings.value.public_inventory_cooldown_seconds) {
-  cooldownLeft.value = seconds;
-  if (cooldownTimer) clearInterval(cooldownTimer);
-  if (scannerTimer) clearTimeout(scannerTimer);
-  cooldownTimer = setInterval(() => {
-    cooldownLeft.value = Math.max(0, cooldownLeft.value - 1);
-    if (cooldownLeft.value <= 0) {
-      clearInterval(cooldownTimer);
-      cooldownTimer = null;
-    }
-  }, 1000);
-}
-
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
   if (s === 'ASSIGNED') return '已领用';
@@ -265,205 +197,6 @@ function statusTagType(s: string) {
   if (s === 'SCRAPPED') return 'danger';
   return 'info';
 }
-
-function syncFromLocation() {
-  const url = new URL(window.location.href);
-  id.value = (url.searchParams.get('id') || '').trim();
-  key.value = (url.searchParams.get('key') || '').trim();
-  token.value = (url.searchParams.get('token') || '').trim();
-}
-
-function goNextToTarget(target: any, source: 'manual' | 'scanner' | 'camera' = 'manual') {
-  const url = new URL(window.location.href);
-  url.search = buildPublicQuery(target);
-  window.history.replaceState({}, '', url.toString());
-  nextInput.value = '';
-  refresh();
-  if (continuousMode.value && source === 'scanner') focusNextInput();
-}
-
-function openRecent(item: string) {
-  const target = parsePublicTargetInput(`?${item}`);
-  if (!target) return;
-  goNextToTarget(target, 'manual');
-}
-function goNextFromInput() {
-  const target = parsePublicTargetInput(nextInput.value);
-  if (!target) return ElMessage.warning('请先粘贴下一项二维码链接 / token，或使用扫码枪 / 摄像头连续扫码');
-  goNextToTarget(target, scanMode.value === 'scanner' ? 'scanner' : 'manual');
-}
-
-async function loadPublicConfig() {
-  try {
-    settings.value = await fetchPublicSettings();
-    continuousMode.value = settings.value.public_inventory_continuous_mode_default;
-    scanMode.value = settings.value.public_inventory_scan_mode_default;
-    if (scanMode.value === 'camera' && !cameraSupported.value) scanMode.value = 'scanner';
-  } catch {}
-  handleNetworkChange();
-}
-
-async function refresh() {
-  loading.value = true;
-  error.value = '';
-  clearRetry();
-  try {
-    if (scannerTimer) { clearTimeout(scannerTimer); scannerTimer = null; }
-    syncFromLocation();
-    let apiUrl = '';
-    if (id.value && key.value) apiUrl = `/api/public/monitor-asset?id=${encodeURIComponent(id.value)}&key=${encodeURIComponent(key.value)}`;
-    else if (token.value) apiUrl = `/api/public/monitor-asset?token=${encodeURIComponent(token.value)}`;
-    else throw new Error('缺少二维码参数');
-    const j: any = await apiGetPublic(apiUrl);
-    row.value = j.data;
-    saveRecentPublicTarget('monitor', token.value ? { token: token.value } : { id: id.value, key: key.value });
-    recentTargets.value = loadRecentPublicTargets('monitor');
-  } catch (e: any) {
-    error.value = e?.message || '获取失败';
-    if (isNetworkError(e)) {
-      retryMessage.value = '网络请求失败，请检查网络后重试。';
-      retryAction.value = 'refresh';
-    }
-  } finally { loading.value = false; }
-}
-
-function inventoryApiUrl(target?: any) {
-  const targetId = target?.id || id.value;
-  const targetKey = target?.key || key.value;
-  const targetToken = target?.token || token.value;
-
-  if (targetId && targetKey) return `/api/public/monitor-asset-inventory?id=${encodeURIComponent(targetId)}&key=${encodeURIComponent(targetKey)}`;
-  if (targetToken) return `/api/public/monitor-asset-inventory?token=${encodeURIComponent(targetToken)}`;
-  return '';
-}
-
-async function onSubmitSuccess(message: string) {
-  ElMessage.success(message);
-  triggerSuccessVibration(settings.value.public_inventory_auto_vibrate);
-  startCooldown(settings.value.public_inventory_cooldown_seconds);
-  if (continuousMode.value) {
-    if (nextInput.value.trim()) setTimeout(() => goNextFromInput(), 160);
-    else focusNextInput();
-  }
-}
-
-
-async function sendInventoryPayload(target: any, payload: { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string }) {
-  const apiUrl = inventoryApiUrl(target);
-  if (!apiUrl) throw new Error('缺少二维码参数');
-  await apiPostPublic(apiUrl, payload);
-}
-
-async function flushPendingQueue() {
-  if (!pendingQueue.value.length) return;
-  try {
-    flushingQueue.value = true;
-    const result = await flushPendingPublicSubmissions('monitor', sendInventoryPayload);
-    refreshPendingQueue();
-    if (result.sent) ElMessage.success(`已补交 ${result.sent} 条待重试记录`);
-    if (result.failed) ElMessage.warning(`仍有 ${result.failed} 条待重试记录未成功提交`);
-  } catch (error: any) {
-    ElMessage.error(error?.message || '提交待重试记录失败');
-  } finally {
-    flushingQueue.value = false;
-  }
-}
-
-function queuePending(payload: { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string }, label: string) {
-  const target = token.value ? { token: token.value } : { id: id.value, key: key.value };
-  enqueuePendingPublicSubmission('monitor', target, payload, label);
-  refreshPendingQueue();
-}
-
-async function submitOk() {
-  try {
-    clearRetry();
-    if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
-    submittingOk.value = true;
-    await sendInventoryPayload(undefined, { action: 'OK' });
-    await onSubmitSuccess('已记录：盘点通过');
-  } catch (e: any) {
-    if (isNetworkError(e)) {
-      retryMessage.value = '网络较弱，盘点结果已加入待重试队列，可点击重试或稍后统一补交。';
-      retryAction.value = 'ok';
-      queuePending({ action: 'OK' }, '盘点通过');
-    }
-    ElMessage.error(e?.message || '提交失败');
-  } finally { submittingOk.value = false; }
-}
-
-async function submitIssue() {
-  try {
-    clearRetry();
-    if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
-    if (!issueForm.value.issue_type) throw new Error('请选择异常类型');
-    submittingIssue.value = true;
-    await sendInventoryPayload(undefined, { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark });
-    issueVisible.value = false;
-    issueForm.value = { issue_type: '', remark: '' };
-    await onSubmitSuccess('已提交：异常');
-  } catch (e: any) {
-    if (isNetworkError(e)) {
-      retryMessage.value = '网络较弱，异常结果已加入待重试队列，可点击重试或稍后统一补交。';
-      retryAction.value = 'issue';
-      queuePending({ action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark }, '异常提交');
-    }
-    ElMessage.error(e?.message || '提交失败');
-  } finally { submittingIssue.value = false; }
-}
-
-function retryLast() {
-  if (retryAction.value === 'ok') return submitOk();
-  if (retryAction.value === 'issue') return submitIssue();
-  return refresh();
-}
-
-watch(() => settings.value.public_inventory_retry_hint, handleNetworkChange);
-watch(() => pendingQueue.value.length, (count) => { if (!count && retryAction.value && retryMessage.value.includes('待重试')) clearRetry(); });
-watch([continuousMode, scanMode], async ([enabled, mode]) => {
-  if (!enabled) {
-    stopCamera();
-    return;
-  }
-  if (mode === 'scanner') {
-    stopCamera();
-    focusNextInput();
-    return;
-  }
-  if (mode === 'camera') {
-    if (!cameraSupported.value) {
-      scanMode.value = 'scanner';
-      return;
-    }
-    await startCamera();
-    return;
-  }
-  stopCamera();
-});
-watch(nextInput, () => {
-  if (scanMode.value === 'scanner') scheduleScannerAutoGo();
-});
-
-onMounted(async () => {
-  await loadPublicConfig();
-  recentTargets.value = loadRecentPublicTargets('monitor');
-  await refresh();
-  if (navigator.onLine && pendingQueue.value.length) { flushPendingQueue().catch(() => {}); }
-  if (continuousMode.value && scanMode.value === 'scanner') focusNextInput();
-  if (continuousMode.value && scanMode.value === 'camera') await startCamera();
-  window.addEventListener('resize', handleResize);
-  window.addEventListener('online', handleNetworkChange);
-  window.addEventListener('online', () => { flushPendingQueue().catch(() => {}); });
-  window.addEventListener('offline', handleNetworkChange);
-});
-
-onBeforeUnmount(() => {
-  if (cooldownTimer) clearInterval(cooldownTimer);
-  if (scannerTimer) clearTimeout(scannerTimer);
-  window.removeEventListener('resize', handleResize);
-  window.removeEventListener('online', handleNetworkChange);
-  window.removeEventListener('offline', handleNetworkChange);
-});
 </script>
 
 <style scoped>

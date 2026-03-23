@@ -127,6 +127,7 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { listPcAssets } from '../api/assetLedgers';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
+import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
@@ -345,6 +346,10 @@ const qrDataUrl = ref('');
 const qrLink = ref('');
 const qrRow = ref<PcAsset | null>(null);
 
+function pcQrVersionOf(row?: Partial<PcAsset> | null) {
+  return String(row?.qr_updated_at || row?.updated_at || '');
+}
+
 function updateVisibleColumns(value: string[]) {
   visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, PC_COLUMN_KEYS), columnOrder.value);
 }
@@ -384,16 +389,11 @@ const reset = () => {
 async function initQrKeys() {
   if (initQrBusy.value) return;
   try {
-    await ElMessageBox.confirm('将为所有缺少二维码Key的电脑批量生成Key（分批执行）。继续？', '初始化二维码Key', { type: 'warning' });
+    await ElMessageBox.confirm('将把“补齐电脑二维码 Key”提交到异步任务中心后台执行。继续？', '初始化二维码Key', { type: 'warning' });
     initQrBusy.value = true;
-    let totalUpdated = 0;
-    for (let i = 0; i < 20; i += 1) {
-      const result: any = await apiPost('/api/pc-assets-init-qr-keys?batch=200', {});
-      const updated = Number(result?.updated || 0);
-      totalUpdated += updated;
-      if (!updated) break;
-    }
-    ElMessage.success(totalUpdated ? `已补齐 ${totalUpdated} 台电脑的二维码Key` : '无需补齐（都已存在）');
+    const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_KEY_INIT', request_json: { batch: 200 }, retain_days: 7, max_retries: 1 });
+    const jobId = Number(result?.data?.id || result?.id || 0);
+    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);
   } finally {
@@ -450,10 +450,23 @@ async function openQr(row: PcAsset) {
   qrDataUrl.value = '';
   qrLink.value = '';
   try {
-    const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-    qrLink.value = result.url;
+    const id = Number(row?.id || 0);
+    if (!id) throw new Error('缺少资产ID');
+    const version = pcQrVersionOf(row);
+    const cached = getCachedAssetQr('pc', id, version);
+    if (cached) {
+      qrLink.value = cached.link;
+      qrDataUrl.value = cached.dataUrl;
+      return;
+    }
+    const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(id))}`);
+    const link = String(result?.url || '');
+    if (!link) throw new Error('二维码链接生成失败');
+    qrLink.value = link;
     const QRCode = await loadQrCodeLib();
-    qrDataUrl.value = await QRCode.toDataURL(result.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
+    const dataUrl = await QRCode.toDataURL(link, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
+    qrDataUrl.value = dataUrl;
+    setCachedAssetQr('pc', id, version, { link, dataUrl });
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
     qrVisible.value = false;
@@ -467,10 +480,17 @@ async function resetQr() {
     if (!qrRow.value?.id) return;
     await ElMessageBox.confirm('确认要重置该电脑的二维码吗？重置后旧二维码将立即失效。', '重置二维码', { type: 'warning' });
     qrLoading.value = true;
-    const result: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(qrRow.value.id))}`, {});
-    qrLink.value = result.url;
+    const assetId = Number(qrRow.value.id);
+    invalidateAssetQr('pc', assetId);
+    const result: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(assetId))}`, {});
+    const link = String(result?.url || '');
+    qrLink.value = link;
     const QRCode = await loadQrCodeLib();
-    qrDataUrl.value = await QRCode.toDataURL(result.url, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
+    const dataUrl = await QRCode.toDataURL(link, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
+    qrDataUrl.value = dataUrl;
+    const version = new Date().toISOString();
+    qrRow.value = qrRow.value ? { ...qrRow.value, qr_updated_at: version } : qrRow.value;
+    setCachedAssetQr('pc', assetId, version, { link, dataUrl });
     ElMessage.success('已重置，新二维码已生成');
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);

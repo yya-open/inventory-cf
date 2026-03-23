@@ -1,10 +1,13 @@
 import { sqlNowStored } from '../_time';
+import { ensurePcQrColumns } from '../_pc';
+import { ensureMonitorQrColumns } from '../_monitor';
+import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -66,7 +69,55 @@ async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limi
   return rows;
 }
 
+async function runInitMissingQrKeysJob(db: D1Database, config: { assetTable: 'pc_assets' | 'monitor_assets'; notFoundMessage: string; publicPath: '/public/pc-asset' | '/public/monitor-asset'; batchSize: number; maxRounds: number; kindLabel: string }) {
+  let totalUpdated = 0;
+  let rounds = 0;
+  let lastUpdated = 0;
+  for (let index = 0; index < config.maxRounds; index += 1) {
+    rounds += 1;
+    const result = await initMissingAssetQrKeys(db, {
+      assetTable: config.assetTable,
+      notFoundMessage: config.notFoundMessage,
+      publicPath: config.publicPath,
+    }, config.batchSize);
+    lastUpdated = Number(result.updated || 0);
+    totalUpdated += lastUpdated;
+    if (lastUpdated <= 0) break;
+  }
+  return { total_updated: totalUpdated, rounds, batch_size: config.batchSize, exhausted: lastUpdated > 0 };
+}
+
 async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any) {
+  if (type === 'PC_QR_KEY_INIT') {
+    await ensurePcQrColumns(db);
+    const batchSize = Math.max(20, Math.min(500, Number(requestJson?.batch || requestJson?.batch_size || 200)));
+    const maxRounds = Math.max(1, Math.min(400, Number(requestJson?.max_rounds || 200)));
+    const result = await runInitMissingQrKeysJob(db, {
+      assetTable: 'pc_assets',
+      notFoundMessage: '电脑台账不存在或已删除',
+      publicPath: '/public/pc-asset',
+      batchSize,
+      maxRounds,
+      kindLabel: '电脑',
+    });
+    return { text: JSON.stringify(result, null, 2), filename: `pc_qr_key_init_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: result.total_updated ? `已补齐 ${result.total_updated} 台电脑的二维码 Key` : '无需补齐电脑二维码 Key' };
+  }
+
+  if (type === 'MONITOR_QR_KEY_INIT') {
+    await ensureMonitorQrColumns(db);
+    const batchSize = Math.max(10, Math.min(300, Number(requestJson?.batch || requestJson?.batch_size || 50)));
+    const maxRounds = Math.max(1, Math.min(400, Number(requestJson?.max_rounds || 200)));
+    const result = await runInitMissingQrKeysJob(db, {
+      assetTable: 'monitor_assets',
+      notFoundMessage: '显示器台账不存在或已删除',
+      publicPath: '/public/monitor-asset',
+      batchSize,
+      maxRounds,
+      kindLabel: '显示器',
+    });
+    return { text: JSON.stringify(result, null, 2), filename: `monitor_qr_key_init_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: result.total_updated ? `已补齐 ${result.total_updated} 台显示器的二维码 Key` : '无需补齐显示器二维码 Key' };
+  }
+
   if (type === 'DASHBOARD_PRECOMPUTE') {
     const result = await precomputeDashboardSnapshots(db, { days: Number(requestJson?.days || 90), force: requestJson?.force === true || requestJson?.force === 1 || requestJson?.force === '1' });
     return { text: JSON.stringify(result, null, 2), filename: `dashboard_precompute_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: `看板快照预计算完成：执行 ${result.runs} 个范围任务` };

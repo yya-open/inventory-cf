@@ -86,7 +86,7 @@
       <el-tab-pane label="异步任务" name="jobs">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
           <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="loadJobs"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:200px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:200px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /><el-option label="电脑二维码补齐" value="PC_QR_KEY_INIT" /><el-option label="显示器二维码补齐" value="MONITOR_QR_KEY_INIT" /></el-select>
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
