@@ -4,27 +4,27 @@
     <div class="login-page__orb login-page__orb--right"></div>
     <div class="login-shell">
       <div class="login-hero">
-        <div class="login-hero__badge">库存治理平台</div>
-        <div class="login-hero__title">出入库管理</div>
-        <div class="login-hero__subtitle">把台账、治理、演练和看板收拢到一套稳定的日常工作流里。</div>
-        <div class="login-hero__grid">
-          <div class="login-hero__item">
-            <div class="login-hero__item-value">生命周期</div>
-            <div class="login-hero__item-label">归档 / 恢复 / 清理闭环</div>
+        <div class="login-hero__badge">欢迎回来</div>
+        <div class="login-hero__title">让今天的工作，从一次顺畅登录开始</div>
+        <div class="login-hero__subtitle">愿你今天录入顺利、盘点顺心，每一笔记录都清晰可查。</div>
+
+        <div class="login-hero__visual" aria-hidden="true">
+          <div class="login-hero__visual-glow"></div>
+          <div class="login-hero__visual-card login-hero__visual-card--main">
+            <div class="login-hero__visual-eyebrow">WELCOME</div>
+            <div class="login-hero__visual-heading">欢迎进入系统</div>
+            <div class="login-hero__visual-copy">登录后即可回到你的工作台，继续今天的安排。</div>
           </div>
-          <div class="login-hero__item">
-            <div class="login-hero__item-value">演练闭环</div>
-            <div class="login-hero__item-label">问题跟踪、整改、复盘</div>
-          </div>
-          <div class="login-hero__item">
-            <div class="login-hero__item-value">统一看板</div>
-            <div class="login-hero__item-label">经营、治理、稳定性同屏</div>
-          </div>
-          <div class="login-hero__item">
-            <div class="login-hero__item-value">可见范围</div>
-            <div class="login-hero__item-label">部门 / 仓库 / 组合授权</div>
+          <div class="login-hero__visual-card login-hero__visual-card--side">
+            <div class="login-hero__visual-dot"></div>
+            <div>
+              <div class="login-hero__visual-side-title">Hi</div>
+              <div class="login-hero__visual-side-copy">愿今天一切顺利</div>
+            </div>
           </div>
         </div>
+
+        <div class="login-hero__note">请输入账号和密码继续访问系统。</div>
       </div>
 
       <el-card class="login-card" shadow="never">
@@ -276,8 +276,9 @@ async function changePassword() {
 
 .login-hero__title {
   margin-top: 18px;
+  max-width: 560px;
   font-size: 42px;
-  line-height: 1.1;
+  line-height: 1.15;
   font-weight: 800;
 }
 
@@ -289,31 +290,100 @@ async function changePassword() {
   color: #5b6472;
 }
 
-.login-hero__grid {
-  margin-top: 28px;
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 14px;
+.login-hero__visual {
+  position: relative;
+  margin-top: 32px;
+  min-height: 250px;
+  border-radius: 26px;
+  overflow: hidden;
+  background:
+    linear-gradient(145deg, rgba(64, 158, 255, 0.16), rgba(64, 158, 255, 0.04)),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 255, 0.92));
+  border: 1px solid rgba(214, 225, 240, 0.92);
 }
 
-.login-hero__item {
-  padding: 18px;
-  border-radius: 20px;
-  background: rgba(255, 255, 255, 0.76);
-  border: 1px solid rgba(220, 226, 234, 0.9);
+.login-hero__visual-glow {
+  position: absolute;
+  width: 220px;
+  height: 220px;
+  right: -30px;
+  top: -50px;
+  border-radius: 999px;
+  background: radial-gradient(circle, rgba(64, 158, 255, 0.28), rgba(64, 158, 255, 0));
 }
 
-.login-hero__item-value {
-  font-size: 18px;
+.login-hero__visual-card {
+  position: absolute;
+  border-radius: 22px;
+  background: rgba(255, 255, 255, 0.88);
+  box-shadow: 0 18px 40px rgba(31, 35, 41, 0.08);
+  border: 1px solid rgba(224, 232, 241, 0.92);
+}
+
+.login-hero__visual-card--main {
+  left: 28px;
+  top: 34px;
+  width: min(440px, calc(100% - 56px));
+  padding: 26px 28px;
+}
+
+.login-hero__visual-card--side {
+  right: 26px;
+  bottom: 26px;
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 14px 16px;
+}
+
+.login-hero__visual-eyebrow {
+  font-size: 12px;
+  letter-spacing: 0.16em;
+  color: #7f8a99;
+  font-weight: 700;
+}
+
+.login-hero__visual-heading {
+  margin-top: 10px;
+  font-size: 28px;
+  line-height: 1.2;
+  font-weight: 800;
+  color: #1f2329;
+}
+
+.login-hero__visual-copy {
+  margin-top: 10px;
+  max-width: 320px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #66707f;
+}
+
+.login-hero__visual-dot {
+  width: 12px;
+  height: 12px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #409eff, #7bc4ff);
+  box-shadow: 0 0 0 6px rgba(64, 158, 255, 0.14);
+}
+
+.login-hero__visual-side-title {
+  font-size: 16px;
   font-weight: 700;
   color: #1f2329;
 }
 
-.login-hero__item-label {
-  margin-top: 6px;
+.login-hero__visual-side-copy {
+  margin-top: 3px;
   font-size: 13px;
   color: #707782;
-  line-height: 1.7;
+}
+
+.login-hero__note {
+  margin-top: 18px;
+  font-size: 14px;
+  line-height: 1.8;
+  color: #6c7684;
 }
 
 .login-card {
