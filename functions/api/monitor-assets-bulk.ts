@@ -2,6 +2,7 @@ import { requireAuth, errorResponse } from '../_auth';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
+import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 import {
   bulkArchiveAssets,
@@ -9,7 +10,9 @@ import {
   bulkUpdateMonitorLocation,
   bulkUpdateMonitorOwner,
   bulkUpdateMonitorStatus,
+  loadAssetRows,
 } from './services/asset-bulk';
+import { bulkDeleteAssets } from './services/asset-bulk-delete';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 
@@ -103,6 +106,81 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         changed: result.changed,
         skipped: result.skipped,
         message: result.skipped ? `已更新 ${result.changed} 台显示器位置，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台显示器位置`,
+      });
+    }
+
+
+    if (action === 'delete') {
+      const existingRows = await loadAssetRows(env.DB, 'monitor', ids);
+      if (existingRows.some((row) => Number(row.archived || 0) === 1)) {
+        await requirePermission(env, request, 'asset_purge', 'admin');
+      }
+      const settings = await getSystemSettings(env.DB);
+      const result = await bulkDeleteAssets(env.DB, 'monitor', ids, {
+        allowPhysicalDelete: Boolean(settings.asset_allow_physical_delete),
+        updatedBy: user.username || null,
+      });
+      if (result.processed) {
+        invalidateSystemDictionaryReferenceCache();
+        await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
+      }
+      for (const item of result.successes) {
+        if (item.action === 'archive') {
+          await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', item.id, {
+            asset_code: item.row?.asset_code,
+            brand: item.row?.brand,
+            model: item.row?.model,
+            status: item.row?.status,
+            archived_reason: item.reason,
+          });
+          continue;
+        }
+        if (item.action === 'purge') {
+          await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', item.id, {
+            asset_code: item.row?.asset_code,
+            brand: item.row?.brand,
+            model: item.row?.model,
+            status: item.row?.status,
+            archived: true,
+            purge_related: item.related_counts || {},
+          });
+          continue;
+        }
+        await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', item.id, {
+          asset_code: item.row?.asset_code,
+          brand: item.row?.brand,
+          model: item.row?.model,
+          status: item.row?.status,
+        });
+      }
+      await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE_BATCH', 'monitor_assets', String(ids.length), {
+        requested_ids: ids,
+        processed: result.processed,
+        archived: result.archived,
+        deleted: result.deleted,
+        purged: result.purged,
+        failed: result.failed,
+        failed_ids: result.failures.map((item) => item.id),
+      });
+      return Response.json({
+        ok: true,
+        processed: result.processed,
+        archived: result.archived,
+        deleted: result.deleted,
+        purged: result.purged,
+        failed: result.failed,
+        failed_records: result.failures.map((item) => ({
+          ID: item.id || '-',
+          资产编号: item.row?.asset_code || '-',
+          SN: item.row?.sn || '-',
+          型号: item.row?.model || '-',
+          原因: item.message,
+        })),
+        message: result.failed
+          ? `已处理 ${result.processed} 台显示器，失败 ${result.failed} 台`
+          : result.archived || result.purged
+            ? `已处理 ${result.processed} 台显示器（归档 ${result.archived} 台，彻底删除 ${result.purged} 台，物理删除 ${result.deleted} 台）`
+            : `已删除 ${result.deleted} 台显示器`,
       });
     }
 

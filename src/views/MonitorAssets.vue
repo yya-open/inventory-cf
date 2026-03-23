@@ -768,26 +768,19 @@ async function batchDeleteSelected() {
         : `选中的 ${selectedCount.value} 台显示器中，有历史记录的资产会自动转归档，只有满足条件的资产会物理删除。请输入“确认”继续。`;
     await confirmBatchRisk('批量删除确认', tip);
     batchBusy.value = true;
-    let success = 0;
-    let archived = 0;
-    let failed = 0;
-    const failedMsgs: string[] = [];
-    const failedRecords: Array<Record<string, any>> = [];
-    for (const row of selectedRows.value.slice()) {
-      try {
-        const result: any = await apiDelete('/api/monitor-assets', { id: row.id });
-        success += 1;
-        if (result?.archived) archived += 1;
-      } catch (error: any) {
-        failed += 1;
-        failedMsgs.push(`${row.asset_code || ''}`.trim() || `ID ${row.id}`);
-        failedRecords.push({ ID: row.id, 资产编号: row.asset_code || '-', SN: row.sn || '-', 型号: row.model || '-', 原因: error?.message || '删除失败' });
-      }
-    }
-    if (success) clearSelection();
-    const purged = Math.max(0, success - archived);
-    if (success && !failed) ElMessage.success(archived ? `已处理 ${success} 台显示器（其中归档 ${archived} 台，彻底删除 ${purged} 台）` : `已删除 ${success} 台显示器`);
-    else if (success || failed) ElMessage.warning(`已处理 ${success} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${failedMsgs.length ? `（如：${failedMsgs.slice(0, 3).join('、')}）` : ''}`);
+    const result: any = await apiPost('/api/monitor-assets-bulk', {
+      action: 'delete',
+      ids: selectedIds.value.map((id) => Number(id)),
+    });
+    const processed = Number(result?.processed || 0);
+    const failed = Number(result?.failed || 0);
+    const archived = Number(result?.archived || 0);
+    const deleted = Number(result?.deleted || 0);
+    const purged = Number(result?.purged || 0);
+    const failedRecords = Array.isArray(result?.failed_records) ? result.failed_records : [];
+    if (processed) clearSelection();
+    if (processed && !failed) ElMessage.success(archived || purged ? `已处理 ${processed} 台显示器（其中归档 ${archived} 台，彻底删除 ${purged} 台，物理删除 ${deleted} 台）` : `已删除 ${deleted} 台显示器`);
+    else if (processed || failed) ElMessage.warning(`已处理 ${processed} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${deleted ? `，物理删除 ${deleted} 台` : ''}`);
     if (failedRecords.length) await exportBatchFailures(`显示器批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
     await refreshCurrent(true, true);
   } catch (error: any) {
