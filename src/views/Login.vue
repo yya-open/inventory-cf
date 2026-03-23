@@ -6,7 +6,10 @@
       <div class="login-hero">
         <div class="login-hero__badge">欢迎回来</div>
         <div class="login-hero__title">让今天的工作，从一次顺畅登录开始</div>
-        <div class="login-hero__subtitle">愿你今天录入顺利、盘点顺心，每一笔记录都清晰可查。</div>
+        <div class="login-hero__quote">
+          <div class="login-hero__quote-text">{{ hitokotoText }}</div>
+          <div v-if="hitokotoFrom" class="login-hero__quote-from">—— {{ hitokotoFrom }}</div>
+        </div>
 
         <div class="login-hero__visual" aria-hidden="true">
           <div class="login-hero__visual-glow"></div>
@@ -88,7 +91,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "../utils/el-services";
 import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
@@ -148,6 +151,40 @@ const showChange = ref(false);
 const oldP = ref("");
 const newP = ref("");
 const changing = ref(false);
+
+const defaultHitokotoText = "愿你今天录入顺利、盘点顺心，每一笔记录都清晰可查。";
+const defaultHitokotoFrom = "欢迎回来";
+const hitokotoText = ref(defaultHitokotoText);
+const hitokotoFrom = ref(defaultHitokotoFrom);
+
+async function loadHitokoto() {
+  const controller = new AbortController();
+  const timer = window.setTimeout(() => controller.abort(), 3500);
+  try {
+    const response = await fetch("https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json", {
+      method: "GET",
+      cache: "no-store",
+      signal: controller.signal,
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const data = await response.json();
+    const text = typeof data?.hitokoto === "string" ? data.hitokoto.trim() : "";
+    const from = [data?.from_who, data?.from].filter(Boolean).join(" · ");
+    if (text) {
+      hitokotoText.value = text;
+      hitokotoFrom.value = from || defaultHitokotoFrom;
+    }
+  } catch {
+    hitokotoText.value = defaultHitokotoText;
+    hitokotoFrom.value = defaultHitokotoFrom;
+  } finally {
+    window.clearTimeout(timer);
+  }
+}
+
+onMounted(() => {
+  void loadHitokoto();
+});
 
 async function doLogin() {
   loading.value = true;
@@ -243,9 +280,9 @@ async function changePassword() {
 .login-shell {
   position: relative;
   z-index: 1;
-  width: min(1120px, 100%);
+  width: min(1140px, 100%);
   display: grid;
-  grid-template-columns: 1.1fr minmax(360px, 420px);
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 28px;
   align-items: stretch;
 }
@@ -254,6 +291,7 @@ async function changePassword() {
   display: flex;
   flex-direction: column;
   justify-content: center;
+  min-height: 580px;
   padding: 40px;
   border-radius: 28px;
   color: #1f2329;
@@ -282,12 +320,26 @@ async function changePassword() {
   font-weight: 800;
 }
 
-.login-hero__subtitle {
-  margin-top: 14px;
-  max-width: 520px;
+.login-hero__quote {
+  margin-top: 18px;
+  max-width: 560px;
+  padding: 16px 18px;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.72);
+  border: 1px solid rgba(214, 225, 240, 0.95);
+  box-shadow: 0 10px 24px rgba(31, 35, 41, 0.04);
+}
+
+.login-hero__quote-text {
   font-size: 16px;
-  line-height: 1.8;
-  color: #5b6472;
+  line-height: 1.9;
+  color: #4b5563;
+}
+
+.login-hero__quote-from {
+  margin-top: 8px;
+  font-size: 13px;
+  color: #7b8794;
 }
 
 .login-hero__visual {
@@ -387,7 +439,7 @@ async function changePassword() {
 }
 
 .login-card {
-  align-self: center;
+  min-height: 580px;
   border-radius: 28px;
   border: none;
   background: rgba(255, 255, 255, 0.9);
@@ -440,7 +492,11 @@ async function changePassword() {
 }
 
 :deep(.login-card .el-card__body) {
-  padding: 30px 30px 26px;
+  height: 100%;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  padding: 40px;
 }
 
 :deep(.login-card .el-form-item__label) {
@@ -457,6 +513,11 @@ async function changePassword() {
 @media (max-width: 980px) {
   .login-shell {
     grid-template-columns: 1fr;
+  }
+
+  .login-hero,
+  .login-card {
+    min-height: auto;
   }
 
   .login-hero {
