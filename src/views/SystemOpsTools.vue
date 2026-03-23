@@ -9,7 +9,7 @@
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>
         <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '提交中' : '提交快照预计算任务' }}</el-button>
-        <el-button @click="reloadAll">刷新</el-button>
+        <el-button @click="reloadCurrent">刷新</el-button>
       </div>
     </div>
 
@@ -32,7 +32,7 @@
       <el-col :span="6"><el-card shadow="never"><div>待处理问题</div><div style="font-size:28px; font-weight:700">{{ dashboard.repair_problem_count }}</div><div style="font-size:12px; color:#999">最近巡检 {{ formatTime(scan.last_scanned_at) || '-' }}</div></el-card></el-col>
     </el-row>
 
-    <el-tabs v-model="tab">
+    <el-tabs v-model="tab" @tab-change="onTabChange">
       <el-tab-pane label="修复中心" name="repair">
         <el-alert
           type="info"
@@ -86,7 +86,7 @@
       <el-tab-pane label="异步任务" name="jobs">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
           <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="loadJobs"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:200px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /><el-option label="电脑二维码补齐" value="PC_QR_KEY_INIT" /><el-option label="显示器二维码补齐" value="MONITOR_QR_KEY_INIT" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:220px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /><el-option label="电脑二维码补齐" value="PC_QR_KEY_INIT" /><el-option label="显示器二维码补齐" value="MONITOR_QR_KEY_INIT" /><el-option label="电脑二维码卡片" value="PC_QR_CARDS_EXPORT" /><el-option label="电脑二维码图版" value="PC_QR_SHEET_EXPORT" /><el-option label="显示器二维码卡片" value="MONITOR_QR_CARDS_EXPORT" /><el-option label="显示器二维码图版" value="MONITOR_QR_SHEET_EXPORT" /></el-select>
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
@@ -217,6 +217,7 @@ const lastRepair = ref('');
 const snapshotPrecomputing = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
+const loadedTabs = reactive<Record<string, boolean>>({ repair: false, jobs: false, obs: false, health: false, history: false });
 
 function formatTime(v?: string | null) {
   if (!v) return '';
@@ -239,7 +240,7 @@ async function runSnapshotPrecompute() {
   try {
     const r = await apiPost<any>('/api/jobs', { job_type: 'DASHBOARD_PRECOMPUTE', request_json: { days: 90, force: true }, retain_days: 7, max_retries: 1 });
     ElMessage.success(r?.message || '已提交看板快照预计算任务');
-    await loadJobs();
+    if (loadedTabs.jobs || tab.value === 'jobs') await loadJobs();
   } catch (e: any) {
     ElMessage.error(e.message || '提交看板快照预计算任务失败');
   } finally {
@@ -322,12 +323,18 @@ async function loadBase() {
   applyScan(r.data?.scan || {});
   jobs.value = Array.isArray(r.data?.jobs) ? r.data.jobs : [];
   repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
+  if (!health.metrics || typeof health.metrics !== 'object') health.metrics = {};
+  health.metrics.failed_async_jobs = Number(health.metrics.failed_async_jobs || dashboard.failed_job_count || 0);
+  loadedTabs.repair = true;
+  loadedTabs.jobs = true;
+  loadedTabs.history = true;
 }
 
 async function loadObservability() {
   const r:any = await apiGet('/api/system-observability');
   slowRows.value = r.data?.slow_requests || [];
   errorRows.value = r.data?.error_requests || [];
+  loadedTabs.obs = true;
 }
 
 async function loadHealth() {
@@ -335,17 +342,44 @@ async function loadHealth() {
   health.schema = r.data?.schema || { ok: true };
   health.metrics = r.data?.metrics || {};
   health.scan = r.data?.scan || null;
+  loadedTabs.health = true;
 }
 
-async function reloadAll() {
-  await Promise.all([loadBase(), loadObservability(), loadHealth()]);
+async function ensureTabLoaded(name: string, force = false) {
+  const target = String(name || tab.value || 'repair');
+  if (['repair', 'jobs', 'history'].includes(target)) {
+    if (force || !loadedTabs.repair || !loadedTabs.jobs || !loadedTabs.history) await loadBase();
+    return;
+  }
+  if (target === 'obs') {
+    if (force || !loadedTabs.obs) await loadObservability();
+    return;
+  }
+  if (target === 'health') {
+    if (force || !loadedTabs.health) await loadHealth();
+    return;
+  }
+}
+
+async function onTabChange(name: string | number) {
+  await ensureTabLoaded(String(name || tab.value || 'repair'));
+}
+
+async function reloadCurrent() {
+  const current = String(tab.value || 'repair');
+  if (current === 'repair') {
+    await ensureTabLoaded('repair', true);
+    if (loadedTabs.health) await ensureTabLoaded('health', true);
+    return;
+  }
+  await ensureTabLoaded(current, true);
 }
 
 async function queueDeepScan() {
   try {
     const r:any = await apiPost('/api/jobs', { job_type: 'OPS_SCAN_REFRESH', request_json: {}, retain_days: 7, max_retries: 1 });
     ElMessage.success(r.message || '已提交深度巡检任务');
-    await loadJobs();
+    if (loadedTabs.jobs || tab.value === 'jobs') await loadJobs();
   } catch (e:any) {
     ElMessage.error(e.message || '提交深度巡检任务失败');
   }
@@ -433,5 +467,5 @@ function openDiff(row:any) {
   diffDialog.visible = true;
 }
 
-onMounted(reloadAll);
+onMounted(() => { ensureTabLoaded('repair'); });
 </script>

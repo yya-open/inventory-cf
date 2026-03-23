@@ -1,13 +1,14 @@
 import { sqlNowStored } from '../_time';
 import { ensurePcQrColumns } from '../_pc';
 import { ensureMonitorQrColumns } from '../_monitor';
-import { initMissingAssetQrKeys } from './asset-qr';
+import { getOrCreateAssetQrBulk, initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
+import QRCode from 'qrcode';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -51,6 +52,221 @@ function csvEscape(v: any) {
   const s = String(v ?? '');
   if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+
+
+function escapeHtml(value: any) {
+  return String(value ?? '')
+    .replaceAll('&', '&amp;')
+    .replaceAll('<', '&lt;')
+    .replaceAll('>', '&gt;')
+    .replaceAll('"', '&quot;')
+    .replaceAll("'", '&#39;');
+}
+
+function escapeXml(value: any) {
+  return escapeHtml(value);
+}
+
+function escapeAttr(value: any) {
+  return escapeHtml(value);
+}
+
+function normalizeJobAssetIds(input: any, limit = 500) {
+  const set = new Set<number>();
+  for (const value of Array.isArray(input) ? input : []) {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    set.add(Math.trunc(id));
+    if (set.size >= limit) break;
+  }
+  return Array.from(set);
+}
+
+type QrCardRecord = {
+  title: string;
+  subtitle?: string;
+  meta?: Array<{ label: string; value: string }>;
+  url: string;
+};
+
+async function prepareQrCards(records: QrCardRecord[]) {
+  return Promise.all(records.map(async (record) => ({
+    ...record,
+    dataUrl: await QRCode.toDataURL(record.url, { width: 220, margin: 2, errorCorrectionLevel: 'Q' }),
+  })));
+}
+
+async function renderQrCardsHtml(title: string, records: QrCardRecord[]) {
+  const cards = await prepareQrCards(records);
+  return `<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>${escapeHtml(title)}</title>
+<style>
+body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0;padding:24px;background:#f5f7fb;color:#1f2937}
+.page-title{font-size:22px;font-weight:800;margin-bottom:8px}
+.page-sub{color:#6b7280;margin-bottom:20px}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
+.card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:18px;box-shadow:0 10px 24px rgba(15,23,42,.08);break-inside:avoid}
+.qr{display:flex;justify-content:center;padding:8px 0 14px}
+.qr img{width:200px;height:200px}
+.title{font-size:18px;font-weight:800;line-height:1.35}
+.subtitle{margin-top:4px;color:#4b5563;font-size:13px}
+.meta{margin-top:12px;border-top:1px dashed #d1d5db;padding-top:10px;display:grid;gap:6px}
+.meta-row{display:flex;justify-content:space-between;gap:12px;font-size:12px}
+.meta-row .k{color:#6b7280}
+.meta-row .v{font-weight:700;text-align:right;word-break:break-all}
+.link{margin-top:12px;font-size:11px;color:#6b7280;word-break:break-all}
+.tip{margin-top:18px;color:#6b7280;font-size:12px}
+@media print{body{background:#fff;padding:0}.card{box-shadow:none;border-color:#d1d5db}}
+</style>
+</head>
+<body>
+<div class="page-title">${escapeHtml(title)}</div>
+<div class="page-sub">共 ${cards.length} 张二维码卡片，可直接浏览器打印或另存为 PDF。</div>
+<div class="grid">
+${cards.map((record) => `
+  <section class="card">
+    <div class="qr"><img src="${record.dataUrl}" alt="QR" /></div>
+    <div class="title">${escapeHtml(record.title)}</div>
+    ${record.subtitle ? `<div class="subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
+    ${record.meta?.length ? `<div class="meta">${record.meta.map((item) => `<div class="meta-row"><span class="k">${escapeHtml(item.label)}</span><span class="v">${escapeHtml(item.value)}</span></div>`).join('')}</div>` : ''}
+    <div class="link">${escapeHtml(record.url)}</div>
+  </section>`).join('')}
+</div>
+<div class="tip">建议打印时选择 A4、纵向、边距窄；如在手机端打开，可直接调用系统分享/打印。</div>
+</body>
+</html>`;
+}
+
+function wrapTextSvg(text: any, maxChars: number, maxLines = 2) {
+  const chars = Array.from(String(text || '').trim());
+  if (!chars.length) return ['-'];
+  const lines: string[] = [];
+  let current = '';
+  for (const char of chars) {
+    if ((current + char).length > maxChars && current) {
+      lines.push(current);
+      current = char;
+      if (lines.length >= maxLines) break;
+    } else current += char;
+  }
+  if (lines.length < maxLines && current) lines.push(current);
+  if (lines.length > maxLines) return lines.slice(0, maxLines);
+  if (chars.length > lines.join('').length) {
+    lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, Math.max(1, maxChars - 1))}…`;
+  }
+  return lines;
+}
+
+async function renderQrSheetSvg(title: string, records: QrCardRecord[]) {
+  const cards = await prepareQrCards(records);
+  if (!cards.length) return '';
+  const cols = 2;
+  const rowsPerPage = 3;
+  const pageSize = cols * rowsPerPage;
+  const pageWidth = 1600;
+  const pageHeight = 2200;
+  const margin = 72;
+  const gapX = 40;
+  const gapY = 40;
+  const cardWidth = Math.floor((pageWidth - margin * 2 - gapX) / cols);
+  const cardHeight = Math.floor((pageHeight - margin * 2 - gapY * (rowsPerPage - 1)) / rowsPerPage);
+  const totalPages = Math.ceil(cards.length / pageSize);
+  const pages: string[] = [];
+  for (let pageIndex = 0; pageIndex < totalPages; pageIndex += 1) {
+    const pageCards = cards.slice(pageIndex * pageSize, pageIndex * pageSize + pageSize);
+    const pageBody: string[] = [];
+    for (let index = 0; index < pageCards.length; index += 1) {
+      const card = pageCards[index];
+      const col = index % cols;
+      const row = Math.floor(index / cols);
+      const x = margin + col * (cardWidth + gapX);
+      const y = 130 + row * (cardHeight + gapY);
+      const qrSize = 240;
+      const qrX = x + 28;
+      const qrY = y + 34;
+      const textX = qrX + qrSize + 28;
+      const textWidth = cardWidth - (textX - x) - 28;
+      const titleLines = wrapTextSvg(card.title, 18, 2);
+      const subtitleLines = wrapTextSvg(card.subtitle || '', 28, 2);
+      const meta = (card.meta || []).slice(0, 5);
+      const linkLines = wrapTextSvg(card.url, 58, 2);
+      pageBody.append(`
+      <g>
+        <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="28" ry="28" fill="#ffffff" stroke="#e5e7eb" stroke-width="2" />
+        <image href="${card.dataUrl}" x="${qrX}" y="${qrY}" width="${qrSize}" height="${qrSize}" preserveAspectRatio="xMidYMid meet" />
+        ${titleLines.map((line, lineIndex) => `<text x="${textX}" y="${y + 76 + lineIndex * 38}" font-size="30" font-weight="700" fill="#111827">${escapeXml(line)}</text>`).join('')}
+        ${subtitleLines.filter(Boolean).map((line, lineIndex) => `<text x="${textX}" y="${y + 152 + lineIndex * 28}" font-size="20" fill="#4b5563">${escapeXml(line)}</text>`).join('')}
+        ${meta.map((item, metaIndex) => {
+          const currentY = y + 292 + metaIndex * 30;
+          return `<text x="${qrX}" y="${currentY}" font-size="18" fill="#6b7280">${escapeXml(`${item.label}：`)}</text><text x="${qrX + 86}" y="${currentY}" font-size="18" fill="#111827">${escapeXml(String(item.value || '-'))}</text>`;
+        }).join('')}
+        ${linkLines.map((line, lineIndex) => `<text x="${qrX}" y="${y + cardHeight - 34 + lineIndex * 18}" font-size="14" fill="#9ca3af">${escapeXml(line)}</text>`).join('')}
+      </g>`);
+    }
+    pages.push(`
+<svg xmlns="http://www.w3.org/2000/svg" width="${pageWidth}" height="${pageHeight}" viewBox="0 0 ${pageWidth} ${pageHeight}">
+  <rect width="100%" height="100%" fill="#f5f7fb" />
+  <text x="${margin}" y="54" font-size="40" font-weight="700" fill="#111827">${escapeXml(title)}</text>
+  <text x="${margin}" y="92" font-size="24" fill="#6b7280">第 ${pageIndex + 1} 页 · 共 ${cards.length} 张</text>
+  ${pageBody.join('')}
+</svg>`);
+  }
+  return pages.join('\n');
+}
+
+async function listPcAssetsByIds(db: D1Database, ids: number[]) {
+  if (!ids.length) return [] as any[];
+  const placeholders = ids.map(() => '?').join(',');
+  const result = await db.prepare(`SELECT a.*, s.current_employee_no AS last_employee_no, s.current_employee_name AS last_employee_name, s.current_department AS last_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders}) ORDER BY a.id ASC`).bind(...ids).all<any>();
+  return result.results || [];
+}
+
+async function listMonitorAssetsByIds(db: D1Database, ids: number[]) {
+  if (!ids.length) return [] as any[];
+  const placeholders = ids.map(() => '?').join(',');
+  const result = await db.prepare(`SELECT a.*, l.name AS location_name, p.name AS parent_location_name FROM monitor_assets a LEFT JOIN pc_locations l ON l.id=a.location_id LEFT JOIN pc_locations p ON p.id=l.parent_id WHERE a.id IN (${placeholders}) ORDER BY a.id ASC`).bind(...ids).all<any>();
+  return result.results || [];
+}
+
+async function buildPcQrRecords(db: D1Database, origin: string, ids: number[]) {
+  await ensurePcQrColumns(db);
+  const rows = await listPcAssetsByIds(db, ids);
+  const links = await getOrCreateAssetQrBulk(db, { assetTable: 'pc_assets', notFoundMessage: '电脑台账不存在或已删除', publicPath: '/public/pc-asset' }, ids, origin);
+  const linkMap = new Map<number, string>(links.map((item) => [Number(item.id), String(item.url || '')] as [number, string]));
+  return rows.map((row: any) => ({
+    title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
+    subtitle: `SN：${row.serial_no || '-'} · 状态：${row.status || '-'}`,
+    meta: [
+      { label: '领用人', value: row.last_employee_name || '-' },
+      { label: '工号', value: row.last_employee_no || '-' },
+      { label: '部门', value: row.last_department || '-' },
+      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+    ],
+    url: linkMap.get(Number(row.id)) || '',
+  })).filter((item) => item.url);
+}
+
+async function buildMonitorQrRecords(db: D1Database, origin: string, ids: number[]) {
+  await ensureMonitorQrColumns(db);
+  const rows = await listMonitorAssetsByIds(db, ids);
+  const links = await getOrCreateAssetQrBulk(db, { assetTable: 'monitor_assets', notFoundMessage: '显示器台账不存在或已删除', publicPath: '/public/monitor-asset' }, ids, origin);
+  const linkMap = new Map<number, string>(links.map((item) => [Number(item.id), String(item.url || '')] as [number, string]));
+  return rows.map((row: any) => ({
+    title: row.asset_code || `显示器 #${row.id}`,
+    subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
+    meta: [
+      { label: '状态', value: row.status || '-' },
+      { label: '位置', value: [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-' },
+      { label: '领用人', value: row.employee_name || '-' },
+      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+    ],
+    url: linkMap.get(Number(row.id)) || '',
+  })).filter((item) => item.url);
 }
 
 async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limit: number, offset = 0) {
@@ -116,6 +332,42 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
       kindLabel: '显示器',
     });
     return { text: JSON.stringify(result, null, 2), filename: `monitor_qr_key_init_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: result.total_updated ? `已补齐 ${result.total_updated} 台显示器的二维码 Key` : '无需补齐显示器二维码 Key' };
+  }
+
+  if (type === 'PC_QR_CARDS_EXPORT') {
+    const ids = normalizeJobAssetIds(requestJson?.ids, 500);
+    if (!ids.length) throw new Error('请至少选择一台电脑');
+    const origin = String(requestJson?.origin || '');
+    const records = await buildPcQrRecords(db, origin, ids);
+    const html = await renderQrCardsHtml('电脑二维码卡片', records);
+    return { text: html, filename: `pc_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张电脑二维码卡片` };
+  }
+
+  if (type === 'PC_QR_SHEET_EXPORT') {
+    const ids = normalizeJobAssetIds(requestJson?.ids, 500);
+    if (!ids.length) throw new Error('请至少选择一台电脑');
+    const origin = String(requestJson?.origin || '');
+    const records = await buildPcQrRecords(db, origin, ids);
+    const svg = await renderQrSheetSvg('电脑二维码图版', records);
+    return { text: svg, filename: `pc_qr_sheet_${Date.now()}.svg`, contentType: 'image/svg+xml; charset=utf-8', message: `已生成 ${records.length} 台电脑的二维码图版（SVG）` };
+  }
+
+  if (type === 'MONITOR_QR_CARDS_EXPORT') {
+    const ids = normalizeJobAssetIds(requestJson?.ids, 500);
+    if (!ids.length) throw new Error('请至少选择一台显示器');
+    const origin = String(requestJson?.origin || '');
+    const records = await buildMonitorQrRecords(db, origin, ids);
+    const html = await renderQrCardsHtml('显示器二维码卡片', records);
+    return { text: html, filename: `monitor_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张显示器二维码卡片` };
+  }
+
+  if (type === 'MONITOR_QR_SHEET_EXPORT') {
+    const ids = normalizeJobAssetIds(requestJson?.ids, 500);
+    if (!ids.length) throw new Error('请至少选择一台显示器');
+    const origin = String(requestJson?.origin || '');
+    const records = await buildMonitorQrRecords(db, origin, ids);
+    const svg = await renderQrSheetSvg('显示器二维码图版', records);
+    return { text: svg, filename: `monitor_qr_sheet_${Date.now()}.svg`, contentType: 'image/svg+xml; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版（SVG）` };
   }
 
   if (type === 'DASHBOARD_PRECOMPUTE') {
