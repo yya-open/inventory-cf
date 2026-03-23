@@ -27,6 +27,8 @@
               class="toolbar-location"
               @update:model-value="emit('update:location-id', $event || '')"
               @change="emit('search')"
+              @focus="emit('ensure-location-options')"
+              @visible-change="(visible: boolean) => visible && emit('ensure-location-options')"
             >
               <el-option v-for="item in locationOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
@@ -218,6 +220,7 @@ const emit = defineEmits<{
   'batch-restore': [];
   'clear-selection': [];
   'restore-columns': [];
+  'ensure-location-options': [];
   'download-template': [];
   'import-file': [unknown];
   'open-create': [];

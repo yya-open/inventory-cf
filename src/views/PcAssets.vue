@@ -121,11 +121,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onActivated, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { listPcAssets } from '../api/assetLedgers';
+import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
@@ -134,6 +135,7 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
+import { createIdleDebounced } from '../utils/idleDebounce';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
@@ -303,7 +305,9 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+const schedulePersistState = createIdleDebounced(() => persistState(), 280);
+
+watch([status, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -402,10 +406,11 @@ async function exportSelectedQrPng() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
     exportBusy.value = true;
+    const qrLinks = await fetchBulkPcAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-      const link = String(result?.data?.url || result?.url || '').trim();
+      const link = qrLinkMap.get(Number(row.id)) || '';
       if (!link) continue;
       records.push({
         title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
@@ -666,16 +671,17 @@ async function exportSelectedQrLinks() {
   try {
     batchBusy.value = true;
     const { exportToXlsx } = await loadExcelUtils();
+    const qrLinks = await fetchBulkPcAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const linkRows = [];
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
       linkRows.push({
         id: row.id,
         brand: row.brand,
         model: row.model,
         serial_no: row.serial_no,
         status: assetStatusText(row.status),
-        url: result?.url || '',
+        url: qrLinkMap.get(Number(row.id)) || '',
       });
     }
     exportToXlsx({
@@ -703,10 +709,12 @@ async function exportSelectedQrCards() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
     batchBusy.value = true;
+    const qrLinks = await fetchBulkPcAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-      if (!result?.url) continue;
+      const url = qrLinkMap.get(Number(row.id)) || '';
+      if (!url) continue;
       records.push({
         title: `${row.brand || '-'} ${row.model || ''}`.trim(),
         subtitle: `SN：${row.serial_no || '-'}`,
@@ -715,7 +723,7 @@ async function exportSelectedQrCards() {
           { label: '序列号', value: row.serial_no || '-' },
           { label: '领用人', value: row.last_employee_name || '-' },
         ],
-        url: result.url,
+        url,
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
@@ -1100,6 +1108,10 @@ onMounted(async () => {
   persistState();
   await load(currentFilters());
   lastRefreshAt = Date.now();
+});
+
+onBeforeUnmount(() => {
+  schedulePersistState.flush();
 });
 
 onActivated(() => {

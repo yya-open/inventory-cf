@@ -40,6 +40,7 @@
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
       @toolbar-more="handleToolbarMore"
+      @ensure-location-options="ensureLocationOptionsReady"
     />
 
     <MonitorAssetsTable
@@ -173,11 +174,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onMounted, onActivated, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { listAllLocations, listEnabledLocations, listMonitorAssets } from '../api/assetLedgers';
+import { listMonitorAssets } from '../api/assetLedgers';
+import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
@@ -187,8 +189,10 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
+import { createIdleDebounced } from '../utils/idleDebounce';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
+import { useLocationCatalog } from '../composables/useLocationCatalog';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -224,7 +228,7 @@ const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.valu
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
-const locations = ref<LocationRow[]>([]);
+const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, resetLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 const router = useRouter();
@@ -236,7 +240,6 @@ const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monit
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
 let qrCardUtilsPromise: Promise<typeof import('../utils/qrCards')> | null = null;
-let locationsLoadingPromise: Promise<void> | null = null;
 
 function loadQrCodeLib() {
   qrCodeLibPromise ||= import('qrcode');
@@ -309,18 +312,15 @@ async function handleMaybeMissingSchema(error: any) {
 }
 
 async function loadLocations(force = false) {
-  if (!force && (locations.value.length || locationsLoadingPromise)) return locationsLoadingPromise;
-  const task = (async () => {
-    try {
-      locations.value = await listEnabledLocations();
-    } catch (error: any) {
-      await handleMaybeMissingSchema(error);
-    } finally {
-      locationsLoadingPromise = null;
-    }
-  })();
-  locationsLoadingPromise = task;
-  return task;
+  try {
+    await ensureEnabledLocations(force);
+  } catch (error: any) {
+    await handleMaybeMissingSchema(error);
+  }
+}
+
+async function ensureLocationOptionsReady(force = false) {
+  await loadLocations(force);
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
@@ -446,7 +446,9 @@ function scheduleKeywordSearch() {
   }, 320);
 }
 
-watch([status, locationId, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], persistState);
+const schedulePersistState = createIdleDebounced(() => persistState(), 280);
+
+watch([status, locationId, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
 watch(keyword, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
   scheduleKeywordSearch();
@@ -526,9 +528,10 @@ async function exportSelectedQrLinks() {
   try {
     batchBusy.value = true;
     const { exportToXlsx } = await loadExcelUtils();
+    const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const linkRows = [];
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
       linkRows.push({
         id: row.id,
         asset_code: row.asset_code,
@@ -536,7 +539,7 @@ async function exportSelectedQrLinks() {
         brand: row.brand,
         model: row.model,
         status: assetStatusText(row.status),
-        url: result?.url || '',
+        url: qrLinkMap.get(Number(row.id)) || '',
       });
     }
     exportToXlsx({
@@ -565,10 +568,12 @@ async function exportSelectedQrCards() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
     batchBusy.value = true;
+    const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-      if (!result?.url) continue;
+      const url = qrLinkMap.get(Number(row.id)) || '';
+      if (!url) continue;
       records.push({
         title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
         subtitle: `${row.model || '-'} · SN：${row.sn || '-'}`,
@@ -577,7 +582,7 @@ async function exportSelectedQrCards() {
           { label: '位置', value: locationText(row) },
           { label: '领用人', value: row.employee_name || '-' },
         ],
-        url: result.url,
+        url,
       });
     }
     if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
@@ -619,8 +624,9 @@ function openBatchStatusDialog() {
   batchStatusVisible.value = true;
 }
 
-function openBatchLocationDialog() {
+async function openBatchLocationDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  await ensureLocationOptionsReady();
   batchLocationValue.value = '';
   warmLazyDialog(lazyBatchLocationDialog);
   batchLocationVisible.value = true;
@@ -1005,7 +1011,8 @@ const dlgAsset = reactive({
   },
 });
 
-function openCreate() {
+async function openCreate() {
+  await ensureLocationOptionsReady();
   dlgAsset.mode = 'create';
   dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
   warmLazyDialog(lazyAssetDialog);
@@ -1018,7 +1025,8 @@ function openInfo(row: MonitorAsset) {
   infoVisible.value = true;
 }
 
-function openEdit(row: MonitorAsset) {
+async function openEdit(row: MonitorAsset) {
+  await ensureLocationOptionsReady();
   dlgAsset.mode = 'edit';
   dlgAsset.form = {
     id: row.id,
@@ -1115,7 +1123,8 @@ const dlgOp = reactive({
   },
 });
 
-function openIn(row: MonitorAsset) {
+async function openIn(row: MonitorAsset) {
+  await ensureLocationOptionsReady();
   dlgOp.kind = 'in';
   dlgOp.title = '显示器入库';
   dlgOp.asset = row;
@@ -1124,7 +1133,8 @@ function openIn(row: MonitorAsset) {
   dlgOp.show = true;
 }
 
-function openOut(row: MonitorAsset) {
+async function openOut(row: MonitorAsset) {
+  await ensureLocationOptionsReady();
   dlgOp.kind = 'out';
   dlgOp.title = '显示器出库（领用）';
   dlgOp.asset = row;
@@ -1133,7 +1143,8 @@ function openOut(row: MonitorAsset) {
   dlgOp.show = true;
 }
 
-function openReturn(row: MonitorAsset) {
+async function openReturn(row: MonitorAsset) {
+  await ensureLocationOptionsReady();
   dlgOp.kind = 'return';
   dlgOp.title = '显示器归还';
   dlgOp.asset = row;
@@ -1142,7 +1153,8 @@ function openReturn(row: MonitorAsset) {
   dlgOp.show = true;
 }
 
-function openTransfer(row: MonitorAsset) {
+async function openTransfer(row: MonitorAsset) {
+  await ensureLocationOptionsReady();
   dlgOp.kind = 'transfer';
   dlgOp.title = '显示器调拨';
   dlgOp.asset = row;
@@ -1198,10 +1210,11 @@ async function exportSelectedQrPng() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
     exportBusy.value = true;
+    const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
+    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
     const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
     for (const row of selectedRows.value) {
-      const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(row.id))}`);
-      const link = String(result?.data?.url || result?.url || '').trim();
+      const link = qrLinkMap.get(Number(row.id)) || '';
       if (!link) continue;
       records.push({
         title: row.asset_code || `显示器 #${row.id}`,
@@ -1343,9 +1356,13 @@ async function openLocationMgr() {
 }
 
 async function refreshLocationMgr() {
-  await loadLocations(true);
-  dlgLoc.rows = (await listAllLocations()).map((item) => ({ ...item })) as MonitorAsset[];
-  locations.value = dlgLoc.rows as any;
+  try {
+    const rows = await ensureAllLocations(true);
+    dlgLoc.rows = rows.map((item) => ({ ...item })) as MonitorAsset[];
+  } catch (error: any) {
+    await handleMaybeMissingSchema(error);
+    dlgLoc.rows = [];
+  }
 }
 
 async function createLocation() {
@@ -1356,6 +1373,7 @@ async function createLocation() {
     await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
     dlgLoc.newName = '';
     dlgLoc.parentId = '';
+    resetLocationCatalog();
     await refreshLocationMgr();
     ElMessage.success('新增成功');
   } catch (error: any) {
@@ -1370,6 +1388,7 @@ async function updateLocation(row: MonitorAsset) {
   try {
     locationSaving.value = true;
     await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
+    resetLocationCatalog();
     await refreshLocationMgr();
     ElMessage.success('保存成功');
   } catch (error: any) {
@@ -1385,6 +1404,7 @@ async function deleteLocation(row: MonitorAsset) {
     locationSaving.value = true;
     await ElMessageBox.confirm('删除位置后无法恢复，确认继续？', '提示', { type: 'warning' });
     await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
+    resetLocationCatalog();
     await refreshLocationMgr();
     ElMessage.success('删除成功');
   } catch (error: any) {
@@ -1402,9 +1422,13 @@ onMounted(async () => {
   persistState();
   await load(currentFilters());
   lastRefreshAt = Date.now();
-  setTimeout(() => {
-    loadLocations().catch(() => undefined);
-  }, 0);
+  if (locationId.value) {
+    void ensureLocationOptionsReady();
+  }
+});
+
+onBeforeUnmount(() => {
+  schedulePersistState.flush();
 });
 
 onActivated(() => {

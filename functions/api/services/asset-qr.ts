@@ -20,6 +20,18 @@ function mustAssetTable(table: string): asserts table is AssetQrConfig["assetTab
   }
 }
 
+function normalizeAssetIds(ids: unknown, limit = 500) {
+  if (!Array.isArray(ids)) return [] as number[];
+  const unique = new Set<number>();
+  for (const value of ids) {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    unique.add(Math.trunc(id));
+    if (unique.size >= limit) break;
+  }
+  return Array.from(unique);
+}
+
 export function buildAssetQrUrl(origin: string, publicPath: AssetQrConfig["publicPath"], id: number, key: string) {
   return `${origin}${publicPath}?id=${encodeURIComponent(String(id))}&key=${encodeURIComponent(key)}`;
 }
@@ -97,4 +109,46 @@ export async function initMissingAssetQrKeys(db: D1Database, config: AssetQrConf
   }
   await db.batch(stmts);
   return { updated: ids.length };
+}
+
+export async function getOrCreateAssetQrBulk(db: D1Database, config: AssetQrConfig, ids: unknown, origin: string) {
+  mustAssetTable(config.assetTable);
+  const normalizedIds = normalizeAssetIds(ids);
+  if (!normalizedIds.length) {
+    throw Object.assign(new Error('请至少传入一个资产ID'), { status: 400 });
+  }
+
+  const placeholders = normalizedIds.map(() => '?').join(',');
+  const result = await db
+    .prepare(`SELECT id, qr_key FROM ${config.assetTable} WHERE id IN (${placeholders})`)
+    .bind(...normalizedIds)
+    .all<any>();
+
+  const keyMap = new Map<number, string>();
+  for (const row of result.results || []) {
+    keyMap.set(Number(row.id), String(row.qr_key || '').trim());
+  }
+
+  const updates: D1PreparedStatement[] = [];
+  for (const id of normalizedIds) {
+    if (!keyMap.has(id)) continue;
+    if (keyMap.get(id)) continue;
+    const key = genQrKey();
+    keyMap.set(id, key);
+    updates.push(
+      db
+        .prepare(`UPDATE ${config.assetTable} SET qr_key=?, qr_updated_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=? AND (qr_key IS NULL OR TRIM(qr_key)='')`)
+        .bind(key, id)
+    );
+  }
+  if (updates.length) await db.batch(updates);
+
+  return normalizedIds
+    .filter((id) => keyMap.has(id))
+    .map((id) => ({
+      id,
+      key: keyMap.get(id) || '',
+      url: buildAssetQrUrl(origin, config.publicPath, id, keyMap.get(id) || ''),
+    }))
+    .filter((item) => item.key && item.url);
 }
