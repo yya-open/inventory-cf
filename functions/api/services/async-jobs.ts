@@ -90,10 +90,23 @@ type QrCardRecord = {
   url: string;
 };
 
+function inlineSvgMarkup(svg: string, attrs: Record<string, string | number> = {}) {
+  const cleaned = String(svg || '').trim().replace(/^<\?xml[^>]*>\s*/i, '');
+  if (!cleaned) return '';
+  const attrText = Object.entries(attrs)
+    .filter(([, value]) => value !== '' && value != null)
+    .map(([key, value]) => `${key}="${escapeAttr(value)}"`)
+    .join(' ');
+  return cleaned.replace(/<svg\b([^>]*)>/i, (_all, rest) => {
+    const extra = attrText ? ` ${attrText}` : '';
+    return `<svg${rest}${extra}>`;
+  });
+}
+
 async function prepareQrCards(records: QrCardRecord[]) {
   return Promise.all(records.map(async (record) => ({
     ...record,
-    dataUrl: await QRCode.toDataURL(record.url, { width: 220, margin: 2, errorCorrectionLevel: 'Q' }),
+    svg: await QRCode.toString(record.url, { type: 'svg', width: 220, margin: 2, errorCorrectionLevel: 'Q' }),
   })));
 }
 
@@ -112,7 +125,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:18px}
 .card{background:#fff;border:1px solid #e5e7eb;border-radius:18px;padding:18px;box-shadow:0 10px 24px rgba(15,23,42,.08);break-inside:avoid}
 .qr{display:flex;justify-content:center;padding:8px 0 14px}
-.qr img{width:200px;height:200px}
+.qr svg{width:200px;height:200px;display:block}
 .title{font-size:18px;font-weight:800;line-height:1.35}
 .subtitle{margin-top:4px;color:#4b5563;font-size:13px}
 .meta{margin-top:12px;border-top:1px dashed #d1d5db;padding-top:10px;display:grid;gap:6px}
@@ -130,7 +143,7 @@ body{font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;margin:0
 <div class="grid">
 ${cards.map((record) => `
   <section class="card">
-    <div class="qr"><img src="${record.dataUrl}" alt="QR" /></div>
+    <div class="qr">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
     <div class="title">${escapeHtml(record.title)}</div>
     ${record.subtitle ? `<div class="subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
     ${record.meta?.length ? `<div class="meta">${record.meta.map((item) => `<div class="meta-row"><span class="k">${escapeHtml(item.label)}</span><span class="v">${escapeHtml(item.value)}</span></div>`).join('')}</div>` : ''}
@@ -195,10 +208,10 @@ async function renderQrSheetSvg(title: string, records: QrCardRecord[]) {
       const subtitleLines = wrapTextSvg(card.subtitle || '', 28, 2);
       const meta = (card.meta || []).slice(0, 5);
       const linkLines = wrapTextSvg(card.url, 58, 2);
-      pageBody.append(`
+      pageBody.push(`
       <g>
         <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="28" ry="28" fill="#ffffff" stroke="#e5e7eb" stroke-width="2" />
-        <image href="${card.dataUrl}" x="${qrX}" y="${qrY}" width="${qrSize}" height="${qrSize}" preserveAspectRatio="xMidYMid meet" />
+        ${inlineSvgMarkup(card.svg, { x: qrX, y: qrY, width: qrSize, height: qrSize, preserveAspectRatio: 'xMidYMid meet' })}
         ${titleLines.map((line, lineIndex) => `<text x="${textX}" y="${y + 76 + lineIndex * 38}" font-size="30" font-weight="700" fill="#111827">${escapeXml(line)}</text>`).join('')}
         ${subtitleLines.filter(Boolean).map((line, lineIndex) => `<text x="${textX}" y="${y + 152 + lineIndex * 28}" font-size="20" fill="#4b5563">${escapeXml(line)}</text>`).join('')}
         ${meta.map((item, metaIndex) => {
