@@ -208,12 +208,18 @@ function toMs(value: any) {
   return Number.isFinite(ts) ? ts : 0;
 }
 
+const utf8Encoder = new TextEncoder();
+
+function utf8ByteLength(value: any) {
+  return utf8Encoder.encode(String(value ?? '')).length;
+}
+
 function mapAsyncJobRow(row: any) {
   const createdMs = toMs(row?.created_at);
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
   const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
-  const resultSize = row?.result_text == null ? 0 : Buffer.byteLength(String(row.result_text), 'utf8');
+  const resultSize = row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
   const progress = String(row?.status) === 'success' ? 100
     : String(row?.status) === 'failed' ? 100
     : String(row?.status) === 'canceled' ? 100
