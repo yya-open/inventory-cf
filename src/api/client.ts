@@ -58,7 +58,13 @@ function getDownloadFilename(path: string, r: Response, fallback?: string) {
   return pathname.split('/').filter(Boolean).pop() || 'download';
 }
 
-export async function apiDownload(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
+export type ApiFetchedFile = {
+  blob: Blob;
+  filename: string;
+  contentType: string;
+};
+
+export async function apiFetchFile(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = 'include' } = options;
   const r = await fetch(path, { method: 'GET', credentials, ...init });
   if (r.status === 401 && shouldHandleUnauthorized) {
@@ -69,16 +75,28 @@ export async function apiDownload(path: string, filename?: string, options: Requ
     const j = await parseJson(r);
     throw buildError(j?.message || '下载失败', r.status, j);
   }
-  const blob = await r.blob();
-  const url = URL.createObjectURL(blob);
+  return {
+    blob: await r.blob(),
+    filename: getDownloadFilename(path, r, filename),
+    contentType: String(r.headers.get('content-type') || '').toLowerCase(),
+  } satisfies ApiFetchedFile;
+}
+
+export function triggerFileDownload(file: ApiFetchedFile, filename?: string) {
+  const url = URL.createObjectURL(file.blob);
   try {
     const a = document.createElement('a');
     a.href = url;
-    a.download = getDownloadFilename(path, r, filename);
+    a.download = filename || file.filename || 'download';
     document.body.appendChild(a);
     a.click();
     a.remove();
   } finally {
     URL.revokeObjectURL(url);
   }
+}
+
+export async function apiDownload(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
+  const file = await apiFetchFile(path, filename, options, init);
+  triggerFileDownload(file, filename || file.filename);
 }

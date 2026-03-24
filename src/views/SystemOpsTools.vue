@@ -198,9 +198,10 @@ import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-p
 import { ElProgress } from 'element-plus';
 import { ref, reactive, onMounted } from 'vue';
 import { ElMessage } from '../utils/el-services';
-import { apiGet, apiPost, apiPut, apiDownload } from '../api/client';
+import { apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 import { confirmRiskAction } from '../utils/riskAction';
+import { downloadJobResultCached, openJobResultCached } from '../utils/jobResultCache';
 
 const autoScanMinutes = 15;
 type JobRow = any;
@@ -483,19 +484,36 @@ function canPrintJob(row:any) {
 }
 
 async function downloadJob(row:any) {
-  const id = Number(row?.id || 0);
-  if (!id) return;
-  await apiDownload(buildJobResultUrl(row), row?.result_filename || undefined);
+  const url = buildJobResultUrl(row);
+  if (!url) return;
+  try {
+    const file = await downloadJobResultCached(url, row?.result_filename || undefined);
+    if (file.fromCache) ElMessage.success('已从最近下载缓存读取结果');
+  } catch (e:any) {
+    ElMessage.error(e?.message || '下载任务结果失败');
+  }
 }
 
-function previewJob(row:any) {
+async function previewJob(row:any) {
   const url = buildJobResultUrl(row, { inline: true });
-  if (url) window.open(url, '_blank', 'noopener');
+  if (!url) return;
+  try {
+    const file = await openJobResultCached(url, row?.result_filename || undefined);
+    if (file.fromCache) ElMessage.success('已从最近预览缓存打开结果');
+  } catch (e:any) {
+    ElMessage.error(e?.message || '预览任务结果失败');
+  }
 }
 
-function printJob(row:any) {
+async function printJob(row:any) {
   const url = buildJobResultUrl(row, { inline: true, print: true });
-  if (url) window.open(url, '_blank', 'noopener');
+  if (!url) return;
+  try {
+    const file = await openJobResultCached(url, row?.result_filename || undefined);
+    if (file.fromCache) ElMessage.success('已从最近打印缓存打开结果');
+  } catch (e:any) {
+    ElMessage.error(e?.message || '打开打印页失败');
+  }
 }
 
 async function retryJob(id:number) {
