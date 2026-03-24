@@ -1,13 +1,14 @@
 import { sqlNowStored } from '../_time';
 import { ensurePcQrColumns } from '../_pc';
 import { ensureMonitorQrColumns } from '../_monitor';
-import { getOrCreateAssetQrBulk, initMissingAssetQrKeys } from './asset-qr';
+import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
+import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
@@ -83,13 +84,6 @@ function normalizeJobAssetIds(input: any, limit = 500) {
   }
   return Array.from(set);
 }
-
-type QrCardRecord = {
-  title: string;
-  subtitle?: string;
-  meta?: Array<{ label: string; value: string }>;
-  url: string;
-};
 
 type PreparedQrCardRecord = QrCardRecord & { svg: string };
 
@@ -278,56 +272,6 @@ body{padding:0}
 ${pages.map((pageCards, index) => renderSheetPage(title, pageCards, index, pages.length, template)).join('')}
 </body>
 </html>`;
-}
-
-async function listPcAssetsByIds(db: D1Database, ids: number[]) {
-  if (!ids.length) return [] as any[];
-  const placeholders = ids.map(() => '?').join(',');
-  const result = await db.prepare(`SELECT a.*, s.current_employee_no AS last_employee_no, s.current_employee_name AS last_employee_name, s.current_department AS last_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders}) ORDER BY a.id ASC`).bind(...ids).all<any>();
-  return result.results || [];
-}
-
-async function listMonitorAssetsByIds(db: D1Database, ids: number[]) {
-  if (!ids.length) return [] as any[];
-  const placeholders = ids.map(() => '?').join(',');
-  const result = await db.prepare(`SELECT a.*, l.name AS location_name, p.name AS parent_location_name FROM monitor_assets a LEFT JOIN pc_locations l ON l.id=a.location_id LEFT JOIN pc_locations p ON p.id=l.parent_id WHERE a.id IN (${placeholders}) ORDER BY a.id ASC`).bind(...ids).all<any>();
-  return result.results || [];
-}
-
-async function buildPcQrRecords(db: D1Database, origin: string, ids: number[]) {
-  await ensurePcQrColumns(db);
-  const rows = await listPcAssetsByIds(db, ids);
-  const links = await getOrCreateAssetQrBulk(db, { assetTable: 'pc_assets', notFoundMessage: '电脑台账不存在或已删除', publicPath: '/public/pc-asset' }, ids, origin);
-  const linkMap = new Map<number, string>(links.map((item) => [Number(item.id), String(item.url || '')] as [number, string]));
-  return rows.map((row: any) => ({
-    title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
-    subtitle: `SN：${row.serial_no || '-'} · 状态：${row.status || '-'}`,
-    meta: [
-      { label: '领用人', value: row.last_employee_name || '-' },
-      { label: '工号', value: row.last_employee_no || '-' },
-      { label: '部门', value: row.last_department || '-' },
-      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-    ],
-    url: linkMap.get(Number(row.id)) || '',
-  })).filter((item) => item.url);
-}
-
-async function buildMonitorQrRecords(db: D1Database, origin: string, ids: number[]) {
-  await ensureMonitorQrColumns(db);
-  const rows = await listMonitorAssetsByIds(db, ids);
-  const links = await getOrCreateAssetQrBulk(db, { assetTable: 'monitor_assets', notFoundMessage: '显示器台账不存在或已删除', publicPath: '/public/monitor-asset' }, ids, origin);
-  const linkMap = new Map<number, string>(links.map((item) => [Number(item.id), String(item.url || '')] as [number, string]));
-  return rows.map((row: any) => ({
-    title: row.asset_code || `显示器 #${row.id}`,
-    subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
-    meta: [
-      { label: '状态', value: row.status || '-' },
-      { label: '位置', value: [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-' },
-      { label: '领用人', value: row.employee_name || '-' },
-      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-    ],
-    url: linkMap.get(Number(row.id)) || '',
-  })).filter((item) => item.url);
 }
 
 async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limit: number, offset = 0) {
