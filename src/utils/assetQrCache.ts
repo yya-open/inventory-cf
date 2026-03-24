@@ -3,6 +3,7 @@ export type AssetQrCacheKind = "pc" | "monitor";
 export type AssetQrCacheEntry = {
   link: string;
   dataUrl: string;
+  svgMarkup: string;
   version: string;
   cachedAt: number;
 };
@@ -26,11 +27,12 @@ export function getCachedAssetQr(kind: AssetQrCacheKind, id: number, version: st
   return qrCache.get(buildCacheKey(kind, id, version)) || null;
 }
 
-export function setCachedAssetQr(kind: AssetQrCacheKind, id: number, version: string, value: { link: string; dataUrl: string }) {
+export function setCachedAssetQr(kind: AssetQrCacheKind, id: number, version: string, value: { link: string; dataUrl: string; svgMarkup?: string }) {
   if (!Number.isFinite(id) || id <= 0 || !value?.link || !value?.dataUrl) return;
   qrCache.set(buildCacheKey(kind, id, version), {
     link: String(value.link || ''),
     dataUrl: String(value.dataUrl || ''),
+    svgMarkup: String(value.svgMarkup || ''),
     version: String(version || ''),
     cachedAt: Date.now(),
   });

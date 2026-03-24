@@ -566,6 +566,17 @@ export async function processAsyncJob(db: D1Database, id: number) {
   }
 }
 
+export async function processAsyncJobIds(db: D1Database, ids: number[]) {
+  const normalized = Array.from(new Set((Array.isArray(ids) ? ids : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+  for (const id of normalized) {
+    try {
+      await processAsyncJob(db, id);
+    } catch {
+      // 单个任务失败时由 processAsyncJob 自行落库状态，这里继续处理后续任务
+    }
+  }
+}
+
 function toMs(value: any) {
   if (!value) return 0;
   const ts = Date.parse(String(value));

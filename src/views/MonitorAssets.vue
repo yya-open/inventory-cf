@@ -268,6 +268,15 @@ function loadQrCardUtils() {
   return qrCardUtilsPromise;
 }
 
+async function buildInlineQrSvg(link: string, size = 360) {
+  const QRCode = await loadQrCodeLib();
+  const svgMarkup = await QRCode.toString(link, { type: 'svg', width: Number(size), margin: 2, errorCorrectionLevel: 'Q' });
+  return {
+    svgMarkup,
+    dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`
+  };
+}
+
 const currentFilters = (): MonitorFilters => ({
   status: status.value || '',
   locationId: String(locationId.value || ''),
@@ -1313,6 +1322,7 @@ const qrLoading = ref(false);
 const qrRow = ref<MonitorAsset | null>(null);
 const qrLink = ref('');
 const qrDataUrl = ref('');
+const qrSvgMarkup = ref('');
 
 function monitorQrVersionOf(row?: Partial<MonitorAsset> | null) {
   return String(row?.qr_updated_at || row?.updated_at || '');
@@ -1418,6 +1428,7 @@ async function openQr(row: MonitorAsset) {
   qrRow.value = { ...row };
   qrLink.value = '';
   qrDataUrl.value = '';
+  qrSvgMarkup.value = '';
   qrLoading.value = true;
   try {
     const id = Number(row?.id || 0);
@@ -1427,16 +1438,17 @@ async function openQr(row: MonitorAsset) {
     if (cached) {
       qrLink.value = cached.link;
       qrDataUrl.value = cached.dataUrl;
+      qrSvgMarkup.value = cached.svgMarkup || '';
       return;
     }
     const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`);
     const link = String(result?.url || '');
     qrLink.value = link;
     if (link) {
-      const QRCode = await loadQrCodeLib();
-      const dataUrl = await QRCode.toDataURL(link, { margin: 1, width: 360 });
-      qrDataUrl.value = dataUrl;
-      setCachedAssetQr('monitor', id, version, { link, dataUrl });
+      const qrImage = await buildInlineQrSvg(link, 360);
+      qrDataUrl.value = qrImage.dataUrl;
+      qrSvgMarkup.value = qrImage.svgMarkup;
+      setCachedAssetQr('monitor', id, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
     }
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
@@ -1448,8 +1460,16 @@ async function openQr(row: MonitorAsset) {
 function downloadQr() {
   if (!qrDataUrl.value) return;
   const link = document.createElement('a');
+  if (qrSvgMarkup.value) {
+    const blob = new Blob([qrSvgMarkup.value], { type: 'image/svg+xml;charset=utf-8' });
+    link.href = URL.createObjectURL(blob);
+    link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.svg`;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+    return;
+  }
   link.href = qrDataUrl.value;
-  link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.png`;
+  link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.svg`;
   link.click();
 }
 
@@ -1481,12 +1501,12 @@ async function resetQr() {
     const link = String(result?.url || '');
     qrLink.value = link;
     if (link) {
-      const QRCode = await loadQrCodeLib();
-      const dataUrl = await QRCode.toDataURL(link, { margin: 1, width: 360 });
-      qrDataUrl.value = dataUrl;
+      const qrImage = await buildInlineQrSvg(link, 360);
+      qrDataUrl.value = qrImage.dataUrl;
+      qrSvgMarkup.value = qrImage.svgMarkup;
       const version = new Date().toISOString();
       qrRow.value = qrRow.value ? { ...qrRow.value, qr_updated_at: version } : qrRow.value;
-      setCachedAssetQr('monitor', id, version, { link, dataUrl });
+      setCachedAssetQr('monitor', id, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
     }
     ElMessage.success('已重置');
   } catch (error: any) {

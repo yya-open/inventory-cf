@@ -206,6 +206,15 @@ function loadQrCardUtils() {
   return qrCardUtilsPromise;
 }
 
+async function buildInlineQrSvg(link: string, size = 260) {
+  const QRCode = await loadQrCodeLib();
+  const svgMarkup = await QRCode.toString(link, { type: 'svg', width: Number(size), margin: 2, errorCorrectionLevel: 'Q' });
+  return {
+    svgMarkup,
+    dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`
+  };
+}
+
 
 const currentFilters = (): PcFilters => ({
   status: status.value || '',
@@ -439,6 +448,7 @@ const qrVisible = ref(false);
 
 const qrLoading = ref(false);
 const qrDataUrl = ref('');
+const qrSvgMarkup = ref('');
 const qrLink = ref('');
 const qrRow = ref<PcAsset | null>(null);
 
@@ -597,6 +607,7 @@ async function openQr(row: PcAsset) {
   qrVisible.value = true;
   qrLoading.value = true;
   qrDataUrl.value = '';
+  qrSvgMarkup.value = '';
   qrLink.value = '';
   try {
     const id = Number(row?.id || 0);
@@ -606,16 +617,17 @@ async function openQr(row: PcAsset) {
     if (cached) {
       qrLink.value = cached.link;
       qrDataUrl.value = cached.dataUrl;
+      qrSvgMarkup.value = cached.svgMarkup || '';
       return;
     }
     const result: any = await apiGet(`/api/pc-asset-qr-token?id=${encodeURIComponent(String(id))}`);
     const link = String(result?.url || '');
     if (!link) throw new Error('二维码链接生成失败');
     qrLink.value = link;
-    const QRCode = await loadQrCodeLib();
-    const dataUrl = await QRCode.toDataURL(link, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
-    qrDataUrl.value = dataUrl;
-    setCachedAssetQr('pc', id, version, { link, dataUrl });
+    const qrImage = await buildInlineQrSvg(link, 260);
+    qrDataUrl.value = qrImage.dataUrl;
+    qrSvgMarkup.value = qrImage.svgMarkup;
+    setCachedAssetQr('pc', id, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
   } catch (error: any) {
     ElMessage.error(error?.message || '生成二维码失败');
     qrVisible.value = false;
@@ -634,12 +646,12 @@ async function resetQr() {
     const result: any = await apiPost(`/api/pc-assets-reset-qr?id=${encodeURIComponent(String(assetId))}`, {});
     const link = String(result?.url || '');
     qrLink.value = link;
-    const QRCode = await loadQrCodeLib();
-    const dataUrl = await QRCode.toDataURL(link, { width: 260, margin: 3, errorCorrectionLevel: 'Q' });
-    qrDataUrl.value = dataUrl;
+    const qrImage = await buildInlineQrSvg(link, 260);
+    qrDataUrl.value = qrImage.dataUrl;
+    qrSvgMarkup.value = qrImage.svgMarkup;
     const version = new Date().toISOString();
     qrRow.value = qrRow.value ? { ...qrRow.value, qr_updated_at: version } : qrRow.value;
-    setCachedAssetQr('pc', assetId, version, { link, dataUrl });
+    setCachedAssetQr('pc', assetId, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
     ElMessage.success('已重置，新二维码已生成');
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);
@@ -732,7 +744,18 @@ function downloadQr() {
   if (!qrDataUrl.value) return;
   const link = document.createElement('a');
   const sn = (qrRow.value?.serial_no || qrRow.value?.id || 'pc').toString();
-  link.download = `PC_${sn}_二维码.png`;
+  if (qrSvgMarkup.value) {
+    const blob = new Blob([qrSvgMarkup.value], { type: 'image/svg+xml;charset=utf-8' });
+    const objectUrl = URL.createObjectURL(blob);
+    link.download = `PC_${sn}_二维码.svg`;
+    link.href = objectUrl;
+    document.body.appendChild(link);
+    link.click();
+    link.remove();
+    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
+    return;
+  }
+  link.download = `PC_${sn}_二维码.svg`;
   link.href = qrDataUrl.value;
   document.body.appendChild(link);
   link.click();
