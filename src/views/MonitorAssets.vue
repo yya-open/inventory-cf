@@ -358,6 +358,103 @@ async function refreshCurrent(keepPage = true, resetTotal = false) {
   lastRefreshAt = Date.now();
 }
 
+function patchCurrentRows(ids: number[], updater: (row: any) => any) {
+  const idSet = new Set((ids || []).map((item) => Number(item)));
+  let changed = 0;
+  rows.value = rows.value.map((row: any) => {
+    if (!idSet.has(Number(row.id))) return row;
+    changed += 1;
+    return updater({ ...row });
+  });
+  if (changed) lastRefreshAt = Date.now();
+  return changed;
+}
+
+function removeCurrentRows(ids: number[]) {
+  const idSet = new Set((ids || []).map((item) => Number(item)));
+  const before = rows.value.length;
+  rows.value = rows.value.filter((row: any) => !idSet.has(Number(row.id)));
+  const removed = Math.max(0, before - rows.value.length);
+  if (removed) {
+    total.value = Math.max(0, Number(total.value || 0) - removed);
+    lastRefreshAt = Date.now();
+  }
+  return removed;
+}
+
+async function ensureLocalPatchedPageStable(resetTotal = false) {
+  if (resetTotal) invalidateTotal();
+  if (!rows.value.length && page.value > 1) {
+    page.value -= 1;
+    await refreshCurrent(true, resetTotal);
+  }
+}
+
+function findLocationParts(locationId: number) {
+  const current = locations.value.find((item) => Number(item.id) === Number(locationId));
+  const parent = current && current.parent_id ? locations.value.find((item) => Number(item.id) === Number(current.parent_id)) : null;
+  return { location_name: current?.name || '', parent_location_name: parent?.name || '' };
+}
+
+function applyMonitorStatusPatch(ids: number[], nextStatus: string) {
+  patchCurrentRows(ids, (row) => ({ ...row, status: nextStatus }));
+}
+
+function applyMonitorLocationPatch(ids: number[], nextLocationId: number | '') {
+  const normalizedId = Number(nextLocationId || 0) || null;
+  const parts = normalizedId ? findLocationParts(normalizedId) : { location_name: '', parent_location_name: '' };
+  patchCurrentRows(ids, (row) => ({ ...row, location_id: normalizedId, ...parts }));
+}
+
+function applyMonitorOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string }) {
+  patchCurrentRows(ids, (row) => ({
+    ...row,
+    employee_name: payload.employee_name || '',
+    employee_no: payload.employee_no || '',
+    department: payload.department || '',
+  }));
+}
+
+function applyMonitorArchivePatch(ids: number[], payload: { reason?: string; note?: string }) {
+  if (archiveMode.value === 'active') {
+    removeCurrentRows(ids);
+    return;
+  }
+  patchCurrentRows(ids, (row) => ({
+    ...row,
+    archived: 1,
+    archived_reason: payload.reason || row.archived_reason || '',
+    archived_note: payload.note || row.archived_note || '',
+    archived_at: row.archived_at || formatBeijingDateTime(new Date().toISOString()),
+  }));
+}
+
+function applyMonitorRestorePatch(ids: number[]) {
+  if (archiveMode.value === 'archived') {
+    removeCurrentRows(ids);
+    return;
+  }
+  patchCurrentRows(ids, (row) => ({
+    ...row,
+    archived: 0,
+    archived_reason: '',
+    archived_note: '',
+    archived_at: '',
+    archived_by: '',
+  }));
+}
+
+function applyMonitorDeletePatch(successItems: Array<{ id: number; action: string; reason?: string | null }>) {
+  const archivedIds = successItems.filter((item) => item.action === 'archive').map((item) => Number(item.id));
+  const removedIds = successItems.filter((item) => item.action !== 'archive').map((item) => Number(item.id));
+  if (archiveMode.value === 'all') {
+    if (archivedIds.length) patchCurrentRows(archivedIds, (row) => ({ ...row, archived: 1, archived_reason: row.archived_reason || '删除转归档' }));
+  } else if (archivedIds.length) {
+    removeCurrentRows(archivedIds);
+  }
+  if (removedIds.length) removeCurrentRows(removedIds);
+}
+
 const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
@@ -525,8 +622,9 @@ async function restoreAsset(row: MonitorAsset) {
     batchBusy.value = true;
     const result: any = await apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
     ElMessage.success(result?.message || '恢复成功');
+    applyMonitorRestorePatch((result?.affected_ids || [Number(row.id)]).map((id: any) => Number(id)));
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '恢复归档失败');
@@ -586,7 +684,8 @@ async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>)
     const ids = selectedRows.value.map((row) => Number(row.id));
     const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_CARDS_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码卡片打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码卡片打印页');
+    const splitCount = Number(result?.data?.split_count || result?.split_count || 0);
+    ElMessage.success(splitCount > 1 ? `已自动拆分为 ${splitCount} 个异步任务，可在“系统工具 / 异步任务”下载二维码卡片打印页` : (jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码卡片打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码卡片打印页'));
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
@@ -652,8 +751,9 @@ async function submitBatchStatus() {
     });
     ElMessage.success(result?.message || '批量修改成功');
     batchStatusVisible.value = false;
+    applyMonitorStatusPatch((result?.affected_ids || []).map((id: any) => Number(id)), batchStatusValue.value);
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable();
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改状态失败');
   } finally {
@@ -673,8 +773,9 @@ async function submitBatchLocation() {
     });
     ElMessage.success(result?.message || '批量修改成功');
     batchLocationVisible.value = false;
+    applyMonitorLocationPatch((result?.affected_ids || []).map((id: any) => Number(id)), batchLocationValue.value);
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable();
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改位置失败');
   } finally {
@@ -697,8 +798,9 @@ async function submitBatchOwner() {
     });
     ElMessage.success(result?.message || '批量修改领用人成功');
     batchOwnerVisible.value = false;
+    applyMonitorOwnerPatch((result?.affected_ids || []).map((id: any) => Number(id)), batchOwnerForm.value);
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable();
   } catch (error: any) {
     ElMessage.error(error?.message || '批量修改领用人失败');
   } finally {
@@ -716,8 +818,9 @@ async function batchRestoreSelected() {
       ids: selectedIds.value.map((id) => Number(id)),
     });
     ElMessage.success(result?.message || '批量恢复成功');
+    applyMonitorRestorePatch((result?.affected_ids || []).map((id: any) => Number(id)));
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量恢复归档失败');
@@ -747,8 +850,9 @@ async function submitBatchArchive() {
     });
     ElMessage.success(result?.message || '批量归档成功');
     batchArchiveVisible.value = false;
+    applyMonitorArchivePatch((result?.affected_ids || []).map((id: any) => Number(id)), batchArchiveForm.value);
     clearSelection();
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量归档失败');
@@ -782,8 +886,9 @@ async function batchDeleteSelected() {
     if (processed) clearSelection();
     if (processed && !failed) ElMessage.success(archived || purged ? `已处理 ${processed} 台显示器（其中归档 ${archived} 台，彻底删除 ${purged} 台，物理删除 ${deleted} 台）` : `已删除 ${deleted} 台显示器`);
     else if (processed || failed) ElMessage.warning(`已处理 ${processed} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${deleted ? `，物理删除 ${deleted} 台` : ''}`);
+    if (Array.isArray(result?.success_items)) applyMonitorDeletePatch(result.success_items);
     if (failedRecords.length) await exportBatchFailures(`显示器批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
-    await refreshCurrent(true, true);
+    await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '批量删除失败');
@@ -1278,7 +1383,8 @@ async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>)
     const ids = selectedRows.value.map((row) => Number(row.id));
     const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_SHEET_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码图版打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码图版打印页');
+    const splitCount = Number(result?.data?.split_count || result?.split_count || 0);
+    ElMessage.success(splitCount > 1 ? `已自动拆分为 ${splitCount} 个异步任务，可在“系统工具 / 异步任务”下载二维码图版打印页` : (jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码图版打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码图版打印页'));
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码图版失败');
   } finally {

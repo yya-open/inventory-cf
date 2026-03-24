@@ -14,10 +14,20 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       if (row.result_deleted_at) return json(false, null, '结果文件已过保留期，请重试重新生成', 410);
       return json(false, null, '任务结果不可用', 400);
     }
-    return new Response(String(row.result_text), {
+    const url = new URL(request.url);
+    const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
+    const print = ['1', 'true'].includes(String(url.searchParams.get('print') || '').toLowerCase());
+    const filename = String(row.result_filename || `job_${id}.txt`);
+    const contentType = String(row.result_content_type || 'text/plain; charset=utf-8');
+    let bodyText = String(row.result_text);
+    if (print && contentType.includes('text/html')) {
+      const printScript = `<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),120));</script>`;
+      bodyText = /<\/body>/i.test(bodyText) ? bodyText.replace(/<\/body>/i, `${printScript}</body>`) : `${bodyText}${printScript}`;
+    }
+    return new Response(bodyText, {
       headers: {
-        'content-type': String(row.result_content_type || 'text/plain; charset=utf-8'),
-        'content-disposition': `attachment; filename="${String(row.result_filename || `job_${id}.csv`)}"`,
+        'content-type': contentType,
+        'content-disposition': `${inline ? 'inline' : 'attachment'}; filename="${filename}"`,
         'cache-control': 'no-store',
       },
     });

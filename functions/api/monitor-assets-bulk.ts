@@ -47,6 +47,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         archived: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已归档 ${result.changed} 台显示器，跳过 ${result.skipped} 台` : `已归档 ${result.changed} 台显示器`,
       });
     }
@@ -66,6 +68,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         restored: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已恢复 ${result.changed} 台显示器，跳过 ${result.skipped} 台` : `已恢复 ${result.changed} 台显示器`,
       });
     }
@@ -86,6 +90,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         changed: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已更新 ${result.changed} 台显示器状态，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台显示器状态`,
       });
     }
@@ -105,6 +111,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         changed: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已更新 ${result.changed} 台显示器位置，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台显示器位置`,
       });
     }
@@ -169,6 +177,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         deleted: result.deleted,
         purged: result.purged,
         failed: result.failed,
+        success_items: result.successes.map((item) => ({
+          id: Number(item.id || 0),
+          action: item.action,
+          reason: item.reason || null,
+        })),
         failed_records: result.failures.map((item) => ({
           ID: item.id || '-',
           资产编号: item.row?.asset_code || '-',
@@ -204,6 +217,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         changed: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已更新 ${result.changed} 台显示器领用人，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台显示器领用人`,
       });
     }

@@ -40,6 +40,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         archived: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已归档 ${result.changed} 台电脑，跳过 ${result.skipped} 台` : `已归档 ${result.changed} 台电脑`,
       });
     }
@@ -59,6 +61,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         restored: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已恢复 ${result.changed} 台电脑，跳过 ${result.skipped} 台` : `已恢复 ${result.changed} 台电脑`,
       });
     }
@@ -79,6 +83,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         changed: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已更新 ${result.changed} 台电脑状态，跳过 ${result.skipped} 台` : `已更新 ${result.changed} 台电脑状态`,
       });
     }
@@ -143,6 +149,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         deleted: result.deleted,
         purged: result.purged,
         failed: result.failed,
+        success_items: result.successes.map((item) => ({
+          id: Number(item.id || 0),
+          action: item.action,
+          reason: item.reason || null,
+        })),
         failed_records: result.failures.map((item) => ({
           ID: item.id || '-',
           品牌: item.row?.brand || '-',
@@ -178,6 +189,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         ok: true,
         changed: result.changed,
         skipped: result.skipped,
+        affected_ids: result.ids,
+        skipped_ids: result.skippedIds,
         message: result.skipped ? `已更新 ${result.changed} 台电脑领用人，跳过 ${result.skipped} 台非已领用电脑` : `已更新 ${result.changed} 台电脑领用人`,
       });
     }

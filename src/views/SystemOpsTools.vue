@@ -125,6 +125,8 @@
             <template #default="{ row }">
               <div style="display:flex; gap:8px; flex-wrap:wrap">
                 <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row)">下载</el-button>
+                <el-button v-if="row.status==='success' && canPreviewJob(row)" link type="success" @click="previewJob(row)">预览</el-button>
+                <el-button v-if="row.status==='success' && canPrintJob(row)" link type="warning" @click="printJob(row)">打印</el-button>
                 <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
                 <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
               </div>
@@ -316,18 +318,14 @@ function actionButtonText(action: string, fallback: string) {
   return item && Number(item.affected_count || 0) > 0 ? `${fallback}（${item.affected_count}）` : fallback;
 }
 
-async function loadBase() {
+async function loadRepairBase() {
   const r:any = await apiGet('/api/system-tools');
   applySchema(r.data?.schema || {});
   applyDashboard(r.data?.dashboard || {});
   applyScan(r.data?.scan || {});
-  jobs.value = Array.isArray(r.data?.jobs) ? r.data.jobs : [];
-  repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
   if (!health.metrics || typeof health.metrics !== 'object') health.metrics = {};
   health.metrics.failed_async_jobs = Number(health.metrics.failed_async_jobs || dashboard.failed_job_count || 0);
   loadedTabs.repair = true;
-  loadedTabs.jobs = true;
-  loadedTabs.history = true;
 }
 
 async function loadObservability() {
@@ -347,8 +345,16 @@ async function loadHealth() {
 
 async function ensureTabLoaded(name: string, force = false) {
   const target = String(name || tab.value || 'repair');
-  if (['repair', 'jobs', 'history'].includes(target)) {
-    if (force || !loadedTabs.repair || !loadedTabs.jobs || !loadedTabs.history) await loadBase();
+  if (target === 'repair') {
+    if (force || !loadedTabs.repair) await loadRepairBase();
+    return;
+  }
+  if (target === 'jobs') {
+    if (force || !loadedTabs.jobs) await loadJobs();
+    return;
+  }
+  if (target === 'history') {
+    if (force || !loadedTabs.history) await loadRepairHistory();
     return;
   }
   if (target === 'obs') {
@@ -367,12 +373,8 @@ async function onTabChange(name: string | number) {
 
 async function reloadCurrent() {
   const current = String(tab.value || 'repair');
-  if (current === 'repair') {
-    await ensureTabLoaded('repair', true);
-    if (loadedTabs.health) await ensureTabLoaded('health', true);
-    return;
-  }
   await ensureTabLoaded(current, true);
+  if (current === 'repair' && loadedTabs.health) await ensureTabLoaded('health', true);
 }
 
 async function queueDeepScan() {
@@ -422,7 +424,7 @@ async function runRepair(action: string) {
     lastRepair.value = r.message || '修复完成';
     if (r.data?.after_scan || r.data?.after) applyScan(r.data.after_scan || r.data.after);
     else await scanAll();
-    await Promise.all([loadBase(), loadHealth()]);
+    await Promise.all([loadRepairBase(), loadHealth(), loadedTabs.jobs ? loadJobs() : Promise.resolve(), loadedTabs.history ? loadRepairHistory() : Promise.resolve()]);
     ElMessage.success(r.message || '修复完成');
   } finally {
     running.value = '';
@@ -437,6 +439,19 @@ async function loadJobs() {
   q.set('days', String(jobFilter.days));
   const r:any = await apiGet(`/api/jobs?${q.toString()}`);
   jobs.value = Array.isArray(r.data) ? r.data : [];
+  loadedTabs.jobs = true;
+}
+
+async function loadRepairHistory() {
+  const r:any = await apiGet('/api/system-tools');
+  repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
+  loadedTabs.history = true;
+  if (!loadedTabs.repair) {
+    applySchema(r.data?.schema || {});
+    applyDashboard(r.data?.dashboard || {});
+    applyScan(r.data?.scan || {});
+    loadedTabs.repair = true;
+  }
 }
 
 async function cleanupJobs() {
@@ -446,11 +461,43 @@ async function cleanupJobs() {
   await loadJobs();
 }
 
+function buildJobResultUrl(row:any, opts: { inline?: boolean; print?: boolean } = {}) {
+  const id = Number(row?.id || 0);
+  if (!id) return '';
+  const q = new URLSearchParams({ id: String(id) });
+  if (opts.inline) q.set('inline', '1');
+  if (opts.print) q.set('print', '1');
+  return `/api/jobs-download?${q.toString()}`;
+}
+
+function canPreviewJob(row:any) {
+  const contentType = String(row?.result_content_type || '').toLowerCase();
+  const filename = String(row?.result_filename || '').toLowerCase();
+  return contentType.includes('text/html') || contentType.includes('image/svg') || filename.endsWith('.html') || filename.endsWith('.svg');
+}
+
+function canPrintJob(row:any) {
+  const contentType = String(row?.result_content_type || '').toLowerCase();
+  const filename = String(row?.result_filename || '').toLowerCase();
+  return contentType.includes('text/html') || filename.endsWith('.html');
+}
+
 async function downloadJob(row:any) {
   const id = Number(row?.id || 0);
   if (!id) return;
-  await apiDownload(`/api/jobs-download?id=${id}`, row?.result_filename || undefined);
+  await apiDownload(buildJobResultUrl(row), row?.result_filename || undefined);
 }
+
+function previewJob(row:any) {
+  const url = buildJobResultUrl(row, { inline: true });
+  if (url) window.open(url, '_blank', 'noopener');
+}
+
+function printJob(row:any) {
+  const url = buildJobResultUrl(row, { inline: true, print: true });
+  if (url) window.open(url, '_blank', 'noopener');
+}
+
 async function retryJob(id:number) {
   await confirmRiskAction({ title: '重试异步任务', actionLabel: '重试失败任务', detail: `任务 #${id} 会重新入队执行。`, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'retry', id });

@@ -4,6 +4,29 @@ import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, listAsyncJ
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';
 
+const QR_EXPORT_TYPES = new Set(['PC_QR_CARDS_EXPORT', 'PC_QR_SHEET_EXPORT', 'MONITOR_QR_CARDS_EXPORT', 'MONITOR_QR_SHEET_EXPORT']);
+const QR_EXPORT_CHUNK_SIZE = 500;
+
+function normalizeQrExportIds(input: any) {
+  const ids: number[] = [];
+  const seen = new Set<number>();
+  for (const value of Array.isArray(input) ? input : []) {
+    const id = Number(value);
+    if (!Number.isFinite(id) || id <= 0) continue;
+    const normalized = Math.trunc(id);
+    if (seen.has(normalized)) continue;
+    seen.add(normalized);
+    ids.push(normalized);
+  }
+  return ids;
+}
+
+function chunkIds(ids: number[], size = QR_EXPORT_CHUNK_SIZE) {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += size) chunks.push(ids.slice(index, index + size));
+  return chunks;
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
@@ -28,6 +51,23 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const status = await getSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
     const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json<any>();
+    if (QR_EXPORT_TYPES.has(String(job_type || ''))) {
+      const ids = normalizeQrExportIds(request_json?.ids);
+      if (ids.length > QR_EXPORT_CHUNK_SIZE) {
+        const batchKey = `qr_export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+        const chunks = chunkIds(ids);
+        const createdIds: number[] = [];
+        for (let index = 0; index < chunks.length; index += 1) {
+          const chunkRequest = { ...(request_json || {}), ids: chunks[index], export_batch_key: batchKey, export_batch_index: index + 1, export_batch_total: chunks.length, export_total_ids: ids.length };
+          const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: chunkRequest, retain_days, max_retries });
+          createdIds.push(id);
+          const promise = processAsyncJob(env.DB, id);
+          if (typeof waitUntil === 'function') waitUntil(promise); else await promise;
+        }
+        await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', `batch:${batchKey}`, { job_type, retain_days, max_retries, batch_key: batchKey, split_count: createdIds.length, total_ids: ids.length });
+        return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length }, `已按每 500 条自动拆分为 ${createdIds.length} 个异步任务`);
+      }
+    }
     const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries });
     const promise = processAsyncJob(env.DB, id);
     if (typeof waitUntil === 'function') waitUntil(promise); else await promise;

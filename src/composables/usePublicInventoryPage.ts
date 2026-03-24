@@ -3,7 +3,6 @@ import { ElMessage } from '../utils/el-services';
 import { apiGetPublic, apiPostPublic } from '../api/client';
 import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type PublicScanMode, type SystemSettings } from '../api/systemSettings';
 import { buildPublicQuery, enqueuePendingPublicSubmission, flushPendingPublicSubmissions, getWeakNetworkText, isNetworkError, loadPendingPublicSubmissions, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration, type PendingPublicSubmission } from '../utils/publicInventory';
-import { useCameraQrScanner } from './useCameraQrScanner';
 
 type PublicInventoryKind = 'pc' | 'monitor';
 type NextSource = 'manual' | 'scanner' | 'camera';
@@ -62,6 +61,72 @@ export function usePublicInventoryPage(options: {
 
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
+  const cameraSupported = ref(typeof window !== 'undefined' ? typeof (window as any).BarcodeDetector === 'function' && !!navigator.mediaDevices?.getUserMedia : false);
+  const cameraActive = ref(false);
+  const cameraStarting = ref(false);
+  const cameraError = ref('');
+
+  type CameraQrRuntime = {
+    supported: boolean;
+    start: (onError: (message: string) => void) => Promise<boolean>;
+    stop: () => void;
+    isActive: () => boolean;
+  };
+  let cameraRuntime: CameraQrRuntime | null = null;
+  let cameraRuntimePromise: Promise<CameraQrRuntime> | null = null;
+
+  function detectCameraSupport() {
+    const BarcodeDetectorCtor = typeof window !== 'undefined' ? (window as any).BarcodeDetector : null;
+    return typeof BarcodeDetectorCtor === 'function' && !!(typeof navigator !== 'undefined' && navigator.mediaDevices?.getUserMedia);
+  }
+
+  async function ensureCameraRuntime() {
+    if (cameraRuntime) return cameraRuntime;
+    if (!cameraRuntimePromise) {
+      cameraRuntimePromise = import('../utils/cameraQrRuntime').then(({ createCameraQrRuntime }) => {
+        cameraRuntime = createCameraQrRuntime(cameraVideoRef, (raw) => {
+          if (!continuousMode.value || scanMode.value !== 'camera') return;
+          const target = parsePublicTargetInput(raw);
+          if (!target) return;
+          goNextToTarget(target, 'camera');
+        });
+        cameraSupported.value = Boolean(cameraRuntime?.supported);
+        return cameraRuntime;
+      });
+    }
+    return cameraRuntimePromise;
+  }
+
+  async function startCamera() {
+    cameraError.value = '';
+    cameraSupported.value = detectCameraSupport();
+    if (!cameraSupported.value) {
+      cameraError.value = '当前浏览器不支持摄像头二维码识别，请切换为扫码枪模式。';
+      return false;
+    }
+    if (cameraActive.value || cameraStarting.value) return true;
+    cameraStarting.value = true;
+    try {
+      const runtime = await ensureCameraRuntime();
+      cameraSupported.value = Boolean(runtime?.supported);
+      const started = await runtime.start((message) => {
+        cameraError.value = message;
+      });
+      cameraActive.value = Boolean(runtime?.isActive());
+      return started;
+    } finally {
+      cameraStarting.value = false;
+    }
+  }
+
+  function stopCamera() {
+    cameraRuntime?.stop();
+    cameraActive.value = false;
+  }
+
+  function clearCameraError() {
+    cameraError.value = '';
+  }
 
   function handleResize() {
     viewportWidth.value = window.innerWidth;
@@ -84,21 +149,6 @@ export function usePublicInventoryPage(options: {
   function refreshPendingQueue() {
     pendingQueue.value = loadPendingPublicSubmissions(options.kind);
   }
-
-  const {
-    supported: cameraSupported,
-    active: cameraActive,
-    starting: cameraStarting,
-    error: cameraError,
-    start: startCamera,
-    stop: stopCamera,
-    clearError: clearCameraError,
-  } = useCameraQrScanner(cameraVideoRef, (raw) => {
-    if (!continuousMode.value || scanMode.value !== 'camera') return;
-    const target = parsePublicTargetInput(raw);
-    if (!target) return;
-    goNextToTarget(target, 'camera');
-  });
 
   async function toggleCamera() {
     if (cameraActive.value) stopCamera();
@@ -359,6 +409,7 @@ export function usePublicInventoryPage(options: {
   onBeforeUnmount(() => {
     if (cooldownTimer) clearInterval(cooldownTimer);
     if (scannerTimer) clearTimeout(scannerTimer);
+    stopCamera();
     window.removeEventListener('resize', handleResize);
     window.removeEventListener('online', handleOnline);
     window.removeEventListener('offline', handleNetworkChange);
