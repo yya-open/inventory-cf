@@ -7,6 +7,7 @@ import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from '
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 import QRCode from 'qrcode';
+import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
@@ -118,39 +119,62 @@ function chunkRecords<T>(items: T[], size: number) {
   return chunks;
 }
 
-function renderCardMeta(meta?: Array<{ label: string; value: string }>) {
-  return (meta || []).map((item) => `
+function renderCardMeta(meta?: Array<{ label: string; value: string }>, limit = 4) {
+  return (meta || []).slice(0, limit).map((item) => `
       <div class="meta-row"><span class="k">${escapeHtml(item.label)}</span><span class="v">${escapeHtml(item.value)}</span></div>`).join('');
 }
 
-function renderCardsPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number) {
+function buildLayoutVars(kind: QrPrintTemplateKind, template: QrPrintTemplate) {
+  const { widthMm, heightMm } = resolveQrPaperDimensions(template);
+  const headerHeight = 14;
+  const contentWidth = Math.max(40, widthMm - template.margin_left_mm - template.margin_right_mm);
+  const contentHeight = Math.max(40, heightMm - template.margin_top_mm - template.margin_bottom_mm - headerHeight);
+  const cellWidth = (contentWidth - template.gap_x_mm * (template.cols - 1)) / template.cols;
+  const cellHeight = (contentHeight - template.gap_y_mm * (template.rows - 1)) / template.rows;
+  const pageSize = template.paper_size === 'custom' ? `${widthMm}mm ${heightMm}mm` : `${template.paper_size} ${template.orientation}`;
+  const qrColumnWidth = Math.min(cellWidth * 0.44, template.qr_size_mm + 5);
+  return {
+    kind,
+    pageWidthMm: widthMm,
+    pageHeightMm: heightMm,
+    pageSize,
+    cellWidth: Number(cellWidth.toFixed(2)),
+    cellHeight: Number(cellHeight.toFixed(2)),
+    qrColumnWidth: Number(qrColumnWidth.toFixed(2)),
+  };
+}
+
+function renderCardsPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number, template: QrPrintTemplate) {
   return `
   <section class="print-page cards-page">
-    <header class="page-header">
-      <div>
-        <div class="page-title">${escapeHtml(pageTitle)}</div>
-        <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
-      </div>
-      <div class="page-hint">A4 横向打印 · 推荐缩放 100%</div>
-    </header>
+    <div class="page-topline">
+      <div class="page-title">${escapeHtml(pageTitle)}</div>
+      <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
+    </div>
     <div class="cards-grid">
       ${cards.map((record) => `
         <article class="qr-card">
           <div class="qr-box">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
           <div class="card-content">
-            <div class="card-title">${escapeHtml(record.title)}</div>
-            ${record.subtitle ? `<div class="card-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
-            ${record.meta?.length ? `<div class="meta">${renderCardMeta(record.meta)}</div>` : ''}
-            <div class="link">${escapeHtml(record.url)}</div>
+            ${template.show_title ? `<div class="card-title">${escapeHtml(record.title)}</div>` : ''}
+            ${template.show_subtitle && record.subtitle ? `<div class="card-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
+            ${template.show_meta && record.meta?.length ? `<div class="meta">${renderCardMeta(record.meta, template.meta_count)}</div>` : ''}
+            ${template.show_link ? `<div class="link">${escapeHtml(record.url)}</div>` : ''}
           </div>
         </article>`).join('')}
     </div>
   </section>`;
 }
 
-async function renderQrCardsHtml(title: string, records: QrCardRecord[]) {
+async function renderQrCardsHtml(title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
+  const template = normalizeQrPrintTemplate('cards', inputTemplate);
+  const vars = buildLayoutVars('cards', template);
   const cards = await prepareQrCards(records);
-  const pages = chunkRecords(cards, 4);
+  const pages = chunkRecords(cards, Math.max(1, template.cols * template.rows));
+  const cardTitleSize = Math.max(3.8, Math.min(6, vars.cellHeight * 0.11));
+  const subtitleSize = Math.max(2.5, Math.min(3.2, cardTitleSize * 0.56));
+  const metaSize = Math.max(2.3, Math.min(2.9, cardTitleSize * 0.48));
+  const linkSize = Math.max(2, Math.min(2.4, cardTitleSize * 0.42));
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -158,108 +182,67 @@ async function renderQrCardsHtml(title: string, records: QrCardRecord[]) {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
-@page{size:A4 landscape;margin:10mm}
+@page{size:${vars.pageSize};margin:${template.margin_top_mm}mm ${template.margin_right_mm}mm ${template.margin_bottom_mm}mm ${template.margin_left_mm}mm}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#eef2f7;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-body{padding:10px}
-.print-page{width:100%;min-height:calc(210mm - 20mm);background:#fff;padding:0;border-radius:3mm;page-break-after:always;break-after:page}
+html,body{margin:0;padding:0;background:#fff;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:0}
+.print-page{width:${vars.pageWidthMm - template.margin_left_mm - template.margin_right_mm}mm;height:${vars.pageHeightMm - template.margin_top_mm - template.margin_bottom_mm}mm;overflow:hidden;page-break-after:always;break-after:page;background:#fff}
 .print-page:last-child{page-break-after:auto;break-after:auto}
-.page-header{display:flex;justify-content:space-between;align-items:flex-end;gap:8mm;padding:0 0 5mm 0;border-bottom:1px solid #e5e7eb;margin-bottom:6mm}
-.page-title{font-size:22px;font-weight:800}
-.page-sub,.page-hint{font-size:12px;color:#6b7280}
-.cards-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:6mm}
-.qr-card{display:grid;grid-template-columns:38mm minmax(0,1fr);gap:5mm;min-height:84mm;border:1px solid #d1d5db;border-radius:4mm;padding:5mm;background:#fff;overflow:hidden;break-inside:avoid;page-break-inside:avoid}
-.qr-box{display:flex;align-items:center;justify-content:center;border:1px solid #e5e7eb;border-radius:3mm;padding:2mm;background:#fff}
-.qr-box svg{width:32mm;height:32mm;display:block}
-.card-content{display:flex;flex-direction:column;min-width:0}
-.card-title{font-size:20px;font-weight:800;line-height:1.25;word-break:break-word}
-.card-subtitle{margin-top:2mm;color:#4b5563;font-size:13px;line-height:1.35}
-.meta{margin-top:3mm;padding-top:3mm;border-top:1px dashed #d1d5db;display:grid;gap:1.2mm}
-.meta-row{display:flex;justify-content:space-between;gap:4mm;font-size:12px;line-height:1.35}
+.page-topline{height:10mm;display:flex;align-items:flex-end;justify-content:space-between;padding:0 1mm 2mm 1mm;border-bottom:0.2mm solid #e5e7eb;margin-bottom:4mm}
+.page-title{font-size:5mm;font-weight:800;line-height:1}
+.page-sub{font-size:2.7mm;color:#6b7280;line-height:1}
+.cards-grid{height:calc(100% - 14mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
+.qr-card{display:grid;grid-template-columns:${vars.qrColumnWidth}mm minmax(0,1fr);gap:3.2mm;border:0.3mm solid #d1d5db;border-radius:2.8mm;padding:3.2mm;background:#fff;overflow:hidden;height:100%;break-inside:avoid;page-break-inside:avoid}
+.qr-box{display:flex;align-items:center;justify-content:center;border:0.3mm solid #e5e7eb;border-radius:2.2mm;padding:1.2mm;background:#fff}
+.qr-box svg{width:${template.qr_size_mm}mm;height:${template.qr_size_mm}mm;display:block}
+.card-content{display:flex;flex-direction:column;min-width:0;height:100%}
+.card-title{font-size:${cardTitleSize.toFixed(2)}mm;font-weight:800;line-height:1.18;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.card-subtitle{margin-top:1.4mm;color:#4b5563;font-size:${subtitleSize.toFixed(2)}mm;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.meta{margin-top:2mm;padding-top:2mm;border-top:0.2mm dashed #d1d5db;display:grid;gap:0.8mm}
+.meta-row{display:flex;justify-content:space-between;gap:2mm;font-size:${metaSize.toFixed(2)}mm;line-height:1.25}
 .meta-row .k{color:#6b7280;white-space:nowrap}
 .meta-row .v{font-weight:700;text-align:right;word-break:break-all}
-.link{margin-top:auto;padding-top:3mm;font-size:10px;color:#6b7280;word-break:break-all;line-height:1.35}
-@media print{html,body{background:#fff;padding:0}.print-page{border-radius:0;box-shadow:none}.cards-grid{gap:5mm}}
+.link{margin-top:auto;padding-top:2mm;font-size:${linkSize.toFixed(2)}mm;color:#6b7280;word-break:break-all;line-height:1.2;max-height:7mm;overflow:hidden}
+@media print{html,body{background:#fff}.print-page{border-radius:0;box-shadow:none}}
 </style>
 </head>
 <body>
-${pages.map((pageCards, index) => renderCardsPage(title, pageCards, index, pages.length)).join('')}
+${pages.map((pageCards, index) => renderCardsPage(title, pageCards, index, pages.length, template)).join('')}
 </body>
 </html>`;
 }
 
-function wrapTextSvg(text: any, maxChars: number, maxLines = 2) {
-  const chars = Array.from(String(text || '').trim());
-  if (!chars.length) return ['-'];
-  const lines: string[] = [];
-  let current = '';
-  for (const char of chars) {
-    if ((current + char).length > maxChars && current) {
-      lines.push(current);
-      current = char;
-      if (lines.length >= maxLines) break;
-    } else current += char;
-  }
-  if (lines.length < maxLines && current) lines.push(current);
-  if (lines.length > maxLines) return lines.slice(0, maxLines);
-  if (chars.length > lines.join('').length) {
-    lines[lines.length - 1] = `${lines[lines.length - 1].slice(0, Math.max(1, maxChars - 1))}…`;
-  }
-  return lines;
-}
-
-function renderSheetPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number) {
-  const cols = 2;
-  const rowsPerPage = 3;
-  const pageWidth = 1122;
-  const pageHeight = 794;
-  const margin = 28;
-  const headerHeight = 58;
-  const gapX = 22;
-  const gapY = 18;
-  const cardWidth = Math.floor((pageWidth - margin * 2 - gapX) / cols);
-  const cardHeight = Math.floor((pageHeight - margin * 2 - headerHeight - gapY * (rowsPerPage - 1)) / rowsPerPage);
-  const pageBody: string[] = [];
-  for (let index = 0; index < cards.length; index += 1) {
-    const card = cards[index];
-    const col = index % cols;
-    const row = Math.floor(index / cols);
-    const x = margin + col * (cardWidth + gapX);
-    const y = margin + headerHeight + row * (cardHeight + gapY);
-    const qrSize = 132;
-    const qrX = x + 20;
-    const qrY = y + 18;
-    const textX = qrX + qrSize + 18;
-    const titleLines = wrapTextSvg(card.title, 18, 2);
-    const subtitleLines = wrapTextSvg(card.subtitle || '', 24, 2);
-    const meta = (card.meta || []).slice(0, 4);
-    pageBody.push(`
-      <g>
-        <rect x="${x}" y="${y}" width="${cardWidth}" height="${cardHeight}" rx="18" ry="18" fill="#ffffff" stroke="#d1d5db" stroke-width="1.5" />
-        <rect x="${qrX - 6}" y="${qrY - 6}" width="${qrSize + 12}" height="${qrSize + 12}" rx="12" ry="12" fill="#ffffff" stroke="#e5e7eb" stroke-width="1" />
-        ${inlineSvgMarkup(card.svg, { x: qrX, y: qrY, width: qrSize, height: qrSize, preserveAspectRatio: 'xMidYMid meet' })}
-        ${titleLines.map((line, lineIndex) => `<text x="${textX}" y="${y + 42 + lineIndex * 28}" font-size="24" font-weight="700" fill="#111827">${escapeXml(line)}</text>`).join('')}
-        ${subtitleLines.filter(Boolean).map((line, lineIndex) => `<text x="${textX}" y="${y + 96 + lineIndex * 20}" font-size="15" fill="#4b5563">${escapeXml(line)}</text>`).join('')}
-        ${meta.map((item, metaIndex) => {
-          const currentY = y + 132 + metaIndex * 22;
-          return `<text x="${textX}" y="${currentY}" font-size="14" fill="#6b7280">${escapeXml(`${item.label}：`)}</text><text x="${textX + 60}" y="${currentY}" font-size="14" fill="#111827">${escapeXml(String(item.value || '-'))}</text>`;
-        }).join('')}
-      </g>`);
-  }
+function renderSheetPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number, template: QrPrintTemplate) {
   return `
   <section class="print-page sheet-page">
-    <svg class="sheet-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 ${pageWidth} ${pageHeight}" role="img" aria-label="${escapeAttr(pageTitle)} 第 ${pageIndex + 1} 页">
-      <rect width="100%" height="100%" fill="#f8fafc" />
-      <text x="${margin}" y="38" font-size="28" font-weight="700" fill="#111827">${escapeXml(pageTitle)}</text>
-      <text x="${margin}" y="62" font-size="14" fill="#6b7280">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</text>
-      ${pageBody.join('')}
-    </svg>
+    <div class="sheet-topline">
+      <div class="page-title">${escapeHtml(pageTitle)}</div>
+      <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
+    </div>
+    <div class="sheet-grid">
+      ${cards.map((record) => `
+        <article class="sheet-item">
+          <div class="sheet-qr">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
+          <div class="sheet-text">
+            ${template.show_title ? `<div class="sheet-title">${escapeHtml(record.title)}</div>` : ''}
+            ${template.show_subtitle && record.subtitle ? `<div class="sheet-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
+            ${template.show_meta && record.meta?.length ? `<div class="sheet-meta">${renderCardMeta(record.meta, template.meta_count)}</div>` : ''}
+            ${template.show_link ? `<div class="sheet-link">${escapeHtml(record.url)}</div>` : ''}
+          </div>
+        </article>`).join('')}
+    </div>
   </section>`;
 }
 
-async function renderQrSheetHtml(title: string, records: QrCardRecord[]) {
+async function renderQrSheetHtml(title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
+  const template = normalizeQrPrintTemplate('sheet', inputTemplate);
+  const vars = buildLayoutVars('sheet', template);
   const cards = await prepareQrCards(records);
-  const pages = chunkRecords(cards, 6);
+  const pages = chunkRecords(cards, Math.max(1, template.cols * template.rows));
+  const titleSize = Math.max(3.6, Math.min(5.2, vars.cellHeight * 0.1));
+  const subtitleSize = Math.max(2.4, Math.min(3, titleSize * 0.58));
+  const metaSize = Math.max(2.2, Math.min(2.8, titleSize * 0.5));
+  const linkSize = Math.max(2, Math.min(2.3, titleSize * 0.42));
   return `<!doctype html>
 <html lang="zh-CN">
 <head>
@@ -267,18 +250,32 @@ async function renderQrSheetHtml(title: string, records: QrCardRecord[]) {
 <meta name="viewport" content="width=device-width, initial-scale=1" />
 <title>${escapeHtml(title)}</title>
 <style>
-@page{size:A4 landscape;margin:8mm}
+@page{size:${vars.pageSize};margin:${template.margin_top_mm}mm ${template.margin_right_mm}mm ${template.margin_bottom_mm}mm ${template.margin_left_mm}mm}
 *{box-sizing:border-box}
-html,body{margin:0;padding:0;background:#eef2f7;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
-body{padding:10px}
-.print-page{width:100%;page-break-after:always;break-after:page;background:#fff;border-radius:3mm;overflow:hidden}
+html,body{margin:0;padding:0;background:#fff;color:#111827;font-family:-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+body{padding:0}
+.print-page{width:${vars.pageWidthMm - template.margin_left_mm - template.margin_right_mm}mm;height:${vars.pageHeightMm - template.margin_top_mm - template.margin_bottom_mm}mm;padding:0;overflow:hidden;page-break-after:always;break-after:page;background:#fff}
 .print-page:last-child{page-break-after:auto;break-after:auto}
-.sheet-svg{display:block;width:100%;height:auto;aspect-ratio:1122 / 794;background:#f8fafc}
-@media print{html,body{background:#fff;padding:0}.print-page{border-radius:0;box-shadow:none}}
+.sheet-topline{height:10mm;display:flex;align-items:flex-end;justify-content:space-between;padding:0 1mm 2mm 1mm;border-bottom:0.2mm solid #e5e7eb;margin-bottom:4mm}
+.page-title{font-size:5mm;font-weight:800;line-height:1}
+.page-sub{font-size:2.7mm;color:#6b7280;line-height:1}
+.sheet-grid{height:calc(100% - 14mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
+.sheet-item{display:grid;grid-template-columns:${vars.qrColumnWidth}mm minmax(0,1fr);gap:3mm;align-items:center;border:0.3mm solid #d1d5db;border-radius:2.6mm;padding:3.2mm;background:#fff;overflow:hidden;height:100%}
+.sheet-qr{display:flex;align-items:center;justify-content:center;border:0.3mm solid #e5e7eb;border-radius:2mm;padding:1.1mm;background:#fff}
+.sheet-qr svg{width:${template.qr_size_mm}mm;height:${template.qr_size_mm}mm;display:block}
+.sheet-text{min-width:0;display:flex;flex-direction:column;gap:1.2mm}
+.sheet-title{font-size:${titleSize.toFixed(2)}mm;font-weight:800;line-height:1.15;word-break:break-word;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sheet-subtitle{font-size:${subtitleSize.toFixed(2)}mm;color:#4b5563;line-height:1.25;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden}
+.sheet-meta{margin-top:0.4mm;display:grid;gap:0.7mm}
+.sheet-meta .meta-row{display:flex;justify-content:space-between;gap:2mm;font-size:${metaSize.toFixed(2)}mm;line-height:1.24}
+.sheet-meta .meta-row .k{color:#6b7280;white-space:nowrap}
+.sheet-meta .meta-row .v{font-weight:700;text-align:right;word-break:break-all}
+.sheet-link{padding-top:1mm;font-size:${linkSize.toFixed(2)}mm;color:#6b7280;word-break:break-all;line-height:1.2;max-height:7mm;overflow:hidden}
+@media print{html,body{background:#fff}.print-page{border-radius:0;box-shadow:none}}
 </style>
 </head>
 <body>
-${pages.map((pageCards, index) => renderSheetPage(title, pageCards, index, pages.length)).join('')}
+${pages.map((pageCards, index) => renderSheetPage(title, pageCards, index, pages.length, template)).join('')}
 </body>
 </html>`;
 }
@@ -403,7 +400,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台电脑');
     const origin = String(requestJson?.origin || '');
     const records = await buildPcQrRecords(db, origin, ids);
-    const html = await renderQrCardsHtml('电脑二维码卡片', records);
+    const html = await renderQrCardsHtml('电脑二维码卡片', records, requestJson?.print_template);
     return { text: html, filename: `pc_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张电脑二维码卡片` };
   }
 
@@ -412,7 +409,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台电脑');
     const origin = String(requestJson?.origin || '');
     const records = await buildPcQrRecords(db, origin, ids);
-    const html = await renderQrSheetHtml('电脑二维码图版', records);
+    const html = await renderQrSheetHtml('电脑二维码图版', records, requestJson?.print_template);
     return { text: html, filename: `pc_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台电脑的二维码图版打印页` };
   }
 
@@ -421,7 +418,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台显示器');
     const origin = String(requestJson?.origin || '');
     const records = await buildMonitorQrRecords(db, origin, ids);
-    const html = await renderQrCardsHtml('显示器二维码卡片', records);
+    const html = await renderQrCardsHtml('显示器二维码卡片', records, requestJson?.print_template);
     return { text: html, filename: `monitor_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张显示器二维码卡片` };
   }
 
@@ -430,7 +427,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     if (!ids.length) throw new Error('请至少选择一台显示器');
     const origin = String(requestJson?.origin || '');
     const records = await buildMonitorQrRecords(db, origin, ids);
-    const html = await renderQrSheetHtml('显示器二维码图版', records);
+    const html = await renderQrSheetHtml('显示器二维码图版', records, requestJson?.print_template);
     return { text: html, filename: `monitor_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版打印页` };
   }
 

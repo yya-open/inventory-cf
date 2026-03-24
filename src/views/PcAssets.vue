@@ -117,6 +117,12 @@
       :archive-reason-options="archiveReasonOptions"
       @submit="submitBatchArchive"
     />
+    <QrPrintTemplateDialog
+      v-model:visible="qrTemplateVisible"
+      :kind="qrTemplateKind"
+      kind-label="电脑"
+      @submit="submitQrPrintTemplate"
+    />
   </el-card>
 </template>
 
@@ -140,6 +146,8 @@ import { createIdleDebounced } from '../utils/idleDebounce';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
+import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
+import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -176,6 +184,8 @@ const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
+const qrTemplateVisible = ref(false);
+const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -402,7 +412,7 @@ async function initQrKeys() {
 }
 
 
-async function exportSelectedQrPngLocal() {
+async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
   const qrLinks = await fetchBulkPcAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
   const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
   const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
@@ -422,12 +432,12 @@ async function exportSelectedQrPngLocal() {
     });
   }
   if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
-  const { downloadQrCardsPng } = await loadQrCardUtils();
-  await downloadQrCardsPng(`电脑二维码图版_${records.length}条`, '电脑二维码图版', records);
-  ElMessage.success('二维码图版(PNG)已导出');
+  const { downloadQrSheetHtml } = await loadQrCardUtils();
+  await downloadQrSheetHtml(`电脑二维码图版_${records.length}条`, '电脑二维码图版', records, template);
+  ElMessage.success('二维码图版打印页已导出，可直接打印');
 }
 
-async function exportSelectedQrCardsLocal() {
+async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
   const qrLinks = await fetchBulkPcAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
   const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
   const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
@@ -447,26 +457,44 @@ async function exportSelectedQrCardsLocal() {
   }
   if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
   const { downloadQrCardsHtml } = await loadQrCardUtils();
-  await downloadQrCardsHtml(`电脑二维码卡片_${records.length}条`, '电脑二维码卡片', records);
+  await downloadQrCardsHtml(`电脑二维码卡片_${records.length}条`, '电脑二维码卡片', records, template);
   ElMessage.success('二维码卡片已导出，可直接打印');
 }
-async function exportSelectedQrPng() {
+
+function openQrPrintTemplate(kind: QrPrintTemplateKind) {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  qrTemplateKind.value = kind;
+  qrTemplateVisible.value = true;
+}
+
+async function submitQrPrintTemplate(template: QrPrintTemplate) {
+  if (qrTemplateKind.value === 'cards') {
+    await executeExportSelectedQrCards(template);
+    return;
+  }
+  await executeExportSelectedQrSheet(template);
+}
+
+async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
     if (!isAdmin.value) {
-      await exportSelectedQrPngLocal();
+      await exportSelectedQrSheetLocal(template);
       return;
     }
     const ids = selectedRows.value.map((row) => Number(row.id));
-    const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_SHEET_EXPORT', request_json: { ids, origin: window.location.origin }, retain_days: 7, max_retries: 1 });
+    const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_SHEET_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码图版（SVG）` : '任务已创建，可在“系统工具 / 异步任务”下载二维码图版（SVG）');
+    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码图版打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码图版打印页');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码图版失败');
   } finally {
     exportBusy.value = false;
   }
+}
+
+function exportSelectedQrPng() {
+  openQrPrintTemplate('sheet');
 }
 
 function openAuditHistory(row?: PcAsset | null) {
@@ -759,23 +787,26 @@ async function exportSelectedQrLinks() {
   }
 }
 
-async function exportSelectedQrCards() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
     if (!isAdmin.value) {
-      await exportSelectedQrCardsLocal();
+      await exportSelectedQrCardsLocal(template);
       return;
     }
     const ids = selectedRows.value.map((row) => Number(row.id));
-    const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_CARDS_EXPORT', request_json: { ids, origin: window.location.origin }, retain_days: 7, max_retries: 1 });
+    const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_CARDS_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码卡片` : '任务已创建，可在“系统工具 / 异步任务”下载二维码卡片');
+    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码卡片打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码卡片打印页');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
     exportBusy.value = false;
   }
+}
+
+function exportSelectedQrCards() {
+  openQrPrintTemplate('cards');
 }
 
 

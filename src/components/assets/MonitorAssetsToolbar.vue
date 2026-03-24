@@ -84,7 +84,7 @@
                 <el-dropdown-menu>
                   <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
                   <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
-                  <el-dropdown-item command="export-qr-png">导出二维码图版(PNG)</el-dropdown-item>
+                  <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="batch-location">批量修改位置</el-dropdown-item>
