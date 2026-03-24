@@ -1,7 +1,8 @@
 <template>
   <el-dialog
     :model-value="visible"
-    width="860px"
+    class="qr-print-template-dialog"
+    width="1100px"
     destroy-on-close
     title="打印模板设置"
     @close="emit('update:visible', false)"
@@ -254,15 +255,20 @@ const previewQrStyle = computed(() => {
 </script>
 
 <style scoped>
-.print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:20px}
+.print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
 .preset-toolbar,.preset-save-row,.toggle-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .template-form{margin-top:14px}
+.template-form :deep(.el-form-item){margin-bottom:12px;min-width:0}
+.template-form :deep(.el-form-item__content){min-width:0}
+.template-form :deep(.el-input-number){width:100%}
+.template-form :deep(.el-select){width:100%}
+.template-form :deep(.el-radio-group){display:flex;flex-wrap:wrap;gap:8px}
 .section-title{font-size:13px;font-weight:700;color:#475569;margin:8px 0 12px}
 .form-grid{display:grid;gap:12px}
 .two-col{grid-template-columns:repeat(2,minmax(0,1fr))}
-.four-col{grid-template-columns:repeat(4,minmax(0,1fr))}
+.four-col{grid-template-columns:repeat(2,minmax(0,1fr))}
 .compact :deep(.el-form-item){margin-bottom:10px}
-.print-template-preview{display:flex;flex-direction:column;gap:14px}
+.print-template-preview{display:flex;flex-direction:column;gap:14px;position:sticky;top:0}
 .preview-card{border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:14px}
 .preview-title{font-size:14px;font-weight:800;margin-bottom:10px;color:#111827}
 .preview-line{font-size:12px;line-height:1.6;color:#475569}
@@ -276,6 +282,9 @@ const previewQrStyle = computed(() => {
 .preview-text-line.strong{width:78%;height:9px;background:#94a3b8}
 .preview-text-line.light{width:92%;opacity:.8}
 .preview-text-line.tiny{width:100%;height:5px;opacity:.55}
-.dialog-footer{display:flex;justify-content:flex-end;gap:10px}
-@media (max-width: 1100px){.print-template-layout{grid-template-columns:1fr}.print-template-preview{order:-1}}
+.dialog-footer{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
+:deep(.qr-print-template-dialog){width:min(1100px, calc(100vw - 24px)) !important}
+:deep(.qr-print-template-dialog .el-dialog__body){padding-top:16px}
+@media (max-width: 1200px){.print-template-layout{grid-template-columns:1fr}.print-template-preview{order:-1;position:static}.preview-page{max-width:320px}.four-col{grid-template-columns:repeat(2,minmax(0,1fr))}}
+@media (max-width: 720px){.two-col,.four-col{grid-template-columns:1fr}}
 </style>
