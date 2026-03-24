@@ -13,6 +13,7 @@ import {
   loadAssetRows,
 } from './services/asset-bulk';
 import { bulkDeleteAssets } from './services/asset-bulk-delete';
+import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 
@@ -120,10 +121,51 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'delete') {
       const existingRows = await loadAssetRows(env.DB, 'monitor', ids);
+      const settings = await getSystemSettings(env.DB);
+      const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
+      if (previewOnly) {
+        const previewItems = [];
+        for (const id of ids) {
+          const row = existingRows.find((item) => Number(item.id) === Number(id));
+          if (!row) {
+            previewItems.push({ id: Number(id), blocked: true, reason: '显示器台账不存在或已删除' });
+            continue;
+          }
+          const refs = await getRelatedRecordCounts(env.DB, 'monitor', Number(id));
+          const hasRefs = hasRelatedHistory('monitor', refs);
+          const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
+          const operation = Number(row.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
+          previewItems.push({
+            id: Number(id),
+            operation,
+            blocked: false,
+            archived: Number(row.archived || 0) === 1,
+            related_total: relatedTotal,
+            related_counts: refs,
+            reason: operation === 'purge'
+              ? '归档资产将被彻底删除并级联清理历史记录'
+              : operation === 'archive'
+                ? '存在历史记录或系统策略禁用物理删除，将自动归档'
+                : '满足物理删除条件',
+          });
+        }
+        const blocked = previewItems.filter((item: any) => item.blocked).length;
+        return Response.json({
+          ok: true,
+          preview: true,
+          data: {
+            items: previewItems,
+            blocked,
+            processed: previewItems.length - blocked,
+            archived: previewItems.filter((item: any) => item.operation === 'archive').length,
+            deleted: previewItems.filter((item: any) => item.operation === 'delete').length,
+            purged: previewItems.filter((item: any) => item.operation === 'purge').length,
+          },
+        });
+      }
       if (existingRows.some((row) => Number(row.archived || 0) === 1)) {
         await requirePermission(env, request, 'asset_purge', 'admin');
       }
-      const settings = await getSystemSettings(env.DB);
       const result = await bulkDeleteAssets(env.DB, 'monitor', ids, {
         allowPhysicalDelete: Boolean(settings.asset_allow_physical_delete),
         updatedBy: user.username || null,

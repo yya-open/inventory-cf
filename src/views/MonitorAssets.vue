@@ -1177,12 +1177,16 @@ async function saveAsset() {
 
 async function removeAsset(row: MonitorAsset) {
   const isArchived = Number(row.archived || 0) === 1;
+  const label = `${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）`;
   try {
-    const preview: any = await apiDelete('/api/monitor-assets', { id: row.id, preview_only: true });
-    const operation = String(preview?.data?.operation || (isArchived ? 'purge' : 'delete'));
-    const relatedTotal = Number(preview?.data?.related_total || 0);
-    const reason = String(preview?.data?.reason || '');
-    const label = `${[row.brand, row.model].filter(Boolean).join(' ')}（资产编号: ${row.asset_code || '-'}）`;
+    const preview: any = await apiPost('/api/monitor-assets-bulk', { action: 'delete', ids: [Number(row.id)], preview_only: true });
+    const previewItem = Array.isArray(preview?.data?.items) ? preview.data.items[0] : null;
+    if (previewItem?.blocked) {
+      throw Object.assign(new Error(String(previewItem?.reason || '当前资产暂不支持删除')), { status: 400 });
+    }
+    const operation = String(previewItem?.operation || (isArchived ? 'purge' : 'delete'));
+    const relatedTotal = Number(previewItem?.related_total || 0);
+    const reason = String(previewItem?.reason || '');
     const message = operation === 'purge'
       ? `确认彻底删除归档显示器：${label}？本次将清理 ${relatedTotal} 条关联记录。${reason}`
       : operation === 'archive'
@@ -1193,16 +1197,21 @@ async function removeAsset(row: MonitorAsset) {
       confirmButtonText: operation === 'purge' ? '确认彻底删除' : '确认删除',
       cancelButtonText: '取消',
     });
-    loading.value = true;
-    const result: any = await apiDelete('/api/monitor-assets', { id: row.id });
+    batchBusy.value = true;
+    const result: any = await apiPost('/api/monitor-assets-bulk', { action: 'delete', ids: [Number(row.id)] });
+    if (Array.isArray(result?.success_items)) applyMonitorDeletePatch(result.success_items);
+    clearSelection();
+    await ensureLocalPatchedPageStable(true);
+    if (result?.failed) {
+      const failure = Array.isArray(result?.failed_records) ? result.failed_records[0] : null;
+      throw Object.assign(new Error(String(failure?.原因 || result?.message || '删除失败')), { status: 400 });
+    }
     ElMessage.success(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
-    if (rows.value.length === 1 && page.value > 1) page.value -= 1;
-    await refreshCurrent(true, true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || (isArchived ? '彻底删除失败' : '删除失败'));
   } finally {
-    loading.value = false;
+    batchBusy.value = false;
   }
 }
 
