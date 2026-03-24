@@ -239,7 +239,7 @@ const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.valu
 const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
 const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
 const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
-const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, resetLocationCatalog } = useLocationCatalog();
+const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 const router = useRouter();
@@ -1559,9 +1559,9 @@ async function openLocationMgr() {
   await refreshLocationMgr();
 }
 
-async function refreshLocationMgr() {
+async function refreshLocationMgr(force = false) {
   try {
-    const rows = await ensureAllLocations(true);
+    const rows = await ensureAllLocations(force);
     dlgLoc.rows = rows.map((item) => ({ ...item })) as MonitorAsset[];
   } catch (error: any) {
     await handleMaybeMissingSchema(error);
@@ -1577,8 +1577,8 @@ async function createLocation() {
     await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
     dlgLoc.newName = '';
     dlgLoc.parentId = '';
-    resetLocationCatalog();
-    await refreshLocationMgr();
+    invalidateLocationCatalog();
+    await refreshLocationMgr(true);
     ElMessage.success('新增成功');
   } catch (error: any) {
     ElMessage.error(error.message || '新增失败');
@@ -1592,8 +1592,8 @@ async function updateLocation(row: MonitorAsset) {
   try {
     locationSaving.value = true;
     await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
-    resetLocationCatalog();
-    await refreshLocationMgr();
+    invalidateLocationCatalog();
+    await refreshLocationMgr(true);
     ElMessage.success('保存成功');
   } catch (error: any) {
     ElMessage.error(error.message || '保存失败');
@@ -1608,8 +1608,8 @@ async function deleteLocation(row: MonitorAsset) {
     locationSaving.value = true;
     await ElMessageBox.confirm('删除位置后无法恢复，确认继续？', '提示', { type: 'warning' });
     await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
-    resetLocationCatalog();
-    await refreshLocationMgr();
+    invalidateLocationCatalog();
+    await refreshLocationMgr(true);
     ElMessage.success('删除成功');
   } catch (error: any) {
     if (error?.message) ElMessage.error(error.message);
