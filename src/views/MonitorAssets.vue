@@ -187,6 +187,7 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { listMonitorAssets } from '../api/assetLedgers';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
+import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
@@ -646,24 +647,12 @@ async function exportSelectedQrLinks() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   try {
     batchBusy.value = true;
-    const { exportToXlsx } = await loadExcelUtils();
-    const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
-    const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
-    const linkRows = [];
-    for (const row of selectedRows.value) {
-      linkRows.push({
-        id: row.id,
-        asset_code: row.asset_code,
-        sn: row.sn,
-        brand: row.brand,
-        model: row.model,
-        status: assetStatusText(row.status),
-        url: qrLinkMap.get(Number(row.id)) || '',
-      });
-    }
-    exportToXlsx({
+    await exportAssetQrLinksWorkbook({
+      rows: selectedRows.value,
+      getId: (row) => Number(row.id),
+      fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+      loadExcelUtils,
       filename: `显示器二维码链接_${selectedCount.value}条.xlsx`,
-      sheetName: '二维码链接',
       headers: [
         { key: 'id', title: 'ID' },
         { key: 'asset_code', title: '资产编号' },
@@ -673,7 +662,15 @@ async function exportSelectedQrLinks() {
         { key: 'status', title: '状态' },
         { key: 'url', title: '二维码链接' },
       ],
-      rows: linkRows,
+      mapWorkbookRow: (row, url) => ({
+        id: row.id,
+        asset_code: row.asset_code,
+        sn: row.sn,
+        brand: row.brand,
+        model: row.model,
+        status: assetStatusText(row.status),
+        url,
+      }),
     });
     ElMessage.success('二维码链接已导出');
   } catch (error: any) {
@@ -690,11 +687,13 @@ async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>)
       await exportSelectedQrCardsLocal(template);
       return;
     }
-    const ids = selectedRows.value.map((row) => Number(row.id));
-    const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_CARDS_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
-    const jobId = Number(result?.data?.id || result?.id || 0);
-    const splitCount = Number(result?.data?.split_count || result?.split_count || 0);
-    ElMessage.success(splitCount > 1 ? `已自动拆分为 ${splitCount} 个异步任务，可在“系统工具 / 异步任务”下载二维码卡片打印页` : (jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码卡片打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码卡片打印页'));
+    const result = await createAssetQrExportJob({
+      rows: selectedRows.value,
+      getId: (row) => Number(row.id),
+      jobType: 'MONITOR_QR_CARDS_EXPORT',
+      template,
+    });
+    ElMessage.success(formatAssetQrJobCreatedMessage(result, '二维码卡片打印页'));
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
@@ -1330,51 +1329,59 @@ function monitorQrVersionOf(row?: Partial<MonitorAsset> | null) {
 
 
 async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
-  const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
-  const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
-  const records: Array<{ title: string; subtitle?: string; meta: Array<{ label: string; value: string }>; url: string }> = [];
-  for (const row of selectedRows.value) {
-    const link = qrLinkMap.get(Number(row.id)) || '';
-    if (!link) continue;
-    records.push({
-      title: row.asset_code || `显示器 #${row.id}`,
-      subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
-      meta: [
-        { label: '状态', value: assetStatusText(row.status) },
-        { label: '位置', value: locationText(row) },
-        { label: '领用人', value: row.employee_name || '-' },
-        { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-      ],
-      url: link,
-    });
-  }
-  if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
-  const { downloadQrSheetHtml } = await loadQrCardUtils();
-  await downloadQrSheetHtml(`显示器二维码图版_${records.length}条`, '显示器二维码图版', records, template);
+  const result = await exportAssetQrPrintLocal({
+    mode: 'sheet',
+    rows: selectedRows.value,
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+    mapPrintRecord: (row, url) => {
+      if (!url) return null;
+      return {
+        title: row.asset_code || `显示器 #${row.id}`,
+        subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
+        meta: [
+          { label: '状态', value: assetStatusText(row.status) },
+          { label: '位置', value: locationText(row) },
+          { label: '领用人', value: row.employee_name || '-' },
+          { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+        ],
+        url,
+      };
+    },
+    loadQrCardUtils,
+    filename: `显示器二维码图版_${selectedRows.value.length}条`,
+    title: '显示器二维码图版',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
   ElMessage.success('二维码图版打印页已导出，可直接打印');
 }
 
 async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
-  const qrLinks = await fetchBulkMonitorAssetQrLinks(selectedRows.value.map((row) => Number(row.id)));
-  const qrLinkMap = new Map<number, string>(qrLinks.map((item: { id: number; url: string }) => [item.id, item.url] as [number, string]));
-  const records = [] as Array<{ title: string; subtitle: string; meta: Array<{ label: string; value: string }>; url: string }>;
-  for (const row of selectedRows.value) {
-    const url = qrLinkMap.get(Number(row.id)) || '';
-    if (!url) continue;
-    records.push({
-      title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
-      subtitle: `${row.model || '-'} · SN：${row.sn || '-'}`,
-      meta: [
-        { label: '状态', value: assetStatusText(row.status) },
-        { label: '位置', value: locationText(row) },
-        { label: '领用人', value: row.employee_name || '-' },
-      ],
-      url,
-    });
-  }
-  if (!records.length) return ElMessage.warning('当前选中项没有可导出的二维码');
-  const { downloadQrCardsHtml } = await loadQrCardUtils();
-  await downloadQrCardsHtml(`显示器二维码卡片_${records.length}条`, '显示器二维码卡片', records, template);
+  const result = await exportAssetQrPrintLocal({
+    mode: 'cards',
+    rows: selectedRows.value,
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+    mapPrintRecord: (row, url) => {
+      if (!url) return null;
+      return {
+        title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
+        subtitle: `${row.model || '-'} · SN：${row.sn || '-'}`,
+        meta: [
+          { label: '状态', value: assetStatusText(row.status) },
+          { label: '位置', value: locationText(row) },
+          { label: '领用人', value: row.employee_name || '-' },
+        ],
+        url,
+      };
+    },
+    loadQrCardUtils,
+    filename: `显示器二维码卡片_${selectedRows.value.length}条`,
+    title: '显示器二维码卡片',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
   ElMessage.success('二维码卡片已导出，可直接打印');
 }
 
@@ -1399,11 +1406,13 @@ async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>)
       await exportSelectedQrSheetLocal(template);
       return;
     }
-    const ids = selectedRows.value.map((row) => Number(row.id));
-    const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_SHEET_EXPORT', request_json: { ids, origin: window.location.origin, print_template: template }, retain_days: 7, max_retries: 1 });
-    const jobId = Number(result?.data?.id || result?.id || 0);
-    const splitCount = Number(result?.data?.split_count || result?.split_count || 0);
-    ElMessage.success(splitCount > 1 ? `已自动拆分为 ${splitCount} 个异步任务，可在“系统工具 / 异步任务”下载二维码图版打印页` : (jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”下载二维码图版打印页` : '任务已创建，可在“系统工具 / 异步任务”下载二维码图版打印页'));
+    const result = await createAssetQrExportJob({
+      rows: selectedRows.value,
+      getId: (row) => Number(row.id),
+      jobType: 'MONITOR_QR_SHEET_EXPORT',
+      template,
+    });
+    ElMessage.success(formatAssetQrJobCreatedMessage(result, '二维码图版打印页'));
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码图版失败');
   } finally {
