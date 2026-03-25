@@ -302,7 +302,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, reactive, watch } from "vue";
+import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
@@ -310,6 +310,7 @@ import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
+import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
 
 const route = useRoute();
 const router = useRouter();
@@ -405,6 +406,15 @@ const cachedViewNames = ['StockQuery', 'TxList', 'Warnings', 'PcAssets', 'Monito
 const needsSystemMeta = computed(() => ['/system/home', '/system/tools', '/system/release-check', '/system/dashboard'].includes(route.path));
 const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
 const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: string; detail: string }>({ visible: false, type: 'warning', title: '', detail: '' });
+
+let removeGlobalTableScrollEnhancer: (() => void) | null = null;
+onMounted(() => {
+  removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
+});
+onBeforeUnmount(() => {
+  removeGlobalTableScrollEnhancer?.();
+  removeGlobalTableScrollEnhancer = null;
+});
 
 async function loadSchemaStatus() {
   if (!auth.user || simpleLayout.value || !needsSystemMeta.value) {
