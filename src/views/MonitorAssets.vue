@@ -262,6 +262,10 @@ function loadExcelUtils() {
   return excelUtilsPromise;
 }
 
+function loadAssetLedgerExportActions() {
+  return import('./assets/assetLedgerExportActions');
+}
+
 function loadQrCardUtils() {
   qrCardUtilsPromise ||= import('../utils/qrCards');
   return qrCardUtilsPromise;
@@ -786,31 +790,8 @@ async function exportSelectedRows() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的显示器');
   try {
     exportBusy.value = true;
-    const { exportToXlsx } = await loadExcelUtils();
-    exportToXlsx({
-      filename: `显示器台账_已选_${selectedCount.value}条.xlsx`,
-      sheetName: '已选台账',
-      headers: [
-        { key: 'id', title: 'ID' },
-        { key: 'asset_code', title: '资产编号' },
-        { key: 'sn', title: 'SN' },
-        { key: 'brand', title: '品牌' },
-        { key: 'model', title: '型号' },
-        { key: 'size_inch', title: '尺寸' },
-        { key: 'status', title: '状态' },
-        { key: 'location_text', title: '位置' },
-        { key: 'employee_name', title: '领用人' },
-        { key: 'employee_no', title: '员工工号' },
-        { key: 'department', title: '部门' },
-        { key: 'remark', title: '备注' },
-        { key: 'updated_at', title: '更新时间' },
-      ],
-      rows: selectedRows.value.map((row) => ({
-        ...row,
-        status: assetStatusText(row.status),
-        location_text: locationText(row),
-      })),
-    });
+    const actions = await loadAssetLedgerExportActions();
+    await actions.exportMonitorSelectedRows({ rows: selectedRows.value, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
   } finally {
@@ -824,31 +805,8 @@ async function exportExcel() {
     exportBusy.value = true;
     if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
-    const { exportToXlsx } = await loadExcelUtils();
-    exportToXlsx({
-      filename: '显示器台账.xlsx',
-      sheetName: '显示器台账',
-      headers: [
-        { key: 'id', title: 'ID' },
-        { key: 'asset_code', title: '资产编号' },
-        { key: 'sn', title: 'SN' },
-        { key: 'brand', title: '品牌' },
-        { key: 'model', title: '型号' },
-        { key: 'size_inch', title: '尺寸' },
-        { key: 'status', title: '状态' },
-        { key: 'location_text', title: '位置' },
-        { key: 'employee_name', title: '领用人' },
-        { key: 'employee_no', title: '员工工号' },
-        { key: 'department', title: '部门' },
-        { key: 'remark', title: '备注' },
-        { key: 'updated_at', title: '更新时间' },
-      ],
-      rows: all.map((row) => ({
-        ...row,
-        status: assetStatusText(row.status),
-        location_text: locationText(row),
-      })),
-    });
+    const actions = await loadAssetLedgerExportActions();
+    await actions.exportMonitorAllRows({ rows: all, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
     ElMessage.error(error?.message || '导出失败');
   } finally {
@@ -864,30 +822,8 @@ async function exportArchiveRecords() {
     const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档显示器记录');
-    const { exportToXlsx } = await loadExcelUtils();
-    exportToXlsx({
-      filename: `显示器归档记录_${rowsToExport.length}条.xlsx`,
-      sheetName: '显示器归档',
-      headers: [
-        { key: 'id', title: 'ID' },
-        { key: 'asset_code', title: '资产编号' },
-        { key: 'sn', title: 'SN' },
-        { key: 'brand', title: '品牌' },
-        { key: 'model', title: '型号' },
-        { key: 'status', title: '状态' },
-        { key: 'location_text', title: '位置' },
-        { key: 'archived_reason', title: '归档原因' },
-        { key: 'archived_note', title: '归档备注' },
-        { key: 'archived_by', title: '归档人' },
-        { key: 'archived_at', title: '归档时间' },
-      ],
-      rows: rowsToExport.map((row) => ({
-        ...row,
-        status: assetStatusText(row.status),
-        location_text: locationText(row),
-        archived_at: formatBeijingDateTime(row.archived_at),
-      })),
-    });
+    const actions = await loadAssetLedgerExportActions();
+    await actions.exportMonitorArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, locationText, formatBeijingDateTime });
     ElMessage.success('归档显示器记录已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出归档记录失败');

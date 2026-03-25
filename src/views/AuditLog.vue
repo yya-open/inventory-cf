@@ -159,13 +159,14 @@
       </el-form>
     </template>
 
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      border
-      style="width:100%"
-      @selection-change="onSelect"
-    >
+    <LazyMountBlock title="正在装载审计列表…" min-height="420px">
+      <el-table
+        v-loading="loading"
+        :data="rows"
+        border
+        style="width:100%"
+        @selection-change="onSelect"
+      >
       <el-table-column
         v-if="isAdmin"
         type="selection"
@@ -268,6 +269,7 @@
         @size-change="onPageSizeChange"
       />
     </div>
+    </LazyMountBlock>
 
     <el-dialog
       v-model="showPayload"
@@ -415,6 +417,7 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { exportToXlsx } from "../utils/excel";
 import { readJsonStorage, writeJsonStorage } from "../utils/storage";
 import { getCachedSystemSettings } from "../api/systemSettings";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 
 const ACTION_LABEL: Record<string, string> = {

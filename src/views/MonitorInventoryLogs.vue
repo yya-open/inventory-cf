@@ -124,7 +124,8 @@
     </el-card>
 
     <el-card shadow="never">
-      <el-table
+      <LazyMountBlock title="正在装载显示器盘点记录…" min-height="360px">
+        <el-table
         v-loading="loading"
         :data="rows"
         border
@@ -261,6 +262,7 @@
           @size-change="onPageSizeChange"
         />
       </div>
+      </LazyMountBlock>
     </el-card>
   </div>
 </template>
@@ -270,6 +272,7 @@ import { computed, onMounted, ref } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 function statusText(s: string) {
   if (s === "IN_STOCK") return "在库";

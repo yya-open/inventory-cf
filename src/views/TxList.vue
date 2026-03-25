@@ -131,11 +131,12 @@
       </el-button>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      border
-    >
+    <LazyMountBlock title="正在装载配件明细…" min-height="400px">
+      <el-table
+        v-loading="loading"
+        :data="rows"
+        border
+      >
       <el-table-column
         label="时间"
         width="170"
@@ -227,6 +228,7 @@
         @size-change="onPageSizeChange"
       />
     </div>
+    </LazyMountBlock>
   </el-card>
 </template>
 
@@ -239,6 +241,7 @@ import { loadXlsx } from "../utils/excel";
 import { useRoute } from "vue-router";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 
 const TYPE_LABEL: Record<string, string> = {

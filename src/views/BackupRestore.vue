@@ -47,13 +47,14 @@
             <el-button plain @click="downloadDrillSop">下载 SOP</el-button>
             <el-button type="primary" plain @click="openDrillDialog">记录本次演练</el-button>
           </div>
-        </el-card>
+          </el-card>
       </el-col>
       <el-col :xs="24" :md="12">
-        <el-card shadow="never" style="border:1px solid #f0f0f0">
-          <template #header>
-            <div style="display:flex; justify-content:space-between; align-items:center">
-              <span style="font-weight:700">最近恢复演练</span>
+        <LazyMountBlock title="正在装载演练记录…" min-height="280px">
+          <el-card shadow="never" style="border:1px solid #f0f0f0">
+            <template #header>
+              <div style="display:flex; justify-content:space-between; align-items:center">
+                <span style="font-weight:700">最近恢复演练</span>
               <el-button link type="primary" @click="loadBackupDrills">刷新</el-button>
             </div>
           </template>
@@ -79,6 +80,7 @@
             </el-table-column>
           </el-table>
         </el-card>
+        </LazyMountBlock>
       </el-col>
     </el-row>
 
@@ -698,6 +700,7 @@ import { apiDownload, apiPostForm, apiGet, apiPost, apiPut } from "../api/client
 import { formatBeijingNowDateTime } from "../utils/datetime";
 import { scheduleOnIdle } from '../utils/idle';
 import { can } from "../store/auth";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 const bk = ref({
   include_tx: false,

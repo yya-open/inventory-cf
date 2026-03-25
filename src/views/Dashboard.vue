@@ -62,7 +62,8 @@
           </el-card>
         </div>
 
-        <div class="dashboard-grid dashboard-grid--detail">
+        <LazyMountBlock title="正在补载看板明细…" min-height="420px">
+          <div class="dashboard-grid dashboard-grid--detail">
           <el-card shadow="never">
             <template #header>
               <div class="chart-header">
@@ -94,7 +95,8 @@
               </el-table>
             </div>
           </el-card>
-        </div>
+          </div>
+        </LazyMountBlock>
       </div>
 
       <div v-else-if="!reportModeOptions.length" class="dashboard-empty">
@@ -114,6 +116,7 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
 import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();

@@ -120,13 +120,14 @@
       </div>
     </div>
 
-    <el-table
-      v-loading="loading"
-      :data="rows"
-      border
-      row-key="__rowKey"
-      @selection-change="onSelectionChange"
-    >
+    <LazyMountBlock title="正在装载电脑明细…" min-height="420px">
+      <el-table
+        v-loading="loading"
+        :data="rows"
+        border
+        row-key="__rowKey"
+        @selection-change="onSelectionChange"
+      >
       <el-table-column
         v-if="isAdmin"
         type="selection"
@@ -245,6 +246,7 @@
         @size-change="onPageSizeChange"
       />
     </div>
+    </LazyMountBlock>
   </el-card>
 </template>
 
@@ -256,6 +258,7 @@ import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { can, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
+import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 const canOperator = computed(() => can("operator"));
 const auth = useAuth();
