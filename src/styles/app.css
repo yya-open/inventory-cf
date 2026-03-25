@@ -213,12 +213,21 @@ body {
   z-index: 6;
   overflow-x: auto;
   overflow-y: hidden;
-  height: 14px;
-  margin-bottom: 6px;
+  height: 10px;
+  margin: 0 0 4px;
   border-radius: 999px;
-  background: rgba(15, 23, 42, 0.06);
-  box-shadow: inset 0 0 0 1px rgba(148, 163, 184, 0.18);
-  backdrop-filter: blur(6px);
+  background: transparent;
+  box-shadow: none;
+  backdrop-filter: none;
+  opacity: 0.82;
+  scrollbar-color: rgba(144, 147, 153, 0.72) transparent;
+  scrollbar-width: thin;
+  transition: opacity 160ms ease;
+}
+
+.app-table-scroll-shell__topbar:hover,
+.app-table-scroll-shell__topbar:focus-within {
+  opacity: 1;
 }
 
 .app-table-scroll-shell__topbar-inner {
@@ -226,7 +235,7 @@ body {
 }
 
 .app-table-scroll-shell__topbar::-webkit-scrollbar {
-  height: 10px;
+  height: 8px;
 }
 
 .app-table-scroll-shell__topbar::-webkit-scrollbar-track {
@@ -235,9 +244,9 @@ body {
 
 .app-table-scroll-shell__topbar::-webkit-scrollbar-thumb {
   border-radius: 999px;
-  background: rgba(100, 116, 139, 0.55);
+  background: rgba(144, 147, 153, 0.72);
 }
 
 .app-table-scroll-shell__topbar::-webkit-scrollbar-thumb:hover {
-  background: rgba(71, 85, 105, 0.72);
+  background: rgba(120, 122, 128, 0.88);
 }
