@@ -38,6 +38,7 @@ import { fetchMe, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
+import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
 const router = createRouter({
@@ -178,24 +179,26 @@ router.beforeEach(async (to) => {
 export default router;
 
 
-const prefetchedChunks = new Set<string>();
-
 function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
-  if (!loader || prefetchedChunks.has(key)) return;
-  prefetchedChunks.add(key);
+  if (!loader || hasPrefetchedRouteChunk(key) || !shouldAllowRoutePrefetch()) return;
+  markPrefetchedRouteChunk(key);
   scheduleOnIdle(() => {
+    if (!shouldAllowRoutePrefetch()) {
+      clearPrefetchedRouteChunk(key);
+      return;
+    }
     loader().catch(() => {
-      prefetchedChunks.delete(key);
+      clearPrefetchedRouteChunk(key);
     });
-  }, 1200);
+  }, 1800);
 }
 
 router.afterEach((to) => {
-  if ((to.meta as any)?.public) return;
+  if ((to.meta as any)?.public || !shouldAllowRoutePrefetch()) return;
   const auth = useAuth();
-  const tasks = new Map<string, () => Promise<unknown>>();
+  const tasks: Array<[string, () => Promise<unknown>, boolean]> = [];
   const add = (key: string, loader: () => Promise<unknown>, enabled = true) => {
-    if (enabled) tasks.set(key, loader);
+    tasks.push([key, loader, enabled]);
   };
   const canAdminAccess = auth.user?.role === 'admin';
   const canOperate = auth.user?.role === 'admin' || auth.user?.role === 'operator';
@@ -205,30 +208,52 @@ router.afterEach((to) => {
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
   if (to.path.startsWith('/system')) {
-    add('/system/tools', SystemOpsTools, canAdminAccess);
-    add('/system/settings', SystemSettings, canAdminAccess);
-    add('/system/audit', AuditLog, canAdminAccess);
-    add('/system/backup', BackupRestore, canAdminAccess);
+    if (to.path === '/system/home') {
+      add('/system/dashboard', Dashboard, canAdminAccess);
+      add('/system/tools', SystemOpsTools, canAdminAccess);
+      add('/system/settings', SystemSettings, canAdminAccess);
+    } else if (to.path === '/system/dashboard') {
+      add('/system/tools', SystemOpsTools, canAdminAccess);
+      add('/system/audit', AuditLog, canAdminAccess);
+    } else if (to.path === '/system/tools') {
+      add('/system/release-check', SystemReleaseCheck, canAdminAccess);
+      add('/system/performance', SystemPerformance, canAdminAccess);
+    } else {
+      add('/system/tools', SystemOpsTools, canAdminAccess);
+      add('/system/home', SystemHome, canAdminAccess);
+    }
   } else if (to.path.startsWith('/pc')) {
-    add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
-    add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
-    add('/pc/tx', PcTx, canViewPc && canViewPcLedger);
-    add('/pc/monitor-tx', MonitorTx, canViewPc && canViewMonitorLedger);
-    add('/pc/inventory-logs', PcInventoryLogs, canViewPc && canViewPcLedger);
-    add('/pc/monitor-inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
-    add('/pc/in', PcIn, canOperate && canViewPc && canViewPcLedger);
-    add('/pc/out', PcOut, canOperate && canViewPc && canViewPcLedger);
-    add('/pc/recycle', PcRecycle, canOperate && canViewPc && canViewPcLedger);
+    if (to.path === '/pc/assets') {
+      add('/pc/tx', PcTx, canViewPc && canViewPcLedger);
+      add('/pc/inventory-logs', PcInventoryLogs, canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitors') {
+      add('/pc/monitor-tx', MonitorTx, canViewPc && canViewMonitorLedger);
+      add('/pc/monitor-inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
+    } else if (to.path === '/pc/tx') {
+      add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
+      add('/pc/in', PcIn, canOperate && canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitor-tx') {
+      add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
+      add('/pc/inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
+    } else {
+      add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
+      add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
+    }
   } else {
-    add('/stock', StockQuery, canViewParts);
-    add('/tx', TxList, canViewParts);
-    add('/warnings', Warnings, canViewParts);
-    add('/in', StockIn, canOperate && canViewParts);
-    add('/out', StockOut, canOperate && canViewParts);
-    add('/batch', BatchTx, canOperate && canViewParts);
-    add('/stocktake', Stocktake, canAdminAccess && canViewParts);
+    if (to.path === '/stock') {
+      add('/tx', TxList, canViewParts);
+      add('/warnings', Warnings, canViewParts);
+    } else if (to.path === '/tx') {
+      add('/stock', StockQuery, canViewParts);
+      add('/batch', BatchTx, canOperate && canViewParts);
+    } else {
+      add('/stock', StockQuery, canViewParts);
+      add('/tx', TxList, canViewParts);
+    }
   }
 
-  tasks.delete(to.path);
-  tasks.forEach((loader, key) => prefetchChunk(key, loader));
+  const selected = tasks
+    .filter(([key, , enabled]) => enabled && key !== to.path)
+    .slice(0, 2);
+  selected.forEach(([key, loader]) => prefetchChunk(key, loader));
 });

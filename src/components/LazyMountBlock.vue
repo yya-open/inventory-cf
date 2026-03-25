@@ -1,5 +1,5 @@
 <template>
-  <div class="lazy-mount-block">
+  <div ref="rootEl" class="lazy-mount-block" :style="blockStyle">
     <slot v-if="mounted" />
     <div v-else class="lazy-mount-block__placeholder" :style="placeholderStyle">
       <div v-if="title" class="lazy-mount-block__title">{{ title }}</div>
@@ -19,6 +19,9 @@ const props = withDefaults(defineProps<{
   minHeight?: string;
   rows?: number;
   title?: string;
+  viewport?: boolean;
+  rootMargin?: string;
+  intrinsicSize?: string;
 }>(), {
   when: true,
   delay: 120,
@@ -26,13 +29,20 @@ const props = withDefaults(defineProps<{
   minHeight: '260px',
   rows: 6,
   title: '',
+  viewport: true,
+  rootMargin: '240px 0px',
+  intrinsicSize: '320px',
 });
 
 const mounted = ref(false);
+const isNearViewport = ref(false);
+const rootEl = ref<HTMLElement | null>(null);
 let timer: number | null = null;
 let idleId: number | null = null;
+let observer: IntersectionObserver | null = null;
 
 const placeholderStyle = computed(() => ({ minHeight: props.minHeight }));
+const blockStyle = computed(() => ({ containIntrinsicSize: props.intrinsicSize }));
 
 function cancelPending() {
   if (timer !== null && typeof window !== 'undefined') {
@@ -51,6 +61,7 @@ function scheduleMount() {
     mounted.value = false;
     return;
   }
+  if (props.viewport && !isNearViewport.value) return;
   const commit = () => {
     mounted.value = true;
     idleId = null;
@@ -72,16 +83,41 @@ watch(() => props.when, () => {
   scheduleMount();
 });
 
+watch(isNearViewport, (ready) => {
+  if (ready && !mounted.value) scheduleMount();
+});
+
 onMounted(() => {
-  scheduleMount();
+  if (!props.viewport || typeof window === 'undefined' || !('IntersectionObserver' in window)) {
+    isNearViewport.value = true;
+    scheduleMount();
+    return;
+  }
+  observer = new IntersectionObserver((entries) => {
+    const entry = entries[0];
+    if (!entry) return;
+    if (entry.isIntersecting || entry.intersectionRatio > 0) {
+      isNearViewport.value = true;
+      observer?.disconnect();
+      observer = null;
+    }
+  }, { rootMargin: props.rootMargin });
+  if (rootEl.value) observer.observe(rootEl.value);
 });
 
 onBeforeUnmount(() => {
   cancelPending();
+  observer?.disconnect();
+  observer = null;
 });
 </script>
 
 <style scoped>
+.lazy-mount-block {
+  content-visibility: auto;
+  contain: layout style paint;
+}
+
 .lazy-mount-block__placeholder {
   display: flex;
   flex-direction: column;
