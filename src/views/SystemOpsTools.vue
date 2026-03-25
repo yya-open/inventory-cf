@@ -90,6 +90,7 @@
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
+          <span style="margin-left:auto; color:#999; font-size:12px">{{ jobAutoRefreshText }}</span>
         </div>
 
         <el-table :data="jobs" border>
@@ -196,7 +197,7 @@
 <script setup lang="ts">
 import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
 import { ElProgress } from 'element-plus';
-import { ref, reactive, onMounted } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue';
 import { ElMessage } from '../utils/el-services';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
@@ -221,6 +222,21 @@ const snapshotPrecomputing = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
 const loadedTabs = reactive<Record<string, boolean>>({ repair: false, jobs: false, obs: false, health: false, history: false });
+const JOB_LIST_LIMIT = 100;
+const JOB_POLL_FAST_MS = 4000;
+const JOB_POLL_IDLE_MS = 15000;
+const JOB_POLL_HIDDEN_MS = 30000;
+const jobPollTimer = ref<number | null>(null);
+const jobPollInFlight = ref(false);
+const jobsLastSyncedAt = ref('');
+const jobsLastSyncMode = ref<'full' | 'delta'>('full');
+const jobAutoRefreshText = computed(() => {
+  const mode = jobsLastSyncMode.value === 'delta' ? '增量刷新' : '全量刷新';
+  const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
+  const base = document.hidden ? `后台 ${Math.round(JOB_POLL_HIDDEN_MS / 1000)}s` : (active ? `${Math.round(JOB_POLL_FAST_MS / 1000)}s` : `${Math.round(JOB_POLL_IDLE_MS / 1000)}s`);
+  const last = jobsLastSyncedAt.value ? `，上次 ${formatTime(jobsLastSyncedAt.value)}` : '';
+  return `自动刷新：${mode}，${base}${last}`;
+});
 
 function formatTime(v?: string | null) {
   if (!v) return '';
@@ -369,7 +385,10 @@ async function ensureTabLoaded(name: string, force = false) {
 }
 
 async function onTabChange(name: string | number) {
-  await ensureTabLoaded(String(name || tab.value || 'repair'));
+  const target = String(name || tab.value || 'repair');
+  await ensureTabLoaded(target);
+  if (target === 'jobs') scheduleJobsPolling(true);
+  else clearJobsPollTimer();
 }
 
 async function reloadCurrent() {
@@ -432,15 +451,85 @@ async function runRepair(action: string) {
   }
 }
 
-async function loadJobs() {
+function clearJobsPollTimer() {
+  if (jobPollTimer.value != null) {
+    window.clearTimeout(jobPollTimer.value);
+    jobPollTimer.value = null;
+  }
+}
+
+function shouldUseIncrementalJobsRefresh() {
+  return !String(jobFilter.status || '').trim();
+}
+
+function currentJobsPollDelay() {
+  if (document.hidden) return JOB_POLL_HIDDEN_MS;
+  const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
+  return active ? JOB_POLL_FAST_MS : JOB_POLL_IDLE_MS;
+}
+
+function mergeJobsRows(existing: any[], incoming: any[], limit = JOB_LIST_LIMIT) {
+  const map = new Map<number, any>();
+  for (const row of Array.isArray(existing) ? existing : []) {
+    const id = Number(row?.id || 0);
+    if (id > 0) map.set(id, row);
+  }
+  for (const row of Array.isArray(incoming) ? incoming : []) {
+    const id = Number(row?.id || 0);
+    if (id > 0) map.set(id, row);
+  }
+  return Array.from(map.values()).sort((a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0)).slice(0, limit);
+}
+
+function scheduleJobsPolling(immediate = false) {
+  clearJobsPollTimer();
+  if (String(tab.value || '') !== 'jobs' || !loadedTabs.jobs) return;
+  const delay = immediate ? 800 : currentJobsPollDelay();
+  jobPollTimer.value = window.setTimeout(async () => {
+    if (jobPollInFlight.value || String(tab.value || '') !== 'jobs') {
+      scheduleJobsPolling();
+      return;
+    }
+    try {
+      await loadJobs({ incremental: shouldUseIncrementalJobsRefresh(), silent: true });
+    } catch {}
+  }, delay);
+}
+
+function handleJobsVisibilityChange() {
+  if (String(tab.value || '') !== 'jobs') return;
+  scheduleJobsPolling(!document.hidden);
+}
+
+async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {}) {
   const q = new URLSearchParams();
   if (jobFilter.status) q.set('status', jobFilter.status);
   if (jobFilter.job_type) q.set('job_type', jobFilter.job_type);
   if (jobFilter.mine) q.set('mine', '1');
   q.set('days', String(jobFilter.days));
-  const r:any = await apiGet(`/api/jobs?${q.toString()}`);
-  jobs.value = Array.isArray(r.data) ? r.data : [];
-  loadedTabs.jobs = true;
+  q.set('limit', String(JOB_LIST_LIMIT));
+
+  const allowDelta = !!options.incremental && shouldUseIncrementalJobsRefresh() && jobs.value.length > 0;
+  const activeIds = Array.from(new Set(jobs.value.filter((row: any) => ['queued', 'running'].includes(String(row?.status || ''))).map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0))).slice(0, JOB_LIST_LIMIT);
+  const maxId = jobs.value.reduce((max: number, row: any) => Math.max(max, Number(row?.id || 0)), 0);
+  if (allowDelta && (maxId > 0 || activeIds.length > 0)) {
+    if (maxId > 0) q.set('after_id', String(maxId));
+    if (activeIds.length > 0) q.set('ids', activeIds.join(','));
+  }
+
+  jobPollInFlight.value = true;
+  try {
+    const r:any = await apiGet(`/api/jobs?${q.toString()}`);
+    const rows = Array.isArray(r.data) ? r.data : [];
+    const usedDelta = allowDelta && (q.has('after_id') || q.has('ids'));
+    jobs.value = usedDelta ? mergeJobsRows(jobs.value, rows, JOB_LIST_LIMIT) : rows;
+    jobsLastSyncMode.value = usedDelta ? 'delta' : 'full';
+    jobsLastSyncedAt.value = new Date().toISOString();
+    loadedTabs.jobs = true;
+  } finally {
+    jobPollInFlight.value = false;
+    if (String(tab.value || '') === 'jobs') scheduleJobsPolling();
+  }
 }
 
 async function loadRepairHistory() {
@@ -536,5 +625,15 @@ function openDiff(row:any) {
   diffDialog.visible = true;
 }
 
-onMounted(() => { ensureTabLoaded('repair'); });
+onMounted(() => {
+  ensureTabLoaded('repair');
+  document.addEventListener('visibilitychange', handleJobsVisibilityChange);
+  window.addEventListener('focus', handleJobsVisibilityChange);
+});
+
+onBeforeUnmount(() => {
+  clearJobsPollTimer();
+  document.removeEventListener('visibilitychange', handleJobsVisibilityChange);
+  window.removeEventListener('focus', handleJobsVisibilityChange);
+});
 </script>

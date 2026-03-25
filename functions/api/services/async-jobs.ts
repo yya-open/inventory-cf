@@ -556,7 +556,7 @@ function mapAsyncJobRow(row: any) {
   };
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null } = {}) {
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}) {
   await cleanupAsyncJobHousekeeping(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
@@ -565,6 +565,26 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   if (options.job_type) { where.push(`job_type=?`); binds.push(String(options.job_type)); }
   if (options.created_by) { where.push(`created_by=?`); binds.push(Number(options.created_by)); }
   if (options.days) { where.push(`created_at >= datetime('now','+8 hours', ?)`); binds.push(`-${Math.max(1, Math.min(90, Number(options.days || 7)))} day`); }
+
+  const deltaParts: string[] = [];
+  const deltaBinds: any[] = [];
+  const afterId = Number(options.after_id || 0);
+  if (Number.isFinite(afterId) && afterId > 0) {
+    deltaParts.push(`id > ?`);
+    deltaBinds.push(Math.trunc(afterId));
+  }
+  const ids = Array.isArray(options.ids)
+    ? Array.from(new Set(options.ids.map((value) => Math.trunc(Number(value || 0))).filter((value) => Number.isFinite(value) && value > 0))).slice(0, 200)
+    : [];
+  if (ids.length) {
+    deltaParts.push(`id IN (${ids.map(() => '?').join(',')})`);
+    deltaBinds.push(...ids);
+  }
+  if (deltaParts.length) {
+    where.push(`(${deltaParts.join(' OR ')})`);
+    binds.push(...deltaBinds);
+  }
+
   const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_text, request_json, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return (results || []).map(mapAsyncJobRow);
