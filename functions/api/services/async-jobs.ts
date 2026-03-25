@@ -26,6 +26,7 @@ export async function ensureAsyncJobsTable(db: D1Database) {
       result_text TEXT,
       result_content_type TEXT,
       result_filename TEXT,
+      result_size_bytes INTEGER NOT NULL DEFAULT 0,
       message TEXT,
       error_text TEXT,
       started_at TEXT,
@@ -41,6 +42,7 @@ export async function ensureAsyncJobsTable(db: D1Database) {
     `ALTER TABLE async_jobs ADD COLUMN canceled_at TEXT`,
     `ALTER TABLE async_jobs ADD COLUMN retain_until TEXT`,
     `ALTER TABLE async_jobs ADD COLUMN result_deleted_at TEXT`,
+    `ALTER TABLE async_jobs ADD COLUMN result_size_bytes INTEGER NOT NULL DEFAULT 0`,
   ];
   for (const sql of alters) {
     try { await db.prepare(sql).run(); } catch {}
@@ -432,6 +434,7 @@ export async function cleanupExpiredAsyncJobResults(db: D1Database) {
   const res = await db.prepare(
     `UPDATE async_jobs
      SET result_text=NULL,
+         result_size_bytes=0,
          result_deleted_at=COALESCE(result_deleted_at, ${sqlNowStored()}),
          updated_at=${sqlNowStored()},
          message=CASE WHEN COALESCE(message,'')='' THEN '结果文件已过保留期，已清理' ELSE message || '（结果文件已过期清理）' END
@@ -469,7 +472,7 @@ export async function cleanupAsyncJobHousekeeping(db: D1Database) {
 }
 
 export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }) {
-  await cleanupAsyncJobHousekeeping(db);
+  await ensureAsyncJobsTable(db);
   const retainDays = Math.max(1, Math.min(30, Number(input.retain_days || 7)));
   const maxRetries = Math.max(0, Math.min(5, Number(input.max_retries ?? 1)));
   const res = await db.prepare(
@@ -480,7 +483,7 @@ export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJob
 }
 
 export async function processAsyncJob(db: D1Database, id: number) {
-  await cleanupAsyncJobHousekeeping(db);
+  await ensureAsyncJobsTable(db);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
@@ -497,16 +500,17 @@ export async function processAsyncJob(db: D1Database, id: number) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
       return;
     }
+    const resultSizeBytes = utf8ByteLength(result.text);
     await db.prepare(
-      `UPDATE async_jobs SET status='success', result_text=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
-    ).bind(result.text, result.contentType, result.filename, result.message, id).run();
+      `UPDATE async_jobs SET status='success', result_text=?, result_content_type=?, result_filename=?, result_size_bytes=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
+    ).bind(result.text, result.contentType, result.filename, resultSizeBytes, result.message, id).run();
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (Number(latest?.cancel_requested || 0) === 1) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
       return;
     }
-    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(error?.message || error || '任务执行失败'), id).run();
+    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, result_size_bytes=0, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(error?.message || error || '任务执行失败'), id).run();
   }
 }
 
@@ -533,12 +537,17 @@ function utf8ByteLength(value: any) {
   return utf8Encoder.encode(String(value ?? '')).length;
 }
 
+function normalizeResultSizeBytes(value: any) {
+  const size = Number(value || 0);
+  return Number.isFinite(size) && size > 0 ? Math.trunc(size) : 0;
+}
+
 function mapAsyncJobRow(row: any) {
   const createdMs = toMs(row?.created_at);
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
   const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
-  const resultSize = row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
+  const resultSize = normalizeResultSizeBytes(row?.result_size_bytes);
   const progress = String(row?.status) === 'success' ? 100
     : String(row?.status) === 'failed' ? 100
     : String(row?.status) === 'canceled' ? 100
@@ -557,7 +566,7 @@ function mapAsyncJobRow(row: any) {
 }
 
 export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}) {
-  await cleanupAsyncJobHousekeeping(db);
+  await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
   const binds: any[] = [];
@@ -585,15 +594,19 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
     binds.push(...deltaBinds);
   }
 
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_text, request_json, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_size_bytes, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return (results || []).map(mapAsyncJobRow);
 }
 
 export async function getAsyncJob(db: D1Database, id: number) {
-  await cleanupAsyncJobHousekeeping(db);
   await ensureAsyncJobsTable(db);
   return await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
+}
+
+export async function getAsyncJobResult(db: D1Database, id: number) {
+  await ensureAsyncJobsTable(db);
+  return await db.prepare(`SELECT id, status, result_text, result_deleted_at, result_filename, result_content_type FROM async_jobs WHERE id=?`).bind(id).first<any>();
 }
 
 export async function cancelAsyncJob(db: D1Database, id: number) {
@@ -617,6 +630,6 @@ export async function retryAsyncJob(db: D1Database, id: number) {
   const maxRetries = Number(row.max_retries || 1);
   if (retryCount >= maxRetries) throw Object.assign(new Error(`已超过最大重试次数（${maxRetries}）`), { status: 409 });
   await db.prepare(
-    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
+    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_content_type=NULL, result_filename=NULL, result_size_bytes=0, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
 }
