@@ -181,7 +181,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -195,15 +195,13 @@ import { can } from '../store/auth';
 import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
-import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
-import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
-import { createIdleDebounced } from '../utils/idleDebounce';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
+import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -215,30 +213,6 @@ const MonitorAssetBatchLocationDialog = defineAsyncComponent(() => import('../co
 const MonitorAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchOwnerDialog.vue'));
 const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchArchiveDialog.vue'));
 
-const STORAGE_KEY = 'inventory:monitor-assets:filters';
-const MONITOR_COLUMN_OPTIONS = [
-  { value: 'assetCode', label: '资产编号' },
-  { value: 'sn', label: 'SN' },
-  { value: 'model', label: '型号' },
-  { value: 'size', label: '尺寸' },
-  { value: 'status', label: '状态' },
-  { value: 'location', label: '位置' },
-  { value: 'owner', label: '领用人' },
-  { value: 'department', label: '部门' },
-  { value: 'updatedAt', label: '更新时间' },
-] as const;
-const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', locationId: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: getCachedSystemSettings().ui_default_page_size, visibleColumns: MONITOR_COLUMN_KEYS, columnOrder: MONITOR_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
-
-const status = ref(String(persistedState.status || ''));
-const locationId = ref(String(persistedState.locationId || ''));
-const keyword = ref(String(persistedState.keyword || ''));
-const archiveReason = ref(String((persistedState as any).archiveReason || ''));
-const archiveMode = ref(((persistedState as any).archiveMode || (persistedState.showArchived ? 'all' : 'active')) as 'active' | 'archived' | 'all');
-const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
-const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
-const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value));
-const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
 const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
@@ -249,6 +223,28 @@ const departmentOptions = computed(() => systemSettings.value.dictionary_departm
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+
+const {
+  status,
+  locationId,
+  keyword,
+  archiveReason,
+  archiveMode,
+  showArchived,
+  columnOrder,
+  visibleColumns,
+  columnWidths,
+  initialPageSize,
+  monitorColumnOptions,
+  currentFilters,
+  clearKeywordTimer,
+  bindPersistence,
+  cleanup: cleanupViewState,
+  updateVisibleColumns,
+  restoreDefaultColumns,
+  moveVisibleColumn,
+  updateColumnWidth,
+} = useMonitorAssetViewState(() => reload(currentFilters()));
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -277,16 +273,6 @@ async function buildInlineQrSvg(link: string, size = 360) {
     dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`
   };
 }
-
-const currentFilters = (): MonitorFilters => ({
-  status: status.value || '',
-  locationId: String(locationId.value || ''),
-  keyword: keyword.value || '',
-  archiveReason: archiveMode.value !== 'active' ? (archiveReason.value || '') : '',
-  archiveMode: archiveMode.value,
-  showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
-});
-
 const locationText = (row: MonitorAsset) => [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-';
 
 const locationOptions = computed(() => {
@@ -357,7 +343,7 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   },
 });
 
-pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
+pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 15_000;
 let lastRefreshAt = 0;
 
@@ -465,7 +451,6 @@ function applyMonitorDeletePatch(successItems: Array<{ id: number; action: strin
   if (removedIds.length) removeCurrentRows(removedIds);
 }
 
-const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
@@ -533,74 +518,7 @@ const assetSaving = ref(false);
 const opSubmitting = ref(false);
 const locationSaving = ref(false);
 
-function persistState() {
-  writeJsonStorage(STORAGE_KEY, {
-    status: status.value || '',
-    locationId: String(locationId.value || ''),
-    keyword: keyword.value || '',
-    showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
-    archiveMode: archiveMode.value,
-    archiveReason: archiveReason.value || '',
-    pageSize: Number(pageSize.value || 50),
-    visibleColumns: visibleColumns.value,
-    columnOrder: columnOrder.value,
-    columnWidths: columnWidths.value,
-  });
-}
-
-let suppressAutoSearch = false;
-let keywordTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearKeywordTimer() {
-  if (keywordTimer) {
-    clearTimeout(keywordTimer);
-    keywordTimer = null;
-  }
-}
-
-function scheduleKeywordSearch() {
-  clearKeywordTimer();
-  keywordTimer = setTimeout(() => {
-    reload(currentFilters());
-  }, 320);
-}
-
-const schedulePersistState = createIdleDebounced(() => persistState(), 280);
-
-watch([status, locationId, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
-watch(keyword, (_value, oldValue) => {
-  if (suppressAutoSearch || oldValue === undefined) return;
-  scheduleKeywordSearch();
-});
-watch(archiveMode, (value) => {
-  showArchived.value = value !== 'active';
-  if (value === 'active') archiveReason.value = '';
-});
-
-watch(archiveReason, (_value, oldValue) => {
-  if (suppressAutoSearch || oldValue === undefined) return;
-  scheduleKeywordSearch();
-});
-
-function updateVisibleColumns(value: string[]) {
-  visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, MONITOR_COLUMN_KEYS), columnOrder.value);
-}
-
-function restoreDefaultColumns() {
-  columnOrder.value = [...MONITOR_COLUMN_KEYS];
-  visibleColumns.value = [...MONITOR_COLUMN_KEYS];
-  columnWidths.value = {};
-}
-
-function moveVisibleColumn(key: string, direction: 'up' | 'down') {
-  columnOrder.value = moveColumnKey(columnOrder.value, key, direction);
-  visibleColumns.value = orderVisibleColumns(visibleColumns.value, columnOrder.value);
-}
-
-function updateColumnWidth(payload: { key: string; width: number }) {
-  if (!payload?.key) return;
-  columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
-}
+bindPersistence(pageSize);
 
 const reloadList = () => {
   clearKeywordTimer();
@@ -1623,7 +1541,6 @@ function onSelectionChange(currentPageSelected: MonitorAsset[]) {
 }
 
 onMounted(async () => {
-  persistState();
   await load(currentFilters());
   lastRefreshAt = Date.now();
   if (locationId.value) {
@@ -1632,7 +1549,7 @@ onMounted(async () => {
 });
 
 onBeforeUnmount(() => {
-  schedulePersistState.flush();
+  cleanupViewState();
 });
 
 onActivated(() => {

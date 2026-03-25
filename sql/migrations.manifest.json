@@ -153,10 +153,5 @@
     "id": "202603210030_p3_perf_indexes",
     "file": "sql/migrate_p3_perf_indexes.sql",
     "description": "p3 performance indexes for users, tx logs, snapshots, and observability"
-  },
-  {
-    "id": "202603250010_async_job_result_size_bytes",
-    "file": "sql/migrate_async_job_result_size_bytes.sql",
-    "description": "persist async job result size for lighter list polling"
   }
 ]

@@ -127,7 +127,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, ref, watch } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -140,15 +140,13 @@ import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
-import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 import { getCachedSystemSettings } from '../api/systemSettings';
-import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../utils/tableColumns';
-import { createIdleDebounced } from '../utils/idleDebounce';
 import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
+import { usePcAssetViewState } from './assets/pcAssetViewState';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -157,27 +155,6 @@ const PcAssetBatchStatusDialog = defineAsyncComponent(() => import('../component
 const PcAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchOwnerDialog.vue'));
 const PcAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchArchiveDialog.vue'));
 
-const STORAGE_KEY = 'inventory:pc-assets:filters';
-const PC_COLUMN_OPTIONS = [
-  { value: 'computer', label: '电脑' },
-  { value: 'config', label: '配置' },
-  { value: 'status', label: '状态' },
-  { value: 'owner', label: '当前领用人' },
-  { value: 'configDate', label: '配置日期' },
-  { value: 'recycleDate', label: '回收日期' },
-  { value: 'remark', label: '备注' },
-] as const;
-const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
-const persistedState = readJsonStorage(STORAGE_KEY, { status: '', keyword: '', archiveReason: '', archiveMode: 'active', showArchived: false, pageSize: getCachedSystemSettings().ui_default_page_size, visibleColumns: PC_COLUMN_KEYS, columnOrder: PC_COLUMN_KEYS, columnWidths: {} as Record<string, number> });
-
-const status = ref(String(persistedState.status || ''));
-const keyword = ref(String(persistedState.keyword || ''));
-const archiveReason = ref(String((persistedState as any).archiveReason || ''));
-const archiveMode = ref(((persistedState as any).archiveMode || (persistedState.showArchived ? 'all' : 'active')) as 'active' | 'archived' | 'all');
-const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
-const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
-const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
-const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
 const router = useRouter();
@@ -187,6 +164,28 @@ const departmentOptions = computed(() => systemSettings.value.dictionary_departm
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+
+const {
+  status,
+  keyword,
+  archiveReason,
+  archiveMode,
+  showArchived,
+  columnOrder,
+  visibleColumns,
+  columnWidths,
+  initialPageSize,
+  pcColumnOptions,
+  currentFilters,
+  clearKeywordTimer,
+  bindPersistence,
+  cleanup: cleanupViewState,
+  updateVisibleColumns,
+  restoreDefaultColumns,
+  moveVisibleColumn,
+  updateColumnWidth,
+  runWithoutAutoSearch,
+} = usePcAssetViewState(() => reload(currentFilters()));
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -217,20 +216,12 @@ async function buildInlineQrSvg(link: string, size = 260) {
 }
 
 
-const currentFilters = (): PcFilters => ({
-  status: status.value || '',
-  keyword: keyword.value || '',
-  archiveReason: archiveMode.value !== 'active' ? (archiveReason.value || '') : '',
-  archiveMode: archiveMode.value,
-  showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
-});
-
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<PcFilters, PcAsset>({
   createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
 });
 
-pageSize.value = Number(persistedState.pageSize || pageSize.value || getCachedSystemSettings().ui_default_page_size || 50);
+pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 15_000;
 let lastRefreshAt = 0;
 
@@ -327,7 +318,6 @@ function applyPcDeletePatch(successItems: Array<{ id: number; action: string; re
   if (removedIds.length) removeCurrentRows(removedIds);
 }
 
-const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
@@ -381,53 +371,7 @@ const batchArchivePreview = computed(() => {
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<PcAsset>((row) => String(row.id));
 
-function persistState() {
-  writeJsonStorage(STORAGE_KEY, {
-    status: status.value || '',
-    keyword: keyword.value || '',
-    showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
-    archiveMode: archiveMode.value,
-    archiveReason: archiveReason.value || '',
-    pageSize: Number(pageSize.value || 50),
-    visibleColumns: visibleColumns.value,
-    columnOrder: columnOrder.value,
-    columnWidths: columnWidths.value,
-  });
-}
-
-let suppressAutoSearch = false;
-let keywordTimer: ReturnType<typeof setTimeout> | null = null;
-
-function clearKeywordTimer() {
-  if (keywordTimer) {
-    clearTimeout(keywordTimer);
-    keywordTimer = null;
-  }
-}
-
-function scheduleKeywordSearch() {
-  clearKeywordTimer();
-  keywordTimer = setTimeout(() => {
-    reload(currentFilters());
-  }, 320);
-}
-
-const schedulePersistState = createIdleDebounced(() => persistState(), 280);
-
-watch([status, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
-watch(keyword, (_value, oldValue) => {
-  if (suppressAutoSearch || oldValue === undefined) return;
-  scheduleKeywordSearch();
-});
-watch(archiveMode, (value) => {
-  showArchived.value = value !== 'active';
-  if (value === 'active') archiveReason.value = '';
-});
-
-watch(archiveReason, (_value, oldValue) => {
-  if (suppressAutoSearch || oldValue === undefined) return;
-  scheduleKeywordSearch();
-});
+bindPersistence(pageSize);
 
 const editVisible = ref(false);
 const saving = ref(false);
@@ -457,38 +401,18 @@ function pcQrVersionOf(row?: Partial<PcAsset> | null) {
   return String(row?.qr_updated_at || row?.updated_at || '');
 }
 
-function updateVisibleColumns(value: string[]) {
-  visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(value, PC_COLUMN_KEYS), columnOrder.value);
-}
-
-function restoreDefaultColumns() {
-  columnOrder.value = [...PC_COLUMN_KEYS];
-  visibleColumns.value = [...PC_COLUMN_KEYS];
-  columnWidths.value = {};
-}
-
-function moveVisibleColumn(key: string, direction: 'up' | 'down') {
-  columnOrder.value = moveColumnKey(columnOrder.value, key, direction);
-  visibleColumns.value = orderVisibleColumns(visibleColumns.value, columnOrder.value);
-}
-
-function updateColumnWidth(payload: { key: string; width: number }) {
-  if (!payload?.key) return;
-  columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
-}
-
 const onSearch = () => {
   clearKeywordTimer();
   reload(currentFilters());
 };
 const reset = () => {
-  suppressAutoSearch = true;
-  status.value = '';
-  keyword.value = '';
-  showArchived.value = false;
-  archiveMode.value = 'active';
-  archiveReason.value = '';
-  suppressAutoSearch = false;
+  runWithoutAutoSearch(() => {
+    status.value = '';
+    keyword.value = '';
+    showArchived.value = false;
+    archiveMode.value = 'active';
+    archiveReason.value = '';
+  });
   clearKeywordTimer();
   reload(currentFilters());
 };
@@ -1304,13 +1228,12 @@ function onSelectionChange(currentPageSelected: PcAsset[]) {
 }
 
 onMounted(async () => {
-  persistState();
   await load(currentFilters());
   lastRefreshAt = Date.now();
 });
 
 onBeforeUnmount(() => {
-  schedulePersistState.flush();
+  cleanupViewState();
 });
 
 onActivated(() => {
