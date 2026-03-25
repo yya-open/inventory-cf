@@ -1,6 +1,6 @@
 import { errorResponse, requireAuth } from './_auth';
 import { logAudit } from './_audit';
-import { closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, type AssetInventoryKind } from './services/asset-inventory-batches';
+import { clearInventoryLogsForNewBatch, closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, type AssetInventoryKind } from './services/asset-inventory-batches';
 
 function parseKind(input: any): AssetInventoryKind {
   const kind = String(input || '').trim().toLowerCase();
@@ -36,12 +36,16 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const action = String(body?.action || '').trim().toLowerCase();
 
     if (action === 'start') {
+      const clearPreviousLogs = Boolean(body?.clear_previous_logs);
+      const deletedLogs = clearPreviousLogs ? await clearInventoryLogsForNewBatch(env.DB, kind) : 0;
       const batch = await startInventoryBatch(env.DB, kind, body?.name, actor.username || null);
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_START', 'asset_inventory_batch', batch?.id || null, {
         kind,
         name: batch?.name || null,
+        clear_previous_logs: clearPreviousLogs,
+        cleared_logs: deletedLogs,
       }).catch(() => {});
-      return Response.json({ ok: true, data: batch, message: `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已开启` });
+      return Response.json({ ok: true, data: batch, cleanup: { deleted: deletedLogs }, message: `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已开启` });
     }
 
     if (action === 'close') {

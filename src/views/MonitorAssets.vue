@@ -214,6 +214,7 @@ import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
+import { exportInventoryLogsBeforeBatch } from '../utils/inventoryBatchExport';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -1508,7 +1509,7 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 async function openStartBatch() {
   try {
     const defaultName = `显示器盘点 ${new Date().toISOString().slice(0, 10)}`;
-    const { value } = await ElMessageBox.prompt('请输入本轮显示器盘点名称。开启后将把台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
+    const { value } = await ElMessageBox.prompt('请输入本轮显示器盘点名称。开启后会自动导出并清空显示器盘点记录页中的现有记录，同时将台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
       confirmButtonText: '开启',
       cancelButtonText: '取消',
       inputValue: defaultName,
@@ -1516,8 +1517,13 @@ async function openStartBatch() {
       inputErrorMessage: '请输入批次名称',
     });
     batchBusy.value = true;
-    const result: any = await startInventoryBatch('monitor', String(value || defaultName));
-    ElMessage.success(result?.message || '已开启新一轮盘点');
+    await exportInventoryLogsBeforeBatch('monitor');
+    const result: any = await startInventoryBatch('monitor', String(value || defaultName), { clearPreviousLogs: true });
+    const cleared = Number(result?.cleanup?.deleted || 0);
+    const successMessage = cleared > 0
+      ? `已自动导出并清空 ${cleared} 条显示器盘点记录，${result?.message || '已开启新一轮盘点'}`
+      : (result?.message || '已开启新一轮盘点');
+    ElMessage.success(successMessage);
     await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFilters()), refreshCurrent(true, true)]);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;

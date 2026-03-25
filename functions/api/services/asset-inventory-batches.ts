@@ -18,6 +18,13 @@ const KIND_CONFIG: Record<AssetInventoryKind, { assetTable: string; logTable: st
   monitor: { assetTable: 'monitor_assets', logTable: 'monitor_inventory_log' },
 };
 
+export async function clearInventoryLogsForNewBatch(db: D1Database, kind: AssetInventoryKind) {
+  await ensureAssetInventoryBatchSchema(db);
+  const cfg = KIND_CONFIG[kind];
+  const result = await db.prepare(`DELETE FROM ${cfg.logTable}`).run();
+  return Number((result as any)?.meta?.changes ?? (result as any)?.changes ?? 0);
+}
+
 let schemaReady = false;
 let schemaInit: Promise<void> | null = null;
 

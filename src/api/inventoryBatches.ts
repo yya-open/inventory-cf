@@ -25,8 +25,13 @@ export async function fetchInventoryBatch(kind: InventoryBatchKind) {
   return (result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload;
 }
 
-export async function startInventoryBatch(kind: InventoryBatchKind, name: string) {
-  const result: any = await apiPost('/api/asset-inventory-batch', { action: 'start', kind, name });
+export async function startInventoryBatch(kind: InventoryBatchKind, name: string, options: { clearPreviousLogs?: boolean } = {}) {
+  const result: any = await apiPost('/api/asset-inventory-batch', {
+    action: 'start',
+    kind,
+    name,
+    clear_previous_logs: Boolean(options.clearPreviousLogs),
+  });
   return result;
 }
 

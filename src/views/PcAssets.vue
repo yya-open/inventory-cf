@@ -1,5 +1,5 @@
 <template>
-  <el-card class="asset-page-card">
+  <div>
     <PcAssetsToolbar
       v-model:status="status"
       v-model:inventory-status="inventoryStatus"
@@ -45,7 +45,8 @@
       @import-file="onImportAssetsFile"
     />
 
-    <PcAssetsTable
+    <el-card shadow="never">
+      <PcAssetsTable
       :rows="rows"
       :loading="loading"
       :page="page"
@@ -66,8 +67,8 @@
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
       @page-size-change="(value) => onPageSizeChange(currentFilters(), value)"
-    />
-
+      />
+    </el-card>
 
     <PcAssetEditDialog
       v-if="lazyEditDialog"
@@ -131,7 +132,7 @@
       kind-label="电脑"
       @submit="submitQrPrintTemplate"
     />
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -158,6 +159,7 @@ import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTempl
 import { usePcAssetViewState } from './assets/pcAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
+import { exportInventoryLogsBeforeBatch } from '../utils/inventoryBatchExport';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -1185,7 +1187,7 @@ function openRecommendedAction(command: string, row: PcAsset) {
 async function openStartBatch() {
   try {
     const defaultName = `电脑盘点 ${new Date().toISOString().slice(0, 10)}`;
-    const { value } = await ElMessageBox.prompt('请输入本轮电脑盘点名称。开启后将把台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
+    const { value } = await ElMessageBox.prompt('请输入本轮电脑盘点名称。开启后会自动导出并清空电脑盘点记录页中的现有记录，同时将台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
       confirmButtonText: '开启',
       cancelButtonText: '取消',
       inputValue: defaultName,
@@ -1193,8 +1195,13 @@ async function openStartBatch() {
       inputErrorMessage: '请输入批次名称',
     });
     batchBusy.value = true;
-    const result: any = await startInventoryBatch('pc', String(value || defaultName));
-    ElMessage.success(result?.message || '已开启新一轮盘点');
+    await exportInventoryLogsBeforeBatch('pc');
+    const result: any = await startInventoryBatch('pc', String(value || defaultName), { clearPreviousLogs: true });
+    const cleared = Number(result?.cleanup?.deleted || 0);
+    const successMessage = cleared > 0
+      ? `已自动导出并清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
+      : (result?.message || '已开启新一轮盘点');
+    ElMessage.success(successMessage);
     await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFilters()), refreshCurrent(true, true)]);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
@@ -1245,9 +1252,6 @@ onActivated(() => {
 </script>
 
 <style scoped>
-.asset-page-card {
-  border-radius: 18px;
-}
 .batch-preview {
   display:flex;
   gap:8px;
