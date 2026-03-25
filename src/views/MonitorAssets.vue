@@ -425,6 +425,74 @@ function applyMonitorDeletePatch(successItems: Array<{ id: number; action: strin
   });
 }
 
+function shouldFallbackRefreshForMonitorOp() {
+  const filters = currentFilters();
+  return Boolean(String(filters.keyword || '').trim() || String(filters.archiveReason || '').trim());
+}
+
+function isMonitorRowVisibleInCurrentFilters(row: MonitorAsset) {
+  const filters = currentFilters();
+  const archived = Number(row.archived || 0) === 1;
+  if (filters.archiveMode === 'archived' && !archived) return false;
+  if (filters.archiveMode === 'active' && archived) return false;
+  if (String(filters.status || '').trim() && String(row.status || '') !== String(filters.status || '').trim()) return false;
+  const filterLocationId = Number(filters.locationId || 0) || 0;
+  if (filterLocationId && Number(row.location_id || 0) !== filterLocationId) return false;
+  return true;
+}
+
+function applySingleMonitorOperationPatch(assetId: number, updater: (row: MonitorAsset) => MonitorAsset) {
+  if (!assetId || shouldFallbackRefreshForMonitorOp()) return false;
+  let nextVisible = true;
+  const changed = patchCurrentRows([assetId], (row) => {
+    const nextRow = updater(row);
+    nextVisible = isMonitorRowVisibleInCurrentFilters(nextRow);
+    return nextRow;
+  });
+  if (!changed) return false;
+  if (!nextVisible) removeCurrentRows([assetId]);
+  return true;
+}
+
+function applyMonitorOperationPatch(kind: 'in' | 'out' | 'return' | 'transfer', assetId: number, form: typeof dlgOp.form) {
+  const normalizedLocationId = Number(form.location_id || 0) || null;
+  const locationParts = normalizedLocationId
+    ? findLocationParts(normalizedLocationId)
+    : { location_name: '', parent_location_name: '' };
+
+  return applySingleMonitorOperationPatch(assetId, (row) => {
+    if (kind === 'out') {
+      return {
+        ...row,
+        status: 'ASSIGNED',
+        location_id: normalizedLocationId,
+        ...locationParts,
+        employee_no: String(form.employee_no || '').trim(),
+        employee_name: String(form.employee_name || '').trim(),
+        department: String(form.department || '').trim(),
+        is_employed: row.is_employed ?? '',
+      };
+    }
+    if (kind === 'transfer') {
+      return {
+        ...row,
+        location_id: normalizedLocationId,
+        ...locationParts,
+      };
+    }
+    return {
+      ...row,
+      status: 'IN_STOCK',
+      location_id: normalizedLocationId,
+      ...locationParts,
+      employee_no: '',
+      employee_name: '',
+      department: '',
+      is_employed: '',
+    };
+  });
+}
+
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
@@ -1119,7 +1187,12 @@ async function submitOp() {
       ElMessage.success('调拨成功');
     }
     dlgOp.show = false;
-    await refreshCurrent(true, true);
+    const patched = applyMonitorOperationPatch(dlgOp.kind, Number(asset.id || 0), dlgOp.form);
+    if (patched) {
+      await ensureLocalPatchedPageStable(false);
+    } else {
+      await refreshCurrent(true, true);
+    }
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败');
   } finally {
