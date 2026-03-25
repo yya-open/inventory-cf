@@ -147,6 +147,8 @@ import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import { usePcAssetViewState } from './assets/pcAssetViewState';
+import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
+import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -225,44 +227,22 @@ pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 15_000;
 let lastRefreshAt = 0;
 
-
-async function refreshCurrent(keepPage = true, resetTotal = false) {
-  if (resetTotal) invalidateTotal();
-  await load(currentFilters(), { keepPage });
-  lastRefreshAt = Date.now();
-}
-
-function patchCurrentRows(ids: number[], updater: (row: any) => any) {
-  const idSet = new Set((ids || []).map((item) => Number(item)));
-  let changed = 0;
-  rows.value = rows.value.map((row: any) => {
-    if (!idSet.has(Number(row.id))) return row;
-    changed += 1;
-    return updater({ ...row });
-  });
-  if (changed) lastRefreshAt = Date.now();
-  return changed;
-}
-
-function removeCurrentRows(ids: number[]) {
-  const idSet = new Set((ids || []).map((item) => Number(item)));
-  const before = rows.value.length;
-  rows.value = rows.value.filter((row: any) => !idSet.has(Number(row.id)));
-  const removed = Math.max(0, before - rows.value.length);
-  if (removed) {
-    total.value = Math.max(0, Number(total.value || 0) - removed);
+const {
+  refreshCurrent,
+  patchCurrentRows,
+  removeCurrentRows,
+  ensureLocalPatchedPageStable,
+} = createAssetPagePatchController<PcAsset>({
+  rows,
+  total,
+  page,
+  load,
+  currentFilters,
+  invalidateTotal,
+  touch: () => {
     lastRefreshAt = Date.now();
-  }
-  return removed;
-}
-
-async function ensureLocalPatchedPageStable(resetTotal = false) {
-  if (resetTotal) invalidateTotal();
-  if (!rows.value.length && page.value > 1) {
-    page.value -= 1;
-    await refreshCurrent(true, resetTotal);
-  }
-}
+  },
+});
 
 function applyPcStatusPatch(ids: number[], nextStatus: string) {
   patchCurrentRows(ids, (row) => ({ ...row, status: nextStatus }));
@@ -279,43 +259,33 @@ function applyPcOwnerPatch(ids: number[], payload: { employee_name?: string; emp
 }
 
 function applyPcArchivePatch(ids: number[], payload: { reason?: string; note?: string }) {
-  if (archiveMode.value === 'active') {
-    removeCurrentRows(ids);
-    return;
-  }
-  patchCurrentRows(ids, (row) => ({
-    ...row,
-    archived: 1,
-    archived_reason: payload.reason || row.archived_reason || '',
-    archived_note: payload.note || row.archived_note || '',
-    archived_at: row.archived_at || formatBeijingDateTime(new Date().toISOString()),
-  }));
+  applyGenericArchivePatch<PcAsset>({
+    ids,
+    archiveMode: archiveMode.value,
+    payload,
+    patchCurrentRows,
+    removeCurrentRows,
+    now: formatBeijingDateTime(new Date().toISOString()),
+  });
 }
 
 function applyPcRestorePatch(ids: number[]) {
-  if (archiveMode.value === 'archived') {
-    removeCurrentRows(ids);
-    return;
-  }
-  patchCurrentRows(ids, (row) => ({
-    ...row,
-    archived: 0,
-    archived_reason: '',
-    archived_note: '',
-    archived_at: '',
-    archived_by: '',
-  }));
+  applyGenericRestorePatch<PcAsset>({
+    ids,
+    archiveMode: archiveMode.value,
+    patchCurrentRows,
+    removeCurrentRows,
+  });
 }
 
 function applyPcDeletePatch(successItems: Array<{ id: number; action: string; reason?: string | null }>) {
-  const archivedIds = successItems.filter((item) => item.action === 'archive').map((item) => Number(item.id));
-  const removedIds = successItems.filter((item) => item.action !== 'archive').map((item) => Number(item.id));
-  if (archiveMode.value === 'all') {
-    if (archivedIds.length) patchCurrentRows(archivedIds, (row) => ({ ...row, archived: 1, archived_reason: row.archived_reason || '删除转归档' }));
-  } else if (archivedIds.length) {
-    removeCurrentRows(archivedIds);
-  }
-  if (removedIds.length) removeCurrentRows(removedIds);
+  applyGenericDeletePatch<PcAsset>({
+    successItems,
+    archiveMode: archiveMode.value,
+    archiveReasonFallback: '删除转归档',
+    patchCurrentRows,
+    removeCurrentRows,
+  });
 }
 
 const exportBusy = ref(false);
@@ -793,7 +763,7 @@ async function restoreAsset(row: PcAsset) {
     batchBusy.value = true;
     const result: any = await apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
     ElMessage.success(result?.message || '恢复成功');
-    applyPcRestorePatch((result?.affected_ids || [Number(row.id)]).map((id: any) => Number(id)));
+    applyPcRestorePatch(extractAffectedIds(result, [Number(row.id)]));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
@@ -910,7 +880,7 @@ async function submitBatchStatus() {
     });
     ElMessage.success(result?.message || '批量修改成功');
     batchStatusVisible.value = false;
-    applyPcStatusPatch((result?.affected_ids || []).map((id: any) => Number(id)), batchStatusValue.value);
+    applyPcStatusPatch(extractAffectedIds(result), batchStatusValue.value);
     clearSelection();
     await ensureLocalPatchedPageStable();
   } catch (error: any) {
@@ -935,7 +905,7 @@ async function submitBatchOwner() {
     });
     ElMessage.success(result?.message || '批量修改领用人成功');
     batchOwnerVisible.value = false;
-    applyPcOwnerPatch((result?.affected_ids || []).map((id: any) => Number(id)), batchOwnerForm.value);
+    applyPcOwnerPatch(extractAffectedIds(result), batchOwnerForm.value);
     clearSelection();
     await ensureLocalPatchedPageStable();
   } catch (error: any) {
@@ -955,7 +925,7 @@ async function batchRestoreSelected() {
       ids: selectedIds.value.map((id) => Number(id)),
     });
     ElMessage.success(result?.message || '批量恢复成功');
-    applyPcRestorePatch((result?.affected_ids || []).map((id: any) => Number(id)));
+    applyPcRestorePatch(extractAffectedIds(result));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
@@ -987,7 +957,7 @@ async function submitBatchArchive() {
     });
     ElMessage.success(result?.message || '批量归档成功');
     batchArchiveVisible.value = false;
-    applyPcArchivePatch((result?.affected_ids || []).map((id: any) => Number(id)), batchArchiveForm.value);
+    applyPcArchivePatch(extractAffectedIds(result), batchArchiveForm.value);
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
@@ -1002,29 +972,18 @@ async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
   try {
     const archivedCount = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
-    const activeCount = Math.max(0, selectedCount.value - archivedCount);
-    const tip = archivedCount && activeCount
-      ? `选中的 ${selectedCount.value} 台电脑中，已归档的 ${archivedCount} 台会被彻底删除并清理历史记录，其余 ${activeCount} 台仍按原规则执行：有历史记录则自动归档，满足条件才物理删除。请输入“确认”继续。`
-      : archivedCount
-        ? `选中的 ${archivedCount} 台归档电脑会被彻底删除，并同时清理关联历史记录。请输入“确认”继续。`
-        : `选中的 ${selectedCount.value} 台电脑中，有历史记录的资产会自动转归档，只有满足条件的资产会物理删除。请输入“确认”继续。`;
-    await confirmBatchRisk('批量删除确认', tip);
+    await confirmBatchRisk('批量删除确认', buildBulkDeleteConfirmTip('电脑', selectedCount.value, archivedCount));
     batchBusy.value = true;
     const result: any = await apiPost('/api/pc-assets-bulk', {
       action: 'delete',
       ids: selectedIds.value.map((id) => Number(id)),
     });
-    const processed = Number(result?.processed || 0);
-    const failed = Number(result?.failed || 0);
-    const archived = Number(result?.archived || 0);
-    const deleted = Number(result?.deleted || 0);
-    const purged = Number(result?.purged || 0);
-    const failedRecords = Array.isArray(result?.failed_records) ? result.failed_records : [];
-    if (processed) clearSelection();
-    if (processed && !failed) ElMessage.success(archived || purged ? `已处理 ${processed} 台电脑（其中归档 ${archived} 台，彻底删除 ${purged} 台，物理删除 ${deleted} 台）` : `已删除 ${deleted} 台电脑`);
-    else if (processed || failed) ElMessage.warning(`已处理 ${processed} 台，失败 ${failed} 台${archived ? `，其中归档 ${archived} 台` : ''}${purged ? `，彻底删除 ${purged} 台` : ''}${deleted ? `，物理删除 ${deleted} 台` : ''}`);
+    const summary = summarizeBulkDeleteResult('电脑', result);
+    if (summary.processed) clearSelection();
+    if (summary.level === 'success') ElMessage.success(summary.message);
+    else if (summary.level === 'warning') ElMessage.warning(summary.message);
     if (Array.isArray(result?.success_items)) applyPcDeletePatch(result.success_items);
-    if (failedRecords.length) await exportBatchFailures(`电脑批量删除失败明细_${failedRecords.length}条.xlsx`, failedRecords);
+    if (summary.failedRecords.length) await exportBatchFailures(`电脑批量删除失败明细_${summary.failedRecords.length}条.xlsx`, summary.failedRecords);
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
