@@ -8,12 +8,12 @@ import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVi
 const STORAGE_KEY = 'inventory:monitor-assets:filters';
 export const MONITOR_COLUMN_OPTIONS = [
   { value: 'assetCode', label: '资产编号' },
+  { value: 'inventory', label: '盘点状态' },
   { value: 'brand', label: '品牌' },
   { value: 'model', label: '型号' },
   { value: 'serialNo', label: 'SN' },
   { value: 'sizeInch', label: '尺寸' },
   { value: 'status', label: '状态' },
-  { value: 'inventory', label: '盘点状态' },
   { value: 'owner', label: '领用信息' },
   { value: 'location', label: '位置' },
   { value: 'remark', label: '备注' },
@@ -21,6 +21,15 @@ export const MONITOR_COLUMN_OPTIONS = [
   { value: 'updatedAt', label: '更新时间' },
 ] as const;
 const MONITOR_COLUMN_KEYS = MONITOR_COLUMN_OPTIONS.map((item) => item.value);
+
+function promoteInventoryColumn(order: string[], anchor: string) {
+  const normalized = [...order.filter(Boolean)];
+  const inventoryIndex = normalized.indexOf('inventory');
+  if (inventoryIndex >= 0) normalized.splice(inventoryIndex, 1);
+  const anchorIndex = normalized.indexOf(anchor);
+  normalized.splice(anchorIndex >= 0 ? anchorIndex + 1 : 0, 0, 'inventory');
+  return normalizeColumnOrder(normalized, MONITOR_COLUMN_KEYS);
+}
 
 type ArchiveMode = 'active' | 'archived' | 'all';
 
@@ -60,12 +69,20 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
   const archiveReason = ref(String(persistedState.archiveReason || ''));
   const archiveMode = ref<ArchiveMode>((persistedState.archiveMode || (persistedState.showArchived ? 'all' : 'active')) as ArchiveMode);
   const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
-  const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS));
+  const previousDefaultOrder = ['assetCode', 'brand', 'model', 'serialNo', 'sizeInch', 'status', 'inventory', 'owner', 'location', 'remark', 'archiveReason', 'updatedAt'];
+  const normalizedStoredOrder = normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS);
+  const shouldPromoteInventory = JSON.stringify(normalizedStoredOrder) === JSON.stringify(previousDefaultOrder);
+  const columnOrder = ref(shouldPromoteInventory ? promoteInventoryColumn(normalizedStoredOrder, 'assetCode') : normalizedStoredOrder);
   const initialVisibleColumns = orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value);
   if (!initialVisibleColumns.includes('inventory')) {
-    const statusIndex = initialVisibleColumns.indexOf('status');
-    if (statusIndex >= 0) initialVisibleColumns.splice(statusIndex + 1, 0, 'inventory');
-    else initialVisibleColumns.push('inventory');
+    const assetCodeIndex = initialVisibleColumns.indexOf('assetCode');
+    if (assetCodeIndex >= 0) initialVisibleColumns.splice(assetCodeIndex + 1, 0, 'inventory');
+    else initialVisibleColumns.unshift('inventory');
+  } else if (shouldPromoteInventory) {
+    const inventoryIndex = initialVisibleColumns.indexOf('inventory');
+    const assetCodeIndex = initialVisibleColumns.indexOf('assetCode');
+    if (inventoryIndex >= 0) initialVisibleColumns.splice(inventoryIndex, 1);
+    initialVisibleColumns.splice(assetCodeIndex >= 0 ? assetCodeIndex + 1 : 0, 0, 'inventory');
   }
   const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));

@@ -268,7 +268,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
+import { useRoute } from "vue-router";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
@@ -291,6 +292,8 @@ function issueTypeText(s: string) {
   if (s === "OTHER") return "其他原因";
   return s || "-";
 }
+
+const route = useRoute();
 
 const action = ref<string>("");
 const issueType = ref<string>("");
@@ -326,6 +329,18 @@ function buildParams(withPage: boolean) {
     params.set("page_size", String(pageSize.value));
   }
   return params;
+}
+
+
+
+function applyRouteFilters() {
+  action.value = String(route.query.action || '').trim().toUpperCase();
+  issueType.value = String(route.query.issue_type || '').trim().toUpperCase();
+  keyword.value = String(route.query.keyword || '').trim();
+  const from = String(route.query.date_from || '').trim();
+  const to = String(route.query.date_to || '').trim();
+  dateRange.value = from || to ? [from, to] as [string, string] : null;
+  page.value = 1;
 }
 
 function onSearch() {
@@ -456,5 +471,13 @@ async function exportCsv() {
   }
 }
 
-onMounted(load);
+watch(() => route.query, () => {
+  applyRouteFilters();
+  load();
+}, { deep: true });
+
+onMounted(() => {
+  applyRouteFilters();
+  load();
+});
 </script>

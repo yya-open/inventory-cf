@@ -21,6 +21,7 @@
       :batch-busy="batchBusy"
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
+      :inventory-batch="inventoryBatch"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="reloadList"
@@ -41,6 +42,8 @@
       @batch-restore="batchRestoreSelected"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
+      @start-batch="openStartBatch"
+      @close-batch="closeActiveBatch"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
       @toolbar-more="handleToolbarMore"
@@ -66,6 +69,7 @@
       @row-more="handleRowMore"
       @remove="removeAsset"
       @restore="restoreAsset"
+      @open-recommended="openRecommendedAction"
       @selection-change="onSelectionChange"
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFilters(), value)"
@@ -191,6 +195,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
+import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -231,6 +236,7 @@ const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monit
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
+const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
 
 const {
   status,
@@ -509,6 +515,14 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFilters()
   return { ...filters, inventoryStatus: '' };
 }
 
+async function refreshInventoryBatch() {
+  try {
+    inventoryBatch.value = await fetchInventoryBatch('monitor');
+  } catch {
+    inventoryBatch.value = { active: null, latest: inventoryBatch.value.latest || null, recent: inventoryBatch.value.recent || [] };
+  }
+}
+
 async function refreshInventorySummary(filters: MonitorFilters = currentFilters()) {
   try {
     inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters));
@@ -521,6 +535,7 @@ const reloadList = () => {
   clearKeywordTimer();
   const filters = currentFilters();
   void refreshInventorySummary(filters);
+  void refreshInventoryBatch();
   reload(filters);
 };
 
@@ -1474,13 +1489,68 @@ function resetFilters() {
 }
 
 function setInventoryFilter(nextStatus: string) {
-  inventoryStatus.value = String(nextStatus || '');
+  const normalized = String(nextStatus || '');
+  inventoryStatus.value = inventoryStatus.value === normalized ? '' : normalized;
   reloadList();
+}
+
+function openRecommendedAction(command: string, row: MonitorAsset) {
+  if (command === 'transfer') return openTransfer(row);
+  if (command === 'return') return openReturn(row);
+  if (command === 'qr') return openQr(row);
+  const keywordText = String(row?.asset_code || row?.sn || row?.brand || row?.model || row?.id || '').trim();
+  void router.push({
+    path: '/pc/monitor-inventory-logs',
+    query: { action: 'ISSUE', issue_type: String(row?.inventory_issue_type || ''), keyword: keywordText },
+  });
+}
+
+async function openStartBatch() {
+  try {
+    const defaultName = `显示器盘点 ${new Date().toISOString().slice(0, 10)}`;
+    const { value } = await ElMessageBox.prompt('请输入本轮显示器盘点名称。开启后将把台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
+      confirmButtonText: '开启',
+      cancelButtonText: '取消',
+      inputValue: defaultName,
+      inputPattern: /.+/,
+      inputErrorMessage: '请输入批次名称',
+    });
+    batchBusy.value = true;
+    const result: any = await startInventoryBatch('monitor', String(value || defaultName));
+    ElMessage.success(result?.message || '已开启新一轮盘点');
+    await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFilters()), refreshCurrent(true, true)]);
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '开启盘点批次失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function closeActiveBatch() {
+  const active = inventoryBatch.value.active;
+  if (!active?.id) return ElMessage.warning('当前没有进行中的显示器盘点批次');
+  try {
+    await ElMessageBox.confirm(`确认结束本轮显示器盘点：${active.name}？结束后仍会保留本轮结果，直到你开启下一轮。`, '结束盘点批次', {
+      type: 'warning',
+      confirmButtonText: '结束本轮',
+      cancelButtonText: '取消',
+    });
+    batchBusy.value = true;
+    const result: any = await closeInventoryBatch('monitor', active.id);
+    ElMessage.success(result?.message || '本轮盘点已结束');
+    await refreshInventoryBatch();
+  } catch (error: any) {
+    if (error === 'cancel' || error === 'close') return;
+    ElMessage.error(error?.message || '结束盘点批次失败');
+  } finally {
+    batchBusy.value = false;
+  }
 }
 
 onMounted(async () => {
   const filters = currentFilters();
-  await Promise.all([load(filters), refreshInventorySummary(filters)]);
+  await Promise.all([load(filters), refreshInventorySummary(filters), refreshInventoryBatch()]);
   lastRefreshAt = Date.now();
   if (locationId.value) {
     void ensureLocationOptionsReady();
@@ -1497,6 +1567,7 @@ onActivated(() => {
   const filters = currentFilters();
   void load(filters, { keepPage: true });
   void refreshInventorySummary(filters);
+  void refreshInventoryBatch();
 });
 </script>
 

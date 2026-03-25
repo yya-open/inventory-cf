@@ -91,6 +91,7 @@
                   本轮未盘
                 </template>
               </div>
+              <div v-if="recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
             </div>
           </template>
         </el-table-column>
@@ -110,7 +111,7 @@
         <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark')" :min-width="220" show-overflow-tooltip />
       </template>
 
-      <el-table-column v-if="canOperator || isAdmin" label="操作" :width="240" fixed="right">
+      <el-table-column v-if="canOperator || isAdmin" label="操作" :width="300" fixed="right">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="row-archived-actions">
             <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
@@ -118,6 +119,7 @@
             <span v-else class="subtle">已归档</span>
           </div>
           <template v-else>
+            <el-button v-if="recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
             <el-button link type="primary" :disabled="loading" @click="emit('open-edit', row)">修改</el-button>
             <el-button link :disabled="loading" @click="emit('open-qr', row)">二维码</el-button>
             <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">删除</el-button>
@@ -166,6 +168,7 @@ const emit = defineEmits<{
   remove: [Record<string, any>];
   restore: [Record<string, any>];
   'selection-change': [Record<string, any>[]];
+  'open-recommended': [string, Record<string, any>];
   'column-resize': [{ key: string; width: number }];
   'page-change': [number];
   'page-size-change': [number];
@@ -203,6 +206,24 @@ function handleSelectionChange(value: Record<string, any>[]) {
   emit('selection-change', value);
 }
 
+
+
+function recommendedAction(row: Record<string, any>) {
+  const issue = String(row?.inventory_issue_type || '').toUpperCase();
+  if (String(row?.inventory_status || '').toUpperCase() !== 'CHECKED_ISSUE') return null;
+  if (issue === 'WRONG_QR') return { label: '重置二维码', command: 'qr', tip: '建议处理：先校正二维码，再重新扫码确认。' };
+  if (issue === 'WRONG_STATUS') return { label: '去修改', command: 'edit', tip: '建议处理：核对台账状态或领用信息，再重新盘点。' };
+  if (issue === 'WRONG_LOCATION') return { label: '看盘点记录', command: 'logs', tip: '建议处理：先查看异常记录，确认实际摆放位置。' };
+  if (issue === 'MISSING' || issue === 'NOT_FOUND') return { label: '去复核', command: 'logs', tip: '建议处理：先复核现场，再决定是否补录异常说明。' };
+  return { label: '看盘点记录', command: 'logs', tip: '建议处理：先查看本条盘点异常，再决定后续动作。' };
+}
+
+function handleRecommendedAction(row: Record<string, any>) {
+  const action = recommendedAction(row);
+  if (!action) return;
+  emit('open-recommended', action.command, row);
+}
+
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -216,9 +237,12 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .subtle { color:#999; font-size:12px; }
 .status-stack { display:flex; flex-wrap:wrap; gap:6px; }
 .inventory-stack { display:flex; flex-direction:column; gap:6px; }
+.inventory-advice { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; }
 .archive-tag { margin-top:6px; }
 .row-archived-actions { display:flex; align-items:center; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
-:deep(.inventory-row-issue td) { background: rgba(245, 108, 108, 0.08); }
-:deep(.inventory-row-unchecked td) { background: rgba(144, 147, 153, 0.05); }
+:deep(.inventory-row-issue td) { background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255,255,255,0) 18%), rgba(245, 108, 108, 0.06); }
+:deep(.inventory-row-issue td:first-child) { box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85); }
+:deep(.inventory-row-unchecked td) { background: linear-gradient(90deg, rgba(144, 147, 153, 0.10) 0%, rgba(255,255,255,0) 18%), rgba(144, 147, 153, 0.04); }
+:deep(.inventory-row-unchecked td:first-child) { box-shadow: inset 4px 0 0 rgba(144, 147, 153, 0.75); }
 </style>

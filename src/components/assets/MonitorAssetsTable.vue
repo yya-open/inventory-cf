@@ -75,6 +75,7 @@
                   本轮未盘
                 </template>
               </div>
+              <div v-if="recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
             </div>
           </template>
         </el-table-column>
@@ -93,7 +94,7 @@
         <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
       </template>
 
-      <el-table-column label="操作" width="220" fixed="right">
+      <el-table-column label="操作" width="300" fixed="right">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="monitor-op-group compact">
             <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
@@ -101,6 +102,7 @@
             <span v-else class="table-subtle">已归档</span>
           </div>
           <div v-else class="monitor-op-group compact">
+            <el-button v-if="recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
             <el-button v-if="canOperator" link type="success" :disabled="loading" @click="emit('in', row)">入库</el-button>
             <el-button v-if="canOperator" link type="warning" :disabled="loading" @click="emit('out', row)">出库</el-button>
             <el-dropdown v-if="canOperator || isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
@@ -166,6 +168,7 @@ const emit = defineEmits<{
   restore: [Record<string, any>];
   'row-more': [string, Record<string, any>];
   'selection-change': [Record<string, any>[]];
+  'open-recommended': [string, Record<string, any>];
   'column-resize': [{ key: string; width: number }];
   'page-change': [number];
   'size-change': [number];
@@ -201,6 +204,24 @@ function handleSelectionChange(value: Record<string, any>[]) {
   if (syncingSelection.value) return;
   emit('selection-change', value);
 }
+
+
+function recommendedAction(row: Record<string, any>) {
+  const issue = String(row?.inventory_issue_type || '').toUpperCase();
+  if (String(row?.inventory_status || '').toUpperCase() !== 'CHECKED_ISSUE') return null;
+  if (issue === 'WRONG_LOCATION') return { label: '去调拨', command: 'transfer', tip: '建议处理：确认实物所在位置后，直接做调拨修正。' };
+  if (issue === 'WRONG_STATUS') return { label: '去归还', command: 'return', tip: '建议处理：核对领用/归还状态后，再重新盘点。' };
+  if (issue === 'WRONG_QR') return { label: '重置二维码', command: 'qr', tip: '建议处理：先更新二维码，再重新扫码确认。' };
+  if (issue === 'MISSING' || issue === 'NOT_FOUND') return { label: '去复核', command: 'logs', tip: '建议处理：先查看异常记录并现场复核，再决定是否补充备注。' };
+  return { label: '看盘点记录', command: 'logs', tip: '建议处理：先查看本条盘点异常，再决定后续动作。' };
+}
+
+function handleRecommendedAction(row: Record<string, any>) {
+  const action = recommendedAction(row);
+  if (!action) return;
+  emit('open-recommended', action.command, row);
+}
+
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -213,11 +234,14 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .row-more-trigger { padding-left: 0; padding-right: 0; }
 .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .inventory-stack { display:flex; flex-direction:column; gap:6px; }
+.inventory-advice { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; }
 .asset-link { cursor: pointer; color: var(--el-color-primary); }
 .strong { font-weight: 600; }
 .archive-tag { margin-left: 8px; }
 .table-subtle { color: #909399; font-size: 12px; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
-:deep(.inventory-row-issue td) { background: rgba(245, 108, 108, 0.08); }
-:deep(.inventory-row-unchecked td) { background: rgba(144, 147, 153, 0.05); }
+:deep(.inventory-row-issue td) { background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255,255,255,0) 18%), rgba(245, 108, 108, 0.06); }
+:deep(.inventory-row-issue td:first-child) { box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85); }
+:deep(.inventory-row-unchecked td) { background: linear-gradient(90deg, rgba(144, 147, 153, 0.10) 0%, rgba(255,255,255,0) 18%), rgba(144, 147, 153, 0.04); }
+:deep(.inventory-row-unchecked td:first-child) { box-shadow: inset 4px 0 0 rgba(144, 147, 153, 0.75); }
 </style>

@@ -80,6 +80,21 @@
             <strong>{{ summary.unchecked }}</strong>
           </button>
         </div>
+        <div class="inventory-batch-row">
+          <div class="batch-summary-card" :class="{ active: Boolean(inventoryBatch.active) }">
+            <span class="summary-label">当前盘点轮次</span>
+            <strong>{{ inventoryBatch.active?.name || inventoryBatch.latest?.name || '未创建盘点批次' }}</strong>
+            <div class="toolbar-subtle batch-card-subtle">
+              <template v-if="inventoryBatch.active">进行中 · 开始于 {{ inventoryBatch.active.started_at || '-' }}</template>
+              <template v-else-if="inventoryBatch.latest">最近一轮已结束 · {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
+              <template v-else>建议先开启一轮盘点，再集中扫码核对。</template>
+            </div>
+          </div>
+          <div v-if="isAdmin" class="inventory-batch-actions">
+            <el-button type="primary" plain :disabled="batchBusy" @click="emit('start-batch')">开启新一轮</el-button>
+            <el-button v-if="inventoryBatch.active" :disabled="batchBusy" @click="emit('close-batch')">结束本轮</el-button>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -174,7 +189,7 @@
             :on-change="(file: unknown) => emit('import-file', file)"
           />
         </div>
-      </div>
+              </div>
     </div>
   </div>
 </template>
@@ -186,6 +201,7 @@ import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import type { AssetInventorySummary } from '../../types/assets';
+import type { InventoryBatchPayload } from '../../api/inventoryBatches';
 
 const props = defineProps<{
   status: string;
@@ -206,6 +222,7 @@ const props = defineProps<{
   initQrBusy: boolean;
   batchBusy: boolean;
   summary: AssetInventorySummary;
+  inventoryBatch: InventoryBatchPayload;
 }>();
 
 const emit = defineEmits<{
@@ -235,6 +252,8 @@ const emit = defineEmits<{
   'restore-columns': [];
   'init-qr': [];
   'download-template': [];
+  'start-batch': [];
+  'close-batch': [];
   'import-file': [unknown];
 }>();
 
@@ -439,6 +458,11 @@ function handleBatchCommand(command: string | number | object) {
 .summary-card.checked strong { color: var(--el-color-success); }
 .summary-card.issue strong { color: var(--el-color-danger); }
 .summary-card.unchecked strong { color: var(--el-color-info); }
+.inventory-batch-row { display:flex; align-items:stretch; gap:12px; margin-top: 12px; flex-wrap: wrap; }
+.batch-summary-card { flex:1; min-width: 260px; border: 1px solid #ebeef5; background: linear-gradient(180deg, #fff 0%, #f7fbff 100%); border-radius: 14px; padding: 12px 14px; display:flex; flex-direction:column; gap:6px; }
+.batch-summary-card.active { border-color: var(--el-color-primary); box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.18); }
+.batch-card-subtle { margin-top: 0; }
+.inventory-batch-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 @media (max-width: 1100px) {
   .asset-toolbar {
     grid-template-columns: 1fr;
@@ -479,6 +503,9 @@ function handleBatchCommand(command: string | number | object) {
   }
   .inventory-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  .inventory-batch-row {
+    flex-direction: column;
   }
 }
 </style>

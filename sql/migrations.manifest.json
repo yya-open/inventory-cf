@@ -159,4 +159,10 @@
     "file": "sql/migrate_asset_inventory_status.sql",
     "description": "asset inventory summary fields for pc and monitor ledgers"
   }
+,
+  {
+    "id": "202603250020_asset_inventory_batch",
+    "file": "sql/migrate_asset_inventory_batch.sql",
+    "description": "asset inventory batches and current-round linkage for pc and monitor"
+  }
 ]

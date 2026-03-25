@@ -1,6 +1,7 @@
 import { verifyJwt } from "../_auth";
 import { sqlNowStored, sqlStoredHoursAgo } from "../_time";
 import { syncAssetInventoryState } from './asset-inventory-state';
+import { resolveInventoryBatchIdForWrite } from './asset-inventory-batches';
 
 export type PublicAssetKind = "pc" | "monitor";
 
@@ -165,12 +166,14 @@ export async function insertPublicInventoryLog(
   const ip = getClientIp(request) || "";
   const ua = (request.headers.get("User-Agent") || "").slice(0, 300);
 
+  const batchId = await resolveInventoryBatchIdForWrite(db, kind);
+
   await db
     .prepare(
-      `INSERT INTO ${table} (asset_id, action, issue_type, remark, ip, ua, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
+      `INSERT INTO ${table} (asset_id, action, issue_type, remark, ip, ua, batch_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
     )
-    .bind(assetId, action, issueType, remark, ip, ua)
+    .bind(assetId, action, issueType, remark, ip, ua, batchId)
     .run();
 
   await syncAssetInventoryState(db, kind, [assetId]);

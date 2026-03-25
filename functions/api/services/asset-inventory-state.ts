@@ -1,7 +1,8 @@
 import type { QueryParts } from './asset-ledger';
 import { sqlNowStored } from '../_time';
+import { ensureAssetInventoryBatchSchema, getEffectiveInventoryBatch, type AssetInventoryKind as InventoryBatchKind } from './asset-inventory-batches';
 
-export type AssetInventoryKind = 'pc' | 'monitor';
+export type AssetInventoryKind = InventoryBatchKind;
 export type InventoryDisplayStatus = 'UNCHECKED' | 'CHECKED_OK' | 'CHECKED_ISSUE';
 
 const KIND_CONFIG: Record<AssetInventoryKind, { assetTable: string; logTable: string }> = {
@@ -16,28 +17,41 @@ export function normalizeInventoryStatus(status: any): InventoryDisplayStatus {
 }
 
 export async function syncAssetInventoryState(db: D1Database, kind: AssetInventoryKind, assetIds: number[]) {
+  await ensureAssetInventoryBatchSchema(db);
   const cfg = KIND_CONFIG[kind];
   const ids = Array.from(new Set((assetIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)));
   if (!ids.length) return;
 
-  const latestStmt = db.prepare(
-    `SELECT action, issue_type, created_at
-       FROM ${cfg.logTable}
-      WHERE asset_id=?
-      ORDER BY datetime(created_at) DESC, id DESC
-      LIMIT 1`
-  );
+  const effectiveBatch = await getEffectiveInventoryBatch(db, kind);
+  const latestStmt = effectiveBatch?.id
+    ? db.prepare(
+        `SELECT action, issue_type, created_at, batch_id
+           FROM ${cfg.logTable}
+          WHERE asset_id=? AND batch_id=?
+          ORDER BY datetime(created_at) DESC, id DESC
+          LIMIT 1`
+      )
+    : db.prepare(
+        `SELECT action, issue_type, created_at, batch_id
+           FROM ${cfg.logTable}
+          WHERE asset_id=?
+          ORDER BY datetime(created_at) DESC, id DESC
+          LIMIT 1`
+      );
   const updateStmt = db.prepare(
     `UPDATE ${cfg.assetTable}
         SET inventory_status=?,
             inventory_at=?,
             inventory_issue_type=?,
+            inventory_batch_id=?,
             updated_at=${sqlNowStored()}
       WHERE id=?`
   );
 
   for (const assetId of ids) {
-    const latest = await latestStmt.bind(assetId).first<any>();
+    const latest = effectiveBatch?.id
+      ? await latestStmt.bind(assetId, effectiveBatch.id).first<any>()
+      : await latestStmt.bind(assetId).first<any>();
     const action = String(latest?.action || '').toUpperCase();
     const inventoryStatus: InventoryDisplayStatus = action === 'ISSUE'
       ? 'CHECKED_ISSUE'
@@ -46,7 +60,8 @@ export async function syncAssetInventoryState(db: D1Database, kind: AssetInvento
         : 'UNCHECKED';
     const inventoryAt = action ? String(latest?.created_at || '') || null : null;
     const inventoryIssueType = action === 'ISSUE' ? String(latest?.issue_type || '').toUpperCase() || null : null;
-    await updateStmt.bind(inventoryStatus, inventoryAt, inventoryIssueType, assetId).run();
+    const inventoryBatchId = action ? Number(latest?.batch_id || effectiveBatch?.id || 0) || null : (effectiveBatch?.id || null);
+    await updateStmt.bind(inventoryStatus, inventoryAt, inventoryIssueType, inventoryBatchId, assetId).run();
   }
 }
 

@@ -8,15 +8,24 @@ import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVi
 const STORAGE_KEY = 'inventory:pc-assets:filters';
 export const PC_COLUMN_OPTIONS = [
   { value: 'computer', label: '电脑' },
-  { value: 'config', label: '配置' },
-  { value: 'status', label: '状态' },
   { value: 'inventory', label: '盘点状态' },
+  { value: 'status', label: '状态' },
+  { value: 'config', label: '配置' },
   { value: 'owner', label: '当前领用人' },
   { value: 'configDate', label: '配置日期' },
   { value: 'recycleDate', label: '回收日期' },
   { value: 'remark', label: '备注' },
 ] as const;
 const PC_COLUMN_KEYS = PC_COLUMN_OPTIONS.map((item) => item.value);
+
+function promoteInventoryColumn(order: string[], anchor: string) {
+  const normalized = [...order.filter(Boolean)];
+  const inventoryIndex = normalized.indexOf('inventory');
+  if (inventoryIndex >= 0) normalized.splice(inventoryIndex, 1);
+  const anchorIndex = normalized.indexOf(anchor);
+  normalized.splice(anchorIndex >= 0 ? anchorIndex + 1 : 0, 0, 'inventory');
+  return normalizeColumnOrder(normalized, PC_COLUMN_KEYS);
+}
 
 type ArchiveMode = 'active' | 'archived' | 'all';
 
@@ -53,12 +62,20 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   const archiveReason = ref(String(persistedState.archiveReason || ''));
   const archiveMode = ref<ArchiveMode>((persistedState.archiveMode || (persistedState.showArchived ? 'all' : 'active')) as ArchiveMode);
   const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
-  const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
+  const previousDefaultOrder = ['computer', 'config', 'status', 'inventory', 'owner', 'configDate', 'recycleDate', 'remark'];
+  const normalizedStoredOrder = normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS);
+  const shouldPromoteInventory = JSON.stringify(normalizedStoredOrder) === JSON.stringify(previousDefaultOrder);
+  const columnOrder = ref(shouldPromoteInventory ? promoteInventoryColumn(normalizedStoredOrder, 'computer') : normalizedStoredOrder);
   const initialVisibleColumns = orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value);
   if (!initialVisibleColumns.includes('inventory')) {
-    const statusIndex = initialVisibleColumns.indexOf('status');
-    if (statusIndex >= 0) initialVisibleColumns.splice(statusIndex + 1, 0, 'inventory');
-    else initialVisibleColumns.push('inventory');
+    const computerIndex = initialVisibleColumns.indexOf('computer');
+    if (computerIndex >= 0) initialVisibleColumns.splice(computerIndex + 1, 0, 'inventory');
+    else initialVisibleColumns.unshift('inventory');
+  } else if (shouldPromoteInventory) {
+    const inventoryIndex = initialVisibleColumns.indexOf('inventory');
+    const computerIndex = initialVisibleColumns.indexOf('computer');
+    if (inventoryIndex >= 0) initialVisibleColumns.splice(inventoryIndex, 1);
+    initialVisibleColumns.splice(computerIndex >= 0 ? computerIndex + 1 : 0, 0, 'inventory');
   }
   const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
