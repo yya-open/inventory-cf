@@ -246,6 +246,11 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
     last_config_date: configDate,
     last_out_at: outRow?.created_at || null,
   });
+  await db.prepare(
+    `UPDATE pc_asset_latest_state
+     SET last_recycle_id=NULL, last_recycle_date=NULL, updated_at=${sqlNowStored()}
+     WHERE asset_id=?`
+  ).bind(asset.id).run();
   await syncSystemDictionaryUsageCounters(db, ['department']);
 }
 

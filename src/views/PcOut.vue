@@ -220,8 +220,23 @@ const rules: FormRules = {
 const assetOptions = ref<any[]>([]);
 const pickedAsset = ref<any | null>(null);
 const assetLoading = ref(false);
+const ASSET_OPTIONS_CACHE_TTL_MS = 10_000;
+let lastLoadedKeyword = "";
+let lastLoadedAt = 0;
+let activeLoadSeq = 0;
 
-async function loadAssets(keyword = "") {
+async function loadAssets(keyword = "", force = false) {
+  const normalizedKeyword = String(keyword || "").trim();
+  if (
+    !force
+    && normalizedKeyword === lastLoadedKeyword
+    && assetOptions.value.length > 0
+    && Date.now() - lastLoadedAt < ASSET_OPTIONS_CACHE_TTL_MS
+  ) {
+    return;
+  }
+
+  const seq = ++activeLoadSeq;
   assetLoading.value = true;
   try {
     const params = new URLSearchParams();
@@ -229,20 +244,31 @@ async function loadAssets(keyword = "") {
     params.set("page", "1");
     params.set("page_size", "50");
     params.set("fast", "1");
-    if (keyword) params.set("keyword", keyword);
+    if (normalizedKeyword) params.set("keyword", normalizedKeyword);
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
+    if (seq !== activeLoadSeq) return;
     assetOptions.value = r.data || [];
+    lastLoadedKeyword = normalizedKeyword;
+    lastLoadedAt = Date.now();
   } catch (e: any) {
     // ignore
   } finally {
-    assetLoading.value = false;
+    if (seq === activeLoadSeq) assetLoading.value = false;
   }
 }
 
 let tmr: any = null;
 function remoteSearch(q: string) {
+  const normalizedKeyword = String(q || "").trim();
+  if (
+    normalizedKeyword === lastLoadedKeyword
+    && assetOptions.value.length > 0
+    && Date.now() - lastLoadedAt < ASSET_OPTIONS_CACHE_TTL_MS
+  ) {
+    return;
+  }
   if (tmr) clearTimeout(tmr);
-  tmr = setTimeout(() => loadAssets(String(q || "").trim()), 250);
+  tmr = setTimeout(() => loadAssets(normalizedKeyword), 250);
 }
 
 function onPickAsset(id: number) {
