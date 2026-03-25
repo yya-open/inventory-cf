@@ -3,6 +3,7 @@
     <MonitorAssetsToolbar
       v-model:status="status"
       v-model:location-id="locationId"
+      v-model:inventory-status="inventoryStatus"
       v-model:keyword="keyword"
       v-model:archive-reason="archiveReason"
       v-model:archive-mode="archiveMode"
@@ -19,9 +20,12 @@
       :init-qr-busy="initQrBusy"
       :batch-busy="batchBusy"
       :archive-reason-options="archiveReasonOptions"
+      :summary="inventorySummary"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="reloadList"
+      @reset="resetFilters"
+      @set-inventory-filter="setInventoryFilter"
       @export="exportExcel"
       @export-archive="exportArchiveRecords"
       @export-selected="exportSelectedRows"
@@ -167,6 +171,7 @@
       :form="batchArchiveForm"
       :preview="batchArchivePreview"
       :archive-reason-options="archiveReasonOptions"
+      :summary="inventorySummary"
       @submit="submitBatchArchive"
     />
 
@@ -185,14 +190,14 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { listMonitorAssets } from '../api/assetLedgers';
+import { getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
-import type { LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
+import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
@@ -225,10 +230,12 @@ const departmentOptions = computed(() => systemSettings.value.dictionary_departm
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 
 const {
   status,
   locationId,
+  inventoryStatus,
   keyword,
   archiveReason,
   archiveMode,
@@ -246,7 +253,11 @@ const {
   restoreDefaultColumns,
   moveVisibleColumn,
   updateColumnWidth,
-} = useMonitorAssetViewState(() => reload(currentFilters()));
+  runWithoutAutoSearch,
+} = useMonitorAssetViewState(() => {
+  void refreshInventorySummary();
+  reload(currentFilters());
+});
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -338,7 +349,7 @@ async function ensureLocationOptionsReady(force = false) {
 }
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
+  createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
     try {
       return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
@@ -425,74 +436,6 @@ function applyMonitorDeletePatch(successItems: Array<{ id: number; action: strin
   });
 }
 
-function shouldFallbackRefreshForMonitorOp() {
-  const filters = currentFilters();
-  return Boolean(String(filters.keyword || '').trim() || String(filters.archiveReason || '').trim());
-}
-
-function isMonitorRowVisibleInCurrentFilters(row: MonitorAsset) {
-  const filters = currentFilters();
-  const archived = Number(row.archived || 0) === 1;
-  if (filters.archiveMode === 'archived' && !archived) return false;
-  if (filters.archiveMode === 'active' && archived) return false;
-  if (String(filters.status || '').trim() && String(row.status || '') !== String(filters.status || '').trim()) return false;
-  const filterLocationId = Number(filters.locationId || 0) || 0;
-  if (filterLocationId && Number(row.location_id || 0) !== filterLocationId) return false;
-  return true;
-}
-
-function applySingleMonitorOperationPatch(assetId: number, updater: (row: MonitorAsset) => MonitorAsset) {
-  if (!assetId || shouldFallbackRefreshForMonitorOp()) return false;
-  let nextVisible = true;
-  const changed = patchCurrentRows([assetId], (row) => {
-    const nextRow = updater(row);
-    nextVisible = isMonitorRowVisibleInCurrentFilters(nextRow);
-    return nextRow;
-  });
-  if (!changed) return false;
-  if (!nextVisible) removeCurrentRows([assetId]);
-  return true;
-}
-
-function applyMonitorOperationPatch(kind: 'in' | 'out' | 'return' | 'transfer', assetId: number, form: typeof dlgOp.form) {
-  const normalizedLocationId = Number(form.location_id || 0) || null;
-  const locationParts = normalizedLocationId
-    ? findLocationParts(normalizedLocationId)
-    : { location_name: '', parent_location_name: '' };
-
-  return applySingleMonitorOperationPatch(assetId, (row) => {
-    if (kind === 'out') {
-      return {
-        ...row,
-        status: 'ASSIGNED',
-        location_id: normalizedLocationId,
-        ...locationParts,
-        employee_no: String(form.employee_no || '').trim(),
-        employee_name: String(form.employee_name || '').trim(),
-        department: String(form.department || '').trim(),
-        is_employed: row.is_employed ?? '',
-      };
-    }
-    if (kind === 'transfer') {
-      return {
-        ...row,
-        location_id: normalizedLocationId,
-        ...locationParts,
-      };
-    }
-    return {
-      ...row,
-      status: 'IN_STOCK',
-      location_id: normalizedLocationId,
-      ...locationParts,
-      employee_no: '',
-      employee_name: '',
-      department: '',
-      is_employed: '',
-    };
-  });
-}
-
 const exportBusy = ref(false);
 const importBusy = ref(false);
 const initQrBusy = ref(false);
@@ -562,9 +505,23 @@ const locationSaving = ref(false);
 
 bindPersistence(pageSize);
 
+function buildInventorySummaryFilters(filters: MonitorFilters = currentFilters()): MonitorFilters {
+  return { ...filters, inventoryStatus: '' };
+}
+
+async function refreshInventorySummary(filters: MonitorFilters = currentFilters()) {
+  try {
+    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters));
+  } catch (error) {
+    console.warn('monitor inventory summary failed', error);
+  }
+}
+
 const reloadList = () => {
   clearKeywordTimer();
-  reload(currentFilters());
+  const filters = currentFilters();
+  void refreshInventorySummary(filters);
+  reload(filters);
 };
 
 function handleToolbarMore(command: string) {
@@ -1187,12 +1144,7 @@ async function submitOp() {
       ElMessage.success('调拨成功');
     }
     dlgOp.show = false;
-    const patched = applyMonitorOperationPatch(dlgOp.kind, Number(asset.id || 0), dlgOp.form);
-    if (patched) {
-      await ensureLocalPatchedPageStable(false);
-    } else {
-      await refreshCurrent(true, true);
-    }
+    await refreshCurrent(true, true);
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败');
   } finally {
@@ -1508,8 +1460,27 @@ function onSelectionChange(currentPageSelected: MonitorAsset[]) {
   syncPageSelection(rows.value, currentPageSelected);
 }
 
+function resetFilters() {
+  runWithoutAutoSearch(() => {
+    status.value = '';
+    locationId.value = '';
+    inventoryStatus.value = '';
+    keyword.value = '';
+    showArchived.value = false;
+    archiveMode.value = 'active';
+    archiveReason.value = '';
+  });
+  reloadList();
+}
+
+function setInventoryFilter(nextStatus: string) {
+  inventoryStatus.value = String(nextStatus || '');
+  reloadList();
+}
+
 onMounted(async () => {
-  await load(currentFilters());
+  const filters = currentFilters();
+  await Promise.all([load(filters), refreshInventorySummary(filters)]);
   lastRefreshAt = Date.now();
   if (locationId.value) {
     void ensureLocationOptionsReady();
@@ -1523,7 +1494,9 @@ onBeforeUnmount(() => {
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   lastRefreshAt = Date.now();
-  void load(currentFilters(), { keepPage: true });
+  const filters = currentFilters();
+  void load(filters, { keepPage: true });
+  void refreshInventorySummary(filters);
 });
 </script>
 

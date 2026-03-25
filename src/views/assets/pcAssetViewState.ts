@@ -10,6 +10,7 @@ export const PC_COLUMN_OPTIONS = [
   { value: 'computer', label: '电脑' },
   { value: 'config', label: '配置' },
   { value: 'status', label: '状态' },
+  { value: 'inventory', label: '盘点状态' },
   { value: 'owner', label: '当前领用人' },
   { value: 'configDate', label: '配置日期' },
   { value: 'recycleDate', label: '回收日期' },
@@ -21,6 +22,7 @@ type ArchiveMode = 'active' | 'archived' | 'all';
 
 type PersistedPcAssetViewState = {
   status?: string;
+  inventoryStatus?: string;
   keyword?: string;
   archiveReason?: string;
   archiveMode?: ArchiveMode;
@@ -34,6 +36,7 @@ type PersistedPcAssetViewState = {
 export function usePcAssetViewState(onAutoSearch: () => void) {
   const persistedState = readJsonStorage<PersistedPcAssetViewState>(STORAGE_KEY, {
     status: '',
+    inventoryStatus: '',
     keyword: '',
     archiveReason: '',
     archiveMode: 'active',
@@ -45,12 +48,19 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   });
 
   const status = ref(String(persistedState.status || ''));
+  const inventoryStatus = ref(String(persistedState.inventoryStatus || ''));
   const keyword = ref(String(persistedState.keyword || ''));
   const archiveReason = ref(String(persistedState.archiveReason || ''));
   const archiveMode = ref<ArchiveMode>((persistedState.archiveMode || (persistedState.showArchived ? 'all' : 'active')) as ArchiveMode);
   const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
   const columnOrder = ref(normalizeColumnOrder(persistedState.columnOrder, PC_COLUMN_KEYS));
-  const visibleColumns = ref(orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value));
+  const initialVisibleColumns = orderVisibleColumns(normalizeVisibleColumns(persistedState.visibleColumns, PC_COLUMN_KEYS), columnOrder.value);
+  if (!initialVisibleColumns.includes('inventory')) {
+    const statusIndex = initialVisibleColumns.indexOf('status');
+    if (statusIndex >= 0) initialVisibleColumns.splice(statusIndex + 1, 0, 'inventory');
+    else initialVisibleColumns.push('inventory');
+  }
+  const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
 
   const initialPageSize = Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50);
@@ -64,6 +74,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     return {
       status: status.value || '',
       keyword: keyword.value || '',
+      inventoryStatus: inventoryStatus.value || '',
       archiveReason: archiveMode.value !== 'active' ? (archiveReason.value || '') : '',
       archiveMode: archiveMode.value,
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
@@ -74,6 +85,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     writeJsonStorage(STORAGE_KEY, {
       status: status.value || '',
       keyword: keyword.value || '',
+      inventoryStatus: inventoryStatus.value || '',
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
       archiveMode: archiveMode.value,
       archiveReason: archiveReason.value || '',
@@ -102,7 +114,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
 
   function bindPersistence(pageSize: Ref<number>) {
     pageSizeRef = pageSize;
-    watch([status, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
+    watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
     watch(keyword, (_value, oldValue) => {
       if (suppressAutoSearch || oldValue === undefined) return;
       scheduleKeywordSearch();
@@ -154,6 +166,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
 
   return {
     status,
+    inventoryStatus,
     keyword,
     archiveReason,
     archiveMode,

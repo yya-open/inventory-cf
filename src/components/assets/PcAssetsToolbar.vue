@@ -17,6 +17,18 @@
             <el-option label="已回收" value="RECYCLED" />
             <el-option label="已报废" value="SCRAPPED" />
           </el-select>
+          <el-select
+            :model-value="inventoryStatus"
+            placeholder="盘点状态"
+            clearable
+            class="toolbar-select"
+            @update:model-value="emit('update:inventory-status', $event || '')"
+            @change="emit('search')"
+          >
+            <el-option label="已盘" value="CHECKED_OK" />
+            <el-option label="异常" value="CHECKED_ISSUE" />
+            <el-option label="未盘" value="UNCHECKED" />
+          </el-select>
           <el-input
             :model-value="keyword"
             clearable
@@ -50,6 +62,24 @@
             <el-button @click="emit('reset')">重置</el-button>
           </div>
         </div>
+        <div class="inventory-summary-row">
+          <button type="button" class="summary-card" :class="{ active: inventoryStatus === '' }" @click="emit('set-inventory-filter', '')">
+            <span class="summary-label">全部设备</span>
+            <strong>{{ summary.total }}</strong>
+          </button>
+          <button type="button" class="summary-card checked" :class="{ active: inventoryStatus === 'CHECKED_OK' }" @click="emit('set-inventory-filter', 'CHECKED_OK')">
+            <span class="summary-label">已盘</span>
+            <strong>{{ summary.checked_ok }}</strong>
+          </button>
+          <button type="button" class="summary-card issue" :class="{ active: inventoryStatus === 'CHECKED_ISSUE' }" @click="emit('set-inventory-filter', 'CHECKED_ISSUE')">
+            <span class="summary-label">异常</span>
+            <strong>{{ summary.checked_issue }}</strong>
+          </button>
+          <button type="button" class="summary-card unchecked" :class="{ active: inventoryStatus === 'UNCHECKED' }" @click="emit('set-inventory-filter', 'UNCHECKED')">
+            <span class="summary-label">未盘</span>
+            <strong>{{ summary.unchecked }}</strong>
+          </button>
+        </div>
       </div>
     </div>
 
@@ -74,8 +104,8 @@
             <template #dropdown>
               <el-dropdown-menu>
                 <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
-                  <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
-                  <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
+                <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
+                <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
                 <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
@@ -155,9 +185,11 @@ import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'e
 import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
+import type { AssetInventorySummary } from '../../types/assets';
 
 const props = defineProps<{
   status: string;
+  inventoryStatus: string;
   keyword: string;
   archiveReason: string;
   archiveReasonOptions: string[];
@@ -173,10 +205,12 @@ const props = defineProps<{
   importBusy: boolean;
   initQrBusy: boolean;
   batchBusy: boolean;
+  summary: AssetInventorySummary;
 }>();
 
 const emit = defineEmits<{
   'update:status': [string];
+  'update:inventory-status': [string];
   'update:keyword': [string];
   'update:archive-reason': [string];
   'update:archive-mode': ['active' | 'archived' | 'all'];
@@ -185,6 +219,7 @@ const emit = defineEmits<{
   'move-column': [string, 'up' | 'down'];
   search: [];
   reset: [];
+  'set-inventory-filter': [string];
   export: [];
   'export-archive': [];
   'export-selected': [];
@@ -372,6 +407,38 @@ function handleBatchCommand(command: string | number | object) {
   display: flex;
   gap: 4px;
 }
+.inventory-summary-row {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.summary-card {
+  border: 1px solid #ebeef5;
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
+  text-align: left;
+  cursor: pointer;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.summary-card strong {
+  font-size: 22px;
+  color: #303133;
+}
+.summary-label {
+  font-size: 12px;
+  color: #909399;
+}
+.summary-card.active {
+  border-color: var(--el-color-primary);
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.15);
+}
+.summary-card.checked strong { color: var(--el-color-success); }
+.summary-card.issue strong { color: var(--el-color-danger); }
+.summary-card.unchecked strong { color: var(--el-color-info); }
 @media (max-width: 1100px) {
   .asset-toolbar {
     grid-template-columns: 1fr;
@@ -409,6 +476,9 @@ function handleBatchCommand(command: string | number | object) {
   .column-order-item {
     flex-direction: column;
     align-items: stretch;
+  }
+  .inventory-summary-row {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
 </style>

@@ -185,13 +185,17 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   archived_at TEXT,
   archived_reason TEXT,
   archived_note TEXT,
-  archived_by TEXT
+  archived_by TEXT,
+  inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED' CHECK(inventory_status IN ('UNCHECKED','CHECKED_OK','CHECKED_ISSUE')),
+  inventory_at TEXT,
+  inventory_issue_type TEXT
 );
 
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id);
 
@@ -292,6 +296,9 @@ CREATE TABLE IF NOT EXISTS monitor_assets (
   archived_reason TEXT,
   archived_note TEXT,
   archived_by TEXT,
+  inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED' CHECK(inventory_status IN ('UNCHECKED','CHECKED_OK','CHECKED_ISSUE')),
+  inventory_at TEXT,
+  inventory_issue_type TEXT,
   FOREIGN KEY(location_id) REFERENCES pc_locations(id)
 );
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);
@@ -300,6 +307,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_assets(status, location_id, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id);
 
 CREATE TABLE IF NOT EXISTS monitor_tx (

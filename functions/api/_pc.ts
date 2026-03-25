@@ -59,7 +59,10 @@ export async function ensurePcSchema(db: D1Database) {
       archived_at TEXT,
       archived_reason TEXT,
       archived_note TEXT,
-      archived_by TEXT
+      archived_by TEXT,
+      inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED' CHECK(inventory_status IN ('UNCHECKED','CHECKED_OK','CHECKED_ISSUE')),
+      inventory_at TEXT,
+      inventory_issue_type TEXT
     )
   `).run();
 
@@ -73,12 +76,16 @@ export async function ensurePcSchema(db: D1Database) {
     "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
     "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
     "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+    "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
   ]) {
     try {
       await db.prepare(ddl).run();
     } catch {}
   }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run();
@@ -129,12 +136,15 @@ try {
           archived_at TEXT,
           archived_reason TEXT,
           archived_note TEXT,
-          archived_by TEXT
+          archived_by TEXT,
+          inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED' CHECK(inventory_status IN ('UNCHECKED','CHECKED_OK','CHECKED_ISSUE')),
+          inventory_at TEXT,
+          inventory_issue_type TEXT
         )
       `),
       db.prepare(`
-        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by)
-        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,''))), status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by, inventory_status, inventory_at, inventory_issue_type)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,''))), status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL, COALESCE(inventory_status, 'UNCHECKED'), inventory_at, inventory_issue_type
         FROM pc_assets
       `),
       db.prepare("DROP TABLE pc_assets"),
@@ -143,6 +153,7 @@ try {
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)"),
     ]);
   }
 } catch {

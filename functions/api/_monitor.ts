@@ -70,6 +70,9 @@ export async function ensureMonitorSchema(db: D1Database) {
           archived_reason TEXT,
           archived_note TEXT,
           archived_by TEXT,
+          inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED' CHECK(inventory_status IN ('UNCHECKED','CHECKED_OK','CHECKED_ISSUE')),
+          inventory_at TEXT,
+          inventory_issue_type TEXT,
           FOREIGN KEY(location_id) REFERENCES pc_locations(id)
         )
       `)
@@ -94,6 +97,9 @@ export async function ensureMonitorSchema(db: D1Database) {
       "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
       "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+      "ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT",
     ]) {
       try {
         await db.prepare(ddl).run();
@@ -102,6 +108,7 @@ export async function ensureMonitorSchema(db: D1Database) {
       }
     }
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run();
     await db.prepare(`UPDATE monitor_assets SET search_text_norm=LOWER(TRIM(COALESCE(asset_code,'') || ' ' || COALESCE(sn,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(employee_no,'') || ' ' || COALESCE(employee_name,'') || ' ' || COALESCE(department,''))) WHERE COALESCE(search_text_norm,'')=''`).run();

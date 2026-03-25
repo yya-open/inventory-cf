@@ -6,6 +6,7 @@
       :data="rows"
       row-key="id"
       border
+      :row-class-name="rowClassName"
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
     >
@@ -75,6 +76,25 @@
           </template>
         </el-table-column>
 
+        <el-table-column v-else-if="key === 'inventory'" column-key="inventory" label="盘点状态" :width="getColumnWidth('inventory', 160)">
+          <template #default="{ row }">
+            <div class="inventory-stack">
+              <el-tag :type="inventoryStatusTagType(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</el-tag>
+              <div class="subtle">
+                <template v-if="String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE'">
+                  {{ inventoryIssueTypeText(row.inventory_issue_type) }}
+                </template>
+                <template v-else-if="String(row.inventory_status || '').toUpperCase() === 'CHECKED_OK'">
+                  {{ row.inventory_at || '-' }}
+                </template>
+                <template v-else>
+                  本轮未盘
+                </template>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
+
         <el-table-column v-else-if="key === 'owner'" column-key="owner" label="当前领用人" :width="getColumnWidth('owner')" :min-width="220">
           <template #default="{ row }">
             <div v-if="row.status === 'ASSIGNED'">
@@ -126,6 +146,7 @@
 <script setup lang="ts">
 import { ElPopover } from 'element-plus';
 import { computed, nextTick, ref, watch } from 'vue';
+import { inventoryIssueTypeText, inventoryStatusTagType, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
   rows: Array<Record<string, any>>;
   loading: boolean;
@@ -153,6 +174,13 @@ const orderedVisibleColumns = computed(() => props.visibleColumns);
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
+
+function rowClassName({ row }: { row: Record<string, any> }) {
+  const status = String(row?.inventory_status || '').toUpperCase();
+  if (status === 'CHECKED_ISSUE') return 'inventory-row-issue';
+  if (status === 'UNCHECKED' || !status) return 'inventory-row-unchecked';
+  return '';
+}
 
 async function syncSelection() {
   if (!tableRef.value) return;
@@ -187,7 +215,10 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .strong { font-weight:600; }
 .subtle { color:#999; font-size:12px; }
 .status-stack { display:flex; flex-wrap:wrap; gap:6px; }
+.inventory-stack { display:flex; flex-direction:column; gap:6px; }
 .archive-tag { margin-top:6px; }
 .row-archived-actions { display:flex; align-items:center; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
+:deep(.inventory-row-issue td) { background: rgba(245, 108, 108, 0.08); }
+:deep(.inventory-row-unchecked td) { background: rgba(144, 147, 153, 0.05); }
 </style>

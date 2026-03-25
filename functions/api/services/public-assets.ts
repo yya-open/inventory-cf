@@ -1,5 +1,6 @@
 import { verifyJwt } from "../_auth";
 import { sqlNowStored, sqlStoredHoursAgo } from "../_time";
+import { syncAssetInventoryState } from './asset-inventory-state';
 
 export type PublicAssetKind = "pc" | "monitor";
 
@@ -171,4 +172,6 @@ export async function insertPublicInventoryLog(
     )
     .bind(assetId, action, issueType, remark, ip, ua)
     .run();
+
+  await syncAssetInventoryState(db, kind, [assetId]);
 }

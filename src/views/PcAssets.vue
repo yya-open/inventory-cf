@@ -2,6 +2,7 @@
   <el-card class="asset-page-card">
     <PcAssetsToolbar
       v-model:status="status"
+      v-model:inventory-status="inventoryStatus"
       v-model:keyword="keyword"
       v-model:archive-reason="archiveReason"
       v-model:archive-mode="archiveMode"
@@ -17,9 +18,11 @@
       :init-qr-busy="initQrBusy"
       :batch-busy="batchBusy"
       :archive-reason-options="archiveReasonOptions"
+      :summary="inventorySummary"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="onSearch"
+      @set-inventory-filter="setInventoryFilter"
       @reset="reset"
       @export="exportExcel"
       @export-archive="exportArchiveRecords"
@@ -115,6 +118,7 @@
       :form="batchArchiveForm"
       :preview="batchArchivePreview"
       :archive-reason-options="archiveReasonOptions"
+      :summary="inventorySummary"
       @submit="submitBatchArchive"
     />
     <QrPrintTemplateDialog
@@ -131,13 +135,13 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { listPcAssets } from '../api/assetLedgers';
+import { getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
-import type { PcAsset, PcFilters } from '../types/assets';
+import type { AssetInventorySummary, PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
@@ -166,9 +170,11 @@ const departmentOptions = computed(() => systemSettings.value.dictionary_departm
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 
 const {
   status,
+  inventoryStatus,
   keyword,
   archiveReason,
   archiveMode,
@@ -187,7 +193,10 @@ const {
   moveVisibleColumn,
   updateColumnWidth,
   runWithoutAutoSearch,
-} = usePcAssetViewState(() => reload(currentFilters()));
+} = usePcAssetViewState(() => {
+  void refreshInventorySummary();
+  reload(currentFilters());
+});
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -223,7 +232,7 @@ async function buildInlineQrSvg(link: string, size = 260) {
 
 
 const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<PcFilters, PcAsset>({
-  createFilterKey: (filters) => `status=${filters.status}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
+  createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
 });
 
@@ -375,20 +384,37 @@ function pcQrVersionOf(row?: Partial<PcAsset> | null) {
   return String(row?.qr_updated_at || row?.updated_at || '');
 }
 
+function buildInventorySummaryFilters(filters: PcFilters = currentFilters()): PcFilters {
+  return { ...filters, inventoryStatus: '' };
+}
+
+async function refreshInventorySummary(filters: PcFilters = currentFilters()) {
+  try {
+    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(filters));
+  } catch (error) {
+    console.warn('pc inventory summary failed', error);
+  }
+}
+
 const onSearch = () => {
   clearKeywordTimer();
-  reload(currentFilters());
+  const filters = currentFilters();
+  void refreshInventorySummary(filters);
+  reload(filters);
 };
 const reset = () => {
   runWithoutAutoSearch(() => {
     status.value = '';
+    inventoryStatus.value = '';
     keyword.value = '';
     showArchived.value = false;
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
   clearKeywordTimer();
-  reload(currentFilters());
+  const filters = currentFilters();
+  void refreshInventorySummary(filters);
+  reload(filters);
 };
 
 async function initQrKeys() {
@@ -1125,8 +1151,14 @@ function onSelectionChange(currentPageSelected: PcAsset[]) {
   syncPageSelection(rows.value, currentPageSelected);
 }
 
+function setInventoryFilter(nextStatus: string) {
+  inventoryStatus.value = String(nextStatus || '');
+  onSearch();
+}
+
 onMounted(async () => {
-  await load(currentFilters());
+  const filters = currentFilters();
+  await Promise.all([load(filters), refreshInventorySummary(filters)]);
   lastRefreshAt = Date.now();
 });
 
@@ -1137,7 +1169,9 @@ onBeforeUnmount(() => {
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   lastRefreshAt = Date.now();
-  void load(currentFilters(), { keepPage: true });
+  const filters = currentFilters();
+  void load(filters, { keepPage: true });
+  void refreshInventorySummary(filters);
 });
 </script>
 

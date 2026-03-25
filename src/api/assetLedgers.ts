@@ -1,5 +1,5 @@
 import { apiGet } from './client';
-import type { LocationRow, MonitorAsset, MonitorFilters, PcAsset, PcFilters } from '../types/assets';
+import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters, PcAsset, PcFilters } from '../types/assets';
 
 export type PagedResponse<T> = { rows: T[]; total: number | null };
 
@@ -45,6 +45,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+    inventory_status: filters.inventoryStatus,
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
@@ -52,7 +53,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
 }
 
 export async function countPcAssets(filters: PcFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus })}`, { signal });
   return Number(result?.total || 0);
 }
 
@@ -64,6 +65,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+    inventory_status: filters.inventoryStatus,
     page,
     page_size: pageSize,
     fast: fast ? '1' : undefined,
@@ -71,7 +73,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
 }
 
 export async function countMonitorAssets(filters: MonitorFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined })}`, { signal });
+  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus })}`, { signal });
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 
@@ -83,4 +85,27 @@ export async function listEnabledLocations(signal?: AbortSignal) {
 export async function listAllLocations(signal?: AbortSignal) {
   const result: any = await apiGet('/api/pc-locations', { signal });
   return (result?.data || []) as LocationRow[];
+}
+
+export async function getPcAssetInventorySummary(filters: PcFilters, signal?: AbortSignal) {
+  const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString({
+    status: filters.status,
+    keyword: filters.keyword,
+    archive_reason: filters.archiveReason,
+    archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
+    show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+  })}`, { signal });
+  return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+}
+
+export async function getMonitorAssetInventorySummary(filters: MonitorFilters, signal?: AbortSignal) {
+  const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString({
+    status: filters.status,
+    location_id: filters.locationId,
+    keyword: filters.keyword,
+    archive_reason: filters.archiveReason,
+    archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
+    show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+  })}`, { signal });
+  return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
 }

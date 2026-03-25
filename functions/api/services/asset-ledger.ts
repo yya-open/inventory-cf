@@ -75,6 +75,7 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
+  const inventoryStatus = (url.searchParams.get('inventory_status') || '').trim().toUpperCase();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
@@ -87,6 +88,10 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   if (status) {
     clauses.push('a.status=?');
     binds.push(status);
+  }
+  if (inventoryStatus) {
+    clauses.push("COALESCE(a.inventory_status, 'UNCHECKED')=?");
+    binds.push(inventoryStatus);
   }
   if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) clauses.push('1=0');
   applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
@@ -135,6 +140,7 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
   const keyword = (url.searchParams.get('keyword') || '').trim();
+  const inventoryStatus = (url.searchParams.get('inventory_status') || '').trim().toUpperCase();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
@@ -147,6 +153,10 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
   if (status) {
     clauses.push('a.status=?');
     binds.push(status);
+  }
+  if (inventoryStatus) {
+    clauses.push("COALESCE(a.inventory_status, 'UNCHECKED')=?");
+    binds.push(inventoryStatus);
   }
   if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) clauses.push('1=0');
   if (locationId) {

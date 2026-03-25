@@ -7,6 +7,7 @@
       row-key="id"
       size="small"
       border
+      :row-class-name="rowClassName"
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
     >
@@ -21,7 +22,9 @@
             <div class="asset-link strong" @click="emit('open-info', row)">{{ row.asset_code || '-' }}</div>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'sn'" column-key="sn" prop="sn" label="SN" :width="getColumnWidth('sn')" :min-width="140" />
+        <el-table-column v-else-if="key === 'serialNo'" column-key="serialNo" prop="sn" label="SN" :width="getColumnWidth('serialNo')" :min-width="140" />
+
+        <el-table-column v-else-if="key === 'brand'" column-key="brand" prop="brand" label="品牌" :width="getColumnWidth('brand', 120)" :min-width="120" />
         <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="200">
           <template #default="{ row }">
             <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
@@ -38,7 +41,7 @@
             </el-popover>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'size'" column-key="size" prop="size_inch" label="尺寸" :width="getColumnWidth('size', 90)" />
+        <el-table-column v-else-if="key === 'sizeInch'" column-key="sizeInch" prop="size_inch" label="尺寸" :width="getColumnWidth('sizeInch', 90)" />
         <el-table-column v-else-if="key === 'status'" column-key="status" label="状态" :width="getColumnWidth('status', 120)">
           <template #default="{ row }">
             <div class="status-stack">
@@ -57,6 +60,24 @@
             </div>
           </template>
         </el-table-column>
+        <el-table-column v-else-if="key === 'inventory'" column-key="inventory" label="盘点状态" :width="getColumnWidth('inventory', 160)">
+          <template #default="{ row }">
+            <div class="inventory-stack">
+              <el-tag :type="inventoryStatusTagType(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</el-tag>
+              <div class="table-subtle">
+                <template v-if="String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE'">
+                  {{ inventoryIssueTypeText(row.inventory_issue_type) }}
+                </template>
+                <template v-else-if="String(row.inventory_status || '').toUpperCase() === 'CHECKED_OK'">
+                  {{ row.inventory_at || '-' }}
+                </template>
+                <template v-else>
+                  本轮未盘
+                </template>
+              </div>
+            </div>
+          </template>
+        </el-table-column>
         <el-table-column v-else-if="key === 'location'" column-key="location" label="位置" :width="getColumnWidth('location')" :min-width="180">
           <template #default="{ row }">{{ locationText(row) }}</template>
         </el-table-column>
@@ -67,6 +88,8 @@
           </template>
         </el-table-column>
         <el-table-column v-else-if="key === 'department'" column-key="department" prop="department" label="部门" :width="getColumnWidth('department')" :min-width="140" />
+        <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark', 180)" :min-width="180" show-overflow-tooltip />
+        <el-table-column v-else-if="key === 'archiveReason'" column-key="archiveReason" prop="archived_reason" label="归档原因" :width="getColumnWidth('archiveReason', 160)" :min-width="160" show-overflow-tooltip />
         <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
       </template>
 
@@ -120,6 +143,7 @@
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import { computed, nextTick, ref, watch } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
+import { inventoryIssueTypeText, inventoryStatusTagType, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
   rows: Array<Record<string, any>>;
   loading: boolean;
@@ -152,6 +176,13 @@ const syncingSelection = ref(false);
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 
+function rowClassName({ row }: { row: Record<string, any> }) {
+  const status = String(row?.inventory_status || '').toUpperCase();
+  if (status === 'CHECKED_ISSUE') return 'inventory-row-issue';
+  if (status === 'UNCHECKED' || !status) return 'inventory-row-unchecked';
+  return '';
+}
+
 async function syncSelection() {
   if (!tableRef.value) return;
   syncingSelection.value = true;
@@ -181,9 +212,12 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .monitor-op-group.compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .row-more-trigger { padding-left: 0; padding-right: 0; }
 .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.inventory-stack { display:flex; flex-direction:column; gap:6px; }
 .asset-link { cursor: pointer; color: var(--el-color-primary); }
 .strong { font-weight: 600; }
 .archive-tag { margin-left: 8px; }
 .table-subtle { color: #909399; font-size: 12px; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
+:deep(.inventory-row-issue td) { background: rgba(245, 108, 108, 0.08); }
+:deep(.inventory-row-unchecked td) { background: rgba(144, 147, 153, 0.05); }
 </style>

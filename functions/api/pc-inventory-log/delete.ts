@@ -2,6 +2,7 @@ import { requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchemaIfAllowed } from "../_pc";
+import { syncAssetInventoryState } from '../services/asset-inventory-state';
 
 // POST /api/pc-inventory-log/delete
 // Admin-only. Deletes pc_inventory_log rows by id(s).
@@ -26,8 +27,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (ids.length > 200) return Response.json({ ok: false, message: "一次最多删除 200 条" }, { status: 400 });
 
     const placeholders = ids.map(() => "?").join(",");
+    const affectedRows = await env.DB.prepare(`SELECT DISTINCT asset_id FROM pc_inventory_log WHERE id IN (${placeholders})`).bind(...ids).all<any>();
+    const affectedAssetIds = (affectedRows.results || []).map((item: any) => Number(item?.asset_id || 0)).filter((id: number) => id > 0);
     const r = await env.DB.prepare(`DELETE FROM pc_inventory_log WHERE id IN (${placeholders})`).bind(...ids).run();
     const deleted = Number((r as any)?.meta?.changes ?? (r as any)?.changes ?? 0);
+    await syncAssetInventoryState(env.DB, 'pc', affectedAssetIds);
 
     waitUntil(
       logAudit(env.DB, request, actor, "PC_INVENTORY_LOG_DELETE", "pc_inventory_log", null, {
