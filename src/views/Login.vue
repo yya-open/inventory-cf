@@ -94,7 +94,7 @@
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "../utils/el-services";
-import { loginWithCaptcha, useAuth, fetchMe } from "../store/auth";
+import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";
@@ -203,7 +203,6 @@ async function doLogin() {
   loading.value = true;
   try {
     const u = await loginWithCaptcha(username.value, password.value, turnstileToken.value || undefined);
-    await fetchMe();
     if (u.must_change_password) {
       showChange.value = true;
       return;

@@ -34,7 +34,7 @@ const SystemDocs = () => import("../views/SystemDocs.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
-import { fetchMe, useAuth, can } from "../store/auth";
+import { fetchMe, hydrateAuthFromCache, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
@@ -123,11 +123,23 @@ router.beforeEach(async (to) => {
   const auth = useAuth();
 
   if (!auth.user) {
-    try {
-      await fetchMe();
-    } catch (e: any) {
-      auth.user = null;
-      return { path: "/login", query: { redirect: to.fullPath } };
+    const cached = hydrateAuthFromCache();
+    if (cached) {
+      void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
+        auth.user = null;
+        const path = window.location.pathname;
+        if (path !== '/login') {
+          const redirect = encodeURIComponent(to.fullPath);
+          window.location.replace(`/login?redirect=${redirect}`);
+        }
+      });
+    } else {
+      try {
+        await fetchMe({ force: true });
+      } catch (e: any) {
+        auth.user = null;
+        return { path: "/login", query: { redirect: to.fullPath } };
+      }
     }
   }
 
@@ -225,19 +237,18 @@ router.afterEach((to) => {
   } else if (to.path.startsWith('/pc')) {
     if (to.path === '/pc/assets') {
       add('/pc/tx', PcTx, canViewPc && canViewPcLedger);
-      add('/pc/inventory-logs', PcInventoryLogs, canViewPc && canViewPcLedger);
     } else if (to.path === '/pc/monitors') {
       add('/pc/monitor-tx', MonitorTx, canViewPc && canViewMonitorLedger);
-      add('/pc/monitor-inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
     } else if (to.path === '/pc/tx') {
       add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
-      add('/pc/in', PcIn, canOperate && canViewPc && canViewPcLedger);
     } else if (to.path === '/pc/monitor-tx') {
       add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
-      add('/pc/inventory-logs', MonitorInventoryLogs, canViewPc && canViewMonitorLedger);
+    } else if (to.path === '/pc/inventory-logs') {
+      add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitor-inventory-logs') {
+      add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
     } else {
       add('/pc/assets', PcAssets, canViewPc && canViewPcLedger);
-      add('/pc/monitors', MonitorAssets, canViewPc && canViewMonitorLedger);
     }
   } else {
     if (to.path === '/stock') {

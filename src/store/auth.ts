@@ -1,5 +1,5 @@
 import { reactive } from "vue";
-import { apiGet, apiPost, apiRequestJson } from "../api/client";
+import { apiPost, apiRequestJson } from "../api/client";
 import type { Role } from "../utils/roles";
 import { hasRole } from "../utils/roles";
 import type { PermissionCode } from "../utils/permissions";
@@ -8,13 +8,87 @@ import { hasPermission } from "../utils/permissions";
 export type User = { id: number; username: string; role: Role; must_change_password?: number; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
+const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
+const AUTH_CACHE_TTL_MS = 30_000;
+let pendingFetchMe: Promise<User> | null = null;
+
+function getSessionStorage() {
+  if (typeof window === 'undefined') return null;
+  try {
+    return window.sessionStorage;
+  } catch {
+    return null;
+  }
+}
+
+function writeAuthCache(user: User | null) {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  if (!user) {
+    storage.removeItem(AUTH_CACHE_KEY);
+    return;
+  }
+  storage.setItem(AUTH_CACHE_KEY, JSON.stringify({ user, ts: Date.now() }));
+}
+
+function readAuthCache(maxAgeMs = AUTH_CACHE_TTL_MS): User | null {
+  const storage = getSessionStorage();
+  if (!storage) return null;
+  try {
+    const raw = storage.getItem(AUTH_CACHE_KEY);
+    if (!raw) return null;
+    const parsed = JSON.parse(raw) as { user?: User; ts?: number };
+    if (!parsed?.user || typeof parsed.ts !== 'number') return null;
+    if (Date.now() - parsed.ts > maxAgeMs) return null;
+    return parsed.user;
+  } catch {
+    return null;
+  }
+}
+
+export function hydrateAuthFromCache(maxAgeMs = AUTH_CACHE_TTL_MS) {
+  const cached = readAuthCache(maxAgeMs);
+  if (cached) state.user = cached;
+  return cached;
+}
+
+function clearAuthCache() {
+  writeAuthCache(null);
+}
+
 export const useAuth = () => state;
-export async function fetchMe() { state.loading = true; try { const r = await apiGet<{ ok: boolean; data: { user: User } }>("/api/auth/me"); state.user = r.data.user; return state.user; } catch (e) { state.user = null; throw e; } finally { state.loading = false; } }
+
+export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean }) {
+  const force = Boolean(options?.force);
+  const handleUnauthorized = options?.handleUnauthorized !== false;
+  if (!force) {
+    const cached = state.user || hydrateAuthFromCache();
+    if (cached) return cached;
+    if (pendingFetchMe) return pendingFetchMe;
+  }
+  state.loading = true;
+  const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
+    state.user = r.data.user;
+    writeAuthCache(r.data.user);
+    return r.data.user;
+  }).catch((e) => {
+    state.user = null;
+    clearAuthCache();
+    throw e;
+  }).finally(() => {
+    state.loading = false;
+    pendingFetchMe = null;
+  });
+  pendingFetchMe = task;
+  return task;
+}
+
 export const login = (username: string, password: string) => loginWithCaptcha(username, password);
 export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
   try {
     const r = await apiRequestJson<LoginResponse>("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, turnstile_token }) }, { handleUnauthorized: false });
     state.user = r.data.user;
+    writeAuthCache(r.data.user);
     return r.data.user;
   } catch (e: any) {
     const response = e?.response;
@@ -24,6 +98,6 @@ export async function loginWithCaptcha(username: string, password: string, turns
     throw e;
   }
 }
-export function logout() { apiPost('/api/auth/logout', {}).catch(() => {}); state.user = null; }
+export function logout() { apiPost('/api/auth/logout', {}).catch(() => {}); state.user = null; clearAuthCache(); }
 export function can(min: Role) { return hasRole(state.user?.role, min); }
 export function canPerm(code: PermissionCode) { return hasPermission(state.user, code); }
