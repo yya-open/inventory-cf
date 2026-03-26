@@ -1,5 +1,6 @@
 import { errorResponse } from "../../_auth";
 import { publicAssetSubject, rateLimitPublic, resolvePublicAssetId } from "../services/public-assets";
+import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
 
 type Env = { DB: D1Database; JWT_SECRET?: string };
 
@@ -19,6 +20,8 @@ function sanitizeMonitorAsset(asset: any) {
     employee_name: asset.employee_name || null,
     is_employed: asset.is_employed ?? null,
     remark: asset.remark || null,
+    inventory_batch_active: Boolean(asset.inventory_batch_active),
+    inventory_batch_name: asset.inventory_batch_name || null,
   };
 }
 
@@ -47,7 +50,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     ).bind(id).first<any>();
 
     if (!asset) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
-    return Response.json({ ok: true, data: sanitizeMonitorAsset(asset) });
+    const activeBatch = await getActiveInventoryBatch(env.DB, 'monitor');
+    return Response.json({
+      ok: true,
+      data: sanitizeMonitorAsset({
+        ...asset,
+        inventory_batch_active: Boolean(activeBatch?.id),
+        inventory_batch_name: activeBatch?.name || null,
+      }),
+    });
   } catch (e: any) {
     return errorResponse(e);
   }

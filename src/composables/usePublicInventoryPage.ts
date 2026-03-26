@@ -27,6 +27,7 @@ export function usePublicInventoryPage(options: {
   const issueVisible = ref(false);
   const issueForm = ref({ issue_type: '', remark: '' });
   const cooldownLeft = ref(0);
+  const kindLabel = options.kind === 'pc' ? '电脑' : '显示器';
   const viewportWidth = ref(typeof window !== 'undefined' ? window.innerWidth : 1280);
   const descColumns = computed(() => (viewportWidth.value < 640 ? 1 : 2));
   const isMobile = computed(() => viewportWidth.value < 640);
@@ -58,6 +59,15 @@ export function usePublicInventoryPage(options: {
     if (scanMode.value === 'scanner') return '扫码枪模式已开启：输入框会自动保持焦点，识别到完整二维码链接或 token 后会自动切换。';
     return '手动模式：可粘贴二维码链接或 token 后按回车或点击按钮切换。';
   });
+
+  const inventoryReady = computed(() => Boolean(row.value?.inventory_batch_active));
+  const inventoryDisabledReason = computed(() => {
+    const batchName = String(row.value?.inventory_batch_name || '').trim();
+    return batchName
+      ? `当前盘点轮次未处于进行中状态，请先回到台账页重新开启“${batchName}”或新建一轮盘点后再扫码提交。`
+      : `当前未开启${kindLabel}盘点，请先在${kindLabel}台账页点击“开启新一轮”后再扫码提交。`;
+  });
+  const actionDisabled = computed(() => cooldownLeft.value > 0 || !inventoryReady.value);
 
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -383,16 +393,32 @@ export function usePublicInventoryPage(options: {
     refreshPendingQueue();
   }
 
+  function warnInventoryInactive() {
+    ElMessage.warning(inventoryDisabledReason.value);
+  }
+
+  function openIssueDialog() {
+    if (!inventoryReady.value) {
+      warnInventoryInactive();
+      return;
+    }
+    issueVisible.value = true;
+  }
+
   async function submitOk() {
     try {
       clearRetry();
+      if (!inventoryReady.value) {
+        warnInventoryInactive();
+        return;
+      }
       if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
       submittingOk.value = true;
       await sendInventoryPayload(undefined, { action: 'OK' });
       await onSubmitSuccess('已记录：盘点通过');
     } catch (err: any) {
       if (Number(err?.status || 0) === 409) {
-        ElMessage.warning(err?.message || '该设备本轮已盘点，请勿重复点击“就位”。');
+        ElMessage.warning(err?.message || '该设备当前不可提交盘点结果，请稍后重试。');
         return;
       }
       if (isNetworkError(err)) {
@@ -409,6 +435,10 @@ export function usePublicInventoryPage(options: {
   async function submitIssue() {
     try {
       clearRetry();
+      if (!inventoryReady.value) {
+        warnInventoryInactive();
+        return;
+      }
       if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
       if (!issueForm.value.issue_type) throw new Error('请选择异常类型');
       submittingIssue.value = true;
@@ -417,6 +447,10 @@ export function usePublicInventoryPage(options: {
       issueForm.value = { issue_type: '', remark: '' };
       await onSubmitSuccess('已提交：异常');
     } catch (err: any) {
+      if (Number(err?.status || 0) === 409) {
+        ElMessage.warning(err?.message || '该设备当前不可提交异常，请稍后重试。');
+        return;
+      }
       if (isNetworkError(err)) {
         retryMessage.value = '网络较弱，异常结果已加入待重试队列，可点击重试或稍后统一补交。';
         retryAction.value = 'issue';
@@ -496,7 +530,8 @@ export function usePublicInventoryPage(options: {
     settings, loading, error, row, id, key, token, submittingOk, submittingIssue, issueVisible, issueForm, cooldownLeft,
     viewportWidth, descColumns, isMobile, continuousMode, scanMode, nextInput, nextInputRef, cameraVideoRef, recentTargets,
     weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, scanModeOptions, nextInputPlaceholder, scannerTip,
+    inventoryReady, inventoryDisabledReason, actionDisabled,
     cameraSupported, cameraActive, cameraStarting, cameraError, toggleCamera, retryCamera, recentLabel, refresh, openRecent,
-    goNextFromInput, submitOk, submitIssue, retryLast, flushPendingQueue, clearRetry,
+    goNextFromInput, submitOk, submitIssue, openIssueDialog, retryLast, flushPendingQueue, clearRetry,
   };
 }

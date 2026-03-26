@@ -92,11 +92,21 @@
         <el-descriptions-item label="备注" :span="2"><div style="white-space:pre-wrap">{{ row?.remark || '-' }}</div></el-descriptions-item>
       </el-descriptions>
 
+      <el-alert
+        v-if="!loading && !error && !inventoryReady"
+        class="public-alert public-batch-alert"
+        :title="inventoryDisabledReason"
+        type="warning"
+        show-icon
+        :closable="false"
+      />
+
       <div v-if="!loading && !error" class="public-actions public-actions-sticky">
-        <el-button size="large" type="success" :loading="submittingOk" :disabled="cooldownLeft > 0" @click="submitOk">盘点通过（在位）</el-button>
-        <el-button size="large" type="warning" plain :disabled="cooldownLeft > 0" @click="issueVisible=true">报异常</el-button>
+        <el-button size="large" type="success" :loading="submittingOk" :disabled="actionDisabled" @click="submitOk">盘点通过（在位）</el-button>
+        <el-button size="large" type="warning" plain :disabled="actionDisabled" @click="openIssueDialog">报异常</el-button>
         <el-button size="large" type="primary" plain @click="refresh">刷新</el-button>
         <div v-if="cooldownLeft > 0" class="cooldown">已记录，{{ cooldownLeft }}s 后可再次提交</div>
+        <div v-else-if="!inventoryReady" class="cooldown">{{ inventoryDisabledReason }}</div>
       </div>
     </el-card>
 
@@ -114,7 +124,7 @@
       </el-form>
       <template #footer>
         <el-button size="large" @click="issueVisible=false">取消</el-button>
-        <el-button size="large" type="primary" :loading="submittingIssue" :disabled="cooldownLeft > 0" @click="submitIssue">提交</el-button>
+        <el-button size="large" type="primary" :loading="submittingIssue" :disabled="actionDisabled" @click="submitIssue">提交</el-button>
       </template>
     </el-dialog>
   </div>
@@ -161,6 +171,9 @@ const {
   scanModeOptions,
   nextInputPlaceholder,
   scannerTip,
+  inventoryReady,
+  inventoryDisabledReason,
+  actionDisabled,
   cameraSupported,
   cameraActive,
   cameraStarting,
@@ -173,6 +186,7 @@ const {
   goNextFromInput,
   submitOk,
   submitIssue,
+  openIssueDialog,
   retryLast,
   flushPendingQueue,
 } = usePublicInventoryPage({

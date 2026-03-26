@@ -126,7 +126,7 @@ export async function getEffectiveInventoryBatch(db: D1Database, kind: AssetInve
 }
 
 export async function resolveInventoryBatchIdForWrite(db: D1Database, kind: AssetInventoryKind) {
-  const batch = await getEffectiveInventoryBatch(db, kind);
+  const batch = await getActiveInventoryBatch(db, kind);
   return batch?.id ? Number(batch.id) : null;
 }
 

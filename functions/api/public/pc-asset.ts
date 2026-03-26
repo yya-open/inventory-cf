@@ -1,5 +1,6 @@
 import { errorResponse } from "../../_auth";
 import { publicAssetSubject, rateLimitPublic, resolvePublicAssetId } from "../services/public-assets";
+import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -20,6 +21,8 @@ function sanitizePcAsset(asset: any) {
     last_department: asset.last_department || null,
     last_config_date: asset.last_config_date || null,
     last_recycle_date: asset.last_recycle_date || null,
+    inventory_batch_active: Boolean(asset.inventory_batch_active),
+    inventory_batch_name: asset.inventory_batch_name || null,
   };
 }
 
@@ -66,7 +69,15 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     ).bind(id, id, id).first<any>();
 
     if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
-    return Response.json({ ok: true, data: sanitizePcAsset(asset) });
+    const activeBatch = await getActiveInventoryBatch(env.DB, 'pc');
+    return Response.json({
+      ok: true,
+      data: sanitizePcAsset({
+        ...asset,
+        inventory_batch_active: Boolean(activeBatch?.id),
+        inventory_batch_name: activeBatch?.name || null,
+      }),
+    });
   } catch (e: any) {
     return errorResponse(e);
   }

@@ -160,6 +160,12 @@ function duplicateInventoryPrompt(kind: PublicAssetKind, existing: any) {
   return `${targetLabel}本轮已记录为${actionLabel}（${String(existing?.created_at || '-') }），请勿重复点击“就位”。如需更正，请先删除原盘点记录后再重新提交。`;
 }
 
+function inactiveInventoryBatchPrompt(kind: PublicAssetKind) {
+  return kind === 'pc'
+    ? '当前未开启电脑盘点，请先在电脑台账页点击“开启新一轮”后再扫码提交。'
+    : '当前未开启显示器盘点，请先在显示器台账页点击“开启新一轮”后再扫码提交。';
+}
+
 async function getExistingInventoryLog(
   db: D1Database,
   kind: PublicAssetKind,
@@ -196,6 +202,12 @@ export async function insertPublicInventoryLog(
   const ua = (request.headers.get('User-Agent') || '').slice(0, 300);
 
   const batchId = await resolveInventoryBatchIdForWrite(db, kind);
+  if (!batchId) {
+    throw Object.assign(new Error(inactiveInventoryBatchPrompt(kind)), {
+      status: 409,
+      code: 'NO_ACTIVE_INVENTORY_BATCH',
+    });
+  }
   const existing = await getExistingInventoryLog(db, kind, assetId, batchId);
 
   if (existing?.id) {
