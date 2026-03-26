@@ -61,6 +61,7 @@ export function usePublicInventoryPage(options: {
 
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
+  const cooldownStorageKey = `inventory-public-submit-cooldown:${options.kind}`;
   const cameraSupported = ref(typeof window !== 'undefined' ? typeof (window as any).BarcodeDetector === 'function' && !!navigator.mediaDevices?.getUserMedia : false);
   const cameraActive = ref(false);
   const cameraStarting = ref(false);
@@ -179,17 +180,87 @@ export function usePublicInventoryPage(options: {
     }, 90);
   }
 
-  function startCooldown(seconds = settings.value.public_inventory_cooldown_seconds) {
-    cooldownLeft.value = seconds;
-    if (cooldownTimer) clearInterval(cooldownTimer);
-    if (scannerTimer) clearTimeout(scannerTimer);
-    cooldownTimer = setInterval(() => {
-      cooldownLeft.value = Math.max(0, cooldownLeft.value - 1);
-      if (cooldownLeft.value <= 0 && cooldownTimer) {
+  function currentTargetCooldownKey(target?: { id?: string; key?: string; token?: string } | null) {
+    const targetId = (target?.id || id.value || '').trim();
+    const targetKey = (target?.key || key.value || '').trim();
+    const targetToken = (target?.token || token.value || '').trim();
+    if (targetToken) return `token:${targetToken}`;
+    if (targetId && targetKey) return `pair:${targetId}:${targetKey}`;
+    return '';
+  }
+
+  function loadCooldownMap() {
+    if (typeof window === 'undefined') return {} as Record<string, number>;
+    try {
+      const raw = window.sessionStorage.getItem(cooldownStorageKey);
+      if (!raw) return {} as Record<string, number>;
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object' ? parsed as Record<string, number> : {} as Record<string, number>;
+    } catch {
+      return {} as Record<string, number>;
+    }
+  }
+
+  function saveCooldownMap(map: Record<string, number>) {
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(cooldownStorageKey, JSON.stringify(map));
+    } catch {}
+  }
+
+  function cleanupCooldownMap(map: Record<string, number>) {
+    const now = Date.now();
+    for (const [entryKey, expiresAt] of Object.entries(map)) {
+      if (!Number.isFinite(expiresAt) || expiresAt <= now) delete map[entryKey];
+    }
+    return map;
+  }
+
+  function syncCooldownForCurrentTarget() {
+    const currentKey = currentTargetCooldownKey();
+    if (!currentKey) {
+      cooldownLeft.value = 0;
+      if (cooldownTimer) {
         clearInterval(cooldownTimer);
         cooldownTimer = null;
       }
-    }, 1000);
+      return;
+    }
+    const map = cleanupCooldownMap(loadCooldownMap());
+    saveCooldownMap(map);
+    const expiresAt = Number(map[currentKey] || 0);
+    const nextLeft = expiresAt > Date.now() ? Math.ceil((expiresAt - Date.now()) / 1000) : 0;
+    cooldownLeft.value = nextLeft;
+    if (cooldownTimer) {
+      clearInterval(cooldownTimer);
+      cooldownTimer = null;
+    }
+    if (nextLeft > 0) {
+      cooldownTimer = setInterval(() => {
+        const currentMap = cleanupCooldownMap(loadCooldownMap());
+        saveCooldownMap(currentMap);
+        const currentExpiresAt = Number(currentMap[currentKey] || 0);
+        const remaining = currentExpiresAt > Date.now() ? Math.ceil((currentExpiresAt - Date.now()) / 1000) : 0;
+        cooldownLeft.value = remaining;
+        if (remaining <= 0 && cooldownTimer) {
+          clearInterval(cooldownTimer);
+          cooldownTimer = null;
+        }
+      }, 1000);
+    }
+  }
+
+  function startCooldown(seconds = settings.value.public_inventory_cooldown_seconds, target?: { id?: string; key?: string; token?: string } | null) {
+    const currentKey = currentTargetCooldownKey(target);
+    if (!currentKey) {
+      cooldownLeft.value = 0;
+      return;
+    }
+    const map = cleanupCooldownMap(loadCooldownMap());
+    map[currentKey] = Date.now() + Math.max(1, seconds) * 1000;
+    saveCooldownMap(map);
+    if (scannerTimer) clearTimeout(scannerTimer);
+    syncCooldownForCurrentTarget();
   }
 
   function syncFromLocation() {
@@ -246,6 +317,7 @@ export function usePublicInventoryPage(options: {
       else throw new Error('缺少二维码参数');
       const result: any = await apiGetPublic(apiUrl);
       row.value = result.data;
+      syncCooldownForCurrentTarget();
       saveRecentPublicTarget(options.kind, token.value ? { token: token.value } : { id: id.value, key: key.value });
       recentTargets.value = loadRecentPublicTargets(options.kind);
       refreshPendingQueue();
@@ -403,6 +475,7 @@ export function usePublicInventoryPage(options: {
     if (navigator.onLine && pendingQueue.value.length) {
       void flushPendingQueue();
     }
+    syncCooldownForCurrentTarget();
     if (continuousMode.value && scanMode.value === 'scanner') focusNextInput();
     if (continuousMode.value && scanMode.value === 'camera') await startCamera();
     window.addEventListener('resize', handleResize);

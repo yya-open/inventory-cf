@@ -95,7 +95,7 @@
       <div v-if="!loading && !error" class="public-actions public-actions-sticky">
         <el-button size="large" type="success" :loading="submittingOk" :disabled="cooldownLeft > 0" @click="submitOk">盘点通过（在位）</el-button>
         <el-button size="large" type="warning" plain :disabled="cooldownLeft > 0" @click="issueVisible=true">报异常</el-button>
-        <el-button size="large" type="primary" plain :disabled="cooldownLeft > 0" @click="refresh">刷新</el-button>
+        <el-button size="large" type="primary" plain @click="refresh">刷新</el-button>
         <div v-if="cooldownLeft > 0" class="cooldown">已记录，{{ cooldownLeft }}s 后可再次提交</div>
       </div>
     </el-card>
