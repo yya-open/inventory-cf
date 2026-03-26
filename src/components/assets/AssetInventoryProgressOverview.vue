@@ -5,42 +5,47 @@
         <div class="progress-title">{{ inventoryBatch.active ? '实时盘点进度' : '上一轮完成情况' }}</div>
         <div class="progress-subtle">{{ progressSubtitle }}</div>
       </div>
-      <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '最近一轮' }}</el-tag>
+      <div class="progress-head-actions">
+        <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '最近一轮' }}</el-tag>
+        <el-button text class="progress-collapse-btn" @click="expanded = !expanded">{{ expanded ? '收起' : '展开' }}</el-button>
+      </div>
     </div>
 
-    <div class="progress-rate-row">
-      <div>
-        <div class="progress-rate">{{ percentage }}%</div>
-        <div class="progress-subtle">完成率（已盘 + 异常）</div>
+    <div v-show="expanded" class="progress-body">
+      <div class="progress-rate-row">
+        <div>
+          <div class="progress-rate">{{ percentage }}%</div>
+          <div class="progress-subtle">完成率（已盘 + 异常）</div>
+        </div>
+        <div class="progress-count">{{ completedCount }} / {{ resolvedSummary.total || 0 }}</div>
       </div>
-      <div class="progress-count">{{ completedCount }} / {{ resolvedSummary.total || 0 }}</div>
-    </div>
 
-    <el-progress :percentage="percentage" :stroke-width="12" :status="progressStatus" />
+      <el-progress :percentage="percentage" :stroke-width="12" :status="progressStatus" />
 
-    <div class="progress-metrics">
-      <div class="metric-card total">
-        <span>总数</span>
-        <strong>{{ resolvedSummary.total || 0 }}</strong>
-      </div>
-      <div class="metric-card checked">
-        <span>已盘</span>
-        <strong>{{ resolvedSummary.checked_ok || 0 }}</strong>
-      </div>
-      <div class="metric-card issue">
-        <span>异常</span>
-        <strong>{{ resolvedSummary.checked_issue || 0 }}</strong>
-      </div>
-      <div class="metric-card unchecked">
-        <span>未盘</span>
-        <strong>{{ resolvedSummary.unchecked || 0 }}</strong>
+      <div class="progress-metrics">
+        <div class="metric-card total">
+          <span>总数</span>
+          <strong>{{ resolvedSummary.total || 0 }}</strong>
+        </div>
+        <div class="metric-card checked">
+          <span>已盘</span>
+          <strong>{{ resolvedSummary.checked_ok || 0 }}</strong>
+        </div>
+        <div class="metric-card issue">
+          <span>异常</span>
+          <strong>{{ resolvedSummary.checked_issue || 0 }}</strong>
+        </div>
+        <div class="metric-card unchecked">
+          <span>未盘</span>
+          <strong>{{ resolvedSummary.unchecked || 0 }}</strong>
+        </div>
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref, watch } from 'vue';
 import type { InventoryBatchPayload } from '../../api/inventoryBatches';
 import type { AssetInventorySummary } from '../../types/assets';
 
@@ -49,6 +54,15 @@ const props = defineProps<{
   inventoryBatch: InventoryBatchPayload;
   currentSummary: AssetInventorySummary;
 }>();
+
+const expanded = ref(Boolean(props.inventoryBatch.active));
+
+watch(
+  () => Boolean(props.inventoryBatch.active),
+  (active) => {
+    expanded.value = active;
+  }
+);
 
 const resolvedSummary = computed<AssetInventorySummary>(() => {
   if (props.inventoryBatch.active) return props.currentSummary;
@@ -95,6 +109,19 @@ const progressSubtitle = computed(() => {
   justify-content: space-between;
   gap: 12px;
   align-items: flex-start;
+}
+.progress-head-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.progress-collapse-btn { padding: 0; }
+.progress-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
 }
 .progress-title { font-size: 14px; font-weight: 700; color: #303133; }
 .progress-subtle { margin-top: 4px; color: #909399; font-size: 12px; line-height: 1.6; }
