@@ -153,6 +153,35 @@ export async function resolvePublicAssetId(args: ResolvePublicAssetArgs) {
   throw Object.assign(new Error("缺少二维码参数"), { status: 400 });
 }
 
+function duplicateInventoryPrompt(kind: PublicAssetKind, existing: any) {
+  const issueLabel = existing?.issue_type ? `（${String(existing.issue_type || '').toUpperCase()}）` : '';
+  const actionLabel = String(existing?.action || '').toUpperCase() === 'ISSUE' ? `异常${issueLabel}` : '在位';
+  const targetLabel = kind === 'pc' ? '该电脑' : '该显示器';
+  return `${targetLabel}本轮已记录为${actionLabel}（${String(existing?.created_at || '-') }），请勿重复点击“就位”。如需更正，请先删除原盘点记录后再重新提交。`;
+}
+
+async function getExistingInventoryLog(
+  db: D1Database,
+  kind: PublicAssetKind,
+  assetId: number,
+  batchId: number | null,
+) {
+  const table = kind === 'pc' ? 'pc_inventory_log' : 'monitor_inventory_log';
+  const sql = batchId == null
+    ? `SELECT id, action, issue_type, remark, created_at, batch_id
+         FROM ${table}
+        WHERE asset_id=? AND batch_id IS NULL
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 1`
+    : `SELECT id, action, issue_type, remark, created_at, batch_id
+         FROM ${table}
+        WHERE asset_id=? AND batch_id=?
+        ORDER BY datetime(created_at) DESC, id DESC
+        LIMIT 1`;
+  const stmt = batchId == null ? db.prepare(sql).bind(assetId) : db.prepare(sql).bind(assetId, batchId);
+  return stmt.first<any>();
+}
+
 export async function insertPublicInventoryLog(
   db: D1Database,
   kind: PublicAssetKind,
@@ -162,11 +191,44 @@ export async function insertPublicInventoryLog(
   remark: string | null,
   request: Request,
 ) {
-  const table = kind === "pc" ? "pc_inventory_log" : "monitor_inventory_log";
-  const ip = getClientIp(request) || "";
-  const ua = (request.headers.get("User-Agent") || "").slice(0, 300);
+  const table = kind === 'pc' ? 'pc_inventory_log' : 'monitor_inventory_log';
+  const ip = getClientIp(request) || '';
+  const ua = (request.headers.get('User-Agent') || '').slice(0, 300);
 
   const batchId = await resolveInventoryBatchIdForWrite(db, kind);
+  const existing = await getExistingInventoryLog(db, kind, assetId, batchId);
+
+  if (existing?.id) {
+    if (String(action || '').toUpperCase() === 'OK') {
+      throw Object.assign(new Error(duplicateInventoryPrompt(kind, existing)), {
+        status: 409,
+        code: 'DUPLICATE_INVENTORY_LOG',
+        data: {
+          id: Number(existing.id),
+          action: String(existing.action || '').toUpperCase(),
+          issue_type: existing.issue_type ? String(existing.issue_type).toUpperCase() : null,
+          created_at: existing.created_at ? String(existing.created_at) : null,
+        },
+      });
+    }
+
+    await db
+      .prepare(
+        `UPDATE ${table}
+            SET action=?,
+                issue_type=?,
+                remark=?,
+                ip=?,
+                ua=?,
+                created_at=${sqlNowStored()}
+          WHERE id=?`
+      )
+      .bind(action, issueType, remark, ip, ua, Number(existing.id))
+      .run();
+
+    await syncAssetInventoryState(db, kind, [assetId]);
+    return { ok: true, updated: true, id: Number(existing.id) };
+  }
 
   await db
     .prepare(
@@ -177,4 +239,5 @@ export async function insertPublicInventoryLog(
     .run();
 
   await syncAssetInventoryState(db, kind, [assetId]);
+  return { ok: true, updated: false };
 }

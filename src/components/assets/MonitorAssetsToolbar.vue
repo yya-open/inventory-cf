@@ -20,6 +20,7 @@
               <el-option label="已报废" value="SCRAPPED" />
             </el-select>
             <el-select
+              v-if="hasActiveBatch"
               :model-value="inventoryStatus"
               placeholder="盘点状态"
               clearable
@@ -72,7 +73,7 @@
               <el-button @click="emit('reset')">重置</el-button>
             </div>
           </div>
-          <div class="inventory-summary-row">
+          <div v-if="hasActiveBatch" class="inventory-summary-row">
             <button type="button" class="summary-card" :class="{ active: inventoryStatus === '' }" @click="emit('set-inventory-filter', '')">
               <span class="summary-label">全部设备</span>
               <strong>{{ summary.total }}</strong>
@@ -245,6 +246,7 @@ const props = defineProps<{
   batchBusy: boolean;
   summary: AssetInventorySummary;
   inventoryBatch: InventoryBatchPayload;
+  hasActiveBatch: boolean;
 }>();
 
 const emit = defineEmits<{

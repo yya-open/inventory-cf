@@ -75,7 +75,7 @@
                   本轮未盘
                 </template>
               </div>
-              <div v-if="recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
+              <div v-if="props.showInventoryColumn && recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
             </div>
           </template>
         </el-table-column>
@@ -102,7 +102,7 @@
             <span v-else class="table-subtle">已归档</span>
           </div>
           <div v-else class="monitor-op-group compact">
-            <el-button v-if="recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
+            <el-button v-if="props.showInventoryColumn && recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
             <el-button v-if="canOperator" link type="success" :disabled="loading" @click="emit('in', row)">入库</el-button>
             <el-button v-if="canOperator" link type="warning" :disabled="loading" @click="emit('out', row)">出库</el-button>
             <el-dropdown v-if="canOperator || isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
@@ -157,6 +157,8 @@ const props = defineProps<{
   visibleColumns: string[];
   columnWidths: Record<string, number>;
   selectedIds: string[];
+  showInventoryColumn: boolean;
+  enableInventoryHighlight: boolean;
   statusText: (status: string) => string;
   locationText: (row: Record<string, any>) => string;
 }>();
@@ -173,13 +175,14 @@ const emit = defineEmits<{
   'page-change': [number];
   'size-change': [number];
 }>();
-const orderedVisibleColumns = computed(() => props.visibleColumns);
+const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 
 function rowClassName({ row }: { row: Record<string, any> }) {
+  if (!props.enableInventoryHighlight) return '';
   const status = String(row?.inventory_status || '').toUpperCase();
   if (status === 'CHECKED_ISSUE') return 'inventory-row-issue';
   if (status === 'UNCHECKED' || !status) return 'inventory-row-unchecked';

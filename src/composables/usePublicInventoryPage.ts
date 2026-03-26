@@ -319,6 +319,10 @@ export function usePublicInventoryPage(options: {
       await sendInventoryPayload(undefined, { action: 'OK' });
       await onSubmitSuccess('已记录：盘点通过');
     } catch (err: any) {
+      if (Number(err?.status || 0) === 409) {
+        ElMessage.warning(err?.message || '该设备本轮已盘点，请勿重复点击“就位”。');
+        return;
+      }
       if (isNetworkError(err)) {
         retryMessage.value = '网络较弱，盘点结果已加入待重试队列，可点击重试或稍后统一补交。';
         retryAction.value = 'ok';

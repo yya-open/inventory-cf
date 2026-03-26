@@ -91,7 +91,7 @@
                   本轮未盘
                 </template>
               </div>
-              <div v-if="recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
+              <div v-if="props.showInventoryColumn && recommendedAction(row)" class="inventory-advice">{{ recommendedAction(row)?.tip }}</div>
             </div>
           </template>
         </el-table-column>
@@ -119,7 +119,7 @@
             <span v-else class="subtle">已归档</span>
           </div>
           <template v-else>
-            <el-button v-if="recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
+            <el-button v-if="props.showInventoryColumn && recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
             <el-button link type="primary" :disabled="loading" @click="emit('open-edit', row)">修改</el-button>
             <el-button link :disabled="loading" @click="emit('open-qr', row)">二维码</el-button>
             <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">删除</el-button>
@@ -160,6 +160,8 @@ const props = defineProps<{
   visibleColumns: string[];
   columnWidths: Record<string, number>;
   selectedIds: string[];
+  showInventoryColumn: boolean;
+  enableInventoryHighlight: boolean;
 }>();
 const emit = defineEmits<{
   'open-info': [Record<string, any>];
@@ -173,12 +175,13 @@ const emit = defineEmits<{
   'page-change': [number];
   'page-size-change': [number];
 }>();
-const orderedVisibleColumns = computed(() => props.visibleColumns);
+const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 
 function rowClassName({ row }: { row: Record<string, any> }) {
+  if (!props.enableInventoryHighlight) return '';
   const status = String(row?.inventory_status || '').toUpperCase();
   if (status === 'CHECKED_ISSUE') return 'inventory-row-issue';
   if (status === 'UNCHECKED' || !status) return 'inventory-row-unchecked';

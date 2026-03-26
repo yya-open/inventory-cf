@@ -9,9 +9,9 @@
       v-model:show-archived="showArchived"
       :is-admin="isAdmin"
       :can-operator="canOperator"
-      :visible-columns="visibleColumns"
+      :visible-columns="displayedPcVisibleColumns"
       :column-order="columnOrder"
-      :column-options="pcColumnOptions"
+      :column-options="displayedPcColumnOptions"
       :selected-count="selectedCount"
       :export-busy="exportBusy"
       :import-busy="importBusy"
@@ -20,6 +20,7 @@
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
       :inventory-batch="inventoryBatch"
+      :has-active-batch="hasActiveInventoryBatch"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
       @search="onSearch"
@@ -57,6 +58,8 @@
       :visible-columns="visibleColumns"
       :column-widths="columnWidths"
       :selected-ids="selectedIds"
+      :show-inventory-column="hasActiveInventoryBatch"
+      :enable-inventory-highlight="hasActiveInventoryBatch"
       @open-info="openInfo"
       @open-edit="openEdit"
       @open-qr="openQr"
@@ -65,8 +68,8 @@
       @open-recommended="openRecommendedAction"
       @selection-change="onSelectionChange"
       @column-resize="updateColumnWidth"
-      @page-change="(value) => onPageChange(currentFilters(), value)"
-      @page-size-change="(value) => onPageSizeChange(currentFilters(), value)"
+      @page-change="(value) => onPageChange(currentFiltersForList(), value)"
+      @page-size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
       />
     </el-card>
 
@@ -179,6 +182,9 @@ const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
+const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
+const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
+const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
 
 const {
   status,
@@ -202,8 +208,9 @@ const {
   updateColumnWidth,
   runWithoutAutoSearch,
 } = usePcAssetViewState(() => {
-  void refreshInventorySummary();
-  reload(currentFilters());
+  const filters = currentFiltersForList();
+  void refreshInventorySummary(filters);
+  reload(filters);
 });
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
@@ -392,19 +399,30 @@ function pcQrVersionOf(row?: Partial<PcAsset> | null) {
   return String(row?.qr_updated_at || row?.updated_at || '');
 }
 
-function buildInventorySummaryFilters(filters: PcFilters = currentFilters()): PcFilters {
+function currentFiltersForList(): PcFilters {
+  const filters = currentFilters();
+  if (!hasActiveInventoryBatch.value) return { ...filters, inventoryStatus: '' };
+  return filters;
+}
+
+function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList()): PcFilters {
   return { ...filters, inventoryStatus: '' };
 }
 
 async function refreshInventoryBatch() {
   try {
     inventoryBatch.value = await fetchInventoryBatch('pc');
+    if (!inventoryBatch.value.active && inventoryStatus.value) {
+      runWithoutAutoSearch(() => {
+        inventoryStatus.value = '';
+      });
+    }
   } catch {
     inventoryBatch.value = { active: null, latest: inventoryBatch.value.latest || null, recent: inventoryBatch.value.recent || [] };
   }
 }
 
-async function refreshInventorySummary(filters: PcFilters = currentFilters()) {
+async function refreshInventorySummary(filters: PcFilters = currentFiltersForList()) {
   try {
     inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(filters));
   } catch (error) {
@@ -414,7 +432,7 @@ async function refreshInventorySummary(filters: PcFilters = currentFilters()) {
 
 const onSearch = () => {
   clearKeywordTimer();
-  const filters = currentFilters();
+  const filters = currentFiltersForList();
   void refreshInventorySummary(filters);
   void refreshInventoryBatch();
   reload(filters);
@@ -429,7 +447,7 @@ const reset = () => {
     archiveReason.value = '';
   });
   clearKeywordTimer();
-  const filters = currentFilters();
+  const filters = currentFiltersForList();
   void refreshInventorySummary(filters);
   reload(filters);
 };
@@ -1058,7 +1076,7 @@ async function exportExcel() {
   try {
     exportBusy.value = true;
     if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
-    const all = await fetchAll(currentFilters(), Number(total.value || 0) > 2000 ? 300 : 200);
+    const all = await fetchAll(currentFiltersForList(), Number(total.value || 0) > 2000 ? 300 : 200);
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcAllRows({ rows: all, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
@@ -1073,7 +1091,7 @@ async function exportArchiveRecords() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    const all = await fetchAll({ ...currentFilters(), showArchived: true }, 200);
+    const all = await fetchAll({ ...currentFiltersForList(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档电脑记录');
     const actions = await loadAssetLedgerExportActions();
@@ -1202,7 +1220,7 @@ async function openStartBatch() {
       ? `已自动导出并清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
       : (result?.message || '已开启新一轮盘点');
     ElMessage.success(successMessage);
-    await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFilters()), refreshCurrent(true, true)]);
+    await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFiltersForList()), refreshCurrent(true, true)]);
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '开启盘点批次失败');
@@ -1233,8 +1251,9 @@ async function closeActiveBatch() {
 }
 
 onMounted(async () => {
-  const filters = currentFilters();
-  await Promise.all([load(filters), refreshInventorySummary(filters), refreshInventoryBatch()]);
+  await refreshInventoryBatch();
+  const filters = currentFiltersForList();
+  await Promise.all([load(filters), refreshInventorySummary(filters)]);
   lastRefreshAt = Date.now();
 });
 
@@ -1245,9 +1264,11 @@ onBeforeUnmount(() => {
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   lastRefreshAt = Date.now();
-  const filters = currentFilters();
-  void load(filters, { keepPage: true });
-  void refreshInventorySummary(filters);
+  void refreshInventoryBatch().then(() => {
+    const filters = currentFiltersForList();
+    void load(filters, { keepPage: true });
+    void refreshInventorySummary(filters);
+  });
 });
 </script>
 
