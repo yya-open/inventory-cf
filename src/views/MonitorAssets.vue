@@ -21,7 +21,6 @@
       :batch-busy="batchBusy"
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
-      :inventory-batch="inventoryBatch"
       :has-active-batch="hasActiveInventoryBatch"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
@@ -43,11 +42,6 @@
       @batch-restore="batchRestoreSelected"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
-      @start-batch="openStartBatch"
-      @close-batch="closeActiveBatch"
-      @open-history="openBatchHistory"
-      @open-execution="openExecutionMode"
-      @jump-logs="jumpInventoryLogs"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
       @toolbar-more="handleToolbarMore"
@@ -194,10 +188,7 @@
     <AssetInventoryBatchHistoryDrawer
       v-model:visible="batchHistoryVisible"
       kind-label="显示器"
-      :inventory-batch="inventoryBatch"
       :current-summary="inventorySummary"
-      @open-execution="openExecutionMode"
-      @jump-logs="jumpInventoryLogs"
     />
     <AssetInventoryBatchCloseDialog
       v-model:visible="closeBatchVisible"

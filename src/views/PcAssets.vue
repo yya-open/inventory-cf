@@ -19,7 +19,6 @@
       :batch-busy="batchBusy"
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
-      :inventory-batch="inventoryBatch"
       :has-active-batch="hasActiveInventoryBatch"
       @update:visible-columns="updateVisibleColumns"
       @move-column="moveVisibleColumn"
@@ -41,11 +40,6 @@
       @restore-columns="restoreDefaultColumns"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
-      @start-batch="openStartBatch"
-      @close-batch="closeActiveBatch"
-      @open-history="openBatchHistory"
-      @open-execution="openExecutionMode"
-      @jump-logs="jumpInventoryLogs"
       @import-file="onImportAssetsFile"
     />
 
@@ -141,10 +135,7 @@
     <AssetInventoryBatchHistoryDrawer
       v-model:visible="batchHistoryVisible"
       kind-label="电脑"
-      :inventory-batch="inventoryBatch"
       :current-summary="inventorySummary"
-      @open-execution="openExecutionMode"
-      @jump-logs="jumpInventoryLogs"
     />
     <AssetInventoryBatchCloseDialog
       v-model:visible="closeBatchVisible"

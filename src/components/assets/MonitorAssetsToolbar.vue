@@ -207,7 +207,6 @@ import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import type { AssetInventorySummary } from '../../types/assets';
-import type { InventoryBatchPayload } from '../../api/inventoryBatches';
 
 const props = defineProps<{
   status: string;
@@ -230,7 +229,6 @@ const props = defineProps<{
   initQrBusy: boolean;
   batchBusy: boolean;
   summary: AssetInventorySummary;
-  inventoryBatch: InventoryBatchPayload;
   hasActiveBatch: boolean;
 }>();
 
@@ -263,11 +261,6 @@ const emit = defineEmits<{
   'restore-columns': [];
   'ensure-location-options': [];
   'download-template': [];
-  'start-batch': [];
-  'close-batch': [];
-  'open-history': [];
-  'open-execution': [];
-  'jump-logs': [];
   'import-file': [unknown];
   'open-create': [];
   'toolbar-more': [string];
