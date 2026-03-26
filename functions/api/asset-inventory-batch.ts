@@ -19,7 +19,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const [active, latest, recent] = await Promise.all([
       getActiveInventoryBatch(env.DB, kind),
       getLatestInventoryBatch(env.DB, kind),
-      listRecentInventoryBatches(env.DB, kind, 6),
+      listRecentInventoryBatches(env.DB, kind, 1),
     ]);
     return Response.json({ ok: true, data: { active, latest, recent } });
   } catch (e: any) {

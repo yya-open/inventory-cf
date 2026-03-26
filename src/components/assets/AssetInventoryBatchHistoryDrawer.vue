@@ -5,14 +5,14 @@
         <div class="history-title-row">
           <div>
             <div class="history-title">当前盘点批次</div>
-            <div class="history-subtle">可查看最近几轮的开启/结束时间与结果汇总。</div>
+            <div class="history-subtle">仅保留上一轮盘点的开启/结束时间与结果汇总。</div>
           </div>
           <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '暂无进行中' }}</el-tag>
         </div>
         <div class="history-name">{{ inventoryBatch.active?.name || inventoryBatch.latest?.name || `暂无${kindLabel}盘点批次` }}</div>
         <div class="history-subtle">
           <template v-if="inventoryBatch.active">开始于 {{ inventoryBatch.active.started_at || '-' }}</template>
-          <template v-else-if="inventoryBatch.latest">最近结束于 {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
+          <template v-else-if="inventoryBatch.latest">上一轮结束于 {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
           <template v-else>建议先开启一轮盘点，再使用扫码页连续执行。</template>
         </div>
         <div class="history-toolbar">
@@ -63,7 +63,7 @@
           </div>
         </div>
       </div>
-      <el-empty v-else description="暂无盘点批次历史" />
+      <el-empty v-else description="暂无上一轮盘点历史" />
     </div>
   </el-drawer>
 </template>

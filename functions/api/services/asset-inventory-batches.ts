@@ -198,18 +198,19 @@ export async function getLatestInventoryBatch(
 export async function listRecentInventoryBatches(
   db: D1Database,
   kind: AssetInventoryKind,
-  limit = 6,
+  limit = 1,
 ) {
   await ensureAssetInventoryBatchSchema(db);
+  const take = Math.max(1, Math.min(5, Number(limit) || 1));
   const result = await db
     .prepare(
       `SELECT *
        FROM asset_inventory_batch
       WHERE kind=?
-      ORDER BY datetime(started_at) DESC, id DESC
-      LIMIT ?`,
+      ORDER BY (CASE WHEN status='ACTIVE' THEN 0 ELSE 1 END), datetime(started_at) DESC, id DESC
+      LIMIT ? OFFSET 1`,
     )
-    .bind(kind, Math.max(1, Math.min(20, Number(limit) || 6)))
+    .bind(kind, take)
     .all<any>();
   return (result.results || [])
     .map(normalizeBatchRow)

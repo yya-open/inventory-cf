@@ -195,17 +195,6 @@
             />
           </div>
         </div>
-        <div class="inventory-batch-row">
-          <div class="batch-summary-card" :class="{ active: Boolean(inventoryBatch.active) }">
-            <span class="summary-label">当前盘点轮次</span>
-            <strong>{{ inventoryBatch.active?.name || inventoryBatch.latest?.name || '未创建盘点批次' }}</strong>
-            <div class="toolbar-subtle batch-card-subtle">
-              <template v-if="inventoryBatch.active">进行中 · 开始于 {{ inventoryBatch.active.started_at || '-' }}</template>
-              <template v-else-if="inventoryBatch.latest">最近一轮已结束 · {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
-              <template v-else>建议切到“显示器盘点记录”页开启新一轮或进入执行模式。</template>
-            </div>
-          </div>
-        </div>
       </div>
     </div>
   </el-card>
@@ -481,10 +470,6 @@ function handleBatchCommand(command: string | number | object) {
 .summary-card.checked strong { color: var(--el-color-success); }
 .summary-card.issue strong { color: var(--el-color-danger); }
 .summary-card.unchecked strong { color: var(--el-color-info); }
-.inventory-batch-row { display:flex; align-items:stretch; gap:12px; margin-top: 12px; flex-wrap: wrap; }
-.batch-summary-card { flex:1; min-width: 260px; border: 1px solid #ebeef5; background: linear-gradient(180deg, #fff 0%, #f7fbff 100%); border-radius: 14px; padding: 12px 14px; display:flex; flex-direction:column; gap:6px; }
-.batch-summary-card.active { border-color: var(--el-color-primary); box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.18); }
-.batch-card-subtle { margin-top: 0; }
 @media (max-width: 1100px) {
   .monitor-toolbar {
     grid-template-columns: 1fr;
@@ -526,9 +511,6 @@ function handleBatchCommand(command: string | number | object) {
   }
   .inventory-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-  .inventory-batch-row {
-    flex-direction: column;
   }
 }
 </style>
