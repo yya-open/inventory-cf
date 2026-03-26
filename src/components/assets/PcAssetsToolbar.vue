@@ -175,22 +175,21 @@
             />
           </div>
         </div>
-      </div>
-    </div>
-
-    <div class="inventory-batch-row">
-      <div class="batch-summary-card" :class="{ active: Boolean(inventoryBatch.active) }">
-        <span class="summary-label">当前盘点轮次</span>
-        <strong>{{ inventoryBatch.active?.name || inventoryBatch.latest?.name || '未创建盘点批次' }}</strong>
-        <div class="toolbar-subtle batch-card-subtle">
-          <template v-if="inventoryBatch.active">进行中 · 开始于 {{ inventoryBatch.active.started_at || '-' }}</template>
-          <template v-else-if="inventoryBatch.latest">最近一轮已结束 · {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
-          <template v-else>建议先开启一轮盘点，再集中扫码核对。</template>
+        <div class="inventory-batch-row">
+          <div class="batch-summary-card" :class="{ active: Boolean(inventoryBatch.active) }">
+            <span class="summary-label">当前盘点轮次</span>
+            <strong>{{ inventoryBatch.active?.name || inventoryBatch.latest?.name || '未创建盘点批次' }}</strong>
+            <div class="toolbar-subtle batch-card-subtle">
+              <template v-if="inventoryBatch.active">进行中 · 开始于 {{ inventoryBatch.active.started_at || '-' }}</template>
+              <template v-else-if="inventoryBatch.latest">最近一轮已结束 · {{ inventoryBatch.latest.closed_at || inventoryBatch.latest.started_at || '-' }}</template>
+              <template v-else>建议先开启一轮盘点，再集中扫码核对。</template>
+            </div>
+          </div>
+          <div v-if="isAdmin" class="inventory-batch-actions">
+            <el-button type="primary" plain :disabled="batchBusy" @click="emit('start-batch')">开启新一轮</el-button>
+            <el-button v-if="inventoryBatch.active" :disabled="batchBusy" @click="emit('close-batch')">结束本轮</el-button>
+          </div>
         </div>
-      </div>
-      <div v-if="isAdmin" class="inventory-batch-actions">
-        <el-button type="primary" plain :disabled="batchBusy" @click="emit('start-batch')">开启新一轮</el-button>
-        <el-button v-if="inventoryBatch.active" :disabled="batchBusy" @click="emit('close-batch')">结束本轮</el-button>
       </div>
     </div>
   </el-card>

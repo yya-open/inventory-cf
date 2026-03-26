@@ -151,7 +151,7 @@ import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { AssetInventorySummary, PcAsset, PcFilters } from '../types/assets';
-import { assetStatusText } from '../types/assets';
+import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { can } from '../store/auth';
@@ -225,6 +225,89 @@ function loadQrCodeLib() {
 function loadExcelUtils() {
   excelUtilsPromise ||= import('../utils/excel');
   return excelUtilsPromise;
+}
+
+function buildBatchExportTimestamp(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}_${hh}${mm}`;
+}
+
+function buildPcBatchExportBaseFilters(): PcFilters {
+  return {
+    status: '',
+    keyword: '',
+    archiveReason: '',
+    archiveMode: 'active',
+    showArchived: false,
+    inventoryStatus: '',
+  };
+}
+
+function mapPcBatchWorkbookRows(rows: PcAsset[]) {
+  return rows.map((row, index) => ({
+    seq: index + 1,
+    brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
+    serial_no: row.serial_no || '-',
+    status: assetStatusText(row.status),
+    inventory_status: inventoryStatusText(row.inventory_status),
+    inventory_at: row.inventory_at || '-',
+    inventory_issue_type: String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE' ? inventoryIssueTypeText(row.inventory_issue_type) : '-',
+    employee_name: row.last_employee_name || '-',
+    employee_no: row.last_employee_no || '-',
+    department: row.last_department || '-',
+    config_date: row.last_config_date || '-',
+    recycle_date: row.last_recycle_date || '-',
+    remark: row.remark || '-',
+  }));
+}
+
+async function exportPcBatchClosingWorkbook(active: NonNullable<InventoryBatchPayload['active']>) {
+  const base = buildPcBatchExportBaseFilters();
+  const [checkedRows, uncheckedRows, issueRows] = await Promise.all([
+    fetchAll({ ...base, inventoryStatus: 'CHECKED_OK' }, 300),
+    fetchAll({ ...base, inventoryStatus: 'UNCHECKED' }, 300),
+    fetchAll({ ...base, inventoryStatus: 'CHECKED_ISSUE' }, 300),
+  ]);
+  const { exportWorkbookXlsx } = await loadExcelUtils();
+  const filename = `${String(active.name || '电脑盘点').replace(/[\/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
+  const summaryRows = [
+    { 项目: '盘点批次', 内容: active.name || '-' },
+    { 项目: '开始时间', 内容: active.started_at || '-' },
+    { 项目: '导出时间', 内容: formatBeijingDateTime(new Date().toISOString()) },
+    { 项目: '已盘', 内容: checkedRows.length },
+    { 项目: '未盘', 内容: uncheckedRows.length },
+    { 项目: '异常', 内容: issueRows.length },
+    { 项目: '设备总数', 内容: checkedRows.length + uncheckedRows.length + issueRows.length },
+  ];
+  const sheetHeaders = [
+    { key: 'seq', title: '序号' },
+    { key: 'brand_model', title: '电脑' },
+    { key: 'serial_no', title: 'SN' },
+    { key: 'status', title: '业务状态' },
+    { key: 'inventory_status', title: '盘点状态' },
+    { key: 'inventory_at', title: '盘点时间' },
+    { key: 'inventory_issue_type', title: '异常类型' },
+    { key: 'employee_name', title: '当前领用人' },
+    { key: 'employee_no', title: '工号' },
+    { key: 'department', title: '部门' },
+    { key: 'config_date', title: '配置日期' },
+    { key: 'recycle_date', title: '回收日期' },
+    { key: 'remark', title: '备注' },
+  ];
+  await exportWorkbookXlsx({
+    filename,
+    sheets: [
+      { sheetName: '汇总', rows: summaryRows },
+      { sheetName: '已盘', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(checkedRows) },
+      { sheetName: '未盘', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(uncheckedRows) },
+      { sheetName: '异常', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(issueRows) },
+    ],
+  });
+  return { filename, checked: checkedRows.length, unchecked: uncheckedRows.length, issue: issueRows.length };
 }
 
 function loadAssetLedgerExportActions() {
@@ -1233,14 +1316,15 @@ async function closeActiveBatch() {
   const active = inventoryBatch.value.active;
   if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
   try {
-    await ElMessageBox.confirm(`确认结束本轮电脑盘点：${active.name}？结束后仍会保留本轮结果，直到你开启下一轮。`, '结束盘点批次', {
+    await ElMessageBox.confirm(`确认结束本轮电脑盘点：${active.name}？结束时会自动导出“已盘 / 未盘 / 异常”Excel结果表，方便你直接复核。`, '结束盘点批次', {
       type: 'warning',
       confirmButtonText: '结束本轮',
       cancelButtonText: '取消',
     });
     batchBusy.value = true;
+    const exported = await exportPcBatchClosingWorkbook(active);
     const result: any = await closeInventoryBatch('pc', active.id);
-    ElMessage.success(result?.message || '本轮盘点已结束');
+    ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
     await refreshInventoryBatch();
   } catch (error: any) {
     if (error === 'cancel' || error === 'close') return;

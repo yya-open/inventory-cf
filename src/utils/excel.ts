@@ -108,3 +108,56 @@ export function exportTemplateItems() {
     sheetName: 'items',
   });
 }
+
+
+export async function exportWorkbookXlsx(options: {
+  filename: string;
+  sheets: Array<{
+    sheetName: string;
+    headers?: OrderedHeader[];
+    rows: any[];
+  }>;
+}) {
+  const XLSX = await loadXlsx();
+  const { filename, sheets } = options;
+  const wb = XLSX.utils.book_new();
+  const usedNames = new Set<string>();
+
+  function normalizeSheetName(name: string, index: number) {
+    let base = String(name || `Sheet${index + 1}`).trim() || `Sheet${index + 1}`;
+    base = base.slice(0, 31);
+    let candidate = base;
+    let counter = 2;
+    while (usedNames.has(candidate)) {
+      const suffix = `_${counter}`;
+      candidate = `${base.slice(0, Math.max(1, 31 - suffix.length))}${suffix}`;
+      counter += 1;
+    }
+    usedNames.add(candidate);
+    return candidate;
+  }
+
+  const normalizedSheets = Array.isArray(sheets) && sheets.length
+    ? sheets
+    : [{ sheetName: 'Sheet1', rows: [], headers: [] as OrderedHeader[] }];
+
+  normalizedSheets.forEach((sheet, index) => {
+    const headers = Array.isArray(sheet.headers) ? sheet.headers : [];
+    const rows = Array.isArray(sheet.rows) ? sheet.rows : [];
+    const data = headers.length
+      ? rows.map((row) => {
+          const mapped: Record<string, any> = {};
+          headers.forEach((header) => {
+            mapped[header.title] = row?.[header.key] ?? '';
+          });
+          return mapped;
+        })
+      : rows;
+    const ws = headers.length
+      ? XLSX.utils.json_to_sheet(data, { header: headers.map((header) => header.title) })
+      : XLSX.utils.json_to_sheet(data);
+    XLSX.utils.book_append_sheet(wb, ws, normalizeSheetName(sheet.sheetName, index));
+  });
+
+  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+}
