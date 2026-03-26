@@ -72,6 +72,8 @@
         </div>
       </el-card>
 
+      <PublicInventoryRecentResultCard :record="recentResult" />
+
       <div v-if="loading" style="padding:18px 0">
         <el-skeleton :rows="6" animated />
       </div>
@@ -157,6 +159,7 @@
 import { ElDescriptions, ElDescriptionsItem, ElSegmented } from 'element-plus';
 import { ElSkeleton } from 'element-plus';
 import { usePublicInventoryPage } from '../composables/usePublicInventoryPage';
+import PublicInventoryRecentResultCard from '../components/PublicInventoryRecentResultCard.vue';
 
 const issueOptions = [
   { label: '不在位', value: 'NOT_FOUND' },
@@ -191,6 +194,7 @@ const {
   clearRetry,
   pendingQueue,
   flushingQueue,
+  recentResult,
   scanModeOptions,
   nextInputPlaceholder,
   scannerTip,

@@ -8,6 +8,15 @@ type PublicInventoryKind = 'pc' | 'monitor';
 type NextSource = 'manual' | 'scanner' | 'camera';
 type RetryAction = null | 'refresh' | 'ok' | 'issue';
 type SubmitPayload = { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string };
+export type PublicInventoryRecentResult = {
+  action: 'OK' | 'ISSUE';
+  issue_type?: string | null;
+  remark?: string | null;
+  created_at: string;
+  source: 'success' | 'duplicate';
+  target_label: string;
+  message?: string | null;
+};
 
 export function usePublicInventoryPage(options: {
   kind: PublicInventoryKind;
@@ -42,6 +51,7 @@ export function usePublicInventoryPage(options: {
   const retryAction = ref<RetryAction>(null);
   const pendingQueue = ref<PendingPublicSubmission[]>([]);
   const flushingQueue = ref(false);
+  const recentResult = ref<PublicInventoryRecentResult | null>(null);
   const scanModeOptions = computed(() => ([
     { label: '手动', value: 'manual' },
     { label: '扫码枪', value: 'scanner' },
@@ -74,6 +84,7 @@ export function usePublicInventoryPage(options: {
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
   const cooldownStorageKey = `inventory-public-submit-cooldown:${options.kind}`;
+  const recentResultStorageKey = `inventory-public-last-result:${options.kind}`;
   const cameraSupported = ref(typeof window !== 'undefined' ? typeof (window as any).BarcodeDetector === 'function' && !!navigator.mediaDevices?.getUserMedia : false);
   const cameraActive = ref(false);
   const cameraStarting = ref(false);
@@ -152,6 +163,59 @@ export function usePublicInventoryPage(options: {
   function recentLabel(item: string) {
     const q = new URLSearchParams(item);
     return q.get('id') || q.get('token')?.slice(0, 12) || item.slice(0, 14);
+  }
+
+  function formatRecentResultTime(value?: string | null) {
+    if (value) return String(value);
+    try {
+      return new Intl.DateTimeFormat('zh-CN', {
+        timeZone: 'Asia/Shanghai',
+        year: 'numeric', month: '2-digit', day: '2-digit',
+        hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+      }).format(new Date()).replace(/\//g, '-');
+    } catch {
+      return new Date().toLocaleString();
+    }
+  }
+
+  function buildCurrentTargetLabel() {
+    if (options.kind === 'pc') {
+      const title = [row.value?.brand, row.value?.model].filter(Boolean).join(' ') || '电脑';
+      return `${title} · SN ${row.value?.serial_no || '-'}`;
+    }
+    const title = [row.value?.brand, row.value?.model].filter(Boolean).join(' ') || '显示器';
+    return `${title} · ${row.value?.asset_code || row.value?.sn || '-'}`;
+  }
+
+  function loadRecentResult() {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem(recentResultStorageKey);
+      recentResult.value = raw ? JSON.parse(raw) : null;
+    } catch {
+      recentResult.value = null;
+    }
+  }
+
+  function saveRecentResult(record: PublicInventoryRecentResult) {
+    recentResult.value = record;
+    if (typeof window === 'undefined') return;
+    try {
+      window.sessionStorage.setItem(recentResultStorageKey, JSON.stringify(record));
+    } catch {}
+  }
+
+  function rememberRecentResult(payload: SubmitPayload | { action: string; issue_type?: string | null; remark?: string | null }, source: 'success' | 'duplicate', message?: string | null, createdAt?: string | null) {
+    const action = String(payload?.action || '').toUpperCase() === 'ISSUE' ? 'ISSUE' : 'OK';
+    saveRecentResult({
+      action,
+      issue_type: payload?.issue_type ? String(payload.issue_type).toUpperCase() : null,
+      remark: payload?.remark ? String(payload.remark) : null,
+      created_at: formatRecentResultTime(createdAt),
+      source,
+      target_label: buildCurrentTargetLabel(),
+      message: message || null,
+    });
   }
 
   function clearRetry() {
@@ -359,7 +423,8 @@ export function usePublicInventoryPage(options: {
     return '';
   }
 
-  async function onSubmitSuccess(message: string) {
+  async function onSubmitSuccess(message: string, payload: SubmitPayload) {
+    rememberRecentResult(payload, 'success', message);
     ElMessage.success(message);
     triggerSuccessVibration(settings.value.public_inventory_auto_vibrate);
     startCooldown(settings.value.public_inventory_cooldown_seconds);
@@ -422,10 +487,13 @@ export function usePublicInventoryPage(options: {
       }
       if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
       submittingOk.value = true;
-      await sendInventoryPayload(undefined, { action: 'OK' });
-      await onSubmitSuccess('已记录：盘点通过');
+      const payload = { action: 'OK' } as const;
+      await sendInventoryPayload(undefined, payload);
+      await onSubmitSuccess('已记录：盘点通过', payload);
     } catch (err: any) {
       if (Number(err?.status || 0) === 409) {
+        const existing = err?.response?.data || null;
+        if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
         ElMessage.warning(err?.message || '该设备当前不可提交盘点结果，请稍后重试。');
         return;
       }
@@ -450,12 +518,15 @@ export function usePublicInventoryPage(options: {
       if (!inventoryApiUrl()) throw new Error('缺少二维码参数');
       if (!issueForm.value.issue_type) throw new Error('请选择异常类型');
       submittingIssue.value = true;
-      await sendInventoryPayload(undefined, { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark });
+      const payload = { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark } as const;
+      await sendInventoryPayload(undefined, payload);
       issueVisible.value = false;
       issueForm.value = { issue_type: '', remark: '' };
-      await onSubmitSuccess('已提交：异常');
+      await onSubmitSuccess('已提交：异常', payload);
     } catch (err: any) {
       if (Number(err?.status || 0) === 409) {
+        const existing = err?.response?.data || null;
+        if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
         ElMessage.warning(err?.message || '该设备当前不可提交异常，请稍后重试。');
         return;
       }
@@ -511,6 +582,7 @@ export function usePublicInventoryPage(options: {
 
   onMounted(async () => {
     await loadPublicConfig();
+    loadRecentResult();
     recentTargets.value = loadRecentPublicTargets(options.kind);
     refreshPendingQueue();
     await refresh();
@@ -537,7 +609,7 @@ export function usePublicInventoryPage(options: {
   return {
     settings, loading, error, row, id, key, token, submittingOk, submittingIssue, issueVisible, issueForm, cooldownLeft,
     viewportWidth, descColumns, isMobile, continuousMode, scanMode, nextInput, nextInputRef, cameraVideoRef, recentTargets,
-    weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, scanModeOptions, nextInputPlaceholder, scannerTip,
+    weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, recentResult, scanModeOptions, nextInputPlaceholder, scannerTip,
     waitingForScan, inventoryReady, inventoryDisabledReason, actionDisabled,
     cameraSupported, cameraActive, cameraStarting, cameraError, toggleCamera, retryCamera, recentLabel, refresh, openRecent,
     goNextFromInput, submitOk, submitIssue, openIssueDialog, retryLast, flushPendingQueue, clearRetry,

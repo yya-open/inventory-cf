@@ -53,25 +53,21 @@
       </div>
     </el-card>
 
-    <el-card shadow="never" class="inventory-batch-page-card" style="margin-bottom: 12px">
-      <div class="inventory-batch-page-grid">
-        <div ref="batchSectionRef" class="inventory-batch-page-main">
-          <AssetInventoryBatchInlinePanel kind-label="电脑" :inventory-batch="inventoryBatch" :current-summary="inventorySummary" :current-issue-breakdown="inventoryIssueBreakdown" />
-        </div>
-        <div class="inventory-batch-page-side">
-          <AssetInventoryBatchActionMenu
-            :busy="batchBusy"
-            :is-admin="isAdmin"
-            :active="Boolean(inventoryBatch.active?.id)"
-            @start-batch="openStartBatch"
-            @close-batch="closeActiveBatch"
-            @open-execution="openExecutionMode"
-            @open-history="scrollToBatchHistory"
-            @jump-logs="scrollToLogs"
-          />
-        </div>
-      </div>
-    </el-card>
+    <div ref="batchSectionRef" style="margin-bottom: 12px">
+      <AssetInventoryBatchPageSection
+        kind-label="电脑"
+        :inventory-batch="inventoryBatch"
+        :current-summary="inventorySummary"
+        :current-issue-breakdown="inventoryIssueBreakdown"
+        :busy="batchBusy"
+        :is-admin="isAdmin"
+        @start-batch="openStartBatch"
+        @close-batch="closeActiveBatch"
+        @open-execution="openExecutionMode"
+        @open-history="scrollToBatchHistory"
+        @jump-logs="scrollToLogs"
+      />
+    </div>
 
     <el-card ref="logsSectionRef" shadow="never">
       <LazyMountBlock title="正在装载电脑盘点记录…" min-height="360px">
@@ -164,8 +160,7 @@ import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiDownload, apiGet, apiPost } from '../api/client';
 import { can } from '../store/auth';
 import LazyMountBlock from '../components/LazyMountBlock.vue';
-import AssetInventoryBatchInlinePanel from '../components/assets/AssetInventoryBatchInlinePanel.vue';
-import AssetInventoryBatchActionMenu from '../components/assets/AssetInventoryBatchActionMenu.vue';
+import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryBatchPageSection.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
@@ -611,17 +606,3 @@ onMounted(() => {
 });
 </script>
 
-<style scoped>
-.inventory-batch-page-card { overflow: hidden; }
-.inventory-batch-page-grid {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) 240px;
-  gap: 16px;
-  align-items: start;
-}
-.inventory-batch-page-main,
-.inventory-batch-page-side { min-width: 0; }
-@media (max-width: 960px) {
-  .inventory-batch-page-grid { grid-template-columns: 1fr; }
-}
-</style>
