@@ -168,5 +168,10 @@
     "id": "202603260010_asset_inventory_batch_summary",
     "file": "sql/migrate_asset_inventory_batch_summary.sql",
     "description": "asset inventory batch closure summaries and operator history metadata"
+  },
+  {
+    "id": "202603260020_asset_inventory_batch_issue_breakdown",
+    "file": "sql/migrate_asset_inventory_batch_issue_breakdown.sql",
+    "description": "asset inventory batch issue breakdown summaries for retained history"
   }
 ]

@@ -11,6 +11,22 @@ export type MonitorAsset = Record<string, any>;
 export type LocationRow = { id: number; name: string; parent_id: number | null; enabled: number; created_at?: string };
 export type AssetInventorySummary = { unchecked: number; checked_ok: number; checked_issue: number; total: number };
 
+export type InventoryIssueCode = 'NOT_FOUND' | 'WRONG_LOCATION' | 'WRONG_QR' | 'WRONG_STATUS' | 'MISSING' | 'OTHER';
+export type InventoryIssueBreakdown = Record<InventoryIssueCode, number>;
+
+export const INVENTORY_ISSUE_CODES: InventoryIssueCode[] = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'];
+
+export function emptyInventoryIssueBreakdown(): InventoryIssueBreakdown {
+  return {
+    NOT_FOUND: 0,
+    WRONG_LOCATION: 0,
+    WRONG_QR: 0,
+    WRONG_STATUS: 0,
+    MISSING: 0,
+    OTHER: 0,
+  };
+}
+
 export function assetStatusText(status: AssetStatus): string {
   switch (String(status || '')) {
     case 'IN_STOCK':

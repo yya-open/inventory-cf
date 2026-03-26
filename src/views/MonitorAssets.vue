@@ -188,6 +188,7 @@
     <AssetInventoryBatchHistoryDrawer
       v-model:visible="batchHistoryVisible"
       kind-label="显示器"
+      :inventory-batch="inventoryBatch"
       :current-summary="inventorySummary"
     />
     <AssetInventoryBatchCloseDialog
@@ -195,6 +196,7 @@
       kind-label="显示器"
       :batch="inventoryBatch.active"
       :summary="batchClosingSummary"
+      :issue-breakdown="emptyIssueBreakdownState"
       :loading="batchBusy"
       @confirm="confirmCloseActiveBatch"
     />
@@ -216,7 +218,7 @@ import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { can } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
-import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
+import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
@@ -257,6 +259,7 @@ const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.acti
 const batchHistoryVisible = ref(false);
 const closeBatchVisible = ref(false);
 const batchClosingSummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
+const emptyIssueBreakdownState = emptyInventoryIssueBreakdown();
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
 

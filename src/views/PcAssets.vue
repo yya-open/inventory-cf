@@ -135,6 +135,7 @@
     <AssetInventoryBatchHistoryDrawer
       v-model:visible="batchHistoryVisible"
       kind-label="电脑"
+      :inventory-batch="inventoryBatch"
       :current-summary="inventorySummary"
     />
     <AssetInventoryBatchCloseDialog
@@ -142,6 +143,7 @@
       kind-label="电脑"
       :batch="inventoryBatch.active"
       :summary="batchClosingSummary"
+      :issue-breakdown="emptyIssueBreakdownState"
       :loading="batchBusy"
       @confirm="confirmCloseActiveBatch"
     />
@@ -161,7 +163,7 @@ import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import type { AssetInventorySummary, PcAsset, PcFilters } from '../types/assets';
-import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
+import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { can } from '../store/auth';
@@ -198,6 +200,7 @@ const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.acti
 const batchHistoryVisible = ref(false);
 const closeBatchVisible = ref(false);
 const batchClosingSummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
+const emptyIssueBreakdownState = emptyInventoryIssueBreakdown();
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
 

@@ -56,7 +56,7 @@
     <el-card shadow="never" class="inventory-batch-page-card" style="margin-bottom: 12px">
       <div class="inventory-batch-page-grid">
         <div ref="batchSectionRef" class="inventory-batch-page-main">
-          <AssetInventoryBatchInlinePanel kind-label="显示器" :inventory-batch="inventoryBatch" :current-summary="inventorySummary" />
+          <AssetInventoryBatchInlinePanel kind-label="显示器" :inventory-batch="inventoryBatch" :current-summary="inventorySummary" :current-issue-breakdown="inventoryIssueBreakdown" />
         </div>
         <div class="inventory-batch-page-side">
           <AssetInventoryBatchActionMenu
@@ -140,8 +140,18 @@
       kind-label="显示器"
       :batch="inventoryBatch.active"
       :summary="batchClosingSummary"
+      :issue-breakdown="batchClosingIssueBreakdown"
       :loading="batchBusy"
       @confirm="confirmCloseActiveBatch"
+    />
+
+    <AssetInventoryBatchStartDialog
+      v-model:visible="startBatchVisible"
+      kind-label="显示器"
+      :suggested-name="startBatchSuggestedName"
+      :loading="batchBusy"
+      :preview="startBatchPreview"
+      @confirm="confirmStartBatch"
     />
   </div>
 </template>
@@ -156,12 +166,14 @@ import LazyMountBlock from '../components/LazyMountBlock.vue';
 import AssetInventoryBatchInlinePanel from '../components/assets/AssetInventoryBatchInlinePanel.vue';
 import AssetInventoryBatchActionMenu from '../components/assets/AssetInventoryBatchActionMenu.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
+import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { exportInventoryLogsBeforeBatch } from '../utils/inventoryBatchExport';
 import { countMonitorAssets, fetchAllPages, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
-import type { AssetInventorySummary, MonitorAsset, MonitorFilters } from '../types/assets';
-import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
+import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorAsset, MonitorFilters } from '../types/assets';
+import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
+import { buildSuggestedInventoryBatchName } from '../utils/inventoryBatchNaming';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -197,7 +209,12 @@ const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, 
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
 const closeBatchVisible = ref(false);
+const startBatchVisible = ref(false);
+const startBatchSuggestedName = ref('');
+const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, unchecked: 0, logTotal: 0, activeName: '' });
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
+const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
+const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchSectionRef = ref<HTMLElement | null>(null);
 const logsSectionRef = ref<any>(null);
 
@@ -285,14 +302,26 @@ async function load() {
   }
 }
 
+async function loadMonitorIssueBreakdown() {
+  const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
+  const result = await Promise.all(
+    codes.map((code) => apiGet(`/api/monitor-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
+  );
+  const next = emptyInventoryIssueBreakdown();
+  for (const [code, value] of result) next[code] = value;
+  return next;
+}
+
 async function refreshInventoryBatchAndSummary() {
   try {
-    const [batch, summary] = await Promise.all([
+    const [batch, summary, issueBreakdown] = await Promise.all([
       fetchInventoryBatch('monitor'),
       getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters()),
+      loadMonitorIssueBreakdown(),
     ]);
     inventoryBatch.value = batch;
     inventorySummary.value = summary;
+    inventoryIssueBreakdown.value = issueBreakdown;
   } catch (error) {
     console.warn('monitor inventory batch refresh failed', error);
   }
@@ -460,18 +489,35 @@ async function exportMonitorBatchClosingWorkbook(active: NonNullable<InventoryBa
 async function openStartBatch() {
   if (!isAdmin.value) return;
   try {
-    const defaultName = `显示器盘点 ${new Date().toISOString().slice(0, 10)}`;
-    const { value } = await ElMessageBox.prompt('请输入本轮显示器盘点名称。开启后会自动导出并清空显示器盘点记录页中的现有记录，同时将台账盘点状态整体重置为“未盘”。', '开启新一轮盘点', {
-      confirmButtonText: '开启',
-      cancelButtonText: '取消',
-      inputValue: defaultName,
-      inputPattern: /.+/,
-      inputErrorMessage: '请输入批次名称',
-    });
+    batchBusy.value = true;
+    const [assetTotal, logResult] = await Promise.all([
+      countMonitorAssets({ status: '', locationId: '', keyword: '', archiveReason: '', archiveMode: 'all', showArchived: true, inventoryStatus: '' }),
+      apiGet('/api/monitor-inventory-log-count') as Promise<any>,
+    ]);
+    startBatchPreview.value = {
+      assetTotal: Number(assetTotal || 0),
+      checkedOk: Number(inventorySummary.value.checked_ok || 0),
+      checkedIssue: Number(inventorySummary.value.checked_issue || 0),
+      unchecked: Number(inventorySummary.value.unchecked || 0),
+      logTotal: Number(logResult?.total || 0),
+      activeName: inventoryBatch.value.active?.name || '',
+    };
+    startBatchSuggestedName.value = buildSuggestedInventoryBatchName('monitor', [inventoryBatch.value.active?.name, inventoryBatch.value.latest?.name, ...(inventoryBatch.value.recent || []).map((item) => item?.name)]);
+    startBatchVisible.value = true;
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载开启盘点预览失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function confirmStartBatch(name: string) {
+  try {
     batchBusy.value = true;
     await exportInventoryLogsBeforeBatch('monitor');
-    const result: any = await startInventoryBatch('monitor', String(value || defaultName), { clearPreviousLogs: true });
+    const result: any = await startInventoryBatch('monitor', String(name || startBatchSuggestedName.value), { clearPreviousLogs: true });
     const cleared = Number(result?.cleanup?.deleted || 0);
+    startBatchVisible.value = false;
     const successMessage = cleared > 0
       ? `已自动导出并清空 ${cleared} 条显示器盘点记录，${result?.message || '已开启新一轮盘点'}`
       : (result?.message || '已开启新一轮盘点');
@@ -479,7 +525,6 @@ async function openStartBatch() {
     totalCache.clear();
     await Promise.all([load(), refreshInventoryBatchAndSummary()]);
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '开启盘点批次失败');
   } finally {
     batchBusy.value = false;
@@ -521,7 +566,9 @@ async function closeActiveBatch() {
   if (!active?.id) return ElMessage.warning('当前没有进行中的显示器盘点批次');
   try {
     batchBusy.value = true;
-    batchClosingSummary.value = await loadMonitorBatchClosingSummary();
+    const [summary, issueBreakdown] = await Promise.all([loadMonitorBatchClosingSummary(), loadMonitorIssueBreakdown()]);
+    batchClosingSummary.value = summary;
+    batchClosingIssueBreakdown.value = issueBreakdown;
     closeBatchVisible.value = true;
   } catch (error: any) {
     ElMessage.error(error?.message || '加载结案预览失败');

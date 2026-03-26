@@ -2,6 +2,15 @@ import { sqlNowStored } from "../_time";
 
 export type AssetInventoryKind = "pc" | "monitor";
 export type AssetInventoryBatchStatus = "ACTIVE" | "CLOSED";
+export type AssetInventoryIssueBreakdown = {
+  NOT_FOUND: number;
+  WRONG_LOCATION: number;
+  WRONG_QR: number;
+  WRONG_STATUS: number;
+  MISSING: number;
+  OTHER: number;
+};
+
 export type AssetInventoryBatchRow = {
   id: number;
   kind: AssetInventoryKind;
@@ -15,6 +24,7 @@ export type AssetInventoryBatchRow = {
   summary_checked_ok: number;
   summary_checked_issue: number;
   summary_unchecked: number;
+  summary_issue_breakdown: AssetInventoryIssueBreakdown | null;
   updated_at: string | null;
 };
 
@@ -25,6 +35,63 @@ const KIND_CONFIG: Record<
   pc: { assetTable: "pc_assets", logTable: "pc_inventory_log" },
   monitor: { assetTable: "monitor_assets", logTable: "monitor_inventory_log" },
 };
+
+const ISSUE_CODES = ["NOT_FOUND", "WRONG_LOCATION", "WRONG_QR", "WRONG_STATUS", "MISSING", "OTHER"] as const;
+
+function emptyIssueBreakdown(): AssetInventoryIssueBreakdown {
+  return {
+    NOT_FOUND: 0,
+    WRONG_LOCATION: 0,
+    WRONG_QR: 0,
+    WRONG_STATUS: 0,
+    MISSING: 0,
+    OTHER: 0,
+  };
+}
+
+function normalizeIssueBreakdown(input: any): AssetInventoryIssueBreakdown | null {
+  if (!input) return null;
+  let source = input;
+  if (typeof input === 'string') {
+    try {
+      source = JSON.parse(input);
+    } catch {
+      return null;
+    }
+  }
+  const base = emptyIssueBreakdown();
+  let hasValue = false;
+  for (const code of ISSUE_CODES) {
+    const value = Number(source?.[code] || 0);
+    base[code] = Number.isFinite(value) ? value : 0;
+    if (base[code] > 0) hasValue = true;
+  }
+  return hasValue ? base : base;
+}
+
+function todaySqlDate() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseBatchNameDateSeq(name: string | null | undefined) {
+  const text = String(name || '').trim();
+  const dateMatch = text.match(/(\d{4}-\d{2}-\d{2})/);
+  if (!dateMatch) return null;
+  const seqMatch = text.match(/第\s*(\d+)\s*轮/);
+  return { date: dateMatch[1], seq: seqMatch ? Math.max(1, Number(seqMatch[1]) || 1) : 1 };
+}
+
+async function buildDefaultBatchName(db: D1Database, kind: AssetInventoryKind) {
+  const latest = await db
+    .prepare(`SELECT name FROM asset_inventory_batch WHERE kind=? ORDER BY datetime(started_at) DESC, id DESC LIMIT 1`)
+    .bind(kind)
+    .first<any>();
+  const label = kind === 'pc' ? '电脑' : '显示器';
+  const dateText = todaySqlDate();
+  const parsed = parseBatchNameDateSeq(latest?.name);
+  const nextSeq = parsed?.date === dateText ? parsed.seq + 1 : 1;
+  return `${label}盘点 ${dateText} 第${nextSeq}轮`;
+}
 
 export async function clearInventoryLogsForNewBatch(
   db: D1Database,
@@ -60,6 +127,7 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
         summary_checked_ok INTEGER NOT NULL DEFAULT 0,
         summary_checked_issue INTEGER NOT NULL DEFAULT 0,
         summary_unchecked INTEGER NOT NULL DEFAULT 0,
+        summary_issue_breakdown TEXT,
         updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
       )`,
       )
@@ -76,6 +144,7 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_checked_ok INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_checked_issue INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_unchecked INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_issue_breakdown TEXT`,
       `ALTER TABLE pc_assets ADD COLUMN inventory_batch_id INTEGER`,
       `ALTER TABLE monitor_assets ADD COLUMN inventory_batch_id INTEGER`,
       `ALTER TABLE pc_inventory_log ADD COLUMN batch_id INTEGER`,
@@ -129,6 +198,7 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
     summary_checked_ok: Number(row.summary_checked_ok || 0),
     summary_checked_issue: Number(row.summary_checked_issue || 0),
     summary_unchecked: Number(row.summary_unchecked || 0),
+    summary_issue_breakdown: normalizeIssueBreakdown(row.summary_issue_breakdown),
     updated_at: row.updated_at ? String(row.updated_at) : null,
   };
 }
@@ -157,6 +227,49 @@ async function getInventoryBatchSummaryForAssets(
     checked_issue: Number(row?.checked_issue || 0),
     unchecked: Number(row?.unchecked || 0),
   };
+}
+
+async function getInventoryIssueBreakdownForBatchLogs(
+  db: D1Database,
+  kind: AssetInventoryKind,
+  batchId: number,
+) {
+  const cfg = KIND_CONFIG[kind];
+  const result = await db
+    .prepare(
+      `SELECT UPPER(COALESCE(issue_type, 'OTHER')) AS issue_type, COUNT(1) AS total
+         FROM ${cfg.logTable}
+        WHERE batch_id=? AND UPPER(COALESCE(action,''))='ISSUE'
+        GROUP BY UPPER(COALESCE(issue_type, 'OTHER'))`,
+    )
+    .bind(batchId)
+    .all<any>();
+  const breakdown = emptyIssueBreakdown();
+  for (const row of result.results || []) {
+    const key = String(row?.issue_type || 'OTHER').toUpperCase();
+    const target = ISSUE_CODES.includes(key as any) ? key : 'OTHER';
+    breakdown[target as keyof AssetInventoryIssueBreakdown] = Number(row?.total || 0);
+  }
+  return breakdown;
+}
+
+async function pruneInventoryBatchHistory(
+  db: D1Database,
+  kind: AssetInventoryKind,
+) {
+  await db
+    .prepare(
+      `DELETE FROM asset_inventory_batch
+        WHERE kind=?
+          AND id NOT IN (
+            SELECT id FROM asset_inventory_batch
+             WHERE kind=?
+             ORDER BY (CASE WHEN status='ACTIVE' THEN 0 ELSE 1 END), datetime(started_at) DESC, id DESC
+             LIMIT 2
+          )`,
+    )
+    .bind(kind, kind)
+    .run();
 }
 
 export async function getActiveInventoryBatch(
@@ -242,9 +355,7 @@ export async function startInventoryBatch(
 ) {
   await ensureAssetInventoryBatchSchema(db);
   const cfg = KIND_CONFIG[kind];
-  const normalizedName =
-    String(name || "").trim() ||
-    `${kind === "pc" ? "电脑" : "显示器"}盘点批次 ${new Date().toISOString().slice(0, 10)}`;
+  const normalizedName = String(name || '').trim() || await buildDefaultBatchName(db, kind);
   const existingActive = await getActiveInventoryBatch(db, kind);
   if (existingActive?.id) {
     await closeInventoryBatch(db, kind, createdBy, existingActive.id);
@@ -275,6 +386,7 @@ export async function startInventoryBatch(
     .bind(batchId)
     .run();
 
+  await pruneInventoryBatchHistory(db, kind);
   return getActiveInventoryBatch(db, kind);
 }
 
@@ -306,6 +418,7 @@ export async function closeInventoryBatch(
     kind,
     normalized.id,
   );
+  const issueBreakdown = await getInventoryIssueBreakdownForBatchLogs(db, kind, normalized.id);
   await db
     .prepare(
       `UPDATE asset_inventory_batch
@@ -316,6 +429,7 @@ export async function closeInventoryBatch(
             summary_checked_ok=?,
             summary_checked_issue=?,
             summary_unchecked=?,
+            summary_issue_breakdown=?,
             updated_at=${sqlNowStored()}
       WHERE kind=? AND id=?`,
     )
@@ -325,9 +439,11 @@ export async function closeInventoryBatch(
       summary.checked_ok,
       summary.checked_issue,
       summary.unchecked,
+      JSON.stringify(issueBreakdown),
       kind,
       normalized.id,
     )
     .run();
+  await pruneInventoryBatchHistory(db, kind);
   return getLatestInventoryBatch(db, kind);
 }

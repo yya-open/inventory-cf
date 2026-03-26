@@ -1,10 +1,10 @@
 <template>
-  <el-dialog :model-value="visible" :title="`结束${kindLabel}盘点`" width="560px" destroy-on-close @close="emit('update:visible', false)">
+  <el-dialog :model-value="visible" :title="`结束${kindLabel}盘点`" width="620px" destroy-on-close @close="emit('update:visible', false)">
     <div class="close-wrap">
       <div class="close-card intro">
         <div class="close-title">结案确认</div>
         <div class="close-name">{{ batch?.name || `当前${kindLabel}盘点批次` }}</div>
-        <div class="close-subtle">结束本轮时会自动导出一份 Excel（汇总 / 已盘 / 未盘 / 异常），便于后续复核。</div>
+        <div class="close-subtle">结束本轮时会自动导出一份 Excel（汇总 / 已盘 / 未盘 / 异常），并把异常继续拆成具体类型，方便后续复核。</div>
       </div>
       <div class="close-card">
         <div class="close-title">结案预览</div>
@@ -26,7 +26,8 @@
             <strong>{{ summary.unchecked }}</strong>
           </div>
         </div>
-        <div class="close-subtle">建议先确认异常与未盘数量是否合理，再执行“导出并结束本轮”。</div>
+        <AssetInventoryIssueBreakdownPanel :breakdown="issueBreakdown" />
+        <div class="close-subtle">建议先确认异常类型分布是否合理，再执行“导出并结束本轮”。</div>
       </div>
     </div>
     <template #footer>
@@ -38,13 +39,15 @@
 
 <script setup lang="ts">
 import type { InventoryBatchRow } from '../../api/inventoryBatches';
-import type { AssetInventorySummary } from '../../types/assets';
+import type { AssetInventorySummary, InventoryIssueBreakdown } from '../../types/assets';
+import AssetInventoryIssueBreakdownPanel from './AssetInventoryIssueBreakdownPanel.vue';
 
 defineProps<{
   visible: boolean;
   kindLabel: string;
   batch: InventoryBatchRow | null;
   summary: AssetInventorySummary;
+  issueBreakdown: InventoryIssueBreakdown;
   loading: boolean;
 }>();
 

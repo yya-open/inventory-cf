@@ -1,4 +1,5 @@
 import { apiGet, apiPost } from './client';
+import type { InventoryIssueBreakdown } from '../types/assets';
 
 export type InventoryBatchKind = 'pc' | 'monitor';
 export type InventoryBatchStatus = 'ACTIVE' | 'CLOSED';
@@ -16,6 +17,7 @@ export type InventoryBatchRow = {
   summary_checked_ok?: number;
   summary_checked_issue?: number;
   summary_unchecked?: number;
+  summary_issue_breakdown?: InventoryIssueBreakdown | null;
   updated_at?: string | null;
 };
 
