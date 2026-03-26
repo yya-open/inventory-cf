@@ -43,6 +43,9 @@
       @download-template="downloadAssetTemplate"
       @start-batch="openStartBatch"
       @close-batch="closeActiveBatch"
+      @open-history="openBatchHistory"
+      @open-execution="openExecutionMode"
+      @jump-logs="jumpInventoryLogs"
       @import-file="onImportAssetsFile"
     />
 
@@ -135,6 +138,22 @@
       kind-label="电脑"
       @submit="submitQrPrintTemplate"
     />
+    <AssetInventoryBatchHistoryDrawer
+      v-model:visible="batchHistoryVisible"
+      kind-label="电脑"
+      :inventory-batch="inventoryBatch"
+      :current-summary="inventorySummary"
+      @open-execution="openExecutionMode"
+      @jump-logs="jumpInventoryLogs"
+    />
+    <AssetInventoryBatchCloseDialog
+      v-model:visible="closeBatchVisible"
+      kind-label="电脑"
+      :batch="inventoryBatch.active"
+      :summary="batchClosingSummary"
+      :loading="batchBusy"
+      @confirm="confirmCloseActiveBatch"
+    />
   </div>
 </template>
 
@@ -143,7 +162,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
+import { countPcAssets, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
@@ -158,6 +177,8 @@ import { can } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
+import AssetInventoryBatchHistoryDrawer from '../components/assets/AssetInventoryBatchHistoryDrawer.vue';
+import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import { usePcAssetViewState } from './assets/pcAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
@@ -183,6 +204,9 @@ const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
+const batchHistoryVisible = ref(false);
+const closeBatchVisible = ref(false);
+const batchClosingSummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
 
@@ -1312,22 +1336,56 @@ async function openStartBatch() {
   }
 }
 
+function openBatchHistory() {
+  batchHistoryVisible.value = true;
+}
+
+function openExecutionMode() {
+  if (!inventoryBatch.value.active?.id) return ElMessage.warning('当前还没有进行中的电脑盘点批次，请先开启一轮盘点。');
+  if (typeof window === 'undefined') return;
+  window.open(new URL('/public/pc-asset', window.location.origin).toString(), '_blank', 'noopener');
+}
+
+function jumpInventoryLogs() {
+  void router.push('/pc/inventory-logs');
+}
+
+async function loadPcBatchClosingSummary() {
+  const base = buildPcBatchExportBaseFilters();
+  const [total, checkedOk, checkedIssue, unchecked] = await Promise.all([
+    countPcAssets(base),
+    countPcAssets({ ...base, inventoryStatus: 'CHECKED_OK' }),
+    countPcAssets({ ...base, inventoryStatus: 'CHECKED_ISSUE' }),
+    countPcAssets({ ...base, inventoryStatus: 'UNCHECKED' }),
+  ]);
+  return { total, checked_ok: checkedOk, checked_issue: checkedIssue, unchecked };
+}
+
 async function closeActiveBatch() {
   const active = inventoryBatch.value.active;
   if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
   try {
-    await ElMessageBox.confirm(`确认结束本轮电脑盘点：${active.name}？结束时会自动导出“已盘 / 未盘 / 异常”Excel结果表，方便你直接复核。`, '结束盘点批次', {
-      type: 'warning',
-      confirmButtonText: '结束本轮',
-      cancelButtonText: '取消',
-    });
+    batchBusy.value = true;
+    batchClosingSummary.value = await loadPcBatchClosingSummary();
+    closeBatchVisible.value = true;
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载结案预览失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function confirmCloseActiveBatch() {
+  const active = inventoryBatch.value.active;
+  if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
+  try {
     batchBusy.value = true;
     const exported = await exportPcBatchClosingWorkbook(active);
     const result: any = await closeInventoryBatch('pc', active.id);
+    closeBatchVisible.value = false;
     ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
-    await refreshInventoryBatch();
+    await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFiltersForList()), refreshCurrent(true, true)]);
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '结束盘点批次失败');
   } finally {
     batchBusy.value = false;

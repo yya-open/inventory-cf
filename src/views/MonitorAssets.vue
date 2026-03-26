@@ -45,6 +45,9 @@
       @download-template="downloadMonitorTemplate"
       @start-batch="openStartBatch"
       @close-batch="closeActiveBatch"
+      @open-history="openBatchHistory"
+      @open-execution="openExecutionMode"
+      @jump-logs="jumpInventoryLogs"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
       @toolbar-more="handleToolbarMore"
@@ -188,6 +191,22 @@
       kind-label="显示器"
       @submit="submitQrPrintTemplate"
     />
+    <AssetInventoryBatchHistoryDrawer
+      v-model:visible="batchHistoryVisible"
+      kind-label="显示器"
+      :inventory-batch="inventoryBatch"
+      :current-summary="inventorySummary"
+      @open-execution="openExecutionMode"
+      @jump-logs="jumpInventoryLogs"
+    />
+    <AssetInventoryBatchCloseDialog
+      v-model:visible="closeBatchVisible"
+      kind-label="显示器"
+      :batch="inventoryBatch.active"
+      :summary="batchClosingSummary"
+      :loading="batchBusy"
+      @confirm="confirmCloseActiveBatch"
+    />
 
   </div>
 </template>
@@ -197,7 +216,7 @@ import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
-import { getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
+import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
@@ -212,6 +231,8 @@ import { getCachedSystemSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
+import AssetInventoryBatchHistoryDrawer from '../components/assets/AssetInventoryBatchHistoryDrawer.vue';
+import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
@@ -242,6 +263,9 @@ const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
+const batchHistoryVisible = ref(false);
+const closeBatchVisible = ref(false);
+const batchClosingSummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
 
@@ -1635,22 +1659,56 @@ async function openStartBatch() {
   }
 }
 
+function openBatchHistory() {
+  batchHistoryVisible.value = true;
+}
+
+function openExecutionMode() {
+  if (!inventoryBatch.value.active?.id) return ElMessage.warning('当前还没有进行中的显示器盘点批次，请先开启一轮盘点。');
+  if (typeof window === 'undefined') return;
+  window.open(new URL('/public/monitor-asset', window.location.origin).toString(), '_blank', 'noopener');
+}
+
+function jumpInventoryLogs() {
+  void router.push('/pc/monitor-inventory-logs');
+}
+
+async function loadMonitorBatchClosingSummary() {
+  const base = buildMonitorBatchExportBaseFilters();
+  const [total, checkedOk, checkedIssue, unchecked] = await Promise.all([
+    countMonitorAssets(base),
+    countMonitorAssets({ ...base, inventoryStatus: 'CHECKED_OK' }),
+    countMonitorAssets({ ...base, inventoryStatus: 'CHECKED_ISSUE' }),
+    countMonitorAssets({ ...base, inventoryStatus: 'UNCHECKED' }),
+  ]);
+  return { total, checked_ok: checkedOk, checked_issue: checkedIssue, unchecked };
+}
+
 async function closeActiveBatch() {
   const active = inventoryBatch.value.active;
   if (!active?.id) return ElMessage.warning('当前没有进行中的显示器盘点批次');
   try {
-    await ElMessageBox.confirm(`确认结束本轮显示器盘点：${active.name}？结束时会自动导出“已盘 / 未盘 / 异常”Excel结果表，方便你直接复核。`, '结束盘点批次', {
-      type: 'warning',
-      confirmButtonText: '结束本轮',
-      cancelButtonText: '取消',
-    });
+    batchBusy.value = true;
+    batchClosingSummary.value = await loadMonitorBatchClosingSummary();
+    closeBatchVisible.value = true;
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载结案预览失败');
+  } finally {
+    batchBusy.value = false;
+  }
+}
+
+async function confirmCloseActiveBatch() {
+  const active = inventoryBatch.value.active;
+  if (!active?.id) return ElMessage.warning('当前没有进行中的显示器盘点批次');
+  try {
     batchBusy.value = true;
     const exported = await exportMonitorBatchClosingWorkbook(active);
     const result: any = await closeInventoryBatch('monitor', active.id);
+    closeBatchVisible.value = false;
     ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
-    await refreshInventoryBatch();
+    await Promise.all([refreshInventoryBatch(), refreshInventorySummary(currentFiltersForList()), refreshCurrent(true, true)]);
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
     ElMessage.error(error?.message || '结束盘点批次失败');
   } finally {
     batchBusy.value = false;

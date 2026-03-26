@@ -51,7 +51,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     if (action === 'close') {
       const batchId = Number(body?.id || 0) || null;
       const before = batchId ? null : await getActiveInventoryBatch(env.DB, kind);
-      const batch = await closeInventoryBatch(env.DB, kind, batchId);
+      const batch = await closeInventoryBatch(env.DB, kind, actor.username || null, batchId);
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', batchId || before?.id || batch?.id || null, {
         kind,
         batch_id: batchId || before?.id || batch?.id || null,

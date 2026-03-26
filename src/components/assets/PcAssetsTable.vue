@@ -120,6 +120,7 @@
           </div>
           <template v-else>
             <el-button v-if="props.showInventoryColumn && recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
+            <el-button v-if="props.showInventoryColumn && shouldShowLogsShortcut(row)" link :disabled="loading" @click="emit('open-recommended', 'logs', row)">看记录</el-button>
             <el-button link type="primary" :disabled="loading" @click="emit('open-edit', row)">修改</el-button>
             <el-button link :disabled="loading" @click="emit('open-qr', row)">二维码</el-button>
             <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">删除</el-button>
@@ -225,6 +226,11 @@ function handleRecommendedAction(row: Record<string, any>) {
   const action = recommendedAction(row);
   if (!action) return;
   emit('open-recommended', action.command, row);
+}
+
+function shouldShowLogsShortcut(row: Record<string, any>) {
+  const action = recommendedAction(row);
+  return Boolean(action && action.command !== 'logs');
 }
 
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {

@@ -205,9 +205,14 @@
               <template v-else>建议先开启一轮盘点，再集中扫码核对。</template>
             </div>
           </div>
-          <div v-if="isAdmin" class="inventory-batch-actions">
-            <el-button type="primary" plain :disabled="batchBusy" @click="emit('start-batch')">开启新一轮</el-button>
-            <el-button v-if="inventoryBatch.active" :disabled="batchBusy" @click="emit('close-batch')">结束本轮</el-button>
+          <div class="inventory-batch-actions">
+            <el-button type="primary" plain :disabled="batchBusy" @click="emit('open-execution')">进入盘点模式</el-button>
+            <el-button plain :disabled="batchBusy" @click="emit('open-history')">批次历史</el-button>
+            <el-button plain :disabled="batchBusy" @click="emit('jump-logs')">盘点记录</el-button>
+            <template v-if="isAdmin">
+              <el-button type="primary" plain :disabled="batchBusy" @click="emit('start-batch')">开启新一轮</el-button>
+              <el-button v-if="inventoryBatch.active" :disabled="batchBusy" @click="emit('close-batch')">结束本轮</el-button>
+            </template>
           </div>
         </div>
       </div>
@@ -280,6 +285,9 @@ const emit = defineEmits<{
   'download-template': [];
   'start-batch': [];
   'close-batch': [];
+  'open-history': [];
+  'open-execution': [];
+  'jump-logs': [];
   'import-file': [unknown];
   'open-create': [];
   'toolbar-more': [string];

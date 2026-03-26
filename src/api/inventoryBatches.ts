@@ -11,6 +11,11 @@ export type InventoryBatchRow = {
   started_at: string;
   closed_at?: string | null;
   created_by?: string | null;
+  closed_by?: string | null;
+  summary_total?: number;
+  summary_checked_ok?: number;
+  summary_checked_issue?: number;
+  summary_unchecked?: number;
   updated_at?: string | null;
 };
 

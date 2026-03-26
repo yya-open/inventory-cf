@@ -225,6 +225,11 @@ function handleRecommendedAction(row: Record<string, any>) {
   emit('open-recommended', action.command, row);
 }
 
+function shouldShowLogsShortcut(row: Record<string, any>) {
+  const action = recommendedAction(row);
+  return Boolean(action && action.command !== 'logs');
+}
+
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;

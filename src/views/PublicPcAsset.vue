@@ -3,9 +3,12 @@
     <el-card class="public-card" shadow="always">
       <template #header>
         <div class="public-header-row">
-          <div class="public-card-title">
+          <div>
+            <div class="public-card-title">
             电脑信息
             <div class="public-card-subtitle">扫码即可查看实时信息，适合现场盘点和快速复核。</div>
+            </div>
+            <div v-if="row?.inventory_batch_name" class="public-card-subtitle">当前批次：{{ row?.inventory_batch_name }}</div>
           </div>
           <el-tag v-if="row" :type="statusTagType(row.status)">{{ statusText(row.status) }}</el-tag>
         </div>
@@ -75,6 +78,19 @@
       <el-alert v-else-if="error" :title="error" type="error" show-icon>
         <template #default>
           <div class="alert-actions"><el-button size="small" @click="refresh">重试加载</el-button></div>
+        </template>
+      </el-alert>
+
+      <el-alert
+        v-else-if="waitingForScan"
+        class="public-alert public-batch-alert"
+        title="已进入盘点执行模式"
+        type="info"
+        show-icon
+        :closable="false"
+      >
+        <template #default>
+          <div>请使用扫码枪、摄像头或手动粘贴下一项二维码链接 / token。扫描成功后会自动切换到对应电脑并进入连续盘点。</div>
         </template>
       </el-alert>
 
@@ -178,6 +194,7 @@ const {
   scanModeOptions,
   nextInputPlaceholder,
   scannerTip,
+  waitingForScan,
   inventoryReady,
   inventoryDisabledReason,
   actionDisabled,

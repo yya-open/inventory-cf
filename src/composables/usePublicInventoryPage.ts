@@ -60,14 +60,16 @@ export function usePublicInventoryPage(options: {
     return '手动模式：可粘贴二维码链接或 token 后按回车或点击按钮切换。';
   });
 
+  const waitingForScan = computed(() => !loading.value && !error.value && !row.value && !id.value && !key.value && !token.value);
   const inventoryReady = computed(() => Boolean(row.value?.inventory_batch_active));
   const inventoryDisabledReason = computed(() => {
+    if (waitingForScan.value) return `请先扫描${kindLabel}二维码，进入当前盘点项后再提交在位或异常。`;
     const batchName = String(row.value?.inventory_batch_name || '').trim();
     return batchName
       ? `当前盘点轮次未处于进行中状态，请先回到台账页重新开启“${batchName}”或新建一轮盘点后再扫码提交。`
       : `当前未开启${kindLabel}盘点，请先在${kindLabel}台账页点击“开启新一轮”后再扫码提交。`;
   });
-  const actionDisabled = computed(() => cooldownLeft.value > 0 || !inventoryReady.value);
+  const actionDisabled = computed(() => cooldownLeft.value > 0 || !inventoryReady.value || waitingForScan.value);
 
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
@@ -324,7 +326,13 @@ export function usePublicInventoryPage(options: {
       let apiUrl = '';
       if (id.value && key.value) apiUrl = `${options.detailPath}?id=${encodeURIComponent(id.value)}&key=${encodeURIComponent(key.value)}`;
       else if (token.value) apiUrl = `${options.detailPath}?token=${encodeURIComponent(token.value)}`;
-      else throw new Error('缺少二维码参数');
+      else {
+        row.value = null;
+        syncCooldownForCurrentTarget();
+        recentTargets.value = loadRecentPublicTargets(options.kind);
+        refreshPendingQueue();
+        return;
+      }
       const result: any = await apiGetPublic(apiUrl);
       row.value = result.data;
       syncCooldownForCurrentTarget();
@@ -530,7 +538,7 @@ export function usePublicInventoryPage(options: {
     settings, loading, error, row, id, key, token, submittingOk, submittingIssue, issueVisible, issueForm, cooldownLeft,
     viewportWidth, descColumns, isMobile, continuousMode, scanMode, nextInput, nextInputRef, cameraVideoRef, recentTargets,
     weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, scanModeOptions, nextInputPlaceholder, scannerTip,
-    inventoryReady, inventoryDisabledReason, actionDisabled,
+    waitingForScan, inventoryReady, inventoryDisabledReason, actionDisabled,
     cameraSupported, cameraActive, cameraStarting, cameraError, toggleCamera, retryCamera, recentLabel, refresh, openRecent,
     goNextFromInput, submitOk, submitIssue, openIssueDialog, retryLast, flushPendingQueue, clearRetry,
   };
