@@ -49,7 +49,17 @@
                 <strong>{{ primarySummary.unchecked }}</strong>
               </div>
             </div>
-            <AssetInventoryIssueBreakdownPanel :breakdown="primaryIssueBreakdown" />
+            <AssetInventoryIssueBreakdownPanel
+              :breakdown="primaryIssueBreakdown"
+              :clickable="interactiveIssueBreakdown"
+              :active-code="activeIssueCode"
+              @select="(code) => emit('issue-select', code)"
+            />
+            <div v-if="primaryBatch?.snapshot_filename || primaryBatch?.snapshot_exported_at" class="batch-inline-snapshot">
+              <span class="batch-inline-label">结果快照</span>
+              <strong>{{ primaryBatch?.snapshot_filename || '-' }}</strong>
+              <div class="batch-inline-subtle">导出时间：{{ primaryBatch?.snapshot_exported_at || '-' }}</div>
+            </div>
           </template>
         </div>
 
@@ -91,6 +101,11 @@
               </div>
             </div>
             <AssetInventoryIssueBreakdownPanel :breakdown="item.summary_issue_breakdown" />
+            <div v-if="item.snapshot_filename || item.snapshot_exported_at" class="batch-inline-snapshot">
+              <span class="batch-inline-label">结果快照</span>
+              <strong>{{ item.snapshot_filename || '-' }}</strong>
+              <div class="batch-inline-subtle">导出时间：{{ item.snapshot_exported_at || '-' }}</div>
+            </div>
           </div>
         </div>
         <el-empty v-else description="暂无上一轮盘点历史" />
@@ -111,9 +126,15 @@ const props = defineProps<{
   inventoryBatch: InventoryBatchPayload;
   currentSummary?: AssetInventorySummary;
   currentIssueBreakdown?: InventoryIssueBreakdown;
+  interactiveIssueBreakdown?: boolean;
+  activeIssueCode?: string;
 }>();
 
-const expanded = ref(true);
+const emit = defineEmits<{
+  'issue-select': [string];
+}>();
+
+const expanded = ref(false);
 
 const primaryBatch = computed(() => props.inventoryBatch.active || props.inventoryBatch.latest || null);
 
@@ -153,6 +174,7 @@ const primaryIssueBreakdown = computed(() => {
 .batch-inline-name, .batch-inline-item-name { font-size: 16px; font-weight: 700; color:#303133; margin-top: 10px; }
 .batch-inline-subtle { margin-top: 4px; color:#909399; font-size:12px; line-height:1.6; }
 .batch-inline-list { display:flex; flex-direction:column; gap:12px; }
+.batch-inline-snapshot { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
 .batch-inline-time-grid,
 .batch-inline-metric-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; margin-top: 12px; }
 .batch-inline-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }

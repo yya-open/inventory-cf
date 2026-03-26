@@ -18,6 +18,8 @@ export type InventoryBatchRow = {
   summary_checked_issue?: number;
   summary_unchecked?: number;
   summary_issue_breakdown?: InventoryIssueBreakdown | null;
+  snapshot_filename?: string | null;
+  snapshot_exported_at?: string | null;
   updated_at?: string | null;
 };
 
@@ -42,7 +44,12 @@ export async function startInventoryBatch(kind: InventoryBatchKind, name: string
   return result;
 }
 
-export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number | null) {
-  const result: any = await apiPost('/api/asset-inventory-batch', { action: 'close', kind, id: id || undefined });
+export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number | null, options: { snapshotFilename?: string | null } = {}) {
+  const result: any = await apiPost('/api/asset-inventory-batch', {
+    action: 'close',
+    kind,
+    id: id || undefined,
+    snapshot_filename: options.snapshotFilename || undefined,
+  });
   return result;
 }

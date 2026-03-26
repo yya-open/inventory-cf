@@ -53,12 +53,13 @@
       </div>
     </el-card>
 
-    <div ref="batchSectionRef" style="margin-bottom: 12px">
+    <div style="margin-bottom: 12px">
       <AssetInventoryBatchPageSection
         kind-label="电脑"
         :inventory-batch="inventoryBatch"
         :current-summary="inventorySummary"
         :current-issue-breakdown="inventoryIssueBreakdown"
+        :active-issue-code="action === 'ISSUE' ? issueType : ''"
         :busy="batchBusy"
         :is-admin="isAdmin"
         @start-batch="openStartBatch"
@@ -66,6 +67,7 @@
         @open-execution="openExecutionMode"
         @open-history="scrollToBatchHistory"
         @jump-logs="scrollToLogs"
+      @issue-select="applyIssueCardFilter"
       />
     </div>
 
@@ -110,9 +112,13 @@
 
           <el-table-column prop="remark" label="备注" min-width="240" show-overflow-tooltip />
 
-          <el-table-column v-if="isAdmin" label="操作" width="110" fixed="right">
+          <el-table-column label="操作" min-width="200" fixed="right">
             <template #default="{ row }">
-              <el-button type="danger" link @click="deleteOne(row)">删除</el-button>
+              <div class="log-action-row">
+                <el-button link @click="viewLedger(row)">查看台账</el-button>
+                <el-button link type="primary" :disabled="String(row?.action || '').toUpperCase() !== 'ISSUE'" @click="handleIssue(row)">去处理</el-button>
+                <el-button v-if="isAdmin" type="danger" link @click="deleteOne(row)">删除</el-button>
+              </div>
             </template>
           </el-table-column>
         </el-table>
@@ -155,7 +161,7 @@
 
 <script setup lang="ts">
 import { computed, nextTick, onMounted, ref, watch } from 'vue';
-import { useRoute } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiDownload, apiGet, apiPost } from '../api/client';
 import { can } from '../store/auth';
@@ -163,13 +169,13 @@ import LazyMountBlock from '../components/LazyMountBlock.vue';
 import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryBatchPageSection.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
-import { closeInventoryBatch, fetchInventoryBatch, startInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
-import { exportInventoryLogsBeforeBatch } from '../utils/inventoryBatchExport';
+import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { countPcAssets, fetchAllPages, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, PcAsset, PcFilters } from '../types/assets';
 import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
-import { buildSuggestedInventoryBatchName } from '../utils/inventoryBatchNaming';
+import { openPcLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
+import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, exportInventoryBatchClosingWorkbook, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -190,6 +196,7 @@ function issueTypeText(s: string) {
 }
 
 const route = useRoute();
+const router = useRouter();
 const action = ref<string>('');
 const issueType = ref<string>('');
 const keyword = ref<string>('');
@@ -212,7 +219,6 @@ const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, un
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
-const batchSectionRef = ref<HTMLElement | null>(null);
 const logsSectionRef = ref<any>(null);
 
 const totalCache = new Map<string, number>();
@@ -428,15 +434,6 @@ function mapPcBatchWorkbookRows(items: PcAsset[]) {
   }));
 }
 
-function buildBatchExportTimestamp(date = new Date()) {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, '0');
-  const d = String(date.getDate()).padStart(2, '0');
-  const hh = String(date.getHours()).padStart(2, '0');
-  const mm = String(date.getMinutes()).padStart(2, '0');
-  return `${y}${m}${d}_${hh}${mm}`;
-}
-
 function loadExcelUtils() {
   excelUtilsPromise ||= import('../utils/excel');
   return excelUtilsPromise;
@@ -444,47 +441,30 @@ function loadExcelUtils() {
 
 async function exportPcBatchClosingWorkbook(active: NonNullable<InventoryBatchPayload['active']>) {
   const base = buildPcBatchExportBaseFilters();
-  const [checkedRows, uncheckedRows, issueRows] = await Promise.all([
-    fetchAll({ ...base, inventoryStatus: 'CHECKED_OK' }, 300),
-    fetchAll({ ...base, inventoryStatus: 'UNCHECKED' }, 300),
-    fetchAll({ ...base, inventoryStatus: 'CHECKED_ISSUE' }, 300),
-  ]);
-  const { exportWorkbookXlsx } = await loadExcelUtils();
-  const filename = `${String(active.name || '电脑盘点').replace(/[\\/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
-  const summaryRows = [
-    { 项目: '盘点批次', 内容: active.name || '-' },
-    { 项目: '开始时间', 内容: active.started_at || '-' },
-    { 项目: '导出时间', 内容: formatBeijingDateTime(new Date().toISOString()) },
-    { 项目: '已盘', 内容: checkedRows.length },
-    { 项目: '未盘', 内容: uncheckedRows.length },
-    { 项目: '异常', 内容: issueRows.length },
-    { 项目: '设备总数', 内容: checkedRows.length + uncheckedRows.length + issueRows.length },
-  ];
-  const sheetHeaders = [
-    { key: 'seq', title: '序号' },
-    { key: 'brand_model', title: '电脑' },
-    { key: 'serial_no', title: 'SN' },
-    { key: 'status', title: '业务状态' },
-    { key: 'inventory_status', title: '盘点状态' },
-    { key: 'inventory_at', title: '盘点时间' },
-    { key: 'inventory_issue_type', title: '异常类型' },
-    { key: 'employee_name', title: '当前领用人' },
-    { key: 'employee_no', title: '工号' },
-    { key: 'department', title: '部门' },
-    { key: 'config_date', title: '配置日期' },
-    { key: 'recycle_date', title: '回收日期' },
-    { key: 'remark', title: '备注' },
-  ];
-  await exportWorkbookXlsx({
-    filename,
-    sheets: [
-      { sheetName: '汇总', rows: summaryRows },
-      { sheetName: '已盘', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(checkedRows) },
-      { sheetName: '未盘', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(uncheckedRows) },
-      { sheetName: '异常', headers: sheetHeaders, rows: mapPcBatchWorkbookRows(issueRows) },
+  return exportInventoryBatchClosingWorkbook<PcAsset, PcFilters>({
+    activeName: active.name || '电脑盘点',
+    filenamePrefix: active.name || '电脑盘点',
+    baseFilters: base,
+    fetchRows: fetchAll,
+    filtersForStatus: (filters, inventoryStatus) => ({ ...filters, inventoryStatus }),
+    loadExcelUtils,
+    headers: [
+      { key: 'seq', title: '序号' },
+      { key: 'brand_model', title: '电脑' },
+      { key: 'serial_no', title: 'SN' },
+      { key: 'status', title: '业务状态' },
+      { key: 'inventory_status', title: '盘点状态' },
+      { key: 'inventory_at', title: '盘点时间' },
+      { key: 'inventory_issue_type', title: '异常类型' },
+      { key: 'employee_name', title: '当前领用人' },
+      { key: 'employee_no', title: '工号' },
+      { key: 'department', title: '部门' },
+      { key: 'config_date', title: '配置日期' },
+      { key: 'recycle_date', title: '回收日期' },
+      { key: 'remark', title: '备注' },
     ],
+    mapRows: mapPcBatchWorkbookRows,
   });
-  return { filename, checked: checkedRows.length, unchecked: uncheckedRows.length, issue: issueRows.length };
 }
 
 async function openStartBatch() {
@@ -495,15 +475,8 @@ async function openStartBatch() {
       countPcAssets({ status: '', keyword: '', archiveReason: '', archiveMode: 'all', showArchived: true, inventoryStatus: '' }),
       apiGet('/api/pc-inventory-log-count') as Promise<any>,
     ]);
-    startBatchPreview.value = {
-      assetTotal: Number(assetTotal || 0),
-      checkedOk: Number(inventorySummary.value.checked_ok || 0),
-      checkedIssue: Number(inventorySummary.value.checked_issue || 0),
-      unchecked: Number(inventorySummary.value.unchecked || 0),
-      logTotal: Number(logResult?.total || 0),
-      activeName: inventoryBatch.value.active?.name || '',
-    };
-    startBatchSuggestedName.value = buildSuggestedInventoryBatchName('pc', [inventoryBatch.value.active?.name, inventoryBatch.value.latest?.name, ...(inventoryBatch.value.recent || []).map((item) => item?.name)]);
+    startBatchPreview.value = createInventoryBatchStartPreview(assetTotal, Number(logResult?.total || 0), inventorySummary.value, inventoryBatch.value.active?.name || '');
+    startBatchSuggestedName.value = suggestInventoryBatchName('pc', inventoryBatch.value);
     startBatchVisible.value = true;
   } catch (error: any) {
     ElMessage.error(error?.message || '加载开启盘点预览失败');
@@ -515,8 +488,7 @@ async function openStartBatch() {
 async function confirmStartBatch(name: string) {
   try {
     batchBusy.value = true;
-    await exportInventoryLogsBeforeBatch('pc');
-    const result: any = await startInventoryBatch('pc', String(name || startBatchSuggestedName.value), { clearPreviousLogs: true });
+    const result: any = await executeInventoryBatchStart('pc', String(name || startBatchSuggestedName.value), { clearPreviousLogs: true });
     const cleared = Number(result?.cleanup?.deleted || 0);
     startBatchVisible.value = false;
     const successMessage = cleared > 0
@@ -539,7 +511,7 @@ function openExecutionMode() {
 }
 
 function scrollToBatchHistory() {
-  nextTick(() => batchSectionRef.value?.scrollIntoView({ behavior: 'smooth', block: 'start' }));
+  nextTick(() => window.scrollTo({ top: 0, behavior: 'smooth' }));
 }
 
 function resolveLogsSectionElement() {
@@ -584,7 +556,7 @@ async function confirmCloseActiveBatch() {
   try {
     batchBusy.value = true;
     const exported = await exportPcBatchClosingWorkbook(active);
-    const result: any = await closeInventoryBatch('pc', active.id);
+    const result: any = await executeInventoryBatchClose('pc', active.id, exported.filename);
     closeBatchVisible.value = false;
     ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
     await refreshInventoryBatchAndSummary();
@@ -595,6 +567,27 @@ async function confirmCloseActiveBatch() {
   }
 }
 
+
+function applyIssueCardFilter(code: string) {
+  const normalized = String(code || '').toUpperCase();
+  if (action.value === 'ISSUE' && issueType.value === normalized) {
+    action.value = '';
+    issueType.value = '';
+  } else {
+    action.value = 'ISSUE';
+    issueType.value = normalized;
+  }
+  onSearch();
+}
+
+function viewLedger(row: any) {
+  void openPcLedgerFromInventoryLog(router, row, 'view');
+}
+
+function handleIssue(row: any) {
+  if (String(row?.action || '').toUpperCase() !== 'ISSUE') return;
+  void openPcLedgerFromInventoryLog(router, row, 'handle');
+}
 watch(() => route.query, () => {
   applyRouteFilters();
   load();

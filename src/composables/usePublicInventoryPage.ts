@@ -8,6 +8,15 @@ type PublicInventoryKind = 'pc' | 'monitor';
 type NextSource = 'manual' | 'scanner' | 'camera';
 type RetryAction = null | 'refresh' | 'ok' | 'issue';
 type SubmitPayload = { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string };
+export type PublicInventorySessionSummary = {
+  batch_name: string | null;
+  started_at: string;
+  processed: number;
+  ok: number;
+  issue: number;
+  last_target: string | null;
+};
+
 export type PublicInventoryRecentResult = {
   action: 'OK' | 'ISSUE';
   issue_type?: string | null;
@@ -52,6 +61,7 @@ export function usePublicInventoryPage(options: {
   const pendingQueue = ref<PendingPublicSubmission[]>([]);
   const flushingQueue = ref(false);
   const recentResult = ref<PublicInventoryRecentResult | null>(null);
+  const sessionSummary = ref<PublicInventorySessionSummary | null>(null);
   const scanModeOptions = computed(() => ([
     { label: '手动', value: 'manual' },
     { label: '扫码枪', value: 'scanner' },
@@ -85,6 +95,7 @@ export function usePublicInventoryPage(options: {
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
   const cooldownStorageKey = `inventory-public-submit-cooldown:${options.kind}`;
   const recentResultStorageKey = `inventory-public-last-result:${options.kind}`;
+  const sessionSummaryStorageKey = `inventory-public-session-summary:${options.kind}`;
   const cameraSupported = ref(typeof window !== 'undefined' ? typeof (window as any).BarcodeDetector === 'function' && !!navigator.mediaDevices?.getUserMedia : false);
   const cameraActive = ref(false);
   const cameraStarting = ref(false);
@@ -203,6 +214,60 @@ export function usePublicInventoryPage(options: {
     try {
       window.sessionStorage.setItem(recentResultStorageKey, JSON.stringify(record));
     } catch {}
+  }
+
+  function loadSessionSummary() {
+    if (typeof window === 'undefined') return;
+    try {
+      const raw = window.sessionStorage.getItem(sessionSummaryStorageKey);
+      sessionSummary.value = raw ? JSON.parse(raw) : null;
+    } catch {
+      sessionSummary.value = null;
+    }
+  }
+
+  function saveSessionSummary(record: PublicInventorySessionSummary | null) {
+    sessionSummary.value = record;
+    if (typeof window === 'undefined') return;
+    try {
+      if (!record) window.sessionStorage.removeItem(sessionSummaryStorageKey);
+      else window.sessionStorage.setItem(sessionSummaryStorageKey, JSON.stringify(record));
+    } catch {}
+  }
+
+  function ensureSessionSummary(batchName?: string | null) {
+    const normalized = String(batchName || '').trim() || null;
+    if (!normalized) return;
+    const current = sessionSummary.value;
+    if (current?.batch_name === normalized) return;
+    saveSessionSummary({
+      batch_name: normalized,
+      started_at: formatRecentResultTime(),
+      processed: 0,
+      ok: 0,
+      issue: 0,
+      last_target: null,
+    });
+  }
+
+  function recordSessionSummary(action: 'OK' | 'ISSUE') {
+    const batchName = String(row.value?.inventory_batch_name || '').trim() || null;
+    if (!batchName) return;
+    ensureSessionSummary(batchName);
+    const current = sessionSummary.value || { batch_name: batchName, started_at: formatRecentResultTime(), processed: 0, ok: 0, issue: 0, last_target: null };
+    const next = {
+      ...current,
+      batch_name: batchName,
+      processed: Number(current.processed || 0) + 1,
+      ok: Number(current.ok || 0) + (action === 'OK' ? 1 : 0),
+      issue: Number(current.issue || 0) + (action === 'ISSUE' ? 1 : 0),
+      last_target: buildCurrentTargetLabel(),
+    };
+    saveSessionSummary(next);
+  }
+
+  function resetSessionSummary() {
+    saveSessionSummary(null);
   }
 
   function rememberRecentResult(payload: SubmitPayload | { action: string; issue_type?: string | null; remark?: string | null }, source: 'success' | 'duplicate', message?: string | null, createdAt?: string | null) {
@@ -399,6 +464,7 @@ export function usePublicInventoryPage(options: {
       }
       const result: any = await apiGetPublic(apiUrl);
       row.value = result.data;
+      ensureSessionSummary(row.value?.inventory_batch_name);
       syncCooldownForCurrentTarget();
       saveRecentPublicTarget(options.kind, token.value ? { token: token.value } : { id: id.value, key: key.value });
       recentTargets.value = loadRecentPublicTargets(options.kind);
@@ -425,6 +491,7 @@ export function usePublicInventoryPage(options: {
 
   async function onSubmitSuccess(message: string, payload: SubmitPayload) {
     rememberRecentResult(payload, 'success', message);
+    recordSessionSummary(payload.action);
     ElMessage.success(message);
     triggerSuccessVibration(settings.value.public_inventory_auto_vibrate);
     startCooldown(settings.value.public_inventory_cooldown_seconds);
@@ -583,6 +650,7 @@ export function usePublicInventoryPage(options: {
   onMounted(async () => {
     await loadPublicConfig();
     loadRecentResult();
+    loadSessionSummary();
     recentTargets.value = loadRecentPublicTargets(options.kind);
     refreshPendingQueue();
     await refresh();
@@ -609,9 +677,9 @@ export function usePublicInventoryPage(options: {
   return {
     settings, loading, error, row, id, key, token, submittingOk, submittingIssue, issueVisible, issueForm, cooldownLeft,
     viewportWidth, descColumns, isMobile, continuousMode, scanMode, nextInput, nextInputRef, cameraVideoRef, recentTargets,
-    weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, recentResult, scanModeOptions, nextInputPlaceholder, scannerTip,
+    weakNetworkHint, retryMessage, retryAction, pendingQueue, flushingQueue, recentResult, sessionSummary, scanModeOptions, nextInputPlaceholder, scannerTip,
     waitingForScan, inventoryReady, inventoryDisabledReason, actionDisabled,
     cameraSupported, cameraActive, cameraStarting, cameraError, toggleCamera, retryCamera, recentLabel, refresh, openRecent,
-    goNextFromInput, submitOk, submitIssue, openIssueDialog, retryLast, flushPendingQueue, clearRetry,
+    goNextFromInput, submitOk, submitIssue, openIssueDialog, retryLast, flushPendingQueue, clearRetry, resetSessionSummary,
   };
 }

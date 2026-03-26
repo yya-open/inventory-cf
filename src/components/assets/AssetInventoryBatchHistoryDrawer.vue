@@ -58,6 +58,11 @@
               <strong>{{ metricValue(item.summary_unchecked, activeMetricFallback(item, 'summary_unchecked')) }}</strong>
             </div>
           </div>
+          <div v-if="item.snapshot_filename || item.snapshot_exported_at" class="history-snapshot">
+            <span class="history-label">结果快照</span>
+            <strong>{{ item.snapshot_filename || '-' }}</strong>
+            <div class="history-subtle">导出时间：{{ item.snapshot_exported_at || '-' }}</div>
+          </div>
           <div class="history-footnote" v-if="Number(item.summary_total || 0) <= 0 && item.status === 'CLOSED'">
             这轮批次没有保存完整汇总，历史老批次可继续参考开始/结束时间与操作人记录。
           </div>
@@ -125,6 +130,7 @@ function activeMetricFallback(item: any, key: 'summary_total' | 'summary_checked
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-danger); }
 .metric-card.unchecked strong { color: var(--el-color-info); }
+.history-snapshot { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
 .history-footnote { margin-top: 10px; color:#909399; font-size:12px; line-height:1.6; }
 @media (max-width: 640px) {
   .history-time-grid,

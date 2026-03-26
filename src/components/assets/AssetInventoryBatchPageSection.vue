@@ -7,6 +7,9 @@
           :inventory-batch="inventoryBatch"
           :current-summary="currentSummary"
           :current-issue-breakdown="currentIssueBreakdown"
+          :interactive-issue-breakdown="true"
+          :active-issue-code="activeIssueCode"
+          @issue-select="emit('issue-select', $event)"
         />
       </div>
       <div class="inventory-batch-page-side">
@@ -42,6 +45,7 @@ defineProps<{
   inventoryBatch: InventoryBatchPayload;
   currentSummary: AssetInventorySummary;
   currentIssueBreakdown: InventoryIssueBreakdown;
+  activeIssueCode?: string;
   busy?: boolean;
   isAdmin?: boolean;
 }>();
@@ -52,6 +56,7 @@ const emit = defineEmits<{
   'open-history': [];
   'open-execution': [];
   'jump-logs': [];
+  'issue-select': [string];
 }>();
 </script>
 

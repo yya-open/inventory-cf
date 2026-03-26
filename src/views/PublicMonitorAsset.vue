@@ -73,6 +73,7 @@
       </el-card>
 
       <PublicInventoryRecentResultCard :record="recentResult" />
+      <PublicInventorySessionSummaryBar :summary="sessionSummary" @reset="resetSessionSummary" />
 
       <div v-if="loading" style="padding:18px 0"><el-skeleton :rows="6" animated /></div>
       <el-alert v-else-if="error" :title="error" type="error" show-icon>
@@ -153,6 +154,7 @@ import { ElDescriptions, ElDescriptionsItem, ElSegmented } from 'element-plus';
 import { ElSkeleton } from 'element-plus';
 import { usePublicInventoryPage } from '../composables/usePublicInventoryPage';
 import PublicInventoryRecentResultCard from '../components/PublicInventoryRecentResultCard.vue';
+import PublicInventorySessionSummaryBar from '../components/PublicInventorySessionSummaryBar.vue';
 
 const issueOptions = [
   { label: '不在位', value: 'NOT_FOUND' },
@@ -188,6 +190,7 @@ const {
   pendingQueue,
   flushingQueue,
   recentResult,
+  sessionSummary,
   scanModeOptions,
   nextInputPlaceholder,
   scannerTip,
@@ -210,6 +213,7 @@ const {
   openIssueDialog,
   retryLast,
   flushPendingQueue,
+  resetSessionSummary,
 } = usePublicInventoryPage({
   kind: 'monitor',
   detailPath: '/api/public/monitor-asset',
