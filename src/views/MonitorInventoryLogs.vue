@@ -168,7 +168,7 @@ import LazyMountBlock from '../components/LazyMountBlock.vue';
 import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryBatchPageSection.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
-import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
+import { fetchInventoryBatch, normalizeInventoryBatchPayload, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
@@ -217,6 +217,10 @@ const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, un
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
+
+function applyInventoryBatchPayload(next: Partial<InventoryBatchPayload> | null | undefined) {
+  inventoryBatch.value = normalizeInventoryBatchPayload(next as InventoryBatchPayload);
+}
 
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
@@ -315,17 +319,25 @@ async function loadMonitorIssueBreakdown() {
 }
 
 async function refreshInventoryBatchAndSummary() {
-  try {
-    const [batch, summary, issueBreakdown] = await Promise.all([
-      fetchInventoryBatch('monitor'),
-      getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters()),
-      loadMonitorIssueBreakdown(),
-    ]);
-    inventoryBatch.value = batch;
-    inventorySummary.value = summary;
-    inventoryIssueBreakdown.value = issueBreakdown;
-  } catch (error) {
-    console.warn('monitor inventory batch refresh failed', error);
+  const [batchResult, summaryResult, issueBreakdownResult] = await Promise.allSettled([
+    fetchInventoryBatch('monitor'),
+    getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters()),
+    loadMonitorIssueBreakdown(),
+  ]);
+  if (batchResult.status === 'fulfilled') {
+    applyInventoryBatchPayload(batchResult.value);
+  } else {
+    console.warn('monitor inventory batch fetch failed', batchResult.reason);
+  }
+  if (summaryResult.status === 'fulfilled') {
+    inventorySummary.value = summaryResult.value;
+  } else {
+    console.warn('monitor inventory summary refresh failed', summaryResult.reason);
+  }
+  if (issueBreakdownResult.status === 'fulfilled') {
+    inventoryIssueBreakdown.value = issueBreakdownResult.value;
+  } else {
+    console.warn('monitor inventory issue breakdown refresh failed', issueBreakdownResult.reason);
   }
 }
 
@@ -418,6 +430,9 @@ async function confirmStartBatch(name: string) {
     batchBusy.value = true;
     const result: any = await executeInventoryBatchStart('monitor', String(name || startBatchSuggestedName.value), { clearPreviousLogs: true });
     const cleared = Number(result?.cleanup?.deleted || 0);
+    if (result?.data) {
+      applyInventoryBatchPayload({ active: result.data, latest: result.data, recent: inventoryBatch.value.recent || [] });
+    }
     startBatchVisible.value = false;
     const successMessage = cleared > 0
       ? `已自动清空 ${cleared} 条显示器盘点记录，${result?.message || '已开启新一轮盘点'}`
@@ -484,6 +499,9 @@ async function confirmCloseActiveBatch() {
   try {
     batchBusy.value = true;
     const result: any = await executeInventoryBatchClose('monitor', active.id);
+    if (result?.data) {
+      applyInventoryBatchPayload({ active: null, latest: result.data, recent: inventoryBatch.value.active?.id ? [inventoryBatch.value.active, ...(inventoryBatch.value.recent || [])] : (inventoryBatch.value.recent || []) });
+    }
     closeBatchVisible.value = false;
     ElMessage.success(result?.message || '本轮盘点已结束，结果快照正在后台生成');
     await refreshInventoryBatchAndSummary();

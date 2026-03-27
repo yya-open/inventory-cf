@@ -35,9 +35,22 @@ export type InventoryBatchPayload = {
   recent: InventoryBatchRow[];
 };
 
+
+export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchPayload> | null): InventoryBatchPayload {
+  const latest = payload?.latest || null;
+  const resolvedActive = payload?.active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
+  const resolvedLatest = resolvedActive || latest;
+  const recent = (payload?.recent || []).filter((item): item is InventoryBatchRow => Boolean(item?.id) && (!resolvedActive || Number(item.id) !== Number(resolvedActive.id)));
+  return {
+    active: resolvedActive,
+    latest: resolvedLatest,
+    recent,
+  };
+}
+
 export async function fetchInventoryBatch(kind: InventoryBatchKind) {
   const result: any = await apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`);
-  return (result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload;
+  return normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload);
 }
 
 export async function startInventoryBatch(kind: InventoryBatchKind, name: string, options: { clearPreviousLogs?: boolean } = {}) {

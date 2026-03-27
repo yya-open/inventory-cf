@@ -22,7 +22,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
       getLatestInventoryBatch(env.DB, kind),
       listRecentInventoryBatches(env.DB, kind, 1),
     ]);
-    return Response.json({ ok: true, data: { active, latest, recent } });
+    const resolvedActive = active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
+    const resolvedLatest = resolvedActive || latest;
+    const resolvedRecent = (recent || []).filter((item) => !resolvedActive || Number(item?.id || 0) !== Number(resolvedActive?.id || 0));
+    return Response.json({ ok: true, data: { active: resolvedActive, latest: resolvedLatest, recent: resolvedRecent } });
   } catch (e: any) {
     return errorResponse(e);
   }
