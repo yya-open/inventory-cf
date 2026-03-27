@@ -494,16 +494,21 @@ async function exportXlsx() {
   }
 }
 
-onMounted(async () => {
-  await loadMeta();
-  await load();
+onMounted(() => {
+  void Promise.allSettled([
+    load(),
+    loadMeta(),
+  ]);
 });
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  lastRefreshAt = Date.now();
   const task = async () => {
-    if (!categories.value.length) await loadMeta();
-    await load();
+    await Promise.allSettled([
+      load(),
+      categories.value.length ? Promise.resolve() : loadMeta(),
+    ]);
   };
   void task();
 });

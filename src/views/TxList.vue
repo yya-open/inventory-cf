@@ -514,16 +514,21 @@ async function clearTx() {
   }
 }
 
-onMounted(async () => {
-  await loadItems();
-  await load();
+onMounted(() => {
+  void Promise.allSettled([
+    load(),
+    loadItems(),
+  ]);
 });
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  lastRefreshAt = Date.now();
   const task = async () => {
-    if (!items.value.length) await loadItems();
-    await load();
+    await Promise.allSettled([
+      load(),
+      items.value.length ? Promise.resolve() : loadItems(),
+    ]);
   };
   void task();
 });

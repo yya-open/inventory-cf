@@ -1611,11 +1611,30 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 
-onMounted(async () => {
-  await refreshInventoryBatch();
-  const filters = currentFiltersForList();
-  await Promise.all([load(filters), refreshInventorySummary(filters)]);
+async function hydrateViewData(options: { keepPage?: boolean } = {}) {
+  const initialFilters = currentFiltersForList();
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  const loadOptions = options.keepPage ? { keepPage: true } : {};
+  await Promise.allSettled([
+    load(initialFilters, loadOptions),
+    refreshInventorySummary(initialFilters),
+    refreshInventoryBatch(),
+  ]);
+
+  const nextFilters = currentFiltersForList();
+  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
+  if (batchStateChanged) {
+    await Promise.allSettled([
+      load(nextFilters, loadOptions),
+      refreshInventorySummary(nextFilters),
+    ]);
+  }
   lastRefreshAt = Date.now();
+}
+
+onMounted(() => {
+  void hydrateViewData();
   if (locationId.value) {
     void ensureLocationOptionsReady();
   }
@@ -1628,11 +1647,7 @@ onBeforeUnmount(() => {
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   lastRefreshAt = Date.now();
-  void refreshInventoryBatch().then(() => {
-    const filters = currentFiltersForList();
-    void load(filters, { keepPage: true });
-    void refreshInventorySummary(filters);
-  });
+  void hydrateViewData({ keepPage: true });
 });
 </script>
 
