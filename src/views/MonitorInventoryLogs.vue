@@ -159,7 +159,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiDownload, apiGet, apiPost } from '../api/client';
@@ -169,12 +169,11 @@ import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryB
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
-import { countMonitorAssets, fetchAllPages, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
-import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorAsset, MonitorFilters } from '../types/assets';
-import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
-import { formatBeijingDateTime } from '../utils/datetime';
+import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
+import type { AssetInventorySummary, InventoryIssueBreakdown } from '../types/assets';
+import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openMonitorLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
-import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, exportInventoryBatchClosingWorkbook, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
+import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -210,6 +209,7 @@ const isAdmin = computed(() => can('admin'));
 const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
+let snapshotPollTimer: ReturnType<typeof window.setInterval> | null = null;
 const closeBatchVisible = ref(false);
 const startBatchVisible = ref(false);
 const startBatchSuggestedName = ref('');
@@ -217,11 +217,12 @@ const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, un
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
+
+const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
 
 const totalCache = new Map<string, number>();
 let totalTimer: any = null;
-let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
 
 function filterKey() {
   return [action.value || '', issueType.value || '', keyword.value || '', dateRange.value?.[0] || '', dateRange.value?.[1] || ''].join('|');
@@ -394,73 +395,6 @@ async function exportCsv() {
   }
 }
 
-function buildMonitorBatchExportBaseFilters(): MonitorFilters {
-  return {
-    status: '',
-    locationId: '',
-    keyword: '',
-    archiveReason: '',
-    archiveMode: 'active',
-    showArchived: false,
-    inventoryStatus: '',
-  };
-}
-
-async function fetchAll(filters: MonitorFilters, pageSize = 300) {
-  return fetchAllPages<MonitorAsset>((pageNumber, size) => listMonitorAssets(filters, pageNumber, size, true), pageSize);
-}
-
-function mapMonitorBatchWorkbookRows(items: MonitorAsset[]) {
-  return items.map((row, index) => ({
-    seq: index + 1,
-    asset_code: row.asset_code || '-',
-    brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
-    sn: row.sn || '-',
-    status: assetStatusText(row.status),
-    location: [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-',
-    inventory_status: inventoryStatusText(row.inventory_status),
-    inventory_at: row.inventory_at || '-',
-    inventory_issue_type: String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE' ? inventoryIssueTypeText(row.inventory_issue_type) : '-',
-    employee_name: row.employee_name || '-',
-    employee_no: row.employee_no || '-',
-    department: row.department || '-',
-    remark: row.remark || '-',
-  }));
-}
-
-function loadExcelUtils() {
-  excelUtilsPromise ||= import('../utils/excel');
-  return excelUtilsPromise;
-}
-
-async function exportMonitorBatchClosingWorkbook(active: NonNullable<InventoryBatchPayload['active']>) {
-  const base = buildMonitorBatchExportBaseFilters();
-  return exportInventoryBatchClosingWorkbook<MonitorAsset, MonitorFilters>({
-    activeName: active.name || '显示器盘点',
-    filenamePrefix: active.name || '显示器盘点',
-    baseFilters: base,
-    fetchRows: fetchAll,
-    filtersForStatus: (filters, inventoryStatus) => ({ ...filters, inventoryStatus }),
-    loadExcelUtils,
-    headers: [
-      { key: 'seq', title: '序号' },
-      { key: 'asset_code', title: '资产编号' },
-      { key: 'brand_model', title: '显示器' },
-      { key: 'sn', title: 'SN' },
-      { key: 'status', title: '业务状态' },
-      { key: 'location', title: '位置' },
-      { key: 'inventory_status', title: '盘点状态' },
-      { key: 'inventory_at', title: '盘点时间' },
-      { key: 'inventory_issue_type', title: '异常类型' },
-      { key: 'employee_name', title: '领用人' },
-      { key: 'employee_no', title: '工号' },
-      { key: 'department', title: '部门' },
-      { key: 'remark', title: '备注' },
-    ],
-    mapRows: mapMonitorBatchWorkbookRows,
-  });
-}
-
 async function openStartBatch() {
   if (!isAdmin.value) return;
   try {
@@ -549,10 +483,9 @@ async function confirmCloseActiveBatch() {
   if (!active?.id) return ElMessage.warning('当前没有进行中的显示器盘点批次');
   try {
     batchBusy.value = true;
-    const exported = await exportMonitorBatchClosingWorkbook(active);
-    const result: any = await executeInventoryBatchClose('monitor', active.id, exported.filename);
+    const result: any = await executeInventoryBatchClose('monitor', active.id);
     closeBatchVisible.value = false;
-    ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
+    ElMessage.success(result?.message || '本轮盘点已结束，结果快照正在后台生成');
     await refreshInventoryBatchAndSummary();
   } catch (error: any) {
     ElMessage.error(error?.message || '结束盘点批次失败');
@@ -590,6 +523,19 @@ watch(() => route.query, () => {
 onMounted(() => {
   applyRouteFilters();
   void Promise.all([load(), refreshInventoryBatchAndSummary()]);
+  if (typeof window !== 'undefined') {
+    snapshotPollTimer = window.setInterval(() => {
+      if (!hasPendingSnapshotJob.value) return;
+      void refreshInventoryBatchAndSummary();
+    }, 5000);
+  }
+});
+
+onUnmounted(() => {
+  if (snapshotPollTimer != null && typeof window !== 'undefined') {
+    window.clearInterval(snapshotPollTimer);
+    snapshotPollTimer = null;
+  }
 });
 </script>
 

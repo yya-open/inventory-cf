@@ -11,6 +11,8 @@ export type AssetInventoryIssueBreakdown = {
   OTHER: number;
 };
 
+export type AssetInventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
+
 export type AssetInventoryBatchRow = {
   id: number;
   kind: AssetInventoryKind;
@@ -25,6 +27,9 @@ export type AssetInventoryBatchRow = {
   summary_checked_issue: number;
   summary_unchecked: number;
   summary_issue_breakdown: AssetInventoryIssueBreakdown | null;
+  snapshot_job_id: number | null;
+  snapshot_job_status: AssetInventoryBatchSnapshotStatus;
+  snapshot_error_message: string | null;
   snapshot_filename: string | null;
   snapshot_exported_at: string | null;
   updated_at: string | null;
@@ -130,6 +135,9 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
         summary_checked_issue INTEGER NOT NULL DEFAULT 0,
         summary_unchecked INTEGER NOT NULL DEFAULT 0,
         summary_issue_breakdown TEXT,
+        snapshot_job_id INTEGER,
+        snapshot_job_status TEXT,
+        snapshot_error_message TEXT,
         snapshot_filename TEXT,
         snapshot_exported_at TEXT,
         updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
@@ -149,6 +157,9 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_checked_issue INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_unchecked INTEGER NOT NULL DEFAULT 0`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN summary_issue_breakdown TEXT`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_job_id INTEGER`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_job_status TEXT`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_error_message TEXT`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_filename TEXT`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_exported_at TEXT`,
       `ALTER TABLE pc_assets ADD COLUMN inventory_batch_id INTEGER`,
@@ -205,6 +216,9 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
     summary_checked_issue: Number(row.summary_checked_issue || 0),
     summary_unchecked: Number(row.summary_unchecked || 0),
     summary_issue_breakdown: normalizeIssueBreakdown(row.summary_issue_breakdown),
+    snapshot_job_id: row.snapshot_job_id ? Number(row.snapshot_job_id) : null,
+    snapshot_job_status: row.snapshot_job_status ? String(row.snapshot_job_status) as AssetInventoryBatchSnapshotStatus : null,
+    snapshot_error_message: row.snapshot_error_message ? String(row.snapshot_error_message) : null,
     snapshot_filename: row.snapshot_filename ? String(row.snapshot_filename) : null,
     snapshot_exported_at: row.snapshot_exported_at ? String(row.snapshot_exported_at) : null,
     updated_at: row.updated_at ? String(row.updated_at) : null,
@@ -403,7 +417,6 @@ export async function closeInventoryBatch(
   kind: AssetInventoryKind,
   closedBy: string | null,
   batchId?: number | null,
-  options: { snapshotFilename?: string | null } = {},
 ) {
   await ensureAssetInventoryBatchSchema(db);
   const target =
@@ -439,8 +452,6 @@ export async function closeInventoryBatch(
             summary_checked_issue=?,
             summary_unchecked=?,
             summary_issue_breakdown=?,
-            snapshot_filename=COALESCE(?, snapshot_filename),
-            snapshot_exported_at=CASE WHEN ? IS NOT NULL AND TRIM(?)<>'' THEN COALESCE(snapshot_exported_at, ${sqlNowStored()}) ELSE snapshot_exported_at END,
             updated_at=${sqlNowStored()}
       WHERE kind=? AND id=?`,
     )
@@ -451,13 +462,78 @@ export async function closeInventoryBatch(
       summary.checked_issue,
       summary.unchecked,
       JSON.stringify(issueBreakdown),
-      options.snapshotFilename || null,
-      options.snapshotFilename || null,
-      options.snapshotFilename || null,
       kind,
       normalized.id,
     )
     .run();
   await pruneInventoryBatchHistory(db, kind);
   return getLatestInventoryBatch(db, kind);
+}
+
+
+export async function attachInventoryBatchSnapshotJob(
+  db: D1Database,
+  kind: AssetInventoryKind,
+  batchId: number,
+  jobId: number,
+) {
+  await ensureAssetInventoryBatchSchema(db);
+  await db
+    .prepare(
+      `UPDATE asset_inventory_batch
+          SET snapshot_job_id=?,
+              snapshot_job_status='queued',
+              snapshot_error_message=NULL,
+              snapshot_filename=NULL,
+              snapshot_exported_at=NULL,
+              updated_at=${sqlNowStored()}
+        WHERE kind=? AND id=?`,
+    )
+    .bind(Number(jobId || 0) || null, kind, Number(batchId))
+    .run();
+  const row = await db
+    .prepare(`SELECT * FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`)
+    .bind(kind, Number(batchId))
+    .first<any>();
+  return normalizeBatchRow(row);
+}
+
+export async function updateInventoryBatchSnapshotJobState(
+  db: D1Database,
+  batchId: number,
+  payload: {
+    status?: AssetInventoryBatchSnapshotStatus;
+    errorMessage?: string | null;
+    filename?: string | null;
+    exportedAt?: string | null;
+  },
+) {
+  await ensureAssetInventoryBatchSchema(db);
+  const status = payload.status ?? null;
+  const exportedAt = payload.exportedAt ?? null;
+  await db
+    .prepare(
+      `UPDATE asset_inventory_batch
+          SET snapshot_job_status=COALESCE(?, snapshot_job_status),
+              snapshot_error_message=?,
+              snapshot_filename=COALESCE(?, snapshot_filename),
+              snapshot_exported_at=CASE
+                WHEN ? IS NOT NULL AND TRIM(?)<>'' THEN ?
+                WHEN ?='success' AND COALESCE(snapshot_exported_at,'')='' THEN ${sqlNowStored()}
+                ELSE snapshot_exported_at
+              END,
+              updated_at=${sqlNowStored()}
+        WHERE id=?`,
+    )
+    .bind(
+      status,
+      payload.errorMessage ?? null,
+      payload.filename ?? null,
+      exportedAt,
+      exportedAt,
+      exportedAt,
+      status,
+      Number(batchId),
+    )
+    .run();
 }

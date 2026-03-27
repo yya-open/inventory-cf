@@ -58,10 +58,18 @@
               <strong>{{ metricValue(item.summary_unchecked, activeMetricFallback(item, 'summary_unchecked')) }}</strong>
             </div>
           </div>
-          <div v-if="item.snapshot_filename || item.snapshot_exported_at" class="history-snapshot">
-            <span class="history-label">结果快照</span>
-            <strong>{{ item.snapshot_filename || '-' }}</strong>
-            <div class="history-subtle">导出时间：{{ item.snapshot_exported_at || '-' }}</div>
+          <div v-if="showSnapshot(item)" class="history-snapshot">
+            <div class="history-snapshot-head">
+              <div>
+                <span class="history-label">结果快照</span>
+                <strong>{{ item.snapshot_filename || snapshotStatusText(item.snapshot_job_status) }}</strong>
+              </div>
+              <el-tag :type="snapshotTagType(item.snapshot_job_status)">{{ snapshotStatusText(item.snapshot_job_status) }}</el-tag>
+            </div>
+            <div class="history-subtle">{{ snapshotSubtleText(item) }}</div>
+            <div class="history-snapshot-actions">
+              <el-button v-if="canDownload(item)" type="primary" plain size="small" @click="downloadSnapshot(item)">下载快照</el-button>
+            </div>
           </div>
           <div class="history-footnote" v-if="Number(item.summary_total || 0) <= 0 && item.status === 'CLOSED'">
             这轮批次没有保存完整汇总，历史老批次可继续参考开始/结束时间与操作人记录。
@@ -74,7 +82,9 @@
 </template>
 
 <script setup lang="ts">
-import type { InventoryBatchPayload } from '../../api/inventoryBatches';
+import { ElMessage } from 'element-plus';
+import { apiDownload } from '../../api/client';
+import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
 
 const props = defineProps<{
   visible: boolean;
@@ -102,6 +112,46 @@ function activeMetricFallback(item: any, key: 'summary_total' | 'summary_checked
   if (key === 'summary_checked_ok') return props.currentSummary.checked_ok;
   if (key === 'summary_checked_issue') return props.currentSummary.checked_issue;
   return props.currentSummary.unchecked;
+}
+
+function snapshotStatusText(status: InventoryBatchRow['snapshot_job_status']) {
+  return inventoryBatchSnapshotStatusText(status || null);
+}
+
+function snapshotTagType(status: InventoryBatchRow['snapshot_job_status']) {
+  switch (String(status || '').toLowerCase()) {
+    case 'success': return 'success';
+    case 'failed': return 'danger';
+    case 'canceled': return 'info';
+    default: return 'warning';
+  }
+}
+
+function showSnapshot(item: InventoryBatchRow | null | undefined) {
+  return !!(item?.snapshot_job_id || item?.snapshot_filename || item?.snapshot_exported_at || item?.snapshot_job_status || item?.snapshot_error_message);
+}
+
+function canDownload(item: InventoryBatchRow | null | undefined) {
+  return !!(item?.id && String(item.snapshot_job_status || '').toLowerCase() === 'success');
+}
+
+function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
+  if (!item) return '-';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return item.snapshot_error_message || '结果快照生成失败，请稍后重试';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return item.snapshot_error_message || '结果快照任务已取消';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return '结果快照正在后台生成，请稍后刷新页面';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return '结果快照已入队，后台将继续生成';
+  return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照';
+}
+
+async function downloadSnapshot(item: InventoryBatchRow) {
+  try {
+    if (!canDownload(item)) return;
+    await apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined);
+  } catch (error: any) {
+    ElMessage.error(error?.message || '下载结果快照失败');
+  }
 }
 </script>
 
@@ -131,9 +181,12 @@ function activeMetricFallback(item: any, key: 'summary_total' | 'summary_checked
 .metric-card.issue strong { color: var(--el-color-danger); }
 .metric-card.unchecked strong { color: var(--el-color-info); }
 .history-snapshot { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
+.history-snapshot-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.history-snapshot-actions { display:flex; justify-content:flex-end; }
 .history-footnote { margin-top: 10px; color:#909399; font-size:12px; line-height:1.6; }
 @media (max-width: 640px) {
   .history-time-grid,
   .history-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .history-snapshot-head { flex-direction:column; }
 }
 </style>

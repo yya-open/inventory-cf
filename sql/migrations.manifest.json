@@ -173,11 +173,15 @@
     "id": "202603260020_asset_inventory_batch_issue_breakdown",
     "file": "sql/migrate_asset_inventory_batch_issue_breakdown.sql",
     "description": "asset inventory batch issue breakdown summaries for retained history"
-  }
-  ,
+  },
   {
     "id": "202603260030_asset_inventory_batch_snapshot_record",
     "file": "sql/migrate_asset_inventory_batch_snapshot_record.sql",
     "description": "persist inventory batch export snapshot filename and export time"
+  },
+  {
+    "id": "202603270010_asset_inventory_batch_snapshot_async_job",
+    "file": "sql/migrate_asset_inventory_batch_snapshot_async_job.sql",
+    "description": "inventory batch snapshot async job linkage and binary async job result storage"
   }
 ]

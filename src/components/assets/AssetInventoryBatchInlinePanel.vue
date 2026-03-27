@@ -55,10 +55,18 @@
               :active-code="activeIssueCode"
               @select="(code) => emit('issue-select', code)"
             />
-            <div v-if="primaryBatch?.snapshot_filename || primaryBatch?.snapshot_exported_at" class="batch-inline-snapshot">
-              <span class="batch-inline-label">结果快照</span>
-              <strong>{{ primaryBatch?.snapshot_filename || '-' }}</strong>
-              <div class="batch-inline-subtle">导出时间：{{ primaryBatch?.snapshot_exported_at || '-' }}</div>
+            <div v-if="showSnapshot(primaryBatch)" class="batch-inline-snapshot">
+              <div class="batch-inline-snapshot-head">
+                <div>
+                  <span class="batch-inline-label">结果快照</span>
+                  <strong>{{ primaryBatch.snapshot_filename || snapshotStatusText(primaryBatch.snapshot_job_status) }}</strong>
+                </div>
+                <el-tag :type="snapshotTagType(primaryBatch.snapshot_job_status)">{{ snapshotStatusText(primaryBatch.snapshot_job_status) }}</el-tag>
+              </div>
+              <div class="batch-inline-subtle">{{ snapshotSubtleText(primaryBatch) }}</div>
+              <div class="batch-inline-snapshot-actions">
+                <el-button v-if="canDownload(primaryBatch)" type="primary" plain size="small" @click="downloadSnapshot(primaryBatch)">下载快照</el-button>
+              </div>
             </div>
           </template>
         </div>
@@ -101,10 +109,18 @@
               </div>
             </div>
             <AssetInventoryIssueBreakdownPanel :breakdown="item.summary_issue_breakdown" />
-            <div v-if="item.snapshot_filename || item.snapshot_exported_at" class="batch-inline-snapshot">
-              <span class="batch-inline-label">结果快照</span>
-              <strong>{{ item.snapshot_filename || '-' }}</strong>
-              <div class="batch-inline-subtle">导出时间：{{ item.snapshot_exported_at || '-' }}</div>
+            <div v-if="showSnapshot(item)" class="batch-inline-snapshot">
+              <div class="batch-inline-snapshot-head">
+                <div>
+                  <span class="batch-inline-label">结果快照</span>
+                  <strong>{{ item.snapshot_filename || snapshotStatusText(item.snapshot_job_status) }}</strong>
+                </div>
+                <el-tag :type="snapshotTagType(item.snapshot_job_status)">{{ snapshotStatusText(item.snapshot_job_status) }}</el-tag>
+              </div>
+              <div class="batch-inline-subtle">{{ snapshotSubtleText(item) }}</div>
+              <div class="batch-inline-snapshot-actions">
+                <el-button v-if="canDownload(item)" type="primary" plain size="small" @click="downloadSnapshot(item)">下载快照</el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -116,7 +132,9 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import type { InventoryBatchPayload } from '../../api/inventoryBatches';
+import { ElMessage } from 'element-plus';
+import { apiDownload } from '../../api/client';
+import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
 import type { AssetInventorySummary, InventoryIssueBreakdown } from '../../types/assets';
 import { emptyInventoryIssueBreakdown } from '../../types/assets';
 import AssetInventoryIssueBreakdownPanel from './AssetInventoryIssueBreakdownPanel.vue';
@@ -152,6 +170,46 @@ const primaryIssueBreakdown = computed(() => {
   if (props.inventoryBatch.active) return props.currentIssueBreakdown || emptyInventoryIssueBreakdown();
   return primaryBatch.value?.summary_issue_breakdown || emptyInventoryIssueBreakdown();
 });
+
+function snapshotStatusText(status: InventoryBatchRow['snapshot_job_status']) {
+  return inventoryBatchSnapshotStatusText(status || null);
+}
+
+function snapshotTagType(status: InventoryBatchRow['snapshot_job_status']) {
+  switch (String(status || '').toLowerCase()) {
+    case 'success': return 'success';
+    case 'failed': return 'danger';
+    case 'canceled': return 'info';
+    default: return 'warning';
+  }
+}
+
+function showSnapshot(item: InventoryBatchRow | null | undefined) {
+  return !!(item?.snapshot_job_id || item?.snapshot_filename || item?.snapshot_exported_at || item?.snapshot_job_status || item?.snapshot_error_message);
+}
+
+function canDownload(item: InventoryBatchRow | null | undefined) {
+  return !!(item?.id && String(item.snapshot_job_status || '').toLowerCase() === 'success');
+}
+
+function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
+  if (!item) return '-';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return item.snapshot_error_message || '结果快照生成失败，请稍后重试';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return item.snapshot_error_message || '结果快照任务已取消';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return '结果快照正在后台生成，请稍后刷新页面';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return '结果快照已入队，后台将继续生成';
+  return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照';
+}
+
+async function downloadSnapshot(item: InventoryBatchRow) {
+  try {
+    if (!canDownload(item)) return;
+    await apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined);
+  } catch (error: any) {
+    ElMessage.error(error?.message || '下载结果快照失败');
+  }
+}
 </script>
 
 <style scoped>
@@ -175,6 +233,8 @@ const primaryIssueBreakdown = computed(() => {
 .batch-inline-subtle { margin-top: 4px; color:#909399; font-size:12px; line-height:1.6; }
 .batch-inline-list { display:flex; flex-direction:column; gap:12px; }
 .batch-inline-snapshot { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
+.batch-inline-snapshot-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
+.batch-inline-snapshot-actions { display:flex; justify-content:flex-end; }
 .batch-inline-time-grid,
 .batch-inline-metric-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; margin-top: 12px; }
 .batch-inline-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
@@ -187,5 +247,6 @@ const primaryIssueBreakdown = computed(() => {
 @media (max-width: 640px) {
   .batch-inline-time-grid,
   .batch-inline-metric-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .batch-inline-snapshot-head { flex-direction:column; }
 }
 </style>

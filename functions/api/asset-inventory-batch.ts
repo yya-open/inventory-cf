@@ -1,6 +1,7 @@
 import { errorResponse, requireAuth } from './_auth';
 import { logAudit } from './_audit';
-import { clearInventoryLogsForNewBatch, closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, type AssetInventoryKind } from './services/asset-inventory-batches';
+import { clearInventoryLogsForNewBatch, closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, attachInventoryBatchSnapshotJob, type AssetInventoryKind } from './services/asset-inventory-batches';
+import { createAsyncJob, processAsyncJobIds } from './services/async-jobs';
 
 function parseKind(input: any): AssetInventoryKind {
   const kind = String(input || '').trim().toLowerCase();
@@ -27,7 +28,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   }
 };
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, 'admin');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
@@ -51,14 +52,30 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     if (action === 'close') {
       const batchId = Number(body?.id || 0) || null;
       const before = batchId ? null : await getActiveInventoryBatch(env.DB, kind);
-      const snapshotFilename = String(body?.snapshot_filename || '').trim() || null;
-      const batch = await closeInventoryBatch(env.DB, kind, actor.username || null, batchId, { snapshotFilename });
-      await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', batchId || before?.id || batch?.id || null, {
+      const batch = await closeInventoryBatch(env.DB, kind, actor.username || null, batchId);
+      const targetBatchId = Number(batch?.id || batchId || before?.id || 0);
+      if (!targetBatchId) return Response.json({ ok: false, message: '盘点批次不存在' }, { status: 404 });
+      const jobId = await createAsyncJob(env.DB, {
+        job_type: 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT',
+        created_by: actor.id,
+        created_by_name: actor.username,
+        permission_scope: 'viewer',
+        retain_days: 30,
+        max_retries: 2,
+        request_json: {
+          kind,
+          batch_id: targetBatchId,
+        },
+      });
+      const attached = await attachInventoryBatchSnapshotJob(env.DB, kind, targetBatchId, jobId);
+      if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [jobId]));
+      else void processAsyncJobIds(env.DB, [jobId]);
+      await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', targetBatchId, {
         kind,
-        batch_id: batchId || before?.id || batch?.id || null,
-        snapshot_filename: snapshotFilename,
+        batch_id: targetBatchId,
+        snapshot_job_id: jobId,
       }).catch(() => {});
-      return Response.json({ ok: true, data: batch, message: `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已结束` });
+      return Response.json({ ok: true, data: attached, snapshot_job_id: jobId, message: `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已结束，结果快照正在后台生成` });
     }
 
     return Response.json({ ok: false, message: 'action 参数无效' }, { status: 400 });

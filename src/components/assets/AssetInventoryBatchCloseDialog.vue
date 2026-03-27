@@ -4,7 +4,7 @@
       <div class="close-card intro">
         <div class="close-title">结案确认</div>
         <div class="close-name">{{ batch?.name || `当前${kindLabel}盘点批次` }}</div>
-        <div class="close-subtle">结束本轮时会自动导出一份 Excel（汇总 / 已盘 / 未盘 / 异常），并把异常继续拆成具体类型，方便后续复核。</div>
+        <div class="close-subtle">结束本轮后会在后端异步生成一份结果快照（汇总 / 已盘 / 未盘 / 异常），生成完成后可在“结果快照”中直接下载。</div>
       </div>
       <div class="close-card">
         <div class="close-title">结案预览</div>
@@ -27,12 +27,12 @@
           </div>
         </div>
         <AssetInventoryIssueBreakdownPanel :breakdown="issueBreakdown" />
-        <div class="close-subtle">建议先确认异常类型分布是否合理，再执行“导出并结束本轮”。</div>
+        <div class="close-subtle">建议先确认异常类型分布是否合理，再执行“结束本轮并生成快照”。</div>
       </div>
     </div>
     <template #footer>
       <el-button @click="emit('update:visible', false)">取消</el-button>
-      <el-button type="primary" :loading="loading" @click="emit('confirm')">导出并结束本轮</el-button>
+      <el-button type="primary" :loading="loading" @click="emit('confirm')">结束本轮并生成快照</el-button>
     </template>
   </el-dialog>
 </template>

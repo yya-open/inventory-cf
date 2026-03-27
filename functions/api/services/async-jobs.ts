@@ -4,13 +4,15 @@ import { ensureMonitorQrColumns } from '../_monitor';
 import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
+import { updateInventoryBatchSnapshotJobState, type AssetInventoryKind } from './asset-inventory-batches';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
+import * as XLSX from 'xlsx';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -24,6 +26,7 @@ export async function ensureAsyncJobsTable(db: D1Database) {
       permission_scope TEXT,
       request_json TEXT,
       result_text TEXT,
+      result_blob_base64 TEXT,
       result_content_type TEXT,
       result_filename TEXT,
       message TEXT,
@@ -35,6 +38,7 @@ export async function ensureAsyncJobsTable(db: D1Database) {
     )`
   ).run();
   const alters = [
+    `ALTER TABLE async_jobs ADD COLUMN result_blob_base64 TEXT`,
     `ALTER TABLE async_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE async_jobs ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE async_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0`,
@@ -308,7 +312,342 @@ async function runInitMissingQrKeysJob(db: D1Database, config: { assetTable: 'pc
   return { total_updated: totalUpdated, rounds, batch_size: config.batchSize, exhausted: lastUpdated > 0 };
 }
 
-async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any) {
+
+
+type WorkbookHeader = { key: string; title: string };
+
+type AsyncJobBuiltResult = {
+  text?: string | null;
+  blobBase64?: string | null;
+  filename: string;
+  contentType: string;
+  message: string;
+};
+
+function toB64FilenameSafe(value: any) {
+  return String(value || '').replace(/[\/:*?"<>|]/g, '_').trim() || '盘点结果';
+}
+
+function parseStoredDateTime(input: any) {
+  if (!input) return null;
+  const s = String(input).trim();
+  if (!s) return null;
+  const normalized = /^\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}$/.test(s) ? s.replace(' ', 'T') + '+08:00' : /^\d{4}-\d{2}-\d{2}$/.test(s) ? s + 'T00:00:00+08:00' : s;
+  const dt = new Date(normalized);
+  return Number.isNaN(dt.getTime()) ? null : dt;
+}
+
+function formatBeijingDateTimeText(input: any) {
+  if (!input) return '';
+  const dt = parseStoredDateTime(input);
+  if (!dt) return String(input ?? '');
+  return new Intl.DateTimeFormat('zh-CN', {
+    timeZone: 'Asia/Shanghai',
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+    hour12: false,
+  }).format(dt).replace(/\//g, '-');
+}
+
+function buildBatchExportTimestamp(date = new Date()) {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, '0');
+  const d = String(date.getDate()).padStart(2, '0');
+  const hh = String(date.getHours()).padStart(2, '0');
+  const mm = String(date.getMinutes()).padStart(2, '0');
+  return `${y}${m}${d}_${hh}${mm}`;
+}
+
+function assetStatusText(status: any) {
+  switch (String(status || '')) {
+    case 'IN_STOCK': return '在库';
+    case 'ASSIGNED': return '已领用';
+    case 'RECYCLED': return '已回收';
+    case 'SCRAPPED': return '已报废';
+    default: return String(status || '-');
+  }
+}
+
+function inventoryStatusText(status: any) {
+  switch (String(status || '').toUpperCase()) {
+    case 'CHECKED_OK': return '已盘';
+    case 'CHECKED_ISSUE': return '异常';
+    default: return '未盘';
+  }
+}
+
+function inventoryIssueTypeText(issueType: any) {
+  switch (String(issueType || '').toUpperCase()) {
+    case 'NOT_FOUND': return '未找到';
+    case 'WRONG_LOCATION': return '位置不符';
+    case 'WRONG_QR': return '二维码不符';
+    case 'WRONG_STATUS': return '状态不符';
+    case 'MISSING': return '缺失';
+    case 'OTHER': return '其他';
+    default: return String(issueType || '-');
+  }
+}
+
+function appendWorkbookSheet(wb: XLSX.WorkBook, sheetName: string, rows: any[], headers?: WorkbookHeader[]) {
+  const safeName = String(sheetName || 'Sheet').slice(0, 31) || 'Sheet';
+  const data = Array.isArray(headers) && headers.length
+    ? (rows || []).map((row) => {
+        const mapped: Record<string, any> = {};
+        headers.forEach((header) => {
+          mapped[header.title] = row?.[header.key] ?? '';
+        });
+        return mapped;
+      })
+    : (rows || []);
+  const ws = Array.isArray(headers) && headers.length
+    ? XLSX.utils.json_to_sheet(data, { header: headers.map((header) => header.title) })
+    : XLSX.utils.json_to_sheet(data);
+  XLSX.utils.book_append_sheet(wb, ws, safeName);
+}
+
+async function listPcBatchAssets(db: D1Database, batchId: number, inventoryStatus?: string | null) {
+  const rows: any[] = [];
+  const pageSize = 500;
+  let offset = 0;
+  const normalizedStatus = String(inventoryStatus || '').trim().toUpperCase();
+  while (true) {
+    const binds: any[] = [Number(batchId)];
+    let statusSql = '';
+    if (normalizedStatus) {
+      statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
+      binds.push(normalizedStatus);
+    }
+    binds.push(pageSize, offset);
+    const result = await db.prepare(
+      `SELECT
+         a.*,
+         s.current_employee_no AS last_employee_no,
+         s.current_employee_name AS last_employee_name,
+         s.current_department AS last_department,
+         s.last_config_date,
+         s.last_recycle_date
+       FROM pc_assets a
+       LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id
+      WHERE a.inventory_batch_id=?
+        AND COALESCE(a.archived, 0)=0${statusSql}
+      ORDER BY a.id ASC
+      LIMIT ? OFFSET ?`
+    ).bind(...binds).all<any>();
+    const chunk = result.results || [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
+}
+
+async function listMonitorBatchAssets(db: D1Database, batchId: number, inventoryStatus?: string | null) {
+  const rows: any[] = [];
+  const pageSize = 500;
+  let offset = 0;
+  const normalizedStatus = String(inventoryStatus || '').trim().toUpperCase();
+  while (true) {
+    const binds: any[] = [Number(batchId)];
+    let statusSql = '';
+    if (normalizedStatus) {
+      statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
+      binds.push(normalizedStatus);
+    }
+    binds.push(pageSize, offset);
+    const result = await db.prepare(
+      `SELECT
+         a.*,
+         l.name AS location_name,
+         p.name AS parent_location_name
+       FROM monitor_assets a
+       LEFT JOIN pc_locations l ON l.id = a.location_id
+       LEFT JOIN pc_locations p ON p.id = l.parent_id
+      WHERE a.inventory_batch_id=?
+        AND COALESCE(a.archived, 0)=0${statusSql}
+      ORDER BY a.id ASC
+      LIMIT ? OFFSET ?`
+    ).bind(...binds).all<any>();
+    const chunk = result.results || [];
+    rows.push(...chunk);
+    if (chunk.length < pageSize) break;
+    offset += pageSize;
+  }
+  return rows;
+}
+
+function mapPcBatchWorkbookRows(rows: any[]) {
+  return rows.map((row, index) => ({
+    seq: index + 1,
+    brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
+    serial_no: row.serial_no || '-',
+    status: assetStatusText(row.status),
+    inventory_status: inventoryStatusText(row.inventory_status),
+    inventory_at: row.inventory_at || '-',
+    inventory_issue_type: String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE' ? inventoryIssueTypeText(row.inventory_issue_type) : '-',
+    employee_name: row.last_employee_name || '-',
+    employee_no: row.last_employee_no || '-',
+    department: row.last_department || '-',
+    config_date: row.last_config_date || '-',
+    recycle_date: row.last_recycle_date || '-',
+    remark: row.remark || '-',
+  }));
+}
+
+function mapMonitorBatchWorkbookRows(rows: any[]) {
+  return rows.map((row, index) => ({
+    seq: index + 1,
+    asset_code: row.asset_code || '-',
+    brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
+    sn: row.sn || '-',
+    status: assetStatusText(row.status),
+    location: [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-',
+    inventory_status: inventoryStatusText(row.inventory_status),
+    inventory_at: row.inventory_at || '-',
+    inventory_issue_type: String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE' ? inventoryIssueTypeText(row.inventory_issue_type) : '-',
+    employee_name: row.employee_name || '-',
+    employee_no: row.employee_no || '-',
+    department: row.department || '-',
+    remark: row.remark || '-',
+  }));
+}
+
+async function buildInventoryBatchSnapshotWorkbook(db: D1Database, requestJson: any): Promise<AsyncJobBuiltResult> {
+  const kind = String(requestJson?.kind || '').trim().toLowerCase() as AssetInventoryKind;
+  if (kind !== 'pc' && kind !== 'monitor') throw new Error('盘点快照任务 kind 无效');
+  const batchId = Number(requestJson?.batch_id || 0);
+  if (!Number.isFinite(batchId) || batchId <= 0) throw new Error('盘点快照任务缺少 batch_id');
+  const batch = await db.prepare(`SELECT * FROM asset_inventory_batch WHERE id=? AND kind=? LIMIT 1`).bind(batchId, kind).first<any>();
+  if (!batch?.id) throw new Error('盘点批次不存在');
+  const checkedRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'CHECKED_OK') : await listMonitorBatchAssets(db, batchId, 'CHECKED_OK');
+  const uncheckedRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'UNCHECKED') : await listMonitorBatchAssets(db, batchId, 'UNCHECKED');
+  const issueRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'CHECKED_ISSUE') : await listMonitorBatchAssets(db, batchId, 'CHECKED_ISSUE');
+  const summaryRows = [
+    { 项目: '盘点批次', 内容: batch.name || '-' },
+    { 项目: '开始时间', 内容: batch.started_at || '-' },
+    { 项目: '结束时间', 内容: batch.closed_at || '-' },
+    { 项目: '导出时间', 内容: formatBeijingDateTimeText(new Date().toISOString()) },
+    { 项目: '已盘', 内容: checkedRows.length },
+    { 项目: '未盘', 内容: uncheckedRows.length },
+    { 项目: '异常', 内容: issueRows.length },
+    { 项目: '设备总数', 内容: checkedRows.length + uncheckedRows.length + issueRows.length },
+  ];
+  const headers = kind === 'pc'
+    ? [
+        { key: 'seq', title: '序号' },
+        { key: 'brand_model', title: '电脑' },
+        { key: 'serial_no', title: 'SN' },
+        { key: 'status', title: '业务状态' },
+        { key: 'inventory_status', title: '盘点状态' },
+        { key: 'inventory_at', title: '盘点时间' },
+        { key: 'inventory_issue_type', title: '异常类型' },
+        { key: 'employee_name', title: '当前领用人' },
+        { key: 'employee_no', title: '工号' },
+        { key: 'department', title: '部门' },
+        { key: 'config_date', title: '配置日期' },
+        { key: 'recycle_date', title: '回收日期' },
+        { key: 'remark', title: '备注' },
+      ]
+    : [
+        { key: 'seq', title: '序号' },
+        { key: 'asset_code', title: '资产编号' },
+        { key: 'brand_model', title: '显示器' },
+        { key: 'sn', title: 'SN' },
+        { key: 'status', title: '业务状态' },
+        { key: 'location', title: '位置' },
+        { key: 'inventory_status', title: '盘点状态' },
+        { key: 'inventory_at', title: '盘点时间' },
+        { key: 'inventory_issue_type', title: '异常类型' },
+        { key: 'employee_name', title: '领用人' },
+        { key: 'employee_no', title: '工号' },
+        { key: 'department', title: '部门' },
+        { key: 'remark', title: '备注' },
+      ];
+  const mappedCheckedRows = kind === 'pc' ? mapPcBatchWorkbookRows(checkedRows) : mapMonitorBatchWorkbookRows(checkedRows);
+  const mappedUncheckedRows = kind === 'pc' ? mapPcBatchWorkbookRows(uncheckedRows) : mapMonitorBatchWorkbookRows(uncheckedRows);
+  const mappedIssueRows = kind === 'pc' ? mapPcBatchWorkbookRows(issueRows) : mapMonitorBatchWorkbookRows(issueRows);
+  const wb = XLSX.utils.book_new();
+  appendWorkbookSheet(wb, '汇总', summaryRows);
+  appendWorkbookSheet(wb, '已盘', mappedCheckedRows, headers);
+  appendWorkbookSheet(wb, '未盘', mappedUncheckedRows, headers);
+  appendWorkbookSheet(wb, '异常', mappedIssueRows, headers);
+  const filename = `${toB64FilenameSafe(batch.name || (kind === 'pc' ? '电脑盘点' : '显示器盘点'))}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
+  const blobBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
+  return {
+    blobBase64,
+    filename,
+    contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    message: `盘点结果快照已生成（已盘 ${checkedRows.length} / 未盘 ${uncheckedRows.length} / 异常 ${issueRows.length}）`,
+  };
+}
+
+function estimateBase64DecodedByteLength(input: any) {
+  const base64 = String(input || '');
+  if (!base64) return 0;
+  const padding = base64.endsWith('==') ? 2 : base64.endsWith('=') ? 1 : 0;
+  return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
+}
+
+function decodeBase64ToBytes(input: any) {
+  const base64 = String(input || '');
+  if (!base64) return new Uint8Array();
+  const binary = atob(base64);
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i += 1) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+export function buildAsyncJobDownloadResponse(row: any, options: { inline?: boolean; print?: boolean } = {}) {
+  if (String(row?.status) !== 'success') throw Object.assign(new Error('任务尚未完成'), { status: 400 });
+  const hasBlob = !!row?.result_blob_base64;
+  const hasText = row?.result_text != null;
+  if (!hasBlob && !hasText) {
+    if (row?.result_deleted_at) throw Object.assign(new Error('结果文件已过保留期，请重试重新生成'), { status: 410 });
+    throw Object.assign(new Error('任务结果不可用'), { status: 400 });
+  }
+  const filename = String(row?.result_filename || `job_${Number(row?.id || 0)}.txt`);
+  const contentType = String(row?.result_content_type || 'text/plain; charset=utf-8');
+  const headers: Record<string, string> = {
+    'content-type': contentType,
+    'content-disposition': `${options.inline ? 'inline' : 'attachment'}; filename="${filename}"`,
+    'cache-control': 'no-store',
+  };
+  if (hasBlob) {
+    return new Response(decodeBase64ToBytes(row.result_blob_base64), { headers });
+  }
+  let bodyText = String(row?.result_text || '');
+  if (options.print && contentType.includes('text/html')) {
+    const printScript = `<script>window.addEventListener('load',()=>setTimeout(()=>window.print(),120));</script>`;
+    bodyText = /<\/body>/i.test(bodyText) ? bodyText.replace(/<\/body>/i, `${printScript}</body>`) : `${bodyText}${printScript}`;
+  }
+  return new Response(bodyText, { headers });
+}
+
+function getInventoryBatchSnapshotMeta(requestJson: any) {
+  if (String(requestJson?.kind || '').trim() && Number(requestJson?.batch_id || 0) > 0) {
+    return {
+      kind: String(requestJson.kind).trim().toLowerCase() as AssetInventoryKind,
+      batchId: Number(requestJson.batch_id),
+    };
+  }
+  return null;
+}
+
+async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: AsyncJobType, requestJson: any, state: { status?: 'queued' | 'running' | 'success' | 'failed' | 'canceled'; errorMessage?: string | null; filename?: string | null; exportedAt?: string | null }) {
+  if (jobType !== 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') return;
+  const meta = getInventoryBatchSnapshotMeta(requestJson);
+  if (!meta?.batchId) return;
+  await updateInventoryBatchSnapshotJobState(db, meta.batchId, {
+    status: state.status ?? null,
+    errorMessage: state.errorMessage ?? null,
+    filename: state.filename ?? null,
+    exportedAt: state.exportedAt ?? null,
+  });
+}
+async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any): Promise<AsyncJobBuiltResult> {
   if (type === 'PC_QR_KEY_INIT') {
     await ensurePcQrColumns(db);
     const batchSize = Math.max(20, Math.min(500, Number(requestJson?.batch || requestJson?.batch_size || 200)));
@@ -375,6 +714,10 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     return { text: html, filename: `monitor_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版打印页` };
   }
 
+  if (type === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') {
+    return buildInventoryBatchSnapshotWorkbook(db, requestJson);
+  }
+
   if (type === 'DASHBOARD_PRECOMPUTE') {
     const result = await precomputeDashboardSnapshots(db, { days: Number(requestJson?.days || 90), force: requestJson?.force === true || requestJson?.force === 1 || requestJson?.force === '1' });
     return { text: JSON.stringify(result, null, 2), filename: `dashboard_precompute_${Date.now()}.json`, contentType: 'application/json; charset=utf-8', message: `看板快照预计算完成：执行 ${result.runs} 个范围任务` };
@@ -432,11 +775,12 @@ export async function cleanupExpiredAsyncJobResults(db: D1Database) {
   const res = await db.prepare(
     `UPDATE async_jobs
      SET result_text=NULL,
+         result_blob_base64=NULL,
          result_deleted_at=COALESCE(result_deleted_at, ${sqlNowStored()}),
          updated_at=${sqlNowStored()},
          message=CASE WHEN COALESCE(message,'')='' THEN '结果文件已过保留期，已清理' ELSE message || '（结果文件已过期清理）' END
      WHERE status='success'
-       AND result_text IS NOT NULL
+       AND (result_text IS NOT NULL OR result_blob_base64 IS NOT NULL)
        AND retain_until IS NOT NULL
        AND retain_until < ${sqlNowStored()}`
   ).run();
@@ -450,6 +794,7 @@ export async function cleanupAsyncJobHousekeeping(db: D1Database) {
     `DELETE FROM async_jobs
      WHERE status IN ('success','failed','canceled')
        AND COALESCE(result_text,'')=''
+       AND COALESCE(result_blob_base64,'')=''
        AND COALESCE(finished_at, canceled_at, updated_at, created_at) < datetime('now','+8 hours','-30 day')`
   ).run();
   const staleQueued = await db.prepare(
@@ -485,28 +830,36 @@ export async function processAsyncJob(db: D1Database, id: number) {
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
     await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), updated_at=${sqlNowStored()} WHERE id=?`).bind(id).run();
+    const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+    await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
     return;
   }
   const jobType = String(row.job_type || '') as AsyncJobType;
   const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
+  await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
     const result = await buildJobResult(db, jobType, req);
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (Number(latest?.cancel_requested || 0) === 1) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
+      await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
     await db.prepare(
-      `UPDATE async_jobs SET status='success', result_text=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
-    ).bind(result.text, result.contentType, result.filename, result.message, id).run();
+      `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
+    ).bind(result.text ?? null, result.blobBase64 ?? null, result.contentType, result.filename, result.message, id).run();
+    await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'success', errorMessage: null, filename: result.filename, exportedAt: formatBeijingDateTimeText(new Date().toISOString()) });
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (Number(latest?.cancel_requested || 0) === 1) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
+      await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
-    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(error?.message || error || '任务执行失败'), id).run();
+    const errorText = String(error?.message || error || '任务执行失败');
+    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(errorText, id).run();
+    await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'failed', errorMessage: errorText });
   }
 }
 
@@ -538,7 +891,7 @@ function mapAsyncJobRow(row: any) {
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
   const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
-  const resultSize = row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
+  const resultSize = row?.result_blob_base64 ? estimateBase64DecodedByteLength(row.result_blob_base64) : row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
   const progress = String(row?.status) === 'success' ? 100
     : String(row?.status) === 'failed' ? 100
     : String(row?.status) === 'canceled' ? 100
@@ -605,6 +958,8 @@ export async function cancelAsyncJob(db: D1Database, id: number) {
   const res = await db.prepare(
     `UPDATE async_jobs SET cancel_requested=1, status=CASE WHEN status='queued' THEN 'canceled' ELSE status END, canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END, updated_at=${sqlNowStored()}, message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END WHERE id=?`
   ).bind(id).run();
+  const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  if (String(row.status) === 'queued') await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
   return Number((res as any)?.meta?.changes || 0) > 0;
 }
 
@@ -617,6 +972,8 @@ export async function retryAsyncJob(db: D1Database, id: number) {
   const maxRetries = Number(row.max_retries || 1);
   if (retryCount >= maxRetries) throw Object.assign(new Error(`已超过最大重试次数（${maxRetries}）`), { status: 409 });
   await db.prepare(
-    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
+    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
+  const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'queued', errorMessage: null, filename: null, exportedAt: null });
 }

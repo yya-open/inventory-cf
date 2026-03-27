@@ -160,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiDownload, apiGet, apiPost } from '../api/client';
@@ -170,12 +170,11 @@ import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryB
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
-import { countPcAssets, fetchAllPages, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
-import type { AssetInventorySummary, InventoryIssueBreakdown, PcAsset, PcFilters } from '../types/assets';
-import { assetStatusText, emptyInventoryIssueBreakdown, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
-import { formatBeijingDateTime } from '../utils/datetime';
+import { countPcAssets, getPcAssetInventorySummary } from '../api/assetLedgers';
+import type { AssetInventorySummary, InventoryIssueBreakdown } from '../types/assets';
+import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openPcLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
-import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, exportInventoryBatchClosingWorkbook, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
+import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -212,6 +211,7 @@ const isAdmin = computed(() => can('admin'));
 const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
+let snapshotPollTimer: ReturnType<typeof window.setInterval> | null = null;
 const closeBatchVisible = ref(false);
 const startBatchVisible = ref(false);
 const startBatchSuggestedName = ref('');
@@ -219,11 +219,12 @@ const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, un
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
+
+const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
 
 const totalCache = new Map<string, number>();
 let totalTimer: any = null;
-let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
 
 function filterKey() {
   return [action.value || '', issueType.value || '', keyword.value || '', dateRange.value?.[0] || '', dateRange.value?.[1] || ''].join('|');
@@ -401,72 +402,6 @@ async function exportCsv() {
   }
 }
 
-function buildPcBatchExportBaseFilters(): PcFilters {
-  return {
-    status: '',
-    keyword: '',
-    archiveReason: '',
-    archiveMode: 'active',
-    showArchived: false,
-    inventoryStatus: '',
-  };
-}
-
-async function fetchAll(filters: PcFilters, pageSize = 300) {
-  return fetchAllPages<PcAsset>((pageNumber, size) => listPcAssets(filters, pageNumber, size, true), pageSize);
-}
-
-function mapPcBatchWorkbookRows(items: PcAsset[]) {
-  return items.map((row, index) => ({
-    seq: index + 1,
-    brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
-    serial_no: row.serial_no || '-',
-    status: assetStatusText(row.status),
-    inventory_status: inventoryStatusText(row.inventory_status),
-    inventory_at: row.inventory_at || '-',
-    inventory_issue_type: String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE' ? inventoryIssueTypeText(row.inventory_issue_type) : '-',
-    employee_name: row.last_employee_name || '-',
-    employee_no: row.last_employee_no || '-',
-    department: row.last_department || '-',
-    config_date: row.last_config_date || '-',
-    recycle_date: row.last_recycle_date || '-',
-    remark: row.remark || '-',
-  }));
-}
-
-function loadExcelUtils() {
-  excelUtilsPromise ||= import('../utils/excel');
-  return excelUtilsPromise;
-}
-
-async function exportPcBatchClosingWorkbook(active: NonNullable<InventoryBatchPayload['active']>) {
-  const base = buildPcBatchExportBaseFilters();
-  return exportInventoryBatchClosingWorkbook<PcAsset, PcFilters>({
-    activeName: active.name || '电脑盘点',
-    filenamePrefix: active.name || '电脑盘点',
-    baseFilters: base,
-    fetchRows: fetchAll,
-    filtersForStatus: (filters, inventoryStatus) => ({ ...filters, inventoryStatus }),
-    loadExcelUtils,
-    headers: [
-      { key: 'seq', title: '序号' },
-      { key: 'brand_model', title: '电脑' },
-      { key: 'serial_no', title: 'SN' },
-      { key: 'status', title: '业务状态' },
-      { key: 'inventory_status', title: '盘点状态' },
-      { key: 'inventory_at', title: '盘点时间' },
-      { key: 'inventory_issue_type', title: '异常类型' },
-      { key: 'employee_name', title: '当前领用人' },
-      { key: 'employee_no', title: '工号' },
-      { key: 'department', title: '部门' },
-      { key: 'config_date', title: '配置日期' },
-      { key: 'recycle_date', title: '回收日期' },
-      { key: 'remark', title: '备注' },
-    ],
-    mapRows: mapPcBatchWorkbookRows,
-  });
-}
-
 async function openStartBatch() {
   if (!isAdmin.value) return;
   try {
@@ -555,10 +490,9 @@ async function confirmCloseActiveBatch() {
   if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
   try {
     batchBusy.value = true;
-    const exported = await exportPcBatchClosingWorkbook(active);
-    const result: any = await executeInventoryBatchClose('pc', active.id, exported.filename);
+    const result: any = await executeInventoryBatchClose('pc', active.id);
     closeBatchVisible.value = false;
-    ElMessage.success(`${result?.message || '本轮盘点已结束'}，结果表已导出（已盘 ${exported.checked} / 未盘 ${exported.unchecked} / 异常 ${exported.issue}）`);
+    ElMessage.success(result?.message || '本轮盘点已结束，结果快照正在后台生成');
     await refreshInventoryBatchAndSummary();
   } catch (error: any) {
     ElMessage.error(error?.message || '结束盘点批次失败');
@@ -596,6 +530,19 @@ watch(() => route.query, () => {
 onMounted(() => {
   applyRouteFilters();
   void Promise.all([load(), refreshInventoryBatchAndSummary()]);
+  if (typeof window !== 'undefined') {
+    snapshotPollTimer = window.setInterval(() => {
+      if (!hasPendingSnapshotJob.value) return;
+      void refreshInventoryBatchAndSummary();
+    }, 5000);
+  }
+});
+
+onUnmounted(() => {
+  if (snapshotPollTimer != null && typeof window !== 'undefined') {
+    window.clearInterval(snapshotPollTimer);
+    snapshotPollTimer = null;
+  }
 });
 </script>
 

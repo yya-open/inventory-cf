@@ -3,6 +3,7 @@ import type { InventoryIssueBreakdown } from '../types/assets';
 
 export type InventoryBatchKind = 'pc' | 'monitor';
 export type InventoryBatchStatus = 'ACTIVE' | 'CLOSED';
+export type InventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
 
 export type InventoryBatchRow = {
   id: number;
@@ -18,6 +19,9 @@ export type InventoryBatchRow = {
   summary_checked_issue?: number;
   summary_unchecked?: number;
   summary_issue_breakdown?: InventoryIssueBreakdown | null;
+  snapshot_job_id?: number | null;
+  snapshot_job_status?: InventoryBatchSnapshotStatus;
+  snapshot_error_message?: string | null;
   snapshot_filename?: string | null;
   snapshot_exported_at?: string | null;
   updated_at?: string | null;
@@ -44,12 +48,35 @@ export async function startInventoryBatch(kind: InventoryBatchKind, name: string
   return result;
 }
 
-export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number | null, options: { snapshotFilename?: string | null } = {}) {
+export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number | null) {
   const result: any = await apiPost('/api/asset-inventory-batch', {
     action: 'close',
     kind,
     id: id || undefined,
-    snapshot_filename: options.snapshotFilename || undefined,
   });
   return result;
+}
+
+export function getInventoryBatchSnapshotDownloadUrl(kind: InventoryBatchKind, id: number) {
+  const q = new URLSearchParams();
+  q.set('kind', kind);
+  q.set('id', String(id));
+  return `/api/asset-inventory-batch-snapshot-download?${q.toString()}`;
+}
+
+export function inventoryBatchSnapshotStatusText(status: InventoryBatchSnapshotStatus) {
+  switch (String(status || '').toLowerCase()) {
+    case 'queued':
+      return '排队中';
+    case 'running':
+      return '生成中';
+    case 'success':
+      return '可下载';
+    case 'failed':
+      return '生成失败';
+    case 'canceled':
+      return '已取消';
+    default:
+      return '未生成';
+  }
 }
