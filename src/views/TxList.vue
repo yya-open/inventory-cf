@@ -284,10 +284,37 @@ const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
 const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
+let listRequestSeq = 0;
+let listRequestKey = '';
+let listRequestPromise: Promise<void> | null = null;
+let listController: AbortController | null = null;
+let itemsRequestPromise: Promise<void> | null = null;
+let itemsController: AbortController | null = null;
+
+function buildListRequestKey() {
+  return [
+    type.value || '',
+    item_id.value || '',
+    dateRange.value?.[0] || '',
+    dateRange.value?.[1] || '',
+    keyword.value || '',
+    sortBy.value || '',
+    sortDir.value || '',
+    page.value || 1,
+    pageSize.value || 50,
+    warehouseId.value || 1,
+  ].join('|');
+}
+
+function invalidateViewCache() {
+  lastRefreshAt = 0;
+  listRequestKey = '';
+}
 
 function onSearch(){
   page.value = 1;
-  load();
+  invalidateViewCache();
+  load({ force: true });
 }
 
 function reset() {
@@ -298,7 +325,8 @@ function reset() {
   sortBy.value = "created_at";
   sortDir.value = "desc";
   page.value = 1;
-  load();
+  invalidateViewCache();
+  load({ force: true });
 }
 
 function signedDelta(r: any) {
@@ -398,50 +426,77 @@ function exportCsv() {
   URL.revokeObjectURL(url);
 }
 
-async function loadItems() {
-  const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`);
-  items.value = j.data;
-
-  const qid = Number(route.query.item_id);
-  if (qid) item_id.value = qid;
+async function loadItems(force = false) {
+  if (!force && items.value.length) return;
+  if (!force && itemsRequestPromise) return itemsRequestPromise;
+  itemsController?.abort();
+  const controller = new AbortController();
+  itemsController = controller;
+  const request = (async () => {
+    try {
+      const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`, { signal: controller.signal });
+      items.value = j.data;
+      const qid = Number(route.query.item_id);
+      if (qid) item_id.value = qid;
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      throw error;
+    } finally {
+      if (itemsRequestPromise === request) itemsRequestPromise = null;
+    }
+  })();
+  itemsRequestPromise = request;
+  return request;
 }
 
 function onPageChange(){
-  load();
+  load({ force: true });
 }
 
 function onPageSizeChange(){
   page.value = 1;
-  load();
+  invalidateViewCache();
+  load({ force: true });
 }
 
-async function load(opts: { silent?: boolean } = {}) {
-  try {
-    const shouldShowLoading = !opts.silent || !rows.value.length;
-    if (shouldShowLoading) loading.value = true;
-    const params = new URLSearchParams();
-    if (type.value) params.set("type", type.value);
-    if (item_id.value) params.set("item_id", String(item_id.value));
-    if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
-    if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
-
-    params.set("page", String(page.value));
-    params.set("page_size", String(pageSize.value));
+async function load(opts: { silent?: boolean; force?: boolean } = {}) {
+  const requestKey = buildListRequestKey();
+  if (!opts.force && listRequestPromise && listRequestKey === requestKey) return listRequestPromise;
+  const currentSeq = ++listRequestSeq;
+  listController?.abort();
+  const controller = new AbortController();
+  listController = controller;
+  const request = (async () => {
+    try {
+      const shouldShowLoading = !opts.silent || !rows.value.length;
+      if (shouldShowLoading) loading.value = true;
+      const params = new URLSearchParams();
+      if (type.value) params.set("type", type.value);
+      if (item_id.value) params.set("item_id", String(item_id.value));
+      if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
+      if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+      params.set("page", String(page.value));
+      params.set("page_size", String(pageSize.value));
       params.set("warehouse_id", String(warehouseId.value || 1));
-
-    if (keyword.value) params.set("keyword", keyword.value);
-    if (sortBy.value) params.set("sort_by", sortBy.value);
-    if (sortDir.value) params.set("sort_dir", sortDir.value);
-
-    const j = await apiGet<any>(`/api/tx?${params.toString()}`);
-    rows.value = j.data;
-    total.value = Number(j.total || 0);
-    lastRefreshAt = Date.now();
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
-  } finally {
-    loading.value = false;
-  }
+      if (keyword.value) params.set("keyword", keyword.value);
+      if (sortBy.value) params.set("sort_by", sortBy.value);
+      if (sortDir.value) params.set("sort_dir", sortDir.value);
+      const j = await apiGet<any>(`/api/tx?${params.toString()}`, { signal: controller.signal });
+      if (currentSeq !== listRequestSeq) return;
+      rows.value = j.data;
+      total.value = Number(j.total || 0);
+      lastRefreshAt = Date.now();
+      listRequestKey = requestKey;
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || currentSeq !== listRequestSeq) return;
+      ElMessage.error(e?.message || "加载失败");
+    } finally {
+      if (currentSeq === listRequestSeq) loading.value = false;
+      if (listRequestPromise === request) listRequestPromise = null;
+    }
+  })();
+  listRequestPromise = request;
+  return request;
 }
 
 async function clearTx() {
@@ -506,7 +561,8 @@ async function clearTx() {
 
     const r = await apiPost<{ ok: boolean; data: { deleted: number } }>("/api/tx/clear", body);
     ElMessage.success(`已清空 ${r.data.deleted} 条记录`);
-    await load();
+    invalidateViewCache();
+    await load({ force: true });
   } catch (e: any) {
     if (e === "cancel" || e === "close") return;
     ElMessage.error(e?.message || "清空失败");

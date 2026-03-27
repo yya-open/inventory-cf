@@ -141,7 +141,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countPcAssets, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
-import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
+import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -177,7 +177,7 @@ const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_o
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
-const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
+const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInventoryBatchStore('pc');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
@@ -325,7 +325,9 @@ async function buildInlineQrSvg(link: string, size = 260) {
 }
 
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<PcFilters, PcAsset>({
+const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
+  cacheNamespace: 'pc-assets',
+  cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
 });
@@ -346,6 +348,7 @@ const {
   load,
   currentFilters,
   invalidateTotal,
+  invalidateListCache: () => invalidateCache(),
   touch: () => {
     lastRefreshAt = Date.now();
   },
@@ -490,7 +493,7 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 
 async function refreshInventoryBatch() {
   try {
-    inventoryBatch.value = await fetchInventoryBatch('pc');
+    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';

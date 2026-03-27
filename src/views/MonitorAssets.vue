@@ -195,7 +195,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
-import { fetchInventoryBatch, type InventoryBatchPayload } from '../api/inventoryBatches';
+import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -236,7 +236,7 @@ const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monit
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
-const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
+const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
@@ -448,7 +448,9 @@ async function ensureLocationOptionsReady(force = false) {
   await loadLocations(force);
 }
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+  cacheNamespace: 'monitor-assets',
+  cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
     try {
@@ -476,6 +478,7 @@ const {
   load,
   currentFilters,
   invalidateTotal,
+  invalidateListCache: () => invalidateCache(),
   touch: () => {
     lastRefreshAt = Date.now();
   },
@@ -611,7 +614,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 async function refreshInventoryBatch() {
   try {
-    inventoryBatch.value = await fetchInventoryBatch('monitor');
+    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';

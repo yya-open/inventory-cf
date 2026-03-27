@@ -168,7 +168,8 @@ import LazyMountBlock from '../components/LazyMountBlock.vue';
 import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryBatchPageSection.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
-import { fetchInventoryBatch, normalizeInventoryBatchPayload, type InventoryBatchPayload } from '../api/inventoryBatches';
+import type { InventoryBatchPayload } from '../api/inventoryBatches';
+import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
@@ -218,7 +219,7 @@ const pageSize = ref(50);
 const total = ref(0);
 const selectedRows = ref<any[]>([]);
 const isAdmin = computed(() => can('admin'));
-const inventoryBatch = ref<InventoryBatchPayload>({ active: null, latest: null, recent: [] });
+const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, applyPayload: applyInventoryBatchPayload } = useInventoryBatchStore('monitor');
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
 let snapshotPollTimer: ReturnType<typeof window.setInterval> | null = null;
@@ -229,10 +230,6 @@ const startBatchPreview = ref({ assetTotal: 0, checkedOk: 0, checkedIssue: 0, un
 const batchClosingSummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const inventoryIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
 const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIssueBreakdown());
-
-function applyInventoryBatchPayload(next: Partial<InventoryBatchPayload> | null | undefined) {
-  inventoryBatch.value = normalizeInventoryBatchPayload(next as InventoryBatchPayload);
-}
 
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
@@ -332,7 +329,7 @@ async function loadMonitorIssueBreakdown() {
 
 async function refreshInventoryBatchAndSummary() {
   const [batchResult, summaryResult, issueBreakdownResult] = await Promise.allSettled([
-    fetchInventoryBatch('monitor'),
+    refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 }),
     getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters()),
     loadMonitorIssueBreakdown(),
   ]);

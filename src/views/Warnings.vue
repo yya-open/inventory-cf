@@ -326,6 +326,12 @@ const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
 const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
+let listRequestSeq = 0;
+let listRequestKey = '';
+let listRequestPromise: Promise<void> | null = null;
+let listController: AbortController | null = null;
+let metaRequestPromise: Promise<void> | null = null;
+let metaController: AbortController | null = null;
 
 const categories = ref<string[]>([]);
 
@@ -364,6 +370,23 @@ function clearSelection() {
   tableRef.value?.clearSelection?.();
 }
 
+function buildWarningRequestKey() {
+  return [
+    filters.category || '',
+    filters.keyword || '',
+    filters.only_alert ? '1' : '0',
+    filters.sort || '',
+    page.value || 1,
+    pageSize.value || 50,
+    warehouseId.value || 1,
+  ].join('|');
+}
+
+function invalidateViewCache() {
+  lastRefreshAt = 0;
+  listRequestKey = '';
+}
+
 async function applyBulkWarning() {
   if (!selectedIds.value.length) return;
   try {
@@ -378,7 +401,8 @@ async function applyBulkWarning() {
     await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
     ElMessage.success("已更新预警值");
     clearSelection();
-    await load();
+    invalidateViewCache();
+    await load({ force: true });
   } catch (e: any) {
     ElMessage.error(e?.message || "批量更新失败");
   } finally {
@@ -386,43 +410,68 @@ async function applyBulkWarning() {
   }
 }
 
-async function loadMeta() {
-
-  try {
-    const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`);
-    categories.value = c.data || [];
-  } catch {
-    categories.value = [];
-  }
+async function loadMeta(force = false) {
+  if (!force && categories.value.length) return;
+  if (!force && metaRequestPromise) return metaRequestPromise;
+  metaController?.abort();
+  const controller = new AbortController();
+  metaController = controller;
+  const request = (async () => {
+    try {
+      const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`, { signal: controller.signal });
+      categories.value = c.data || [];
+    } catch (error: any) {
+      if (error?.name === 'AbortError') return;
+      categories.value = [];
+    } finally {
+      if (metaRequestPromise === request) metaRequestPromise = null;
+    }
+  })();
+  metaRequestPromise = request;
+  return request;
 }
 
-async function load(opts: { silent?: boolean } = {}) {
-  try {
-    const shouldShowLoading = !opts.silent || !rows.value.length;
-    if (shouldShowLoading) loading.value = true;
-    const qs = new URLSearchParams();
-    qs.set("warehouse_id", String(warehouseId.value || 1));
-    qs.set("only_alert", filters.only_alert ? "1" : "0");
-    qs.set("sort", filters.sort || "gap_desc");
-    qs.set("page", String(page.value));
-    qs.set("page_size", String(pageSize.value));
-    if (filters.category) qs.set("category", filters.category);
-    if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
-    const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(`/api/warnings?` + qs.toString());
-    rows.value = (j.data || []).map((r: any) => ({
-      ...r,
-      qty: Number(r.qty ?? 0),
-      warning_qty: Number(r.warning_qty ?? 0),
-      gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
-      last_tx_at: r.last_tx_at ?? "",
-    }));
-    total.value = Number((j as any).total || 0);
-    lastRefreshAt = Date.now();
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
-  } finally {
-    loading.value = false;
-  }
+async function load(opts: { silent?: boolean; force?: boolean } = {}) {
+  const requestKey = buildWarningRequestKey();
+  if (!opts.force && listRequestPromise && listRequestKey === requestKey) return listRequestPromise;
+  const currentSeq = ++listRequestSeq;
+  listController?.abort();
+  const controller = new AbortController();
+  listController = controller;
+  const request = (async () => {
+    try {
+      const shouldShowLoading = !opts.silent || !rows.value.length;
+      if (shouldShowLoading) loading.value = true;
+      const qs = new URLSearchParams();
+      qs.set("warehouse_id", String(warehouseId.value || 1));
+      qs.set("only_alert", filters.only_alert ? "1" : "0");
+      qs.set("sort", filters.sort || "gap_desc");
+      qs.set("page", String(page.value));
+      qs.set("page_size", String(pageSize.value));
+      if (filters.category) qs.set("category", filters.category);
+      if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
+      const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(`/api/warnings?` + qs.toString(), { signal: controller.signal });
+      if (currentSeq !== listRequestSeq) return;
+      rows.value = (j.data || []).map((r: any) => ({
+        ...r,
+        qty: Number(r.qty ?? 0),
+        warning_qty: Number(r.warning_qty ?? 0),
+        gap: Number(r.gap ?? (Number(r.warning_qty ?? 0) - Number(r.qty ?? 0))),
+        last_tx_at: r.last_tx_at ?? "",
+      }));
+      total.value = Number((j as any).total || 0);
+      lastRefreshAt = Date.now();
+      listRequestKey = requestKey;
+    } catch (e: any) {
+      if (e?.name === 'AbortError' || currentSeq !== listRequestSeq) return;
+      ElMessage.error(e?.message || "加载失败");
+    } finally {
+      if (currentSeq === listRequestSeq) loading.value = false;
+      if (listRequestPromise === request) listRequestPromise = null;
+    }
+  })();
+  listRequestPromise = request;
+  return request;
 }
 
 function formatTime(v: any) {
@@ -440,7 +489,8 @@ function reset() {
   filters.keyword = "";
   filters.only_alert = true;
   filters.sort = "gap_desc";
-  load();
+  invalidateViewCache();
+  load({ force: true });
 }
 
 async function exportCsv() {

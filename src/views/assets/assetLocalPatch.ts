@@ -15,16 +15,18 @@ export function createAssetPagePatchController<T extends Record<string, any>>(pa
   rows: Ref<T[]>;
   total: Ref<number>;
   page: Ref<number>;
-  load: (filters: any, options?: { keepPage?: boolean }) => Promise<unknown>;
+  load: (filters: any, options?: { keepPage?: boolean; forceRefresh?: boolean }) => Promise<unknown>;
   currentFilters: () => any;
   invalidateTotal: () => void;
+  invalidateListCache?: (filters?: any | string) => void;
   touch?: () => void;
 }) {
-  const { rows, total, page, load, currentFilters, invalidateTotal, touch } = params;
+  const { rows, total, page, load, currentFilters, invalidateTotal, invalidateListCache, touch } = params;
 
   async function refreshCurrent(keepPage = true, resetTotal = false) {
+    invalidateListCache?.();
     if (resetTotal) invalidateTotal();
-    await load(currentFilters(), { keepPage });
+    await load(currentFilters(), { keepPage, forceRefresh: true });
     touch?.();
   }
 
@@ -36,7 +38,10 @@ export function createAssetPagePatchController<T extends Record<string, any>>(pa
       changed += 1;
       return updater({ ...(row as any) });
     });
-    if (changed) touch?.();
+    if (changed) {
+      invalidateListCache?.();
+      touch?.();
+    }
     return changed;
   }
 
@@ -47,6 +52,7 @@ export function createAssetPagePatchController<T extends Record<string, any>>(pa
     const removed = Math.max(0, before - rows.value.length);
     if (removed) {
       total.value = Math.max(0, Number(total.value || 0) - removed);
+      invalidateListCache?.();
       touch?.();
     }
     return removed;
@@ -54,6 +60,7 @@ export function createAssetPagePatchController<T extends Record<string, any>>(pa
 
   async function ensureLocalPatchedPageStable(resetTotal = false) {
     if (resetTotal) invalidateTotal();
+    if (resetTotal) invalidateListCache?.();
     if (!rows.value.length && page.value > 1) {
       page.value -= 1;
       await refreshCurrent(true, resetTotal);

@@ -5,13 +5,46 @@ export type LoadContext<TFilters> = { filters: TFilters; page: number; pageSize:
 export type UsePagedAssetListOptions<TFilters, TItem> = {
   initialPageSize?: number;
   totalDebounceMs?: number;
+  cacheNamespace?: string;
+  cacheTtlMs?: number;
   createFilterKey: (filters: TFilters) => string;
   fetchPage: (context: LoadContext<TFilters>) => Promise<LoadResult<TItem>>;
   fetchTotal?: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
 };
 
+type PageCacheEntry = { rows: any[]; total: number; timestamp: number };
+type InflightPageRequest = { controller: AbortController; promise: Promise<LoadResult<any>> };
+
+const pageCache = new Map<string, PageCacheEntry>();
+const pageRequests = new Map<string, InflightPageRequest>();
+
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
+}
+
+function getNamespace(options: UsePagedAssetListOptions<any, any>) {
+  return String(options.cacheNamespace || 'paged-list');
+}
+
+function getFilterPrefix(options: UsePagedAssetListOptions<any, any>, filterKey: string) {
+  return `${getNamespace(options)}::${filterKey}`;
+}
+
+function getPageCacheKey(options: UsePagedAssetListOptions<any, any>, filterKey: string, page: number, pageSize: number) {
+  return `${getFilterPrefix(options, filterKey)}::page=${page}::size=${pageSize}`;
+}
+
+function clearPageCacheByPrefix(prefix: string) {
+  for (const key of [...pageCache.keys()]) {
+    if (key.startsWith(prefix)) pageCache.delete(key);
+  }
+}
+
+function patchPageCacheTotal(prefix: string, total: number) {
+  for (const [key, entry] of pageCache.entries()) {
+    if (!key.startsWith(prefix)) continue;
+    pageCache.set(key, { ...entry, total });
+  }
 }
 
 export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOptions<TFilters, TItem>) {
@@ -25,6 +58,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   let requestSeq = 0;
   let pageController: AbortController | null = null;
   let totalController: AbortController | null = null;
+  let activePageRequestKey = '';
 
   function clearTotalTimer() {
     if (totalTimer) {
@@ -38,38 +72,83 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     totalController?.abort();
   }
 
-  async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean } = {}) {
+  async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
     const currentSeq = ++requestSeq;
-    abortOngoing();
-    pageController = new AbortController();
+    const nextPage = opts.keepPage ? page.value : 1;
+    const filterKey = options.createFilterKey(filters);
+    const cachePrefix = getFilterPrefix(options, filterKey);
+    const pageKey = getPageCacheKey(options, filterKey, nextPage, pageSize.value);
+    const ttlMs = Number(options.cacheTtlMs ?? 30_000);
     const shouldShowLoading = !opts.silent || !rows.value.length;
+    const cached = pageCache.get(pageKey);
+
+    if (cached && !opts.forceRefresh && Date.now() - cached.timestamp < ttlMs) {
+      rows.value = [...(cached.rows || [])] as TItem[];
+      total.value = Number(cached.total || 0);
+      if (!opts.keepPage) page.value = 1;
+      if (!opts.silent) loading.value = false;
+      return;
+    }
+
+    if (activePageRequestKey && activePageRequestKey !== pageKey) {
+      pageController?.abort();
+    }
+
     if (shouldShowLoading) loading.value = true;
+    activePageRequestKey = pageKey;
+
     try {
-      const nextPage = opts.keepPage ? page.value : 1;
       let result: LoadResult<TItem>;
-      try {
-        result = await options.fetchPage({ filters, page: nextPage, pageSize: pageSize.value, fast: Boolean(options.fetchTotal), signal: pageController.signal });
-      } catch (error) {
-        if (currentSeq !== requestSeq || isAbortError(error)) return;
-        throw error;
+      const existingRequest = !opts.forceRefresh ? pageRequests.get(pageKey) : null;
+      if (existingRequest) {
+        pageController = existingRequest.controller;
+        try {
+          result = await existingRequest.promise as LoadResult<TItem>;
+        } catch (error) {
+          if (currentSeq !== requestSeq || isAbortError(error)) return;
+          throw error;
+        }
+      } else {
+        const controller = new AbortController();
+        pageController = controller;
+        const request = options.fetchPage({ filters, page: nextPage, pageSize: pageSize.value, fast: Boolean(options.fetchTotal), signal: controller.signal })
+          .finally(() => {
+            const active = pageRequests.get(pageKey);
+            if (active?.promise === request) pageRequests.delete(pageKey);
+          });
+        pageRequests.set(pageKey, { controller, promise: request as Promise<LoadResult<any>> });
+        try {
+          result = await request;
+        } catch (error) {
+          if (currentSeq !== requestSeq || isAbortError(error)) return;
+          throw error;
+        }
       }
       if (currentSeq !== requestSeq) return;
 
       rows.value = result.rows || [];
       if (!opts.keepPage) page.value = 1;
 
-      const key = options.createFilterKey(filters);
+      pageCache.set(pageKey, {
+        rows: [...(result.rows || [])],
+        total: typeof result.total === 'number' ? Number(result.total || 0) : Number(total.value || 0),
+        timestamp: Date.now(),
+      });
+
       if (typeof result.total === 'number') {
         total.value = Number(result.total || 0);
-        totalCache.set(key, total.value);
+        totalCache.set(filterKey, total.value);
+        patchPageCacheTotal(cachePrefix, total.value);
         return;
       }
       if (!options.fetchTotal) {
         total.value = 0;
+        patchPageCacheTotal(cachePrefix, 0);
         return;
       }
-      if (totalCache.has(key)) {
-        total.value = Number(totalCache.get(key) || 0);
+      if (totalCache.has(filterKey)) {
+        total.value = Number(totalCache.get(filterKey) || 0);
+        patchPageCacheTotal(cachePrefix, total.value);
         return;
       }
       clearTotalTimer();
@@ -80,8 +159,9 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         try {
           const value = Number(await options.fetchTotal!(filters, totalController?.signal));
           if (totalSeq !== requestSeq) return;
-          totalCache.set(key, value);
+          totalCache.set(filterKey, value);
           total.value = value;
+          patchPageCacheTotal(cachePrefix, value);
         } catch (error) {
           if (!isAbortError(error)) {
             // noop
@@ -93,13 +173,23 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     }
   }
 
-  const reload = (filters: TFilters) => load(filters, { keepPage: false });
+  const reload = (filters: TFilters, opts: { silent?: boolean; forceRefresh?: boolean } = {}) => load(filters, { keepPage: false, ...opts });
   const invalidateTotal = (filters?: TFilters | string) => {
     if (typeof filters === 'undefined') {
       totalCache.clear();
       return;
     }
     const key = typeof filters === 'string' ? filters : options.createFilterKey(filters);
+    totalCache.delete(key);
+  };
+  const invalidateCache = (filters?: TFilters | string) => {
+    if (typeof filters === 'undefined') {
+      clearPageCacheByPrefix(`${getNamespace(options)}::`);
+      totalCache.clear();
+      return;
+    }
+    const key = typeof filters === 'string' ? filters : options.createFilterKey(filters);
+    clearPageCacheByPrefix(`${getFilterPrefix(options, key)}::`);
     totalCache.delete(key);
   };
   const clearTotalCache = () => totalCache.clear();
@@ -113,5 +203,5 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     return load(filters, { keepPage: true });
   };
 
-  return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, clearTotalCache };
+  return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, invalidateCache, clearTotalCache };
 }
