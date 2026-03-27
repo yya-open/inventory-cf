@@ -9,7 +9,7 @@ function parseKind(input: any): AssetInventoryKind {
   throw Object.assign(new Error('kind 参数无效'), { status: 400 });
 }
 
-type Env = { DB: D1Database; JWT_SECRET: string };
+type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
@@ -50,11 +50,25 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     }
 
     if (action === 'close') {
+      if (!env.BACKUP_BUCKET) return Response.json({ ok: false, message: '未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。' }, { status: 500 });
       const batchId = Number(body?.id || 0) || null;
       const before = batchId ? null : await getActiveInventoryBatch(env.DB, kind);
       const batch = await closeInventoryBatch(env.DB, kind, actor.username || null, batchId);
       const targetBatchId = Number(batch?.id || batchId || before?.id || 0);
       if (!targetBatchId) return Response.json({ ok: false, message: '盘点批次不存在' }, { status: 404 });
+      const existingJobId = Number(batch?.snapshot_job_id || 0);
+      const existingStatus = String(batch?.snapshot_job_status || '').toLowerCase();
+      if (existingJobId > 0 && ['queued', 'running', 'success'].includes(existingStatus)) {
+        return Response.json({
+          ok: true,
+          data: batch,
+          snapshot_job_id: existingJobId,
+          reused: true,
+          message: existingStatus === 'success'
+            ? `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已结束，结果快照已可下载`
+            : `${kind === 'pc' ? '电脑' : '显示器'}盘点批次已结束，正在复用已有结果快照任务`,
+        });
+      }
       const jobId = await createAsyncJob(env.DB, {
         job_type: 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT',
         created_by: actor.id,
@@ -66,10 +80,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           kind,
           batch_id: targetBatchId,
         },
-      });
+      }, env.BACKUP_BUCKET);
       const attached = await attachInventoryBatchSnapshotJob(env.DB, kind, targetBatchId, jobId);
-      if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [jobId]));
-      else void processAsyncJobIds(env.DB, [jobId]);
+      if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [jobId], env.BACKUP_BUCKET));
+      else void processAsyncJobIds(env.DB, [jobId], env.BACKUP_BUCKET);
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', targetBatchId, {
         kind,
         batch_id: targetBatchId,

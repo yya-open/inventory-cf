@@ -183,5 +183,10 @@
     "id": "202603270010_asset_inventory_batch_snapshot_async_job",
     "file": "sql/migrate_asset_inventory_batch_snapshot_async_job.sql",
     "description": "inventory batch snapshot async job linkage and binary async job result storage"
+  },
+  {
+    "id": "202603270020_asset_inventory_batch_snapshot_object_storage",
+    "file": "sql/migrate_asset_inventory_batch_snapshot_object_storage.sql",
+    "description": "store async job and inventory snapshot results in object storage metadata instead of inline database blobs"
   }
 ]

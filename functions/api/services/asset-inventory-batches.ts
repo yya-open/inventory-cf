@@ -31,6 +31,8 @@ export type AssetInventoryBatchRow = {
   snapshot_job_status: AssetInventoryBatchSnapshotStatus;
   snapshot_error_message: string | null;
   snapshot_filename: string | null;
+  snapshot_object_key: string | null;
+  snapshot_file_size: number | null;
   snapshot_exported_at: string | null;
   updated_at: string | null;
 };
@@ -139,6 +141,8 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
         snapshot_job_status TEXT,
         snapshot_error_message TEXT,
         snapshot_filename TEXT,
+        snapshot_object_key TEXT,
+        snapshot_file_size INTEGER,
         snapshot_exported_at TEXT,
         updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
       )`,
@@ -161,6 +165,8 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_job_status TEXT`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_error_message TEXT`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_filename TEXT`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_object_key TEXT`,
+      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_file_size INTEGER`,
       `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_exported_at TEXT`,
       `ALTER TABLE pc_assets ADD COLUMN inventory_batch_id INTEGER`,
       `ALTER TABLE monitor_assets ADD COLUMN inventory_batch_id INTEGER`,
@@ -220,6 +226,8 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
     snapshot_job_status: row.snapshot_job_status ? String(row.snapshot_job_status) as AssetInventoryBatchSnapshotStatus : null,
     snapshot_error_message: row.snapshot_error_message ? String(row.snapshot_error_message) : null,
     snapshot_filename: row.snapshot_filename ? String(row.snapshot_filename) : null,
+    snapshot_object_key: row.snapshot_object_key ? String(row.snapshot_object_key) : null,
+    snapshot_file_size: row.snapshot_file_size == null ? null : Number(row.snapshot_file_size || 0),
     snapshot_exported_at: row.snapshot_exported_at ? String(row.snapshot_exported_at) : null,
     updated_at: row.updated_at ? String(row.updated_at) : null,
   };
@@ -485,6 +493,8 @@ export async function attachInventoryBatchSnapshotJob(
               snapshot_job_status='queued',
               snapshot_error_message=NULL,
               snapshot_filename=NULL,
+              snapshot_object_key=NULL,
+              snapshot_file_size=NULL,
               snapshot_exported_at=NULL,
               updated_at=${sqlNowStored()}
         WHERE kind=? AND id=?`,
@@ -505,6 +515,8 @@ export async function updateInventoryBatchSnapshotJobState(
     status?: AssetInventoryBatchSnapshotStatus;
     errorMessage?: string | null;
     filename?: string | null;
+    objectKey?: string | null;
+    fileSize?: number | null;
     exportedAt?: string | null;
   },
 ) {
@@ -517,6 +529,14 @@ export async function updateInventoryBatchSnapshotJobState(
           SET snapshot_job_status=COALESCE(?, snapshot_job_status),
               snapshot_error_message=?,
               snapshot_filename=COALESCE(?, snapshot_filename),
+              snapshot_object_key=CASE
+                WHEN ? IS NOT NULL AND TRIM(?)='' THEN NULL
+                ELSE COALESCE(?, snapshot_object_key)
+              END,
+              snapshot_file_size=CASE
+                WHEN ? IS NOT NULL AND ? <= 0 THEN NULL
+                ELSE COALESCE(?, snapshot_file_size)
+              END,
               snapshot_exported_at=CASE
                 WHEN ? IS NOT NULL AND TRIM(?)<>'' THEN ?
                 WHEN ?='success' AND COALESCE(snapshot_exported_at,'')='' THEN ${sqlNowStored()}
@@ -529,6 +549,12 @@ export async function updateInventoryBatchSnapshotJobState(
       status,
       payload.errorMessage ?? null,
       payload.filename ?? null,
+      payload.objectKey ?? null,
+      payload.objectKey ?? null,
+      payload.objectKey ?? null,
+      payload.fileSize ?? null,
+      payload.fileSize ?? null,
+      payload.fileSize ?? null,
       exportedAt,
       exportedAt,
       exportedAt,

@@ -23,6 +23,8 @@ export type InventoryBatchRow = {
   snapshot_job_status?: InventoryBatchSnapshotStatus;
   snapshot_error_message?: string | null;
   snapshot_filename?: string | null;
+  snapshot_object_key?: string | null;
+  snapshot_file_size?: number | null;
   snapshot_exported_at?: string | null;
   updated_at?: string | null;
 };

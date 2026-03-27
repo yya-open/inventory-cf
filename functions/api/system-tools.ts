@@ -17,13 +17,13 @@ import { listAsyncJobs } from './services/async-jobs';
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
     await requirePermission(env, request, 'ops_tools', 'admin');
     const [schema, dashboard, jobs, scan, history] = await Promise.all([
       getSchemaStatus(env.DB),
       loadOpsDashboard(env.DB),
-      listAsyncJobs(env.DB, { limit: 20, days: 7 }),
+      listAsyncJobs(env.DB, { limit: 20, days: 7 }, env.BACKUP_BUCKET),
       getAutoRepairScan(env.DB),
       listRepairHistory(env.DB, 20),
     ]);
@@ -41,7 +41,7 @@ async function runRepairAction(db: D1Database, action: string) {
   throw Object.assign(new Error('不支持的操作'), { status: 400 });
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
     const actor = await requirePermission(env, request, 'ops_tools', 'admin');
     const { action } = await request.json<any>();

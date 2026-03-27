@@ -27,6 +27,8 @@ export async function ensureAsyncJobsTable(db: D1Database) {
       request_json TEXT,
       result_text TEXT,
       result_blob_base64 TEXT,
+      result_object_key TEXT,
+      result_file_size INTEGER,
       result_content_type TEXT,
       result_filename TEXT,
       message TEXT,
@@ -39,6 +41,8 @@ export async function ensureAsyncJobsTable(db: D1Database) {
   ).run();
   const alters = [
     `ALTER TABLE async_jobs ADD COLUMN result_blob_base64 TEXT`,
+    `ALTER TABLE async_jobs ADD COLUMN result_object_key TEXT`,
+    `ALTER TABLE async_jobs ADD COLUMN result_file_size INTEGER`,
     `ALTER TABLE async_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`,
     `ALTER TABLE async_jobs ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 1`,
     `ALTER TABLE async_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0`,
@@ -324,6 +328,12 @@ type AsyncJobBuiltResult = {
   message: string;
 };
 
+type AsyncJobResultBucket = {
+  put: (key: string, value: any, options?: any) => Promise<any>;
+  get: (key: string, options?: any) => Promise<any>;
+  delete?: (key: string) => Promise<any>;
+} | null | undefined;
+
 function toB64FilenameSafe(value: any) {
   return String(value || '').replace(/[\/:*?"<>|]/g, '_').trim() || '盘点结果';
 }
@@ -600,11 +610,44 @@ function decodeBase64ToBytes(input: any) {
   return bytes;
 }
 
-export function buildAsyncJobDownloadResponse(row: any, options: { inline?: boolean; print?: boolean } = {}) {
+function buildAsyncJobResultObjectKey(row: any, filename: string) {
+  const safeName = String(filename || `job_${Number(row?.id || 0)}.dat`).replace(/[^a-zA-Z0-9._-]+/g, '_');
+  const created = String(row?.created_at || '').replace(/[^0-9]/g, '').slice(0, 14) || String(Date.now());
+  return `async-jobs/${created}/job_${Number(row?.id || 0)}/${safeName}`;
+}
+
+function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
+  return {
+    httpMetadata: {
+      contentType: String(contentType || 'application/octet-stream'),
+      contentDisposition: `attachment; filename="${String(filename || 'download.dat').replace(/"/g, '')}"`,
+      cacheControl: 'private, no-store',
+    },
+  };
+}
+
+async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult) {
+  if (!bucket) return null;
+  const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
+  const objectKey = buildAsyncJobResultObjectKey(row, filename);
+  const contentType = String(result.contentType || 'application/octet-stream');
+  const body = result.blobBase64 != null ? decodeBase64ToBytes(result.blobBase64) : String(result.text ?? '');
+  await bucket.put(objectKey, body, buildAsyncJobResultPutOptions(contentType, filename));
+  const fileSize = result.blobBase64 != null ? estimateBase64DecodedByteLength(result.blobBase64) : utf8ByteLength(result.text ?? '');
+  return { objectKey, fileSize };
+}
+
+async function loadAsyncJobStoredObject(bucket: AsyncJobResultBucket, row: any) {
+  if (!bucket || !row?.result_object_key) return null;
+  return await bucket.get(String(row.result_object_key));
+}
+
+export async function buildAsyncJobDownloadResponse(row: any, bucket: AsyncJobResultBucket, options: { inline?: boolean; print?: boolean } = {}) {
   if (String(row?.status) !== 'success') throw Object.assign(new Error('任务尚未完成'), { status: 400 });
+  const hasObject = !!row?.result_object_key;
   const hasBlob = !!row?.result_blob_base64;
   const hasText = row?.result_text != null;
-  if (!hasBlob && !hasText) {
+  if (!hasObject && !hasBlob && !hasText) {
     if (row?.result_deleted_at) throw Object.assign(new Error('结果文件已过保留期，请重试重新生成'), { status: 410 });
     throw Object.assign(new Error('任务结果不可用'), { status: 400 });
   }
@@ -615,6 +658,11 @@ export function buildAsyncJobDownloadResponse(row: any, options: { inline?: bool
     'content-disposition': `${options.inline ? 'inline' : 'attachment'}; filename="${filename}"`,
     'cache-control': 'no-store',
   };
+  if (hasObject) {
+    const obj = await loadAsyncJobStoredObject(bucket, row);
+    if (!obj?.body) throw Object.assign(new Error('结果文件不存在或已被删除'), { status: 410 });
+    return new Response(obj.body, { headers });
+  }
   if (hasBlob) {
     return new Response(decodeBase64ToBytes(row.result_blob_base64), { headers });
   }
@@ -636,7 +684,7 @@ function getInventoryBatchSnapshotMeta(requestJson: any) {
   return null;
 }
 
-async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: AsyncJobType, requestJson: any, state: { status?: 'queued' | 'running' | 'success' | 'failed' | 'canceled'; errorMessage?: string | null; filename?: string | null; exportedAt?: string | null }) {
+async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: AsyncJobType, requestJson: any, state: { status?: 'queued' | 'running' | 'success' | 'failed' | 'canceled'; errorMessage?: string | null; filename?: string | null; objectKey?: string | null; fileSize?: number | null; exportedAt?: string | null }) {
   if (jobType !== 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') return;
   const meta = getInventoryBatchSnapshotMeta(requestJson);
   if (!meta?.batchId) return;
@@ -644,6 +692,8 @@ async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: Async
     status: state.status ?? null,
     errorMessage: state.errorMessage ?? null,
     filename: state.filename ?? null,
+    objectKey: state.objectKey ?? null,
+    fileSize: state.fileSize ?? null,
     exportedAt: state.exportedAt ?? null,
   });
 }
@@ -770,31 +820,46 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
   return { text: '﻿' + lines.join('\n'), filename: `pc_age_warnings_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条报废预警导出` };
 }
 
-export async function cleanupExpiredAsyncJobResults(db: D1Database) {
+export async function cleanupExpiredAsyncJobResults(db: D1Database, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
+  const expired = await db.prepare(
+    `SELECT id, result_object_key FROM async_jobs
+     WHERE status='success'
+       AND COALESCE(result_object_key,'')<>''
+       AND retain_until IS NOT NULL
+       AND retain_until < ${sqlNowStored()}`
+  ).all<any>();
+  for (const row of expired.results || []) {
+    if (bucket?.delete && row?.result_object_key) {
+      try { await bucket.delete(String(row.result_object_key)); } catch {}
+    }
+  }
   const res = await db.prepare(
     `UPDATE async_jobs
      SET result_text=NULL,
          result_blob_base64=NULL,
+         result_object_key=NULL,
+         result_file_size=NULL,
          result_deleted_at=COALESCE(result_deleted_at, ${sqlNowStored()}),
          updated_at=${sqlNowStored()},
          message=CASE WHEN COALESCE(message,'')='' THEN '结果文件已过保留期，已清理' ELSE message || '（结果文件已过期清理）' END
      WHERE status='success'
-       AND (result_text IS NOT NULL OR result_blob_base64 IS NOT NULL)
+       AND (result_text IS NOT NULL OR result_blob_base64 IS NOT NULL OR COALESCE(result_object_key,'')<>'')
        AND retain_until IS NOT NULL
        AND retain_until < ${sqlNowStored()}`
   ).run();
   return Number((res as any)?.meta?.changes || 0);
 }
 
-export async function cleanupAsyncJobHousekeeping(db: D1Database) {
+export async function cleanupAsyncJobHousekeeping(db: D1Database, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
-  const expiredResults = await cleanupExpiredAsyncJobResults(db);
+  const expiredResults = await cleanupExpiredAsyncJobResults(db, bucket);
   const purgeFinished = await db.prepare(
     `DELETE FROM async_jobs
      WHERE status IN ('success','failed','canceled')
        AND COALESCE(result_text,'')=''
        AND COALESCE(result_blob_base64,'')=''
+       AND COALESCE(result_object_key,'')=''
        AND COALESCE(finished_at, canceled_at, updated_at, created_at) < datetime('now','+8 hours','-30 day')`
   ).run();
   const staleQueued = await db.prepare(
@@ -813,8 +878,8 @@ export async function cleanupAsyncJobHousekeeping(db: D1Database) {
   };
 }
 
-export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }) {
-  await cleanupAsyncJobHousekeeping(db);
+export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }, bucket?: AsyncJobResultBucket) {
+  await cleanupAsyncJobHousekeeping(db, bucket);
   const retainDays = Math.max(1, Math.min(30, Number(input.retain_days || 7)));
   const maxRetries = Math.max(0, Math.min(5, Number(input.max_retries ?? 1)));
   const res = await db.prepare(
@@ -824,8 +889,8 @@ export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJob
   return Number((res as any)?.meta?.last_row_id || 0);
 }
 
-export async function processAsyncJob(db: D1Database, id: number) {
-  await cleanupAsyncJobHousekeeping(db);
+export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
+  await cleanupAsyncJobHousekeeping(db, bucket);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
@@ -836,6 +901,7 @@ export async function processAsyncJob(db: D1Database, id: number) {
   }
   const jobType = String(row.job_type || '') as AsyncJobType;
   const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  if (jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
@@ -846,10 +912,11 @@ export async function processAsyncJob(db: D1Database, id: number) {
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
+    const storedFile = await saveAsyncJobResultFile(bucket, row, result);
     await db.prepare(
-      `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
-    ).bind(result.text ?? null, result.blobBase64 ?? null, result.contentType, result.filename, result.message, id).run();
-    await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'success', errorMessage: null, filename: result.filename, exportedAt: formatBeijingDateTimeText(new Date().toISOString()) });
+      `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_object_key=?, result_file_size=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
+    ).bind(storedFile ? null : (result.text ?? null), storedFile ? null : (result.blobBase64 ?? null), storedFile?.objectKey ?? null, storedFile?.fileSize ?? null, result.contentType, result.filename, result.message, id).run();
+    await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'success', errorMessage: null, filename: result.filename, objectKey: storedFile?.objectKey ?? null, fileSize: storedFile?.fileSize ?? null, exportedAt: formatBeijingDateTimeText(new Date().toISOString()) });
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (Number(latest?.cancel_requested || 0) === 1) {
@@ -863,11 +930,11 @@ export async function processAsyncJob(db: D1Database, id: number) {
   }
 }
 
-export async function processAsyncJobIds(db: D1Database, ids: number[]) {
+export async function processAsyncJobIds(db: D1Database, ids: number[], bucket?: AsyncJobResultBucket) {
   const normalized = Array.from(new Set((Array.isArray(ids) ? ids : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
   for (const id of normalized) {
     try {
-      await processAsyncJob(db, id);
+      await processAsyncJob(db, id, bucket);
     } catch {
       // 单个任务失败时由 processAsyncJob 自行落库状态，这里继续处理后续任务
     }
@@ -891,7 +958,7 @@ function mapAsyncJobRow(row: any) {
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
   const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
-  const resultSize = row?.result_blob_base64 ? estimateBase64DecodedByteLength(row.result_blob_base64) : row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
+  const resultSize = row?.result_file_size != null ? Number(row.result_file_size || 0) : row?.result_blob_base64 ? estimateBase64DecodedByteLength(row.result_blob_base64) : row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
   const progress = String(row?.status) === 'success' ? 100
     : String(row?.status) === 'failed' ? 100
     : String(row?.status) === 'canceled' ? 100
@@ -909,8 +976,8 @@ function mapAsyncJobRow(row: any) {
   };
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}) {
-  await cleanupAsyncJobHousekeeping(db);
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}, bucket?: AsyncJobResultBucket) {
+  await cleanupAsyncJobHousekeeping(db, bucket);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
   const binds: any[] = [];
@@ -938,20 +1005,20 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
     binds.push(...deltaBinds);
   }
 
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_text, request_json, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_text, result_blob_base64, result_object_key, result_file_size, request_json, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return (results || []).map(mapAsyncJobRow);
 }
 
-export async function getAsyncJob(db: D1Database, id: number) {
-  await cleanupAsyncJobHousekeeping(db);
+export async function getAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
+  await cleanupAsyncJobHousekeeping(db, bucket);
   await ensureAsyncJobsTable(db);
   return await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
 }
 
-export async function cancelAsyncJob(db: D1Database, id: number) {
+export async function cancelAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
-  const row = await getAsyncJob(db, id);
+  const row = await getAsyncJob(db, id, bucket);
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (String(row.status) === 'success') throw Object.assign(new Error('任务已完成，不能取消'), { status: 409 });
   if (String(row.status) === 'failed') throw Object.assign(new Error('任务已失败，请直接重试'), { status: 409 });
@@ -963,16 +1030,16 @@ export async function cancelAsyncJob(db: D1Database, id: number) {
   return Number((res as any)?.meta?.changes || 0) > 0;
 }
 
-export async function retryAsyncJob(db: D1Database, id: number) {
+export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
-  const row = await getAsyncJob(db, id);
+  const row = await getAsyncJob(db, id, bucket);
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (!['failed', 'canceled'].includes(String(row.status))) throw Object.assign(new Error('仅失败或已取消任务可重试'), { status: 409 });
   const retryCount = Number(row.retry_count || 0);
   const maxRetries = Number(row.max_retries || 1);
   if (retryCount >= maxRetries) throw Object.assign(new Error(`已超过最大重试次数（${maxRetries}）`), { status: 409 });
   await db.prepare(
-    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
+    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_object_key=NULL, result_file_size=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
   const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
   await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'queued', errorMessage: null, filename: null, exportedAt: null });
