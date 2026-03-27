@@ -427,7 +427,7 @@ async function confirmStartBatch(name: string) {
     const cleared = Number(result?.cleanup?.deleted || 0);
     startBatchVisible.value = false;
     const successMessage = cleared > 0
-      ? `已自动导出并清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
+      ? `已自动清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
       : (result?.message || '已开启新一轮盘点');
     ElMessage.success(successMessage);
     totalCache.clear();

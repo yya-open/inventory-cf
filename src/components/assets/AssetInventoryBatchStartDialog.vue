@@ -5,7 +5,7 @@
         <div class="start-title">风险确认</div>
         <div class="start-subtle">开启后会立即生成新批次，并执行以下操作：</div>
         <ul class="start-risk-list">
-          <li>自动导出并清空当前盘点记录（{{ preview.logTotal }} 条）</li>
+          <li>清空当前盘点记录（{{ preview.logTotal }} 条）</li>
           <li>将{{ kindLabel }}台账盘点状态整体重置为“未盘”（{{ preview.assetTotal }} 台）</li>
           <li>历史批次只保留当前/上一轮，更早批次会自动清理</li>
           <li v-if="preview.activeName">当前进行中的批次会先自动结束：{{ preview.activeName }}</li>

@@ -6,6 +6,7 @@
     </div>
     <div class="batch-actions-row">
       <el-button v-if="isAdmin" type="primary" :disabled="busy" @click="emit('start-batch')">开启新一轮</el-button>
+      <el-button v-if="isAdmin && active" type="warning" plain :disabled="busy" @click="emit('close-batch')">结束本轮</el-button>
       <el-dropdown trigger="click" @command="handleCommand">
         <el-button :disabled="busy">
           更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>

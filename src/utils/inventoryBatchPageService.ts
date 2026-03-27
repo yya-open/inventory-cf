@@ -1,6 +1,5 @@
 import { closeInventoryBatch, startInventoryBatch, type InventoryBatchKind, type InventoryBatchPayload } from '../api/inventoryBatches';
 import type { AssetInventorySummary } from '../types/assets';
-import { exportInventoryLogsBeforeBatch } from './inventoryBatchExport';
 import { buildSuggestedInventoryBatchName } from './inventoryBatchNaming';
 
 export type InventoryBatchStartPreview = {
@@ -28,7 +27,6 @@ export function suggestInventoryBatchName(kind: InventoryBatchKind, inventoryBat
 }
 
 export async function executeInventoryBatchStart(kind: InventoryBatchKind, name: string, options: { clearPreviousLogs?: boolean } = {}) {
-  await exportInventoryLogsBeforeBatch(kind);
   return startInventoryBatch(kind, name, options);
 }
 
