@@ -324,7 +324,7 @@ const pageSize = ref(50);
 const total = ref(0);
 const exportingCsv = ref(false);
 const exportingXlsx = ref(false);
-const SOFT_REFRESH_TTL_MS = 15_000;
+const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
 
 const categories = ref<string[]>([]);
@@ -396,9 +396,10 @@ async function loadMeta() {
   }
 }
 
-async function load() {
+async function load(opts: { silent?: boolean } = {}) {
   try {
-    loading.value = true;
+    const shouldShowLoading = !opts.silent || !rows.value.length;
+    if (shouldShowLoading) loading.value = true;
     const qs = new URLSearchParams();
     qs.set("warehouse_id", String(warehouseId.value || 1));
     qs.set("only_alert", filters.only_alert ? "1" : "0");
@@ -506,7 +507,7 @@ onActivated(() => {
   lastRefreshAt = Date.now();
   const task = async () => {
     await Promise.allSettled([
-      load(),
+      load({ silent: rows.value.length > 0 }),
       categories.value.length ? Promise.resolve() : loadMeta(),
     ]);
   };

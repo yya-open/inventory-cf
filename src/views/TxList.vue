@@ -282,7 +282,7 @@ const sortDir = ref<string>("desc");
 
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
-const SOFT_REFRESH_TTL_MS = 15_000;
+const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
 
 function onSearch(){
@@ -415,9 +415,10 @@ function onPageSizeChange(){
   load();
 }
 
-async function load() {
+async function load(opts: { silent?: boolean } = {}) {
   try {
-    loading.value = true;
+    const shouldShowLoading = !opts.silent || !rows.value.length;
+    if (shouldShowLoading) loading.value = true;
     const params = new URLSearchParams();
     if (type.value) params.set("type", type.value);
     if (item_id.value) params.set("item_id", String(item_id.value));
@@ -526,7 +527,7 @@ onActivated(() => {
   lastRefreshAt = Date.now();
   const task = async () => {
     await Promise.allSettled([
-      load(),
+      load({ silent: rows.value.length > 0 }),
       items.value.length ? Promise.resolve() : loadItems(),
     ]);
   };

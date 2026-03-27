@@ -331,7 +331,7 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
 });
 
 pageSize.value = initialPageSize;
-const SOFT_REFRESH_TTL_MS = 15_000;
+const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
 
 const {
@@ -1288,10 +1288,10 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 
-async function hydrateViewData(options: { keepPage?: boolean } = {}) {
+async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   const initialFilters = currentFiltersForList();
   const hadActiveBatch = hasActiveInventoryBatch.value;
-  const loadOptions = options.keepPage ? { keepPage: true } : {};
+  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
   await Promise.allSettled([
     load(initialFilters, loadOptions),
     refreshInventorySummary(initialFilters),
@@ -1321,7 +1321,7 @@ onBeforeUnmount(() => {
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   lastRefreshAt = Date.now();
-  void hydrateViewData({ keepPage: true });
+  void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>
 

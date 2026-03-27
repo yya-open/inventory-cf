@@ -38,11 +38,12 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     totalController?.abort();
   }
 
-  async function load(filters: TFilters, opts: { keepPage?: boolean } = {}) {
+  async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean } = {}) {
     const currentSeq = ++requestSeq;
     abortOngoing();
     pageController = new AbortController();
-    loading.value = true;
+    const shouldShowLoading = !opts.silent || !rows.value.length;
+    if (shouldShowLoading) loading.value = true;
     try {
       const nextPage = opts.keepPage ? page.value : 1;
       let result: LoadResult<TItem>;
