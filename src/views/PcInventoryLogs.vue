@@ -171,7 +171,7 @@ import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryB
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import { fetchInventoryBatch, normalizeInventoryBatchPayload, type InventoryBatchPayload } from '../api/inventoryBatches';
 import { countPcAssets, getPcAssetInventorySummary } from '../api/assetLedgers';
-import type { AssetInventorySummary, InventoryIssueBreakdown } from '../types/assets';
+import type { AssetInventorySummary, InventoryIssueBreakdown, PcFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openPcLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
 import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
@@ -192,6 +192,17 @@ function issueTypeText(s: string) {
   if (s === 'MISSING') return '设备缺失';
   if (s === 'OTHER') return '其他原因';
   return s || '-';
+}
+
+function buildPcBatchExportBaseFilters(): PcFilters {
+  return {
+    status: '',
+    keyword: '',
+    archiveReason: '',
+    archiveMode: 'active',
+    showArchived: false,
+    inventoryStatus: '',
+  };
 }
 
 const route = useRoute();
