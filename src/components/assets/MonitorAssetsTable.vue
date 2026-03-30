@@ -128,7 +128,7 @@
         <el-empty description="暂无匹配数据" />
       </template>
     </el-table>
-    <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}</div>
+    <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
     <div class="pager-wrap">
       <el-pagination
         background
@@ -136,7 +136,7 @@
         :total="total"
         :page-size="pageSize"
         :current-page="page"
-        :page-sizes="[20, 50, 100, 200, 500]"
+        :page-sizes="[20, 50, 100, 200]"
         @update:page-size="(value: number) => emit('size-change', value)"
         @update:current-page="(value: number) => emit('page-change', value)"
       />
@@ -181,7 +181,7 @@ const emit = defineEmits<{
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
-const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 120, chunkSize: 80 });
+const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 

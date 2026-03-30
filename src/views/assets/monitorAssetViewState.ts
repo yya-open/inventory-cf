@@ -87,7 +87,7 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
   const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
 
-  const initialPageSize = Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50);
+  const initialPageSize = Math.min(200, Math.max(20, Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50) || 50));
   const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 
   let suppressAutoSearch = false;
@@ -115,7 +115,7 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
       archiveMode: archiveMode.value,
       archiveReason: archiveReason.value || '',
-      pageSize: Number(pageSizeRef?.value || initialPageSize || 50),
+      pageSize: Math.min(200, Math.max(20, Number(pageSizeRef?.value || initialPageSize || 50) || 50)),
       visibleColumns: visibleColumns.value,
       columnOrder: columnOrder.value,
       columnWidths: columnWidths.value,

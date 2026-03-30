@@ -10,6 +10,7 @@ export type UsePagedAssetListOptions<TFilters, TItem> = {
   createFilterKey: (filters: TFilters) => string;
   fetchPage: (context: LoadContext<TFilters>) => Promise<LoadResult<TItem>>;
   fetchTotal?: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
+  maxPageSize?: number;
 };
 
 type PageCacheEntry = { rows: any[]; total: number; timestamp: number };
@@ -51,7 +52,9 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
   const page = ref(1);
-  const pageSize = ref(options.initialPageSize ?? 50);
+  const maxPageSize = Math.max(20, Number(options.maxPageSize ?? 200) || 200);
+  const clampPageSize = (value: number) => Math.min(maxPageSize, Math.max(20, Number(value || 50) || 50));
+  const pageSize = ref(clampPageSize(options.initialPageSize ?? 50));
   const total = ref(0);
   const totalCache = new Map<string, number>();
   let totalTimer: ReturnType<typeof setTimeout> | null = null;
@@ -77,7 +80,9 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     const nextPage = opts.keepPage ? page.value : 1;
     const filterKey = options.createFilterKey(filters);
     const cachePrefix = getFilterPrefix(options, filterKey);
-    const pageKey = getPageCacheKey(options, filterKey, nextPage, pageSize.value);
+    const effectivePageSize = clampPageSize(pageSize.value);
+    if (effectivePageSize !== pageSize.value) pageSize.value = effectivePageSize;
+    const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
     const ttlMs = Number(options.cacheTtlMs ?? 30_000);
     const shouldShowLoading = !opts.silent || !rows.value.length;
     const cached = pageCache.get(pageKey);
@@ -111,7 +116,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       } else {
         const controller = new AbortController();
         pageController = controller;
-        const request = options.fetchPage({ filters, page: nextPage, pageSize: pageSize.value, fast: Boolean(options.fetchTotal), signal: controller.signal })
+        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: Boolean(options.fetchTotal), signal: controller.signal })
           .finally(() => {
             const active = pageRequests.get(pageKey);
             if (active?.promise === request) pageRequests.delete(pageKey);
@@ -198,7 +203,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     return load(filters, { keepPage: true });
   };
   const onPageSizeChange = (filters: TFilters, nextPageSize: number) => {
-    pageSize.value = nextPageSize;
+    pageSize.value = clampPageSize(nextPageSize);
     page.value = 1;
     return load(filters, { keepPage: true });
   };

@@ -10,6 +10,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.endsWith('/src/utils/excel.ts')) return 'excel-utils';
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('qrcode')) return 'qrcode';

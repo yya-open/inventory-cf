@@ -16,6 +16,7 @@ export function useAssetLedgerPage<TFilters, TItem>(options: AssetPageOptions<TF
     createFilterKey: options.createFilterKey,
     fetchPage: ({ filters, page, pageSize, fast, signal }) => options.fetchPage(filters, page, pageSize, fast, signal),
     fetchTotal: options.fetchTotal,
+    maxPageSize: 200,
   });
 
   async function fetchAll(filters: TFilters, exportPageSize = 200) {
