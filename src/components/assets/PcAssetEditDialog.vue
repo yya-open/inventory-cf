@@ -15,7 +15,7 @@
     </template>
 
     <div class="ledger-drawer__body">
-      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="ledger-form-stack" status-icon>
+      <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="ledger-form-stack" status-icon scroll-to-error>
         <section class="ledger-form-section">
           <div class="ledger-form-section__head">
             <div class="ledger-form-section__title">设备基础信息</div>

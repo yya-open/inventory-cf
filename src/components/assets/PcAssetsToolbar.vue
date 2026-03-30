@@ -90,7 +90,6 @@
               <strong>{{ summary.unchecked }}</strong>
             </button>
           </div>
-
         </div>
       </div>
 
@@ -100,7 +99,7 @@
             <div class="toolbar-title-wrap">
               <div class="toolbar-kicker">WORKSPACE</div>
               <div class="toolbar-block-title">快捷工具</div>
-              <div class="toolbar-subtle">批量操作、导出和表格设置全部前置，低频能力统一收纳到更多菜单。</div>
+              <div class="toolbar-subtle">批量操作、导出与表格偏好都收进同一工作区，低频能力统一放到更多菜单。</div>
             </div>
             <span class="toolbar-inline-badge" :class="{ 'is-active': selectedCount > 0 }">{{ selectionStateText }}</span>
           </div>
@@ -130,93 +129,19 @@
               </el-button>
 
               <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
-            </div>
-
-            <div class="toolbar-spacer" />
-
-            <div class="toolbar-utility-group">
-              <el-popover placement="bottom-end" trigger="click" :width="340">
-                <template #reference>
-                  <el-button class="toolbar-soft-btn">表格设置</el-button>
-                </template>
-                <div class="column-panel-head">
-                  <div class="column-panel-title">表格密度</div>
-                  <span class="toolbar-subtle toolbar-inline-tip">自动记住你的偏好</span>
-                </div>
-                <el-segmented
-                  :model-value="density"
-                  class="toolbar-density-mode"
-                  :options="densityOptions"
-                  @change="(value) => emit('update:density', String(value) as 'compact' | 'default' | 'comfortable')"
-                />
-
-                <div class="column-panel-title reorder-title">视图方案</div>
-                <div class="saved-view-input-row">
-                  <el-input v-model="viewDraftName" placeholder="保存当前列设置" maxlength="24" clearable />
-                  <el-button type="primary" plain @click="handleSaveView">保存</el-button>
-                </div>
-                <div class="saved-view-list">
-                  <div class="saved-view-item" :class="{ active: activeViewName === 'default' }" role="button" tabindex="0" @click="emit('restore-columns')">
-                    <div class="saved-view-main">
-                      <div class="saved-view-name">默认视图</div>
-                      <div class="saved-view-meta">默认列顺序 + 标准密度</div>
-                    </div>
-                    <span class="saved-view-action">恢复</span>
-                  </div>
-                  <div
-                    v-for="item in savedViews"
-                    :key="item.name"
-                    class="saved-view-item" role="button" tabindex="0"
-                    :class="{ active: item.name === activeViewName }"
-                    @click="emit('apply-view', item.name)"
-                  >
-                    <div class="saved-view-main">
-                      <div class="saved-view-name">{{ item.name }}</div>
-                      <div class="saved-view-meta">{{ densityText(item.density) }} · {{ item.visibleColumns.length }} 列</div>
-                    </div>
-                    <div class="saved-view-actions">
-                      <span class="saved-view-action">应用</span>
-                      <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
-                    </div>
-                  </div>
-                  <div v-if="!savedViews.length" class="toolbar-subtle">还没有保存的视图，可将常用列布局保存起来反复使用。</div>
-                </div>
-
-                <div class="column-panel-head reorder-title">
-                  <div class="column-panel-title">表格列显示</div>
-                  <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
-                </div>
-                <el-checkbox-group
-                  :model-value="visibleColumns"
-                  class="column-check-group"
-                  @update:model-value="emit('update:visible-columns', $event as string[])"
-                >
-                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
-                </el-checkbox-group>
-                <div class="column-panel-title reorder-title">列顺序</div>
-                <div v-if="orderedVisibleOptions.length" class="column-order-list">
-                  <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
-                    <span>{{ index + 1 }}. {{ item.label }}</span>
-                    <div class="column-order-actions">
-                      <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
-                      <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
-                    </div>
-                  </div>
-                </div>
-                <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
-              </el-popover>
 
               <el-dropdown trigger="click" @command="handleMoreCommand">
-                <el-button class="toolbar-soft-btn" :disabled="initQrBusy || batchBusy">
+                <el-button class="toolbar-soft-btn" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">
                   更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                 </el-button>
                 <template #dropdown>
                   <el-dropdown-menu>
+                    <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
                     <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
                     <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入（批量入库）</el-dropdown-item>
+                    <el-dropdown-item command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                    <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                    <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -235,12 +160,87 @@
         </div>
       </div>
     </div>
+
+    <el-dialog v-model="settingsVisible" title="表格设置" width="420px" class="ledger-toolbar-settings-dialog" append-to-body>
+      <div class="column-panel-head">
+        <div class="column-panel-title">表格密度</div>
+        <span class="toolbar-subtle toolbar-inline-tip">自动记住你的偏好</span>
+      </div>
+      <el-segmented
+        :model-value="density"
+        class="toolbar-density-mode"
+        :options="densityOptions"
+        @change="(value) => emit('update:density', String(value) as 'compact' | 'default' | 'comfortable')"
+      />
+
+      <div class="column-panel-title reorder-title">视图方案</div>
+      <div class="saved-view-input-row">
+        <el-input v-model="viewDraftName" placeholder="保存当前列设置" maxlength="24" clearable />
+        <el-button type="primary" plain @click="handleSaveView">保存</el-button>
+      </div>
+      <div class="saved-view-list">
+        <div class="saved-view-item" :class="{ active: activeViewName === 'default' }" role="button" tabindex="0" @click="emit('restore-columns')">
+          <div class="saved-view-main">
+            <div class="saved-view-name">默认视图</div>
+            <div class="saved-view-meta">默认列顺序 + 标准密度</div>
+          </div>
+          <span class="saved-view-action">恢复</span>
+        </div>
+        <div
+          v-for="item in savedViews"
+          :key="item.name"
+          class="saved-view-item"
+          role="button"
+          tabindex="0"
+          :class="{ active: item.name === activeViewName }"
+          @click="emit('apply-view', item.name)"
+        >
+          <div class="saved-view-main">
+            <div class="saved-view-name">{{ item.name }}</div>
+            <div class="saved-view-meta">{{ densityText(item.density) }} · {{ item.visibleColumns.length }} 列</div>
+          </div>
+          <div class="saved-view-actions">
+            <span class="saved-view-action">应用</span>
+            <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
+          </div>
+        </div>
+        <div v-if="!savedViews.length" class="toolbar-subtle">还没有保存的视图，可将常用列布局保存起来反复使用。</div>
+      </div>
+
+      <div class="column-panel-head reorder-title">
+        <div class="column-panel-title">表格列显示</div>
+        <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
+      </div>
+      <el-checkbox-group
+        :model-value="visibleColumns"
+        class="column-check-group"
+        @update:model-value="emit('update:visible-columns', $event as string[])"
+      >
+        <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
+      </el-checkbox-group>
+      <div class="column-panel-title reorder-title">列顺序</div>
+      <div v-if="orderedVisibleOptions.length" class="column-order-list">
+        <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
+          <span>{{ index + 1 }}. {{ item.label }}</span>
+          <div class="column-order-actions">
+            <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
+            <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
+          </div>
+        </div>
+      </div>
+      <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
+      <template #footer>
+        <div class="ledger-drawer__footer">
+          <el-button @click="settingsVisible = false">完成</el-button>
+        </div>
+      </template>
+    </el-dialog>
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ElSegmented, ElUpload } from 'element-plus';
-import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
+import { ElDialog, ElSegmented, ElUpload } from 'element-plus';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus';
 import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
@@ -319,6 +319,7 @@ const orderedVisibleOptions = computed(() => {
 const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 const viewDraftName = ref('');
+const settingsVisible = ref(false);
 
 const archiveModeOptions = [
   { label: '在用', value: 'active' },
@@ -360,6 +361,10 @@ function handleArchiveModeChange(value: string | number | boolean) {
 
 function handleMoreCommand(command: string | number | object) {
   const value = String(command);
+  if (value === 'table-settings') {
+    settingsVisible.value = true;
+    return;
+  }
   if (value === 'export') return emit('export');
   if (value === 'export-archive') return emit('export-archive');
   if (value === 'init-qr') return emit('init-qr');
@@ -681,11 +686,12 @@ function handleBatchCommand(command: string | number | object) {
 
 .saved-view-item {
   display: flex;
-  align-items: center;
+  align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
   overflow: hidden;
+  box-sizing: border-box;
   padding: 12px 14px;
   text-align: left;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -731,9 +737,12 @@ function handleBatchCommand(command: string | number | object) {
 
 .saved-view-actions {
   display: inline-flex;
-  flex: 0 0 auto;
+  flex: 0 1 auto;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   align-items: center;
   gap: 8px;
+  min-width: 0;
 }
 
 .saved-view-action {
@@ -903,4 +912,13 @@ function handleBatchCommand(command: string | number | object) {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
 }
+
+:deep(.ledger-toolbar-settings-dialog .el-dialog__body) {
+  padding-top: 12px;
+}
+
+:deep(.ledger-toolbar-settings-dialog .el-dialog__header) {
+  padding-bottom: 4px;
+}
+
 </style>

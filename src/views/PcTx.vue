@@ -1,6 +1,6 @@
 <template>
   <el-card class="ui-page-card">
-    <div class="ui-toolbar">
+    <div class="ui-toolbar ui-toolbar--ledger">
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">

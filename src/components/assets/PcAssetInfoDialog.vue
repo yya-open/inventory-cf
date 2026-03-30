@@ -64,16 +64,7 @@
         <div class="ledger-detail-card__content">{{ textOrDash(row?.remark, '暂无备注') }}</div>
       </section>
 
-      <section class="ledger-detail-card ledger-detail-card--full">
-        <div class="ledger-detail-card__title">审批 / 操作日志</div>
-        <div class="ledger-detail-card__hint">当前页先展示关键操作节点，完整变更记录可点击底部入口查看审计历史。</div>
-        <div class="ledger-log-list">
-          <div v-for="item in logItems" :key="item.label" class="ledger-log-item">
-            <span class="ledger-log-item__label">{{ item.label }}</span>
-            <strong class="ledger-log-item__value">{{ item.value }}</strong>
-          </div>
-        </div>
-      </section>
+      <AssetAuditSummaryPanel entity="pc_assets" :entity-id="row?.id" module="PC" :visible="visible" />
     </div>
 
     <template #footer>
@@ -87,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AssetAuditSummaryPanel from './AssetAuditSummaryPanel.vue';
 
 const props = defineProps<{ visible: boolean; row: Record<string, any> | null }>();
 
@@ -102,14 +94,6 @@ const currentOwnerMeta = computed(() => {
   const parts = [props.row?.last_employee_no, props.row?.last_department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const logItems = computed(() => [
-  { label: '创建时间', value: textOrDash(props.row?.created_at) },
-  { label: '最近更新', value: textOrDash(props.row?.updated_at) },
-  { label: '最近配置', value: textOrDash(props.row?.last_config_date) },
-  { label: '最近回收', value: textOrDash(props.row?.last_recycle_date) },
-  { label: '二维码更新', value: textOrDash(props.row?.qr_updated_at) },
-  { label: '归档时间', value: Number(props.row?.archived || 0) === 1 ? textOrDash(props.row?.archived_at) : '-' },
-]);
 
 function textOrDash(value: unknown, fallback = '-') {
   const text = String(value ?? '').trim();

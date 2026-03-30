@@ -1,7 +1,7 @@
 <template>
   <div>
     <el-card shadow="never" class="ui-page-card" style="margin-bottom: 12px">
-      <div class="ui-toolbar">
+      <div class="ui-toolbar ui-toolbar--ledger">
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
             <div class="ui-toolbar-title">筛选查询</div>
