@@ -309,10 +309,10 @@ function handleBatchCommand(command: string | number | object) {
 </script>
 
 <style scoped>
- .pc-toolbar,
+.pc-toolbar,
 .monitor-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(320px, 0.98fr);
+  grid-template-columns: minmax(0, 1.58fr) minmax(340px, 0.98fr);
   gap: 16px;
 }
 
@@ -328,32 +328,21 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-block {
   position: relative;
   padding: 18px 20px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.95) 100%);
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(8px);
+  border: 1px solid var(--ledger-border);
+  border-radius: 18px;
+  background: var(--ledger-surface);
+  box-shadow: var(--ledger-shadow-sm);
 }
 
 .toolbar-block--filters::before,
 .toolbar-block--actions::before {
   content: '';
   position: absolute;
-  inset: 0;
-  border-radius: inherit;
+  inset: 0 0 auto 0;
+  height: 3px;
+  border-radius: 18px 18px 0 0;
+  background: linear-gradient(90deg, rgba(22, 119, 255, 0.18), rgba(22, 119, 255, 0.02) 48%, rgba(15, 23, 42, 0));
   pointer-events: none;
-  background: radial-gradient(circle at top right, rgba(64, 158, 255, 0.10), transparent 42%);
-}
-
-.toolbar-block--filters::after,
-.toolbar-block--actions::after {
-  content: '';
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9), rgba(255,255,255,0));
 }
 
 .toolbar-title-wrap {
@@ -362,8 +351,8 @@ function handleBatchCommand(command: string | number | object) {
 
 .toolbar-kicker {
   margin-bottom: 6px;
-  font-size: 11px;
-  font-weight: 800;
+  font-size: 10px;
+  font-weight: 700;
   letter-spacing: 0.14em;
   color: #94a3b8;
 }
@@ -371,12 +360,12 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-block-title {
   font-size: 15px;
   font-weight: 700;
-  color: #1e293b;
+  color: var(--ledger-text-primary);
 }
 
 .toolbar-subtle {
   margin-top: 4px;
-  color: #8a94a6;
+  color: var(--ledger-text-tertiary);
   font-size: 12px;
   line-height: 1.55;
 }
@@ -386,7 +375,7 @@ function handleBatchCommand(command: string | number | object) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 16px;
+  margin-bottom: 14px;
 }
 
 .toolbar-head--filters {
@@ -398,15 +387,15 @@ function handleBatchCommand(command: string | number | object) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 34px;
-  padding: 0 13px;
+  min-height: 32px;
+  padding: 0 12px;
+  border: 1px solid rgba(148, 163, 184, 0.2);
   border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #64748b;
+  background: var(--ledger-surface-soft);
+  color: var(--ledger-text-tertiary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
   white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 .toolbar-inline-badge::before {
@@ -415,12 +404,13 @@ function handleBatchCommand(command: string | number | object) {
   height: 6px;
   border-radius: 999px;
   background: currentColor;
-  opacity: 0.7;
+  opacity: 0.72;
 }
 
 .toolbar-inline-badge.is-active {
-  background: rgba(64, 158, 255, 0.14);
-  color: var(--el-color-primary-dark-2);
+  border-color: rgba(22, 119, 255, 0.24);
+  background: rgba(22, 119, 255, 0.08);
+  color: var(--ledger-primary);
 }
 
 .toolbar-row,
@@ -442,18 +432,9 @@ function handleBatchCommand(command: string | number | object) {
   position: relative;
   z-index: 1;
   padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
-}
-
-.toolbar-action-group {
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 255, 0.90));
-}
-
-.toolbar-utility-group {
-  background: linear-gradient(180deg, rgba(249, 251, 255, 0.94), rgba(255, 255, 255, 0.88));
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 14px;
+  background: var(--ledger-surface-soft);
 }
 
 .toolbar-select,
@@ -503,16 +484,16 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-primary-btn,
 .toolbar-secondary-btn,
 .toolbar-soft-btn {
-  height: 40px;
-  border-radius: 12px;
-  font-weight: 700;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+  height: 36px;
+  border-radius: 10px;
+  font-weight: 600;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
 }
 
 .toolbar-primary-btn {
-  border: none;
-  background: linear-gradient(135deg, #409eff 0%, #6ba8ff 100%);
-  box-shadow: 0 16px 28px rgba(64, 158, 255, 0.24);
+  border: 1px solid var(--ledger-primary);
+  background: var(--ledger-primary);
+  box-shadow: 0 8px 18px rgba(22, 119, 255, 0.18);
 }
 
 .toolbar-primary-btn:hover,
@@ -522,25 +503,28 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 .toolbar-secondary-btn {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
+  border-color: rgba(148, 163, 184, 0.24);
+  background: #fff;
+  color: var(--ledger-text-secondary);
+  box-shadow: none;
 }
 
 .toolbar-secondary-btn:hover {
-  border-color: rgba(64, 158, 255, 0.24);
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.07);
+  border-color: rgba(22, 119, 255, 0.32);
+  color: var(--ledger-primary);
+  box-shadow: var(--ledger-shadow-sm);
 }
 
 .toolbar-soft-btn {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(248, 250, 252, 0.96);
-  color: #475569;
+  border-color: rgba(148, 163, 184, 0.2);
+  background: var(--ledger-surface-soft);
+  color: var(--ledger-text-secondary);
 }
 
 .toolbar-soft-btn:hover {
-  border-color: rgba(64, 158, 255, 0.20);
-  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(22, 119, 255, 0.22);
+  background: #fff;
+  color: var(--ledger-primary);
 }
 
 .column-panel-head {
@@ -553,7 +537,7 @@ function handleBatchCommand(command: string | number | object) {
 .column-panel-title {
   font-size: 13px;
   font-weight: 700;
-  color: #475569;
+  color: var(--ledger-text-secondary);
   margin-bottom: 8px;
 }
 
@@ -579,9 +563,9 @@ function handleBatchCommand(command: string | number | object) {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
+  border: 1px solid rgba(148, 163, 184, 0.16);
   border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
+  background: #fff;
 }
 
 .column-order-actions {
@@ -599,16 +583,16 @@ function handleBatchCommand(command: string | number | object) {
 .summary-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 18px;
-  padding: 14px 15px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  background: #fff;
+  border-radius: 14px;
+  padding: 12px 14px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -618,77 +602,78 @@ function handleBatchCommand(command: string | number | object) {
   left: 0;
   right: 0;
   top: 0;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.7));
+  height: 2px;
+  background: rgba(148, 163, 184, 0.42);
 }
 
 .summary-card.checked::before {
-  background: linear-gradient(90deg, rgba(103, 194, 58, 0.35), rgba(103, 194, 58, 0.86));
+  background: rgba(21, 128, 61, 0.55);
 }
 
 .summary-card.issue::before {
-  background: linear-gradient(90deg, rgba(245, 108, 108, 0.35), rgba(245, 108, 108, 0.86));
+  background: rgba(180, 83, 9, 0.55);
 }
 
 .summary-card.unchecked::before {
-  background: linear-gradient(90deg, rgba(144, 147, 153, 0.35), rgba(144, 147, 153, 0.86));
+  background: rgba(71, 85, 105, 0.48);
 }
 
 .summary-card:hover {
   transform: translateY(-1px);
-  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
+  box-shadow: var(--ledger-shadow-sm);
 }
 
 .summary-card strong {
-  font-size: 24px;
-  color: #0f172a;
+  font-size: 22px;
+  color: var(--ledger-text-primary);
 }
 
 .summary-label {
   font-size: 12px;
-  color: #8a94a6;
+  color: var(--ledger-text-tertiary);
 }
 
 .summary-card.active {
-  border-color: rgba(64, 158, 255, 0.34);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.10), 0 20px 32px rgba(64, 158, 255, 0.12);
+  border-color: rgba(22, 119, 255, 0.34);
+  background: rgba(22, 119, 255, 0.04);
+  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.06), var(--ledger-shadow-sm);
 }
 
-.summary-card.checked strong { color: var(--el-color-success); }
-.summary-card.issue strong { color: var(--el-color-danger); }
-.summary-card.unchecked strong { color: var(--el-color-info); }
+.summary-card.checked strong { color: var(--ledger-success); }
+.summary-card.issue strong { color: var(--ledger-warning); }
+.summary-card.unchecked strong { color: var(--ledger-info); }
 
 :deep(.el-input__wrapper),
 :deep(.el-select__wrapper) {
-  min-height: 40px;
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.94);
+  min-height: 36px;
+  border-radius: 10px;
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.2);
+  background: #fff;
   transition: box-shadow 160ms ease, background 160ms ease;
 }
 
 :deep(.el-input__wrapper.is-focus),
 :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.34), 0 0 0 4px rgba(64, 158, 255, 0.10);
+  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.34), 0 0 0 3px rgba(22, 119, 255, 0.10);
 }
 
 :deep(.el-segmented) {
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(148, 163, 184, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+  padding: 3px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 12px;
+  background: var(--ledger-surface-soft);
 }
 
 :deep(.el-segmented__item) {
-  min-height: 34px;
-  border-radius: 10px;
-  color: #475569;
+  min-height: 32px;
+  border-radius: 9px;
+  color: var(--ledger-text-secondary);
   font-weight: 600;
 }
 
 :deep(.el-segmented__item-selected) {
-  box-shadow: 0 10px 18px rgba(64, 158, 255, 0.18);
+  border: 1px solid rgba(22, 119, 255, 0.18);
+  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
 }
 
 @media (max-width: 1100px) {
@@ -701,7 +686,7 @@ function handleBatchCommand(command: string | number | object) {
 @media (max-width: 768px) {
   .toolbar-block {
     padding: 14px;
-    border-radius: 18px;
+    border-radius: 16px;
   }
 
   .toolbar-head,

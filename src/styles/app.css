@@ -9,6 +9,30 @@ body {
   background: #f6f7fb;
 }
 
+
+:root {
+  --ledger-surface: rgba(255, 255, 255, 0.96);
+  --ledger-surface-soft: #f8fafc;
+  --ledger-surface-muted: #f1f5f9;
+  --ledger-border: rgba(148, 163, 184, 0.24);
+  --ledger-border-strong: rgba(100, 116, 139, 0.28);
+  --ledger-text-primary: #0f172a;
+  --ledger-text-secondary: #475569;
+  --ledger-text-tertiary: #64748b;
+  --ledger-primary: #1677ff;
+  --ledger-primary-weak: rgba(22, 119, 255, 0.10);
+  --ledger-success: #15803d;
+  --ledger-success-weak: #edf7ef;
+  --ledger-warning: #b45309;
+  --ledger-warning-weak: #fff7ed;
+  --ledger-danger: #b42318;
+  --ledger-danger-weak: #fff1f3;
+  --ledger-info: #475569;
+  --ledger-info-weak: #f8fafc;
+  --ledger-shadow-sm: 0 6px 16px rgba(15, 23, 42, 0.05);
+  --ledger-shadow-md: 0 12px 28px rgba(15, 23, 42, 0.08);
+}
+
 /* 轻渐变背景层（不影响内容可读性） */
 .app-root {
   height: 100vh;

@@ -1679,12 +1679,11 @@ onActivated(() => {
   content: '';
   position: absolute;
   inset: -18px -18px auto;
-  height: 220px;
-  border-radius: 30px;
+  height: 180px;
+  border-radius: 24px;
   background:
-    radial-gradient(circle at top left, rgba(103, 194, 58, 0.11), transparent 36%),
-    radial-gradient(circle at top right, rgba(64, 158, 255, 0.14), transparent 34%),
-    linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0));
+    radial-gradient(circle at top left, rgba(22, 119, 255, 0.08), transparent 34%),
+    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0));
   pointer-events: none;
 }
 
@@ -1697,21 +1696,21 @@ onActivated(() => {
   content: '';
   position: absolute;
   inset: 12px 20px auto 20px;
-  height: 72px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(64, 158, 255, 0.08), rgba(64, 158, 255, 0));
-  filter: blur(10px);
+  height: 56px;
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(22, 119, 255, 0.06), rgba(22, 119, 255, 0));
+  filter: blur(12px);
   pointer-events: none;
 }
 
 :deep(.ledger-toolbar-card),
 :deep(.ledger-table-card) {
   position: relative;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 28px;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 20px;
   overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 249, 255, 0.94) 100%);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+  background: var(--ledger-surface);
+  box-shadow: var(--ledger-shadow-md);
 }
 
 :deep(.ledger-toolbar-card > .el-card__body),
@@ -1726,7 +1725,7 @@ onActivated(() => {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .batch-preview {
