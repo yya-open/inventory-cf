@@ -137,8 +137,8 @@
                 </template>
               </el-dropdown>
 
-              <el-button class="toolbar-secondary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="emit('export-selected')">
-                导出选中
+              <el-button v-if="canOperator" type="primary" plain class="toolbar-secondary-btn toolbar-create-button" @click="emit('open-create')">
+                新增台账
               </el-button>
 
               <div class="toolbar-minor-group">
@@ -151,6 +151,7 @@
                   <template #dropdown>
                     <el-dropdown-menu>
                       <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
+                      <el-dropdown-item command="export-selected" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">导出选中</el-dropdown-item>
                       <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
                       <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
                       <el-dropdown-item command="location" :disabled="batchBusy">位置管理</el-dropdown-item>
@@ -160,10 +161,6 @@
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-
-                <el-button v-if="canOperator" type="primary" plain class="toolbar-secondary-btn toolbar-create-button" @click="emit('open-create')">
-                  新增台账
-                </el-button>
               </div>
             </div>
 
@@ -395,6 +392,7 @@ function handleMoreCommand(command: string | number | object) {
     settingsVisible.value = true;
     return;
   }
+  if (value === 'export-selected') return emit('export-selected');
   if (value === 'export') return emit('export');
   if (value === 'export-archive') return emit('export-archive');
   if (value === 'download-template') return emit('download-template');
