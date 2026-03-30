@@ -1,4 +1,5 @@
 import { sqlNowStored } from "../_time";
+import { invalidateInventorySummaryCache } from "./asset-inventory-summary-cache";
 
 export type AssetInventoryKind = "pc" | "monitor";
 export type AssetInventoryBatchStatus = "ACTIVE" | "CLOSED";
@@ -416,6 +417,7 @@ export async function startInventoryBatch(
     .bind(batchId)
     .run();
 
+  await invalidateInventorySummaryCache(db, kind);
   await pruneInventoryBatchHistory(db, kind);
   return getActiveInventoryBatch(db, kind);
 }
@@ -474,6 +476,7 @@ export async function closeInventoryBatch(
       normalized.id,
     )
     .run();
+  await invalidateInventorySummaryCache(db, kind);
   await pruneInventoryBatchHistory(db, kind);
   return getLatestInventoryBatch(db, kind);
 }

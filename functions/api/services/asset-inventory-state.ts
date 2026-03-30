@@ -1,6 +1,7 @@
 import type { QueryParts } from './asset-ledger';
 import { sqlNowStored } from '../_time';
 import { ensureAssetInventoryBatchSchema, getEffectiveInventoryBatch, type AssetInventoryKind as InventoryBatchKind } from './asset-inventory-batches';
+import { invalidateInventorySummaryCache } from './asset-inventory-summary-cache';
 
 export type AssetInventoryKind = InventoryBatchKind;
 export type InventoryDisplayStatus = 'UNCHECKED' | 'CHECKED_OK' | 'CHECKED_ISSUE';
@@ -94,6 +95,7 @@ export async function syncAssetInventoryState(db: D1Database, kind: AssetInvento
     }
     if (statements.length) await db.batch(statements);
   }
+  await invalidateInventorySummaryCache(db, kind);
 }
 
 export async function queryInventorySummaryByWhere(

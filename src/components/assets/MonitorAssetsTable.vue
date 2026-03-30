@@ -3,7 +3,7 @@
     <el-table
       ref="tableRef"
       v-loading="loading"
-      :data="rows"
+      :data="renderRows"
       row-key="id"
       size="small"
       border
@@ -128,6 +128,7 @@
         <el-empty description="暂无匹配数据" />
       </template>
     </el-table>
+    <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}</div>
     <div class="pager-wrap">
       <el-pagination
         background
@@ -135,6 +136,7 @@
         :total="total"
         :page-size="pageSize"
         :current-page="page"
+        :page-sizes="[20, 50, 100, 200, 500]"
         @update:page-size="(value: number) => emit('size-change', value)"
         @update:current-page="(value: number) => emit('page-change', value)"
       />
@@ -144,6 +146,7 @@
 <script setup lang="ts">
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import { computed, nextTick, ref, watch } from 'vue';
+import { useChunkedRows } from '../../composables/useChunkedRows';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { inventoryIssueTypeText, inventoryStatusTagType, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
@@ -178,6 +181,7 @@ const emit = defineEmits<{
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
 const syncingSelection = ref(false);
+const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 120, chunkSize: 80 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 
@@ -194,13 +198,13 @@ async function syncSelection() {
   syncingSelection.value = true;
   tableRef.value.clearSelection();
   const selectedSet = new Set((props.selectedIds || []).map((item) => String(item)));
-  props.rows.forEach((row) => {
+  renderRows.value.forEach((row) => {
     if (selectedSet.has(String(row.id))) tableRef.value.toggleRowSelection(row, true);
   });
   await nextTick();
   syncingSelection.value = false;
 }
-watch(() => [props.rows, props.selectedIds], () => {
+watch(() => [renderRows.value, props.selectedIds], () => {
   nextTick(syncSelection);
 }, { deep: true, immediate: true });
 function handleSelectionChange(value: Record<string, any>[]) {
@@ -237,6 +241,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 </script>
 <style scoped>
+.render-hint { margin-top: 10px; color: #909399; font-size: 12px; }
 .pager-wrap { margin-top: 12px; display: flex; justify-content: flex-end; }
 .monitor-op-group.compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
 .row-more-trigger { padding-left: 0; padding-right: 0; }

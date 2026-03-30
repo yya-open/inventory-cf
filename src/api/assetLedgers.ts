@@ -1,9 +1,26 @@
 import { apiGet } from './client';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters, PcAsset, PcFilters } from '../types/assets';
+import { getCachedResource, invalidateCachedResource } from '../utils/resourceCache';
 
 export type PagedResponse<T> = { rows: T[]; total: number | null };
 
 type QueryValue = string | number | null | undefined | false;
+
+
+const LEDGER_CACHE_TTL_MS = 8_000;
+const LOCATION_CACHE_TTL_MS = 60_000;
+
+function summaryCacheKey(kind: 'pc' | 'monitor', params: Record<string, QueryValue>) {
+  return `asset-summary::${kind}::${toQueryString(params)}`;
+}
+
+function locationCacheKey(enabledOnly: boolean) {
+  return `asset-locations::${enabledOnly ? 'enabled' : 'all'}`;
+}
+
+export function invalidateAssetInventorySummaryCache(kind?: 'pc' | 'monitor') {
+  invalidateCachedResource(kind ? `asset-summary::${kind}` : 'asset-summary');
+}
 
 function toQueryString(params: Record<string, QueryValue>) {
   const qs = new URLSearchParams();
@@ -78,34 +95,44 @@ export async function countMonitorAssets(filters: MonitorFilters, signal?: Abort
 }
 
 export async function listEnabledLocations(signal?: AbortSignal) {
-  const result: any = await apiGet('/api/pc-locations?enabled=1', { signal });
-  return (result?.data || []) as LocationRow[];
+  return getCachedResource(locationCacheKey(true), async () => {
+    const result: any = await apiGet('/api/pc-locations?enabled=1', { signal });
+    return (result?.data || []) as LocationRow[];
+  }, { ttlMs: LOCATION_CACHE_TTL_MS });
 }
 
 export async function listAllLocations(signal?: AbortSignal) {
-  const result: any = await apiGet('/api/pc-locations', { signal });
-  return (result?.data || []) as LocationRow[];
+  return getCachedResource(locationCacheKey(false), async () => {
+    const result: any = await apiGet('/api/pc-locations', { signal });
+    return (result?.data || []) as LocationRow[];
+  }, { ttlMs: LOCATION_CACHE_TTL_MS });
 }
 
 export async function getPcAssetInventorySummary(filters: PcFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString({
+  const params = {
     status: filters.status,
     keyword: filters.keyword,
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
-  })}`, { signal });
-  return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+  } satisfies Record<string, QueryValue>;
+  return getCachedResource(summaryCacheKey('pc', params), async () => {
+    const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString(params)}`, { signal });
+    return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+  }, { ttlMs: LEDGER_CACHE_TTL_MS });
 }
 
 export async function getMonitorAssetInventorySummary(filters: MonitorFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString({
+  const params = {
     status: filters.status,
     location_id: filters.locationId,
     keyword: filters.keyword,
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
-  })}`, { signal });
-  return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+  } satisfies Record<string, QueryValue>;
+  return getCachedResource(summaryCacheKey('monitor', params), async () => {
+    const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString(params)}`, { signal });
+    return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+  }, { ttlMs: LEDGER_CACHE_TTL_MS });
 }

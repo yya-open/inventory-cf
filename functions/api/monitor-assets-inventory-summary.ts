@@ -2,6 +2,7 @@ import { errorResponse } from '../_auth';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
 import { buildMonitorAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
+import { isDefaultInventorySummaryRequest, readDefaultInventorySummaryCache } from './services/asset-inventory-summary-cache';
 import { requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
@@ -11,6 +12,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+
+    if (isDefaultInventorySummaryRequest(url, 'monitor')) {
+      const data = await readDefaultInventorySummaryCache(env.DB, 'monitor', user);
+      return Response.json({ ok: true, data, cached: true });
+    }
 
     const params = new URL(url);
     params.searchParams.delete('inventory_status');
