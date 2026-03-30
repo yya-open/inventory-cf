@@ -81,6 +81,20 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       scrap_date,
       reason,
       count: rows.length,
+      before: rows.map((row) => ({
+        id: row.id,
+        serial_no: row.serial_no,
+        status: row.status,
+        brand: row.brand,
+        model: row.model,
+      })),
+      after: rows.map((row) => ({
+        id: row.id,
+        serial_no: row.serial_no,
+        status: 'SCRAPPED',
+        scrap_date,
+        reason: reason || null,
+      })),
     }).catch(() => {}));
 
     return Response.json({ ok: true, scrap_no, count: rows.length, duplicate: false });

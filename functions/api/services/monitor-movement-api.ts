@@ -77,8 +77,29 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
         remark: prepared.remark ?? null,
       });
 
+      const afterSnapshot = {
+        status: options.type === 'OUT' ? 'ASSIGNED' : options.type === 'SCRAP' ? 'SCRAPPED' : 'IN_STOCK',
+        location_id: prepared.toLocationId ?? (options.type === 'SCRAP' ? null : asset.location_id ?? null),
+        employee_no: options.type === 'OUT' ? prepared.employeeNo ?? null : null,
+        department: options.type === 'OUT' ? prepared.department ?? null : null,
+        employee_name: options.type === 'OUT' ? prepared.employeeName ?? null : null,
+        is_employed: options.type === 'OUT' ? prepared.isEmployed ?? null : null,
+      };
+      if (options.type === 'TRANSFER') {
+        afterSnapshot.status = String(asset.status || 'IN_STOCK');
+        afterSnapshot.location_id = prepared.toLocationId ?? asset.location_id ?? null;
+      }
       await logAudit(env.DB, request, user, monitorMovementAuditAction(options.type), 'monitor_assets', asset.id, {
         tx_no: txNo,
+        before: {
+          status: asset.status ?? null,
+          location_id: asset.location_id ?? null,
+          employee_no: asset.employee_no ?? null,
+          department: asset.department ?? null,
+          employee_name: asset.employee_name ?? null,
+          is_employed: asset.is_employed ?? null,
+        },
+        after: afterSnapshot,
         ...(prepared.auditPayload || {}),
       });
 

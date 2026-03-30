@@ -24,6 +24,16 @@ export async function ensureCoreSchema(db: D1Database) {
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
 
+    // Item categories
+    `CREATE TABLE IF NOT EXISTS item_categories (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      name TEXT NOT NULL UNIQUE,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_item_categories_enabled_name ON item_categories(enabled, name)",
+
     // Items
     `CREATE TABLE IF NOT EXISTS items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -32,12 +42,15 @@ export async function ensureCoreSchema(db: D1Database) {
       brand TEXT,
       model TEXT,
       category TEXT,
+      category_id INTEGER,
       unit TEXT NOT NULL DEFAULT '个',
       warning_qty INTEGER NOT NULL DEFAULT 0,
       enabled INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
+      created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
+      FOREIGN KEY(category_id) REFERENCES item_categories(id)
     )`,
     "CREATE INDEX IF NOT EXISTS idx_items_category ON items(category)",
+    "CREATE INDEX IF NOT EXISTS idx_items_category_id ON items(category_id)",
 
     // Stock
     `CREATE TABLE IF NOT EXISTS stock (
@@ -141,6 +154,29 @@ export async function ensureCoreSchema(db: D1Database) {
     "CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_target_code_created_at ON audit_log(target_code, created_at)",
     "CREATE INDEX IF NOT EXISTS idx_audit_log_search_text_norm ON audit_log(search_text_norm)",
+
+    `CREATE TABLE IF NOT EXISTS slow_request_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      method TEXT,
+      path TEXT,
+      status INTEGER,
+      total_ms INTEGER,
+      sql_ms INTEGER,
+      auth_ms INTEGER,
+      created_at TEXT DEFAULT ${SQL_STORED_NOW_DEFAULT}
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status)",
+    `CREATE TABLE IF NOT EXISTS request_error_log (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      method TEXT,
+      path TEXT,
+      status INTEGER,
+      total_ms INTEGER,
+      sql_ms INTEGER,
+      auth_ms INTEGER,
+      created_at TEXT DEFAULT ${SQL_STORED_NOW_DEFAULT}
+    )`,
+    "CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)",
     "CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)",
 
     // Stocktake
@@ -238,6 +274,18 @@ export async function ensureCoreSchema(db: D1Database) {
   // Backfill/upgrade columns for older installs.
   // Some early versions didn't have token_version.
   try {
+    await db.prepare(`INSERT OR IGNORE INTO item_categories (name, enabled, created_at, updated_at)
+                      SELECT DISTINCT TRIM(category), 1, ${SQL_STORED_NOW_DEFAULT}, ${SQL_STORED_NOW_DEFAULT}
+                      FROM items
+                      WHERE category IS NOT NULL AND TRIM(category)<>''`).run();
+  } catch {}
+  try {
+    await db.prepare(`UPDATE items
+                      SET category_id = (SELECT c.id FROM item_categories c WHERE c.name = TRIM(items.category) LIMIT 1)
+                      WHERE category IS NOT NULL AND TRIM(category)<>'' AND category_id IS NULL`).run();
+  } catch {}
+
+  try {
     const cols = await db.prepare("PRAGMA table_info(users)").all<any>();
     const names = new Set((cols?.results || []).map((r: any) => String(r?.name || '').trim()));
     if (!names.has("token_version")) {
@@ -245,6 +293,16 @@ export async function ensureCoreSchema(db: D1Database) {
     }
     if (!names.has("must_change_password")) {
       await db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1").run();
+    }
+  } catch {
+    // ignore
+  }
+
+  try {
+    const itemCols = await db.prepare("PRAGMA table_info(items)").all<any>();
+    const itemNames = new Set((itemCols?.results || []).map((r: any) => String(r?.name || '').trim()));
+    if (!itemNames.has('category_id')) {
+      await db.prepare("ALTER TABLE items ADD COLUMN category_id INTEGER REFERENCES item_categories(id)").run();
     }
   } catch {
     // ignore

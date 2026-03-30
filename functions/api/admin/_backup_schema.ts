@@ -15,7 +15,8 @@ export type TableDef = {
 
 export const TABLE_DEFS: TableDef[] = [
   { name: 'warehouses', label: '仓库', group: 'core', columns: ['id','name','created_at'] },
-  { name: 'items', label: '物料', group: 'core', columns: ['id','sku','name','brand','model','category','unit','warning_qty','enabled','created_at'] },
+  { name: 'item_categories', label: '物料分类', group: 'core', columns: ['id','name','enabled','created_at','updated_at'] },
+  { name: 'items', label: '物料', group: 'core', columns: ['id','sku','name','brand','model','category','category_id','unit','warning_qty','enabled','created_at'] },
   { name: 'stock', label: '库存', group: 'core', columns: ['id','item_id','warehouse_id','qty','updated_at'] },
   { name: 'stock_tx', label: '库存流水', group: 'core', columns: ['id','tx_no','type','item_id','warehouse_id','qty','delta_qty','ref_type','ref_id','ref_no','unit_price','source','target','remark','created_at','created_by'] },
   { name: 'stocktake', label: '盘点单', group: 'core', columns: ['id','st_no','warehouse_id','status','created_at','created_by','applied_at'] },
@@ -24,7 +25,7 @@ export const TABLE_DEFS: TableDef[] = [
   { name: 'auth_login_throttle', label: '登录限流', group: 'system', columns: ['id','ip','username','fail_count','first_fail_at','last_fail_at','locked_until','updated_at'], isSystem: true },
   { name: 'audit_log', label: '审计日志', group: 'system', columns: ['id','user_id','username','action','entity','entity_id','payload_json','ip','ua','created_at'], isSystem: true },
   { name: 'public_api_throttle', label: '公共接口限流', group: 'system', columns: ['k','count','updated_at'], isSystem: true },
-  { name: 'pc_assets', label: '电脑台账', group: 'pc', columns: ['id','brand','serial_no','model','manufacture_date','warranty_end','disk_capacity','memory_size','remark','status','qr_key','qr_updated_at','created_at','updated_at'] },
+  { name: 'pc_assets', label: '电脑台账', group: 'pc', columns: ['id','brand','serial_no','model','manufacture_date','warranty_end','manufacture_ts','warranty_end_ts','disk_capacity','memory_size','remark','status','qr_key','qr_updated_at','created_at','updated_at'] },
   { name: 'pc_in', label: '电脑入库记录', group: 'pc', columns: ['id','in_no','asset_id','brand','serial_no','model','manufacture_date','warranty_end','disk_capacity','memory_size','remark','created_at','created_by'] },
   { name: 'pc_out', label: '电脑出库记录', group: 'pc', columns: ['id','out_no','asset_id','employee_no','department','employee_name','is_employed','brand','serial_no','model','config_date','manufacture_date','warranty_end','disk_capacity','memory_size','remark','recycle_date','created_at','created_by'] },
   { name: 'pc_recycle', label: '电脑回收/归还记录', group: 'pc', columns: ['id','recycle_no','action','asset_id','employee_no','department','employee_name','is_employed','brand','serial_no','model','recycle_date','remark','created_at','created_by'] },

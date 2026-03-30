@@ -10,6 +10,7 @@ import {
   parsePcAssetInput,
   pcAssetUpdateSql,
   buildPcAssetSearchText,
+  pcDateTextToUnixTs,
 } from './services/asset-ledger';
 import {
   archiveAsset,
@@ -68,6 +69,8 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         payload.model,
         payload.manufacture_date,
         payload.warranty_end,
+        pcDateTextToUnixTs(payload.manufacture_date),
+        pcDateTextToUnixTs(payload.warranty_end),
         payload.disk_capacity,
         payload.memory_size,
         payload.remark,

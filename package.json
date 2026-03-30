@@ -23,7 +23,9 @@
     "verify:release": "npm run check:release && npm run check:runtime-sources && npm run check:element-usage && npm run typecheck && npm run build && npm run check:perf-budget && npm run build:functions && npm run test:smoke",
     "check:perf-budget": "node scripts/perf-budget-check.mjs",
     "check:element-usage": "node scripts/check-element-usage.mjs",
-    "check:runtime-sources": "node scripts/check-runtime-sources.mjs"
+    "check:runtime-sources": "node scripts/check-runtime-sources.mjs",
+    "db:clean": "node scripts/db-clean.mjs",
+    "audit:cleanup": "node scripts/audit-cleanup.mjs"
   },
   "dependencies": {
     "element-plus": "^2.7.8",

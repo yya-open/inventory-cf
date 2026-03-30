@@ -1,5 +1,5 @@
 import { sqlNowStored } from '../_time';
-import { buildMonitorAssetSearchText, buildPcAssetSearchText } from './asset-ledger';
+import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
 import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
@@ -174,10 +174,12 @@ type CreatePcAssetArgs = {
 
 export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
   const { db, inNo, brand, serialNo, model, manufactureDate, warrantyEnd = null, diskCapacity = null, memorySize = null, remark = null, createdBy } = args;
+  const manufactureTs = pcDateTextToUnixTs(manufactureDate);
+  const warrantyEndTs = pcDateTextToUnixTs(warrantyEnd);
   const ins = await db.prepare(
-    `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
-     VALUES (?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
-  ).bind(brand, serialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, buildPcAssetSearchText({ brand, serial_no: serialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize })).run();
+    `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
+  ).bind(brand, serialNo, model, manufactureDate, warrantyEnd, manufactureTs, warrantyEndTs, diskCapacity, memorySize, remark, buildPcAssetSearchText({ brand, serial_no: serialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize })).run();
   const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
   const assetRow = lastId
     ? await db.prepare('SELECT id FROM pc_assets WHERE id=?').bind(lastId).first<any>()

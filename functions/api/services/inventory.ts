@@ -1,6 +1,7 @@
 import { toSqlRange } from '../_date';
 import { buildKeywordWhere } from '../_search';
 import { sqlBjDateTime, sqlNowStored } from '../_time';
+import { resolveItemCategory } from './item-categories';
 
 export type PagedQuery = {
   page: number;
@@ -80,29 +81,29 @@ export function buildItemsListQuery(url: URL): ItemsListQuery {
   const sortDirRaw = normalizeKeyword(url.searchParams.get('sort_dir')).toLowerCase() || 'desc';
   const sortDir = normalizeSortDir(sortDirRaw);
   const sortMap: Record<string, string> = {
-    id: 'id',
-    sku: 'sku',
-    name: 'name',
-    brand: 'brand',
-    model: 'model',
-    category: 'category',
-    warning_qty: 'warning_qty',
-    created_at: 'created_at',
+    id: 'i.id',
+    sku: 'i.sku',
+    name: 'i.name',
+    brand: 'i.brand',
+    model: 'i.model',
+    category: 'COALESCE(c.name, i.category)',
+    warning_qty: 'i.warning_qty',
+    created_at: 'i.created_at',
   };
-  const sortCol = sortMap[sortByRaw] || 'id';
+  const sortCol = sortMap[sortByRaw] || 'i.id';
 
   const kw = buildKeywordWhere(keyword, {
-    numericId: 'id',
-    exact: ['sku'],
-    prefix: ['sku', 'name'],
-    contains: ['name', 'brand', 'model'],
+    numericId: 'i.id',
+    exact: ['i.sku'],
+    prefix: ['i.sku', 'i.name'],
+    contains: ['i.name', 'i.brand', 'i.model', 'i.category'],
   });
 
   return {
     ...getPageParams(url),
-    where: kw.sql ? `WHERE enabled=1 AND ${kw.sql}` : 'WHERE enabled=1',
+    where: kw.sql ? `WHERE i.enabled=1 AND ${kw.sql}` : 'WHERE i.enabled=1',
     binds: kw.binds,
-    orderBy: `${sortCol} ${sortDir}, id DESC`,
+    orderBy: `${sortCol} ${sortDir}, i.id DESC`,
     sort_by: sortByRaw,
     sort_dir: sortDirRaw,
     keyword_mode: kw.mode,
@@ -127,7 +128,10 @@ export function parseItemInput(body: any): ItemInput {
 }
 
 export async function getItemById(db: D1Database, id: number) {
-  return db.prepare('SELECT * FROM items WHERE id=?').bind(id).first<any>();
+  return db.prepare(`SELECT i.*, COALESCE(c.name, i.category) AS category
+                     FROM items i
+                     LEFT JOIN item_categories c ON c.id = i.category_id
+                     WHERE i.id=?`).bind(id).first<any>();
 }
 
 export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId?: number | null) {
@@ -140,18 +144,20 @@ export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId
 }
 
 export async function createItem(db: D1Database, input: ItemInput) {
+  const category = await resolveItemCategory(db, input.category);
   const result = await db.prepare(
-    `INSERT INTO items (sku, name, brand, model, category, unit, warning_qty, created_at)
-     VALUES (?,?,?,?,?,?,?, ${sqlNowStored()})`
-  ).bind(input.sku, input.name, input.brand, input.model, input.category, input.unit, input.warning_qty).run();
+    `INSERT INTO items (sku, name, brand, model, category, category_id, unit, warning_qty, created_at)
+     VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+  ).bind(input.sku, input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty).run();
   const last = (result as any)?.meta?.last_row_id;
   return typeof last === 'number' ? last : (last ? Number(last) : null);
 }
 
 export async function updateItem(db: D1Database, id: number, input: ItemInput) {
+  const category = await resolveItemCategory(db, input.category);
   await db.prepare(
-    'UPDATE items SET sku=?, name=?, brand=?, model=?, category=?, unit=?, warning_qty=? WHERE id=?'
-  ).bind(input.sku, input.name, input.brand, input.model, input.category, input.unit, input.warning_qty, id).run();
+    'UPDATE items SET sku=?, name=?, brand=?, model=?, category=?, category_id=?, unit=?, warning_qty=? WHERE id=?'
+  ).bind(input.sku, input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty, id).run();
 }
 
 export async function softDeleteItem(db: D1Database, id: number) {
@@ -159,12 +165,16 @@ export async function softDeleteItem(db: D1Database, id: number) {
 }
 
 export async function countItems(db: D1Database, query: Pick<ItemsListQuery, 'where' | 'binds'>) {
-  const row = await db.prepare(`SELECT COUNT(*) as c FROM items ${query.where}`).bind(...query.binds).first<any>();
+  const row = await db.prepare(`SELECT COUNT(*) as c FROM items i LEFT JOIN item_categories c ON c.id = i.category_id ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listItems(db: D1Database, query: ItemsListQuery) {
-  const result = await db.prepare(`SELECT * FROM items ${query.where} ORDER BY ${query.orderBy} LIMIT ? OFFSET ?`).bind(...query.binds, query.pageSize, query.offset).all<any>();
+  const result = await db.prepare(`SELECT i.*, COALESCE(c.name, i.category) AS category
+                                   FROM items i
+                                   LEFT JOIN item_categories c ON c.id = i.category_id
+                                   ${query.where}
+                                   ORDER BY ${query.orderBy} LIMIT ? OFFSET ?`).bind(...query.binds, query.pageSize, query.offset).all<any>();
   return result.results || [];
 }
 

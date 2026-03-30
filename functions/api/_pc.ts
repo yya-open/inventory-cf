@@ -48,6 +48,8 @@ export async function ensurePcSchema(db: D1Database) {
       model TEXT NOT NULL,
       manufacture_date TEXT,
       warranty_end TEXT,
+      manufacture_ts INTEGER,
+      warranty_end_ts INTEGER,
       disk_capacity TEXT,
       memory_size TEXT,
       remark TEXT,
@@ -66,7 +68,6 @@ export async function ensurePcSchema(db: D1Database) {
     )
   `).run();
 
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)").run();
 
   for (const ddl of [
@@ -79,6 +80,8 @@ export async function ensurePcSchema(db: D1Database) {
     "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
     "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
     "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
+    "ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER",
+    "ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER",
   ]) {
     try {
       await db.prepare(ddl).run();
@@ -87,9 +90,30 @@ export async function ensurePcSchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
-  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)").run();
+  await db.prepare("DROP INDEX IF EXISTS idx_pc_assets_status").run().catch(() => {});
+  await db.prepare("DROP INDEX IF EXISTS idx_pc_assets_archived_mfg_status_id").run().catch(() => {});
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run();
   await db.prepare(`UPDATE pc_assets SET search_text_norm=LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(disk_capacity,'') || ' ' || COALESCE(memory_size,''))) WHERE COALESCE(search_text_norm,'')=''`).run();
+  await db.prepare(`UPDATE pc_assets
+                    SET manufacture_ts = CASE WHEN TRIM(COALESCE(manufacture_date,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(manufacture_date) || ' 00:00:00') AS INTEGER) END,
+                        warranty_end_ts = CASE WHEN TRIM(COALESCE(warranty_end,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(warranty_end) || ' 00:00:00') AS INTEGER) END
+                    WHERE manufacture_ts IS NULL OR warranty_end_ts IS NULL`).run().catch(() => {});
+  await db.prepare("DROP TRIGGER IF EXISTS pc_assets_ts_ai").run().catch(() => {});
+  await db.prepare("DROP TRIGGER IF EXISTS pc_assets_ts_au").run().catch(() => {});
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS pc_assets_ts_ai AFTER INSERT ON pc_assets BEGIN
+    UPDATE pc_assets
+    SET manufacture_ts = CASE WHEN TRIM(COALESCE(new.manufacture_date,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(new.manufacture_date) || ' 00:00:00') AS INTEGER) END,
+        warranty_end_ts = CASE WHEN TRIM(COALESCE(new.warranty_end,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(new.warranty_end) || ' 00:00:00') AS INTEGER) END
+    WHERE id = new.id;
+  END`).run().catch(() => {});
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS pc_assets_ts_au AFTER UPDATE OF manufacture_date, warranty_end ON pc_assets BEGIN
+    UPDATE pc_assets
+    SET manufacture_ts = CASE WHEN TRIM(COALESCE(new.manufacture_date,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(new.manufacture_date) || ' 00:00:00') AS INTEGER) END,
+        warranty_end_ts = CASE WHEN TRIM(COALESCE(new.warranty_end,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(new.warranty_end) || ' 00:00:00') AS INTEGER) END
+    WHERE id = new.id;
+  END`).run().catch(() => {});
 
   await db.prepare(`CREATE TABLE IF NOT EXISTS pc_asset_latest_state (
     asset_id INTEGER PRIMARY KEY,
@@ -125,6 +149,8 @@ try {
           model TEXT NOT NULL,
           manufacture_date TEXT,
           warranty_end TEXT,
+          manufacture_ts INTEGER,
+          warranty_end_ts INTEGER,
           disk_capacity TEXT,
           memory_size TEXT,
           remark TEXT,
@@ -143,16 +169,16 @@ try {
         )
       `),
       db.prepare(`
-        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by, inventory_status, inventory_at, inventory_issue_type)
-        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,''))), status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL, COALESCE(inventory_status, 'UNCHECKED'), inventory_at, inventory_issue_type
+        INSERT INTO pc_assets_v2 (id, brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at, archived, archived_at, archived_reason, archived_note, archived_by, inventory_status, inventory_at, inventory_issue_type)
+        SELECT id, brand, serial_no, model, manufacture_date, warranty_end, CASE WHEN TRIM(COALESCE(manufacture_date,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(manufacture_date) || ' 00:00:00') AS INTEGER) END, CASE WHEN TRIM(COALESCE(warranty_end,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(warranty_end) || ' 00:00:00') AS INTEGER) END, disk_capacity, memory_size, remark, LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,''))), status, created_at, updated_at, COALESCE(archived,0), archived_at, NULL, NULL, NULL, COALESCE(inventory_status, 'UNCHECKED'), inventory_at, inventory_issue_type
         FROM pc_assets
       `),
       db.prepare("DROP TABLE pc_assets"),
       db.prepare("ALTER TABLE pc_assets_v2 RENAME TO pc_assets"),
-      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)"),
-      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)"),
     ]);
   }

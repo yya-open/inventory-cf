@@ -2,6 +2,21 @@ type Role = "admin" | "operator" | "viewer";
 
 export const JWT_TTL_SECONDS = 24 * 3600;
 export const REFRESH_THRESHOLD_SECONDS = 12 * 3600;
+
+function clampSeconds(value: unknown, fallback: number, min: number, max: number) {
+  const n = Number(value);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.max(min, Math.min(max, Math.trunc(n)));
+}
+
+export function getJwtTtlSeconds(env?: { JWT_TTL_SECONDS?: string | number | null }) {
+  return clampSeconds(env?.JWT_TTL_SECONDS, JWT_TTL_SECONDS, 15 * 60, 30 * 24 * 3600);
+}
+
+export function getJwtRefreshThresholdSeconds(env?: { JWT_REFRESH_THRESHOLD_SECONDS?: string | number | null; JWT_TTL_SECONDS?: string | number | null }) {
+  const ttl = getJwtTtlSeconds(env);
+  return clampSeconds(env?.JWT_REFRESH_THRESHOLD_SECONDS, Math.min(REFRESH_THRESHOLD_SECONDS, Math.max(5 * 60, Math.trunc(ttl / 2))), 5 * 60, Math.max(5 * 60, ttl - 60));
+}
 export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
@@ -171,11 +186,11 @@ async function requireAuthInternal(
     const nowSec = Math.floor(Date.now() / 1000);
     const exp = Number(payload?.exp || 0);
     const remaining = exp ? exp - nowSec : 0;
-    if (!exp || remaining < REFRESH_THRESHOLD_SECONDS) {
+    if (!exp || remaining < getJwtRefreshThresholdSeconds(env as any)) {
       (env as any).__refresh_token = await signJwt(
         { sub: user.id, u: user.username, r: user.role, tv: dbTv },
         secret,
-        JWT_TTL_SECONDS
+        getJwtTtlSeconds(env as any)
       );
     }
   } catch {}

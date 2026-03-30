@@ -17,6 +17,16 @@ CREATE TABLE IF NOT EXISTS warehouses (
   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
 );
 
+CREATE TABLE IF NOT EXISTS item_categories (
+
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  name TEXT NOT NULL UNIQUE,
+  enabled INTEGER NOT NULL DEFAULT 1,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_item_categories_enabled_name ON item_categories(enabled, name);
+
 CREATE TABLE IF NOT EXISTS items (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
   sku TEXT NOT NULL UNIQUE,
@@ -24,10 +34,12 @@ CREATE TABLE IF NOT EXISTS items (
   brand TEXT,
   model TEXT,
   category TEXT,
+  category_id INTEGER,
   unit TEXT NOT NULL DEFAULT '个',
   warning_qty INTEGER NOT NULL DEFAULT 0,
   enabled INTEGER NOT NULL DEFAULT 1,
-  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),
+  FOREIGN KEY(category_id) REFERENCES item_categories(id)
 );
 
 CREATE TABLE IF NOT EXISTS stock (
@@ -77,6 +89,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_type_created_at ON stock_tx(warehouse
 CREATE INDEX IF NOT EXISTS idx_stock_tx_ref_type_ref_id_item_wh ON stock_tx(ref_type, ref_id, item_id, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_stock_wh_item ON stock(warehouse_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);
+CREATE INDEX IF NOT EXISTS idx_items_category_id ON items(category_id);
 
 
 -- Users & Auth
@@ -150,6 +163,30 @@ CREATE INDEX IF NOT EXISTS idx_audit_log_username_created_at ON audit_log(userna
 CREATE INDEX IF NOT EXISTS idx_audit_log_module_created_at ON audit_log(module_code, created_at);
 CREATE INDEX IF NOT EXISTS idx_audit_log_high_risk_created_at ON audit_log(high_risk, created_at);
 
+CREATE TABLE IF NOT EXISTS slow_request_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  method TEXT,
+  path TEXT,
+  status INTEGER,
+  total_ms INTEGER,
+  sql_ms INTEGER,
+  auth_ms INTEGER,
+  created_at TEXT DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status);
+
+CREATE TABLE IF NOT EXISTS request_error_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  method TEXT,
+  path TEXT,
+  status INTEGER,
+  total_ms INTEGER,
+  sql_ms INTEGER,
+  auth_ms INTEGER,
+  created_at TEXT DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path);
+
 -- =========================
 -- 仓库2：电脑仓（资产化管理）
 -- =========================
@@ -175,6 +212,8 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   model TEXT NOT NULL,
   manufacture_date TEXT,
   warranty_end TEXT,
+  manufacture_ts INTEGER,
+  warranty_end_ts INTEGER,
   disk_capacity TEXT,
   memory_size TEXT,
   remark TEXT,
@@ -191,13 +230,13 @@ CREATE TABLE IF NOT EXISTS pc_assets (
   inventory_issue_type TEXT
 );
 
-CREATE INDEX IF NOT EXISTS idx_pc_assets_status ON pc_assets(status);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
-CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfg_status_id ON pc_assets(archived, manufacture_date, status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id);
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -301,7 +340,6 @@ CREATE TABLE IF NOT EXISTS monitor_assets (
   inventory_issue_type TEXT,
   FOREIGN KEY(location_id) REFERENCES pc_locations(id)
 );
-CREATE INDEX IF NOT EXISTS idx_monitor_assets_status ON monitor_assets(status);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_asset_code ON monitor_assets(asset_code);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);

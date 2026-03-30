@@ -41,6 +41,15 @@ function escapeSqlLike(value: string) {
   return value.replace(/\\/g, '\\\\').replace(/%/g, '\\%').replace(/_/g, '\\_');
 }
 
+
+export function pcDateTextToUnixTs(value: string | null | undefined) {
+  const text = String(value || '').trim();
+  if (!text) return null;
+  const ms = Date.parse(`${text}T00:00:00Z`);
+  if (!Number.isFinite(ms)) return null;
+  return Math.trunc(ms / 1000);
+}
+
 export function buildPcAssetSearchText(input: Partial<PcAssetInput> | any) {
   return normalizeSearchText(input?.serial_no, input?.brand, input?.model, input?.remark, input?.disk_capacity, input?.memory_size);
 }
@@ -126,9 +135,9 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   if (ageYears > 0) {
     const cutoff = new Date();
     cutoff.setFullYear(cutoff.getFullYear() - ageYears);
-    const cutoffStr = `${cutoff.getFullYear()}-${String(cutoff.getMonth() + 1).padStart(2, '0')}-${String(cutoff.getDate()).padStart(2, '0')}`;
-    clauses.push("a.manufacture_date IS NOT NULL AND a.manufacture_date<>'' AND a.manufacture_date<=?");
-    binds.push(cutoffStr);
+    const cutoffTs = Math.trunc(Date.UTC(cutoff.getFullYear(), cutoff.getMonth(), cutoff.getDate()) / 1000);
+    clauses.push('a.manufacture_ts IS NOT NULL AND a.manufacture_ts<=?');
+    binds.push(cutoffTs);
     if (!status) clauses.push("a.status IN ('IN_STOCK','ASSIGNED','RECYCLED')");
   }
 
@@ -395,7 +404,7 @@ export function pcAssetBulkOwnerSql() {
 export function pcAssetUpdateSql() {
   return `
     UPDATE pc_assets
-    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, archived=0, updated_at=${sqlNowStored()}
+    SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?, disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, archived=0, updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }

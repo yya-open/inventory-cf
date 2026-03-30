@@ -198,5 +198,10 @@
     "id": "202603300020_asset_search_fts_async_queue_dictionary_dirty",
     "file": "sql/migrate_asset_search_fts_async_queue_dictionary_dirty.sql",
     "description": "fts search indexes for assets and audit logs, plus dirty-key dictionary counter refresh support"
+  },
+  {
+    "id": "202603300030_items_categories_pc_dates_request_logs",
+    "file": "sql/migrate_items_categories_pc_dates_request_logs.sql",
+    "description": "items category dictionary normalization, pc asset timestamp columns, and precreated request log tables"
   }
 ]

@@ -192,10 +192,22 @@
           <el-input v-model="form.model" />
         </el-form-item>
         <el-form-item label="分类">
-          <el-input
+          <el-select
             v-model="form.category"
-            placeholder="如：硬盘/内存/显卡..."
-          />
+            filterable
+            allow-create
+            default-first-option
+            clearable
+            placeholder="请选择或输入分类"
+            style="width: 100%"
+          >
+            <el-option
+              v-for="item in categoryOptions"
+              :key="item"
+              :label="item"
+              :value="item"
+            />
+          </el-select>
         </el-form-item>
         <el-form-item label="单位">
           <el-input
@@ -242,6 +254,7 @@ const sortBy = ref<string>("sku");
 const sortDir = ref<string>("asc");
 const rows = ref<any[]>([]);
 const loading = ref(false);
+const categoryOptions = ref<string[]>([]);
 
 const page = ref(1);
 const pageSize = ref(50);
@@ -339,6 +352,14 @@ function onPageSizeChange(){
   load();
 }
 
+async function loadCategories(force = false) {
+  if (categoryOptions.value.length && !force) return;
+  try {
+    const j = await apiGet<{ ok: boolean; data: string[] }>("/api/meta/categories");
+    categoryOptions.value = Array.isArray(j.data) ? j.data.filter(Boolean) : [];
+  } catch {}
+}
+
 async function load() {
   try {
     loading.value = true;
@@ -382,7 +403,7 @@ async function save() {
     });
     ElMessage.success("保存成功");
     dlgVisible.value = false;
-    await load();
+    await Promise.all([load(), loadCategories(true)]);
   } catch (e: any) {
     ElMessage.error(e?.message || "保存失败");
   } finally {
@@ -390,5 +411,7 @@ async function save() {
   }
 }
 
-onMounted(load);
+onMounted(async () => {
+  await Promise.all([load(), loadCategories(true)]);
+});
 </script>
