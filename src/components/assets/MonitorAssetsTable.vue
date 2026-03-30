@@ -94,24 +94,34 @@
         <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
       </template>
 
-      <el-table-column label="操作" width="300" fixed="right">
+      <el-table-column label="操作" width="96" align="center" fixed="right">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="monitor-op-group compact">
-            <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
-            <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">彻底删除</el-button>
+            <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="loading">
+                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="restore">恢复归档</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>彻底删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <span v-else class="table-subtle">已归档</span>
           </div>
           <div v-else class="monitor-op-group compact">
-            <el-button v-if="props.showInventoryColumn && recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
-            <el-button v-if="canOperator" link type="success" :disabled="loading" @click="emit('in', row)">入库</el-button>
-            <el-button v-if="canOperator" link type="warning" :disabled="loading" @click="emit('out', row)">出库</el-button>
             <el-dropdown v-if="canOperator || isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
               <el-button link class="row-more-trigger" :disabled="loading">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-if="isAdmin" command="edit">编辑</el-dropdown-item>
+                  <el-dropdown-item v-if="props.showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
+                  <el-dropdown-item v-if="props.showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
+                  <el-dropdown-item v-if="canOperator" command="in">入库</el-dropdown-item>
+                  <el-dropdown-item v-if="canOperator" command="out">出库</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="edit">修改</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="qr">二维码</el-dropdown-item>
                   <el-dropdown-item command="audit">审计历史</el-dropdown-item>
                   <el-dropdown-item v-if="canOperator" command="return">归还</el-dropdown-item>
@@ -223,12 +233,6 @@ function recommendedAction(row: Record<string, any>) {
   return { label: '看盘点记录', command: 'logs', tip: '建议处理：先查看本条盘点异常，再决定后续动作。' };
 }
 
-function handleRecommendedAction(row: Record<string, any>) {
-  const action = recommendedAction(row);
-  if (!action) return;
-  emit('open-recommended', action.command, row);
-}
-
 function shouldShowLogsShortcut(row: Record<string, any>) {
   const action = recommendedAction(row);
   return Boolean(action && action.command !== 'logs');
@@ -243,7 +247,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 <style scoped>
 .render-hint { margin-top: 10px; color: #909399; font-size: 12px; }
 .pager-wrap { margin-top: 12px; display: flex; justify-content: flex-end; }
-.monitor-op-group.compact { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+.monitor-op-group.compact { display: flex; justify-content: center; }
 .row-more-trigger { padding-left: 0; padding-right: 0; }
 .status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
 .inventory-stack { display:flex; flex-direction:column; gap:6px; }

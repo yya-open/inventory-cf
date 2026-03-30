@@ -647,11 +647,14 @@ function handleToolbarMore(command: string) {
 }
 
 function handleRowMore(command: string, row: MonitorAsset) {
+  if (command === 'in') return openIn(row);
+  if (command === 'out') return openOut(row);
   if (command === 'edit') return openEdit(row);
   if (command === 'qr') return openQr(row);
   if (command === 'audit') return openAuditHistory(row);
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
+  if (command === 'restore') return restoreAsset(row);
   if (command === 'delete') return removeAsset(row);
 }
 

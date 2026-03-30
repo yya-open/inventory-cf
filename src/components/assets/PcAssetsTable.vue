@@ -111,20 +111,38 @@
         <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark')" :min-width="220" show-overflow-tooltip />
       </template>
 
-      <el-table-column v-if="canOperator || isAdmin" label="操作" :width="300" fixed="right">
+      <el-table-column v-if="canOperator || isAdmin" label="操作" width="96" align="center" fixed="right">
         <template #default="{ row }">
-          <div v-if="Number(row.archived || 0) === 1" class="row-archived-actions">
-            <el-button v-if="isAdmin" link type="primary" :disabled="loading" @click="emit('restore', row)">恢复归档</el-button>
-            <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">彻底删除</el-button>
+          <div v-if="Number(row.archived || 0) === 1" class="row-action-wrap">
+            <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="loading">
+                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item command="restore">恢复归档</el-dropdown-item>
+                  <el-dropdown-item command="delete" divided>彻底删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
             <span v-else class="subtle">已归档</span>
           </div>
-          <template v-else>
-            <el-button v-if="props.showInventoryColumn && recommendedAction(row)" link type="danger" :disabled="loading" @click="handleRecommendedAction(row)">{{ recommendedAction(row)?.label }}</el-button>
-            <el-button v-if="props.showInventoryColumn && shouldShowLogsShortcut(row)" link :disabled="loading" @click="emit('open-recommended', 'logs', row)">看记录</el-button>
-            <el-button link type="primary" :disabled="loading" @click="emit('open-edit', row)">修改</el-button>
-            <el-button link :disabled="loading" @click="emit('open-qr', row)">二维码</el-button>
-            <el-button v-if="isAdmin" link type="danger" :disabled="loading" @click="emit('remove', row)">删除</el-button>
-          </template>
+          <div v-else class="row-action-wrap">
+            <el-dropdown trigger="click" :disabled="loading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="loading">
+                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+              </el-button>
+              <template #dropdown>
+                <el-dropdown-menu>
+                  <el-dropdown-item v-if="props.showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
+                  <el-dropdown-item v-if="props.showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
+                  <el-dropdown-item command="edit">修改</el-dropdown-item>
+                  <el-dropdown-item command="qr">二维码</el-dropdown-item>
+                  <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>
+                </el-dropdown-menu>
+              </template>
+            </el-dropdown>
+          </div>
         </template>
       </el-table-column>
 
@@ -148,7 +166,8 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ElPopover } from 'element-plus';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
+import { ArrowDown } from '@element-plus/icons-vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { inventoryIssueTypeText, inventoryStatusTagType, inventoryStatusText } from '../../types/assets';
@@ -225,15 +244,17 @@ function recommendedAction(row: Record<string, any>) {
   return { label: '看盘点记录', command: 'logs', tip: '建议处理：先查看本条盘点异常，再决定后续动作。' };
 }
 
-function handleRecommendedAction(row: Record<string, any>) {
-  const action = recommendedAction(row);
-  if (!action) return;
-  emit('open-recommended', action.command, row);
-}
-
 function shouldShowLogsShortcut(row: Record<string, any>) {
   const action = recommendedAction(row);
   return Boolean(action && action.command !== 'logs');
+}
+
+function handleRowMore(command: string, row: Record<string, any>) {
+  if (command === 'edit') return emit('open-edit', row);
+  if (command === 'qr') return emit('open-qr', row);
+  if (command === 'delete') return emit('remove', row);
+  if (command === 'restore') return emit('restore', row);
+  if (command) return emit('open-recommended', command, row);
 }
 
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
@@ -252,7 +273,8 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .inventory-stack { display:flex; flex-direction:column; gap:6px; }
 .inventory-advice { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; }
 .archive-tag { margin-top:6px; }
-.row-archived-actions { display:flex; align-items:center; }
+.row-action-wrap { display:flex; justify-content:center; }
+.row-more-trigger { padding-left:0; padding-right:0; }
 .archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
 :deep(.inventory-row-issue td) { background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255,255,255,0) 18%), rgba(245, 108, 108, 0.06); }
 :deep(.inventory-row-issue td:first-child) { box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85); }
