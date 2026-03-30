@@ -7,6 +7,7 @@
       row-key="id"
       size="small"
       border
+      max-height="calc(100vh - 320px)"
       :row-class-name="rowClassName"
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
@@ -17,38 +18,46 @@
       </el-table-column>
 
       <template v-for="key in orderedVisibleColumns" :key="key">
-        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="160" fixed="left">
+        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="170" fixed="left">
           <template #default="{ row }">
-            <div class="asset-link strong" @click="emit('open-info', row)">{{ row.asset_code || '-' }}</div>
+            <div class="table-cell asset-cell" @click="emit('open-info', row)">
+              <div class="cell-primary ellipsis">{{ row.asset_code || '-' }}</div>
+              <div class="cell-secondary ellipsis">{{ [row.brand, row.size_inch ? `${row.size_inch} 寸` : ''].filter(Boolean).join(' · ') || '显示器资产' }}</div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'serialNo'" column-key="serialNo" prop="sn" label="SN" :width="getColumnWidth('serialNo')" :min-width="140" />
+        <el-table-column v-else-if="key === 'serialNo'" column-key="serialNo" prop="sn" label="SN" :width="getColumnWidth('serialNo')" :min-width="150" show-overflow-tooltip />
 
-        <el-table-column v-else-if="key === 'brand'" column-key="brand" prop="brand" label="品牌" :width="getColumnWidth('brand', 120)" :min-width="120" />
-        <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="200">
+        <el-table-column v-else-if="key === 'brand'" column-key="brand" prop="brand" label="品牌" :width="getColumnWidth('brand', 120)" :min-width="120" show-overflow-tooltip />
+        <el-table-column v-else-if="key === 'model'" column-key="model" label="型号" :width="getColumnWidth('model')" :min-width="220">
           <template #default="{ row }">
-            <span>{{ [row.brand, row.model].filter(Boolean).join(' ') }}</span>
-            <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
-              <template #reference>
-                <el-tag size="small" type="warning" effect="plain" class="archive-tag">已归档</el-tag>
-              </template>
-              <div class="archive-detail">
-                <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
-                <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
-                <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
-                <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+            <div class="table-cell asset-cell" @click="emit('open-info', row)">
+              <div class="cell-primary ellipsis">{{ row.model || '-' }}</div>
+              <div class="cell-secondary ellipsis">{{ [row.brand || '-', row.size_inch ? `${row.size_inch} 寸` : '-', `SN ${row.sn || '-'}`].join(' · ') }}</div>
+              <div v-if="Number(row.archived || 0) === 1" class="asset-tags">
+                <el-popover placement="top" trigger="hover" :width="280">
+                  <template #reference>
+                    <span class="status-chip status-chip--archived status-chip--soft">已归档</span>
+                  </template>
+                  <div class="archive-detail">
+                    <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
+                    <div><b>归档人：</b>{{ row.archived_by || '-' }}</div>
+                    <div><b>归档时间：</b>{{ row.archived_at || '-' }}</div>
+                    <div v-if="row.archived_note"><b>备注：</b>{{ row.archived_note }}</div>
+                  </div>
+                </el-popover>
               </div>
-            </el-popover>
+            </div>
           </template>
         </el-table-column>
         <el-table-column v-else-if="key === 'sizeInch'" column-key="sizeInch" prop="size_inch" label="尺寸" :width="getColumnWidth('sizeInch', 90)" />
-        <el-table-column v-else-if="key === 'status'" column-key="status" label="状态" :width="getColumnWidth('status', 120)">
+        <el-table-column v-else-if="key === 'status'" column-key="status" label="状态" :width="getColumnWidth('status', 132)">
           <template #default="{ row }">
-            <div class="status-stack">
-              <span>{{ statusText(row.status) }}</span>
+            <div class="table-cell status-cell">
+              <span class="status-chip" :class="assetStatusClass(row.status)">{{ statusText(row.status) }}</span>
               <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
                 <template #reference>
-                  <el-tag size="small" type="warning" effect="plain">已归档</el-tag>
+                  <span class="status-chip status-chip--archived status-chip--soft">已归档</span>
                 </template>
                 <div class="archive-detail">
                   <div><b>原因：</b>{{ row.archived_reason || '未填写' }}</div>
@@ -60,11 +69,11 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'inventory'" column-key="inventory" label="盘点状态" :width="getColumnWidth('inventory', 160)">
+        <el-table-column v-else-if="key === 'inventory'" column-key="inventory" label="盘点状态" :width="getColumnWidth('inventory', 170)">
           <template #default="{ row }">
-            <div class="inventory-stack">
-              <el-tag :type="inventoryStatusTagType(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</el-tag>
-              <div class="table-subtle">
+            <div class="table-cell inventory-cell">
+              <span class="status-chip" :class="inventoryStatusClass(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</span>
+              <div class="cell-secondary ellipsis">
                 <template v-if="String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE'">
                   {{ inventoryIssueTypeText(row.inventory_issue_type) }}
                 </template>
@@ -79,16 +88,23 @@
             </div>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'location'" column-key="location" label="位置" :width="getColumnWidth('location')" :min-width="180">
-          <template #default="{ row }">{{ locationText(row) }}</template>
-        </el-table-column>
-        <el-table-column v-else-if="key === 'owner'" column-key="owner" label="领用人" :width="getColumnWidth('owner')" :min-width="180">
+        <el-table-column v-else-if="key === 'location'" column-key="location" label="位置" :width="getColumnWidth('location')" :min-width="180" show-overflow-tooltip>
           <template #default="{ row }">
-            <span v-if="row.employee_no || row.employee_name">{{ row.employee_name }}（{{ row.employee_no }}）</span>
-            <span v-else>-</span>
+            <div class="table-cell compact-cell">
+              <div class="cell-primary ellipsis">{{ locationText(row) }}</div>
+            </div>
           </template>
         </el-table-column>
-        <el-table-column v-else-if="key === 'department'" column-key="department" prop="department" label="部门" :width="getColumnWidth('department')" :min-width="140" />
+        <el-table-column v-else-if="key === 'owner'" column-key="owner" label="领用人" :width="getColumnWidth('owner')" :min-width="190">
+          <template #default="{ row }">
+            <div v-if="row.employee_no || row.employee_name || row.department" class="table-cell">
+              <div class="cell-primary ellipsis">{{ row.employee_name || '-' }}</div>
+              <div class="cell-secondary ellipsis">{{ [row.employee_no || '-', row.department || '-'].join(' · ') }}</div>
+            </div>
+            <span v-else class="cell-placeholder">-</span>
+          </template>
+        </el-table-column>
+        <el-table-column v-else-if="key === 'department'" column-key="department" prop="department" label="部门" :width="getColumnWidth('department')" :min-width="140" show-overflow-tooltip />
         <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark', 180)" :min-width="180" show-overflow-tooltip />
         <el-table-column v-else-if="key === 'archiveReason'" column-key="archiveReason" prop="archived_reason" label="归档原因" :width="getColumnWidth('archiveReason', 160)" :min-width="160" show-overflow-tooltip />
         <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
@@ -96,7 +112,7 @@
 
       <el-table-column label="操作" width="96" align="center" fixed="right">
         <template #default="{ row }">
-          <div v-if="Number(row.archived || 0) === 1" class="monitor-op-group compact">
+          <div v-if="Number(row.archived || 0) === 1" class="row-action-wrap">
             <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
               <el-button link class="row-more-trigger" :disabled="loading">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -108,9 +124,9 @@
                 </el-dropdown-menu>
               </template>
             </el-dropdown>
-            <span v-else class="table-subtle">已归档</span>
+            <span v-else class="cell-secondary">已归档</span>
           </div>
-          <div v-else class="monitor-op-group compact">
+          <div v-else class="row-action-wrap">
             <el-dropdown v-if="canOperator || isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
               <el-button link class="row-more-trigger" :disabled="loading">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
@@ -135,7 +151,14 @@
       </el-table-column>
 
       <template #empty>
-        <el-empty description="暂无匹配数据" />
+        <el-empty :description="hasFilters ? '暂无匹配结果' : '暂无台账数据'">
+          <template #default>
+            <div class="empty-wrap">
+              <div class="empty-tip">{{ hasFilters ? '可尝试调整筛选条件后重试。' : '当前还没有显示器台账记录。' }}</div>
+              <el-button v-if="hasFilters" link type="primary" @click="emit('reset-filters')">清空筛选</el-button>
+            </div>
+          </template>
+        </el-empty>
       </template>
     </el-table>
     <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
@@ -158,7 +181,7 @@ import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'e
 import { computed, nextTick, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { ArrowDown } from '@element-plus/icons-vue';
-import { inventoryIssueTypeText, inventoryStatusTagType, inventoryStatusText } from '../../types/assets';
+import { inventoryIssueTypeText, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
   rows: Array<Record<string, any>>;
   loading: boolean;
@@ -174,6 +197,7 @@ const props = defineProps<{
   enableInventoryHighlight: boolean;
   statusText: (status: string) => string;
   locationText: (row: Record<string, any>) => string;
+  hasFilters: boolean;
 }>();
 const emit = defineEmits<{
   'open-info': [Record<string, any>];
@@ -187,6 +211,7 @@ const emit = defineEmits<{
   'column-resize': [{ key: string; width: number }];
   'page-change': [number];
   'size-change': [number];
+  'reset-filters': [];
 }>();
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
@@ -194,6 +219,30 @@ const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
+
+function assetStatusClass(status: string) {
+  switch (String(status || '')) {
+    case 'IN_STOCK':
+      return 'status-chip--success';
+    case 'ASSIGNED':
+      return 'status-chip--warning';
+    case 'RECYCLED':
+      return 'status-chip--info';
+    default:
+      return 'status-chip--danger';
+  }
+}
+
+function inventoryStatusClass(status: string) {
+  switch (String(status || '').toUpperCase()) {
+    case 'CHECKED_OK':
+      return 'status-chip--success';
+    case 'CHECKED_ISSUE':
+      return 'status-chip--danger';
+    default:
+      return 'status-chip--info';
+  }
+}
 
 function rowClassName({ row }: { row: Record<string, any> }) {
   if (!props.enableInventoryHighlight) return '';
@@ -222,7 +271,6 @@ function handleSelectionChange(value: Record<string, any>[]) {
   emit('selection-change', value);
 }
 
-
 function recommendedAction(row: Record<string, any>) {
   const issue = String(row?.inventory_issue_type || '').toUpperCase();
   if (String(row?.inventory_status || '').toUpperCase() !== 'CHECKED_ISSUE') return null;
@@ -247,16 +295,90 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 <style scoped>
 .render-hint { margin-top: 10px; color: #909399; font-size: 12px; }
 .pager-wrap { margin-top: 12px; display: flex; justify-content: flex-end; }
-.monitor-op-group.compact { display: flex; justify-content: center; }
+.table-cell {
+  min-height: 48px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 4px;
+}
+.compact-cell { min-height: 40px; }
+.asset-cell { cursor: pointer; }
+.cell-primary {
+  color: #303133;
+  font-weight: 600;
+  line-height: 1.45;
+}
+.cell-secondary,
+.cell-placeholder {
+  color: #909399;
+  font-size: 12px;
+  line-height: 1.45;
+}
+.asset-tags { display: flex; gap: 6px; margin-top: 2px; }
+.status-cell { gap: 6px; }
+.inventory-cell { gap: 5px; }
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 2px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  line-height: 20px;
+  border: 1px solid transparent;
+}
+.status-chip--success {
+  color: #0f8f57;
+  background: #ecf8f1;
+  border-color: #b7ebd0;
+}
+.status-chip--warning {
+  color: #c06a00;
+  background: #fff6e8;
+  border-color: #f6d7a6;
+}
+.status-chip--info {
+  color: #5f6b7a;
+  background: #f4f6f8;
+  border-color: #d9dee5;
+}
+.status-chip--danger {
+  color: #c23d3d;
+  background: #fff0f0;
+  border-color: #f4b6b6;
+}
+.status-chip--archived {
+  color: #a06a00;
+  background: #fff7e6;
+  border-color: #f3d19e;
+}
+.status-chip--soft { font-weight: 500; }
+.inventory-advice { color: var(--el-color-danger); font-size: 12px; line-height: 1.45; }
+.row-action-wrap { display: flex; justify-content: center; }
 .row-more-trigger { padding-left: 0; padding-right: 0; }
-.status-stack { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
-.inventory-stack { display:flex; flex-direction:column; gap:6px; }
-.inventory-advice { color: var(--el-color-danger); font-size: 12px; line-height: 1.5; }
-.asset-link { cursor: pointer; color: var(--el-color-primary); }
-.strong { font-weight: 600; }
-.archive-tag { margin-left: 8px; }
-.table-subtle { color: #909399; font-size: 12px; }
-.archive-detail{ line-height:1.8; font-size:12px; color:#606266; }
+.archive-detail { line-height: 1.8; font-size: 12px; color: #606266; }
+.empty-wrap { display: flex; flex-direction: column; align-items: center; gap: 6px; }
+.empty-tip { color: #909399; font-size: 12px; }
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+:deep(.el-table .cell) { line-height: 1.45; }
+:deep(.el-table__row td) {
+  padding-top: 8px;
+  padding-bottom: 8px;
+}
+:deep(.el-table__header-wrapper th) {
+  background: #f8fafc;
+}
+:deep(.el-table__fixed-right::before),
+:deep(.el-table__fixed::before) {
+  background-color: rgba(15, 23, 42, 0.08);
+}
 :deep(.inventory-row-issue td) { background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255,255,255,0) 18%), rgba(245, 108, 108, 0.06); }
 :deep(.inventory-row-issue td:first-child) { box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85); }
 :deep(.inventory-row-unchecked td) { background: linear-gradient(90deg, rgba(144, 147, 153, 0.10) 0%, rgba(255,255,255,0) 18%), rgba(144, 147, 153, 0.04); }

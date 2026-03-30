@@ -57,6 +57,7 @@
       :selected-ids="selectedIds"
       :show-inventory-column="hasActiveInventoryBatch"
       :enable-inventory-highlight="hasActiveInventoryBatch"
+      :has-filters="hasActiveFilters"
       @open-info="openInfo"
       @open-edit="openEdit"
       @open-qr="openQr"
@@ -67,6 +68,7 @@
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFiltersForList(), value)"
       @page-size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
+      @reset-filters="reset"
       />
     </el-card>
 
@@ -181,6 +183,10 @@ const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInve
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
+const hasActiveFilters = computed(() => {
+  const filters = currentFiltersForList();
+  return Boolean(filters.status || filters.keyword || filters.inventoryStatus || filters.archiveMode !== 'active' || filters.archiveReason);
+});
 
 const {
   status,

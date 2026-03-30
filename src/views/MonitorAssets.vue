@@ -63,6 +63,7 @@
       :selected-ids="selectedIds"
       :show-inventory-column="hasActiveInventoryBatch"
       :enable-inventory-highlight="hasActiveInventoryBatch"
+      :has-filters="hasActiveFilters"
       @open-info="openInfo"
       @in="openIn"
       @out="openOut"
@@ -74,6 +75,7 @@
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFiltersForList(), value)"
       @size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
+      @reset-filters="resetFilters"
     />
 
 
@@ -240,6 +242,10 @@ const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInve
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
+const hasActiveFilters = computed(() => {
+  const filters = currentFiltersForList();
+  return Boolean(filters.status || filters.locationId || filters.keyword || filters.inventoryStatus || filters.archiveMode !== 'active' || filters.archiveReason);
+});
 
 const {
   status,
