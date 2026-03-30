@@ -12,6 +12,7 @@ export default defineConfig({
         manualChunks(id) {
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
+          if (id.includes('qrcode')) return 'qrcode';
           if (id.includes('@element-plus/icons-vue')) return 'element-plus-icons';
           if (id.includes('element-plus')) return 'element-plus';
           if (

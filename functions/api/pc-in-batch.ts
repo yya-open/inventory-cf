@@ -1,8 +1,9 @@
-import { requireAuth, errorResponse } from "../_auth";
-import { logAudit } from "./_audit";
-import { ensurePcSchema, must, optional, pcInNo } from "./_pc";
-import { createPcAssetAndInRecord } from "./services/asset-write";
+import { requireAuth, errorResponse } from '../_auth';
+import { logAudit } from './_audit';
+import { ensurePcSchema, must, optional, pcInNo } from './_pc';
+import { createPcAssetAndInRecord } from './services/asset-write';
 import { assertPcBrandDictionaryValue } from './services/master-data';
+import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
 type Item = {
   brand: string;
@@ -17,42 +18,50 @@ type Item = {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, "operator");
-    if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+    const user = await requireAuth(env, request, 'operator');
+    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     await ensurePcSchema(env.DB);
 
-    const body = await request.json<any>();
+    const body = await request.json<any>().catch(() => ({} as any));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
-    if (!items.length) return Response.json({ ok: false, message: "items 不能为空" }, { status: 400 });
+    if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
     let success = 0;
+    let duplicated = 0;
     const errors: { row: number; message: string }[] = [];
     const seenSerial = new Set<string>();
 
     for (let i = 0; i < items.length; i++) {
       try {
         const it: any = items[i] || {};
-        const brand = must(it?.brand, "品牌", 120);
+        const { no } = buildChildWriteNo('PCIN', pcInNo, body?.client_request_id, i + 1);
+        const existingByNo = await findExistingByNo(env.DB, 'pc_in', 'in_no', no, 'in_no, asset_id');
+        if (existingByNo?.in_no) {
+          success++;
+          duplicated++;
+          continue;
+        }
+
+        const brand = must(it?.brand, '品牌', 120);
         await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
-        const serial_no = must(it?.serial_no, "序列号", 120);
-        const model = must(it?.model, "型号", 160);
-        const snKey = String(serial_no || "").trim();
+        const serial_no = must(it?.serial_no, '序列号', 120);
+        const model = must(it?.model, '型号', 160);
+        const snKey = String(serial_no || '').trim();
         if (seenSerial.has(snKey)) throw new Error(`序列号重复：${snKey}`);
         seenSerial.add(snKey);
 
-        const manufacture_date = must(it?.manufacture_date, "出厂时间", 40);
+        const manufacture_date = must(it?.manufacture_date, '出厂时间', 40);
         const warranty_end = optional(it?.warranty_end, 40);
         const disk_capacity = optional(it?.disk_capacity, 40);
         const memory_size = optional(it?.memory_size, 40);
         const remark = optional(it?.remark, 2000);
 
-        const exist = await env.DB.prepare("SELECT id FROM pc_assets WHERE serial_no=?").bind(serial_no).first<any>();
+        const exist = await env.DB.prepare('SELECT id FROM pc_assets WHERE serial_no=?').bind(serial_no).first<any>();
         if (exist?.id) {
-          throw new Error("该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）");
+          throw new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）');
         }
 
-        const no = pcInNo();
         const assetId = await createPcAssetAndInRecord({
           db: env.DB,
           inNo: no,
@@ -67,7 +76,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           createdBy: user.username,
         });
 
-        waitUntil(logAudit(env.DB, request, user, "PC_IN_BATCH", "pc_in", no, {
+        waitUntil(logAudit(env.DB, request, user, 'PC_IN_BATCH', 'pc_in', no, {
           asset_id: assetId,
           brand,
           serial_no,
@@ -76,11 +85,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         }).catch(() => {}));
         success++;
       } catch (e: any) {
-        errors.push({ row: i + 2, message: e?.message || "导入失败" });
+        errors.push({ row: i + 2, message: e?.message || '导入失败' });
       }
     }
 
-    return Response.json({ ok: true, success, failed: errors.length, errors });
+    return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
   } catch (e: any) {
     return errorResponse(e);
   }

@@ -6,7 +6,6 @@ import { ensurePcSchemaIfAllowed } from './_pc';
 import {
   assertUnique,
   buildPcAssetQuery,
-  countByWhere,
   listPcAssets,
   parsePcAssetInput,
   pcAssetUpdateSql,
@@ -23,6 +22,7 @@ import {
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { requireAuthWithDataScope } from './services/data-scope';
 import { assertPcBrandDictionaryValue } from './services/master-data';
+import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -30,19 +30,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
-    const timing = (env as any).__timing;
-    if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
-    else await ensurePcSchemaIfAllowed(env.DB, env, url);
-
+    await ensureSchemaTimed(env as any, 'schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     const query = buildPcAssetQuery(url, user);
-    const total = query.fast
-      ? null
-      : timing?.measure
-        ? await timing.measure('count', () => countByWhere(env.DB, 'pc_assets a', query))
-        : await countByWhere(env.DB, 'pc_assets a', query);
-
-    const data = timing?.measure ? await timing.measure('query', () => listPcAssets(env.DB, query)) : await listPcAssets(env.DB, query);
-    return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });
+    return Response.json({ ok: true, ...(await listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets)) });
   } catch (error: any) {
     return errorResponse(error);
   }

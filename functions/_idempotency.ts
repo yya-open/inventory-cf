@@ -22,3 +22,15 @@ export function isUniqueConstraintError(e: any) {
   const m = String(e?.message || e || "");
   return m.includes("UNIQUE constraint failed") || m.includes("constraint failed") || m.includes("SQLITE_CONSTRAINT");
 }
+
+
+export function toDeterministicNo(prefix: string, clientRequestId: string) {
+  const normalizedPrefix = String(prefix || '').trim().replace(/[^A-Z0-9_-]+/gi, '').toUpperCase() || 'REQ';
+  return `${normalizedPrefix}-${clientRequestId}`;
+}
+
+export function withChildRequestId(clientRequestId: string | null, child: string | number) {
+  const base = normalizeClientRequestId(clientRequestId);
+  if (!base) return null;
+  return normalizeClientRequestId(`${base}:${child}`);
+}

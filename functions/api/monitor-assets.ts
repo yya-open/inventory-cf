@@ -6,7 +6,6 @@ import { ensureMonitorSchemaIfAllowed } from './_monitor';
 import {
   assertUnique,
   buildMonitorAssetQuery,
-  countByWhere,
   listMonitorAssets,
   monitorAssetInsertSql,
   monitorAssetUpdateSql,
@@ -24,6 +23,7 @@ import {
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { requireAuthWithDataScope } from './services/data-scope';
 import { assertMonitorBrandDictionaryValue } from './services/master-data';
+import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -31,11 +31,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
-    await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+    await ensureSchemaTimed(env as any, 'schema', () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
     const query = buildMonitorAssetQuery(url, user);
-    const total = query.fast ? null : await countByWhere(env.DB, 'monitor_assets a', query);
-    const data = await listMonitorAssets(env.DB, query);
-    return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });
+    return Response.json({ ok: true, ...(await listAssetPage(env.DB, env as any, 'monitor_assets a', query, listMonitorAssets)) });
   } catch (error: any) {
     return errorResponse(error);
   }
