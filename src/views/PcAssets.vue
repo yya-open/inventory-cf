@@ -889,15 +889,32 @@ function openInfo(row: PcAsset) {
 
 async function saveEdit() {
   const form = editForm.value || {};
-  if (!String(form.brand || '').trim()) return ElMessage.warning('品牌必填');
-  if (!String(form.model || '').trim()) return ElMessage.warning('型号必填');
-  if (!String(form.serial_no || '').trim()) return ElMessage.warning('序列号必填');
+  const trim = (value: unknown) => String(value ?? '').trim();
+  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
+  const payload = {
+    ...form,
+    brand: trim(form.brand),
+    model: trim(form.model),
+    serial_no: trim(form.serial_no),
+    manufacture_date: trim(form.manufacture_date),
+    warranty_end: trim(form.warranty_end),
+    disk_capacity: trim(form.disk_capacity),
+    memory_size: trim(form.memory_size),
+    remark: trim(form.remark),
+  };
+
+  if (!payload.brand) return ElMessage.warning('品牌必填');
+  if (!payload.model) return ElMessage.warning('型号必填');
+  if (!payload.serial_no) return ElMessage.warning('序列号必填');
+  if (payload.manufacture_date && !datePattern.test(payload.manufacture_date)) return ElMessage.warning('出厂时间格式需为 YYYY-MM-DD');
+  if (payload.warranty_end && !datePattern.test(payload.warranty_end)) return ElMessage.warning('保修到期格式需为 YYYY-MM-DD');
 
   try {
     saving.value = true;
-    await apiPut('/api/pc-assets', form);
+    editForm.value = { ...payload };
+    await apiPut('/api/pc-assets', payload);
     ElMessage.success('修改成功');
-    notifyAction('电脑台账已更新', `已更新 ${String(form.brand || '')} ${String(form.model || '')}`.trim() || '电脑记录');
+    notifyAction('电脑台账已更新', `已更新 ${payload.brand} ${payload.model}`.trim() || '电脑记录');
     editVisible.value = false;
     await refreshCurrent(true, true);
   } catch (error: any) {

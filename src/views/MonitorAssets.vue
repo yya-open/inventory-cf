@@ -1162,16 +1162,35 @@ async function openEdit(row: MonitorAsset) {
 
 async function saveAsset() {
   if (assetSaving.value) return;
+  const trim = (value: unknown) => String(value ?? '').trim();
+  const sizePattern = /^\d+(\.\d{1,2})?(\s*寸)?$/;
+  const payload = {
+    ...dlgAsset.form,
+    asset_code: trim(dlgAsset.form.asset_code),
+    sn: trim(dlgAsset.form.sn),
+    brand: trim(dlgAsset.form.brand),
+    model: trim(dlgAsset.form.model),
+    size_inch: trim(dlgAsset.form.size_inch),
+    remark: trim(dlgAsset.form.remark),
+    location_id: dlgAsset.form.location_id || '',
+  } as any;
+
+  if (!payload.asset_code) return ElMessage.warning('资产编号必填');
+  if (!payload.brand) return ElMessage.warning('品牌必填');
+  if (!payload.model) return ElMessage.warning('型号必填');
+  if (payload.size_inch && !sizePattern.test(payload.size_inch)) return ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
+
   assetSaving.value = true;
+  dlgAsset.form = { ...payload };
   try {
     if (dlgAsset.mode === 'create') {
-      await apiPost('/api/monitor-assets', dlgAsset.form);
+      await apiPost('/api/monitor-assets', payload);
       ElMessage.success('新增成功');
-      notifyAction('显示器已新增', `已创建 ${String(dlgAsset.form.asset_code || '') || '新显示器'}。`);
+      notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
     } else {
-      await apiPut('/api/monitor-assets', dlgAsset.form);
+      await apiPut('/api/monitor-assets', payload);
       ElMessage.success('保存成功');
-      notifyAction('显示器已更新', `已更新 ${String(dlgAsset.form.asset_code || '') || '显示器记录'}。`);
+      notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
     }
     dlgAsset.show = false;
     await refreshCurrent(true, true);
@@ -1179,13 +1198,13 @@ async function saveAsset() {
     try {
       await handleMaybeMissingSchema(error);
       if (dlgAsset.mode === 'create') {
-        await apiPost('/api/monitor-assets', dlgAsset.form);
+        await apiPost('/api/monitor-assets', payload);
         ElMessage.success('新增成功');
-        notifyAction('显示器已新增', `已创建 ${String(dlgAsset.form.asset_code || '') || '新显示器'}。`);
+        notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
       } else {
-        await apiPut('/api/monitor-assets', dlgAsset.form);
+        await apiPut('/api/monitor-assets', payload);
         ElMessage.success('保存成功');
-        notifyAction('显示器已更新', `已更新 ${String(dlgAsset.form.asset_code || '') || '显示器记录'}。`);
+        notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
       }
       dlgAsset.show = false;
       await refreshCurrent(true, true);

@@ -91,20 +91,6 @@
             </button>
           </div>
 
-          <div class="toolbar-feedback-strip">
-            <div class="feedback-pill">
-              <span class="feedback-pill__label">当前视图</span>
-              <strong>{{ activeViewLabel }}</strong>
-            </div>
-            <div class="feedback-pill">
-              <span class="feedback-pill__label">表格密度</span>
-              <strong>{{ densityLabel }}</strong>
-            </div>
-            <div class="feedback-pill" :class="{ 'is-emphasis': selectedCount > 0 }">
-              <span class="feedback-pill__label">批量状态</span>
-              <strong>{{ selectionStateText }}</strong>
-            </div>
-          </div>
         </div>
       </div>
 
@@ -149,7 +135,7 @@
             <div class="toolbar-spacer" />
 
             <div class="toolbar-utility-group">
-              <el-popover placement="bottom-end" trigger="click" :width="360">
+              <el-popover placement="bottom-end" trigger="click" :width="340">
                 <template #reference>
                   <el-button class="toolbar-soft-btn">表格设置</el-button>
                 </template>
@@ -171,7 +157,7 @@
                 </div>
                 <div class="saved-view-list">
                   <div class="saved-view-item" :class="{ active: activeViewName === 'default' }" role="button" tabindex="0" @click="emit('restore-columns')">
-                    <div>
+                    <div class="saved-view-main">
                       <div class="saved-view-name">默认视图</div>
                       <div class="saved-view-meta">默认列顺序 + 标准密度</div>
                     </div>
@@ -184,14 +170,14 @@
                     :class="{ active: item.name === activeViewName }"
                     @click="emit('apply-view', item.name)"
                   >
-                    <div>
+                    <div class="saved-view-main">
                       <div class="saved-view-name">{{ item.name }}</div>
                       <div class="saved-view-meta">{{ densityText(item.density) }} · {{ item.visibleColumns.length }} 列</div>
                     </div>
-                    <span class="saved-view-actions">
+                    <div class="saved-view-actions">
                       <span class="saved-view-action">应用</span>
                       <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
-                    </span>
+                    </div>
                   </div>
                   <div v-if="!savedViews.length" class="toolbar-subtle">还没有保存的视图，可将常用列布局保存起来反复使用。</div>
                 </div>
@@ -331,8 +317,6 @@ const orderedVisibleOptions = computed(() => {
 });
 
 const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
-const activeViewLabel = computed(() => props.activeViewName === 'default' ? '默认视图' : props.activeViewName || '默认视图');
-const densityLabel = computed(() => densityText(props.density));
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 const viewDraftName = ref('');
 
@@ -572,6 +556,7 @@ function handleBatchCommand(command: string | number | object) {
 
 .toolbar-density-mode {
   width: 100%;
+  overflow: hidden;
 }
 
 .toolbar-inline-tip {
@@ -700,6 +685,7 @@ function handleBatchCommand(command: string | number | object) {
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  overflow: hidden;
   padding: 12px 14px;
   text-align: left;
   border: 1px solid rgba(148, 163, 184, 0.18);
@@ -720,7 +706,15 @@ function handleBatchCommand(command: string | number | object) {
   box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08), 0 12px 24px rgba(64, 158, 255, 0.10);
 }
 
+.saved-view-main {
+  min-width: 0;
+  flex: 1 1 auto;
+}
+
 .saved-view-name {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 13px;
   font-weight: 700;
   color: #1e293b;
@@ -728,56 +722,25 @@ function handleBatchCommand(command: string | number | object) {
 
 .saved-view-meta {
   margin-top: 4px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   font-size: 12px;
   color: #8a94a6;
 }
 
 .saved-view-actions {
   display: inline-flex;
+  flex: 0 0 auto;
   align-items: center;
   gap: 8px;
 }
 
 .saved-view-action {
+  flex: 0 0 auto;
   font-size: 12px;
   font-weight: 700;
   color: var(--el-color-primary);
-}
-
-.toolbar-feedback-strip {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 14px;
-}
-
-.feedback-pill {
-  min-width: 0;
-  padding: 12px 14px;
-  border-radius: 16px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.82);
-}
-
-.feedback-pill.is-emphasis {
-  border-color: rgba(64, 158, 255, 0.2);
-  background: rgba(237, 245, 255, 0.9);
-}
-
-.feedback-pill__label {
-  display: block;
-  margin-bottom: 6px;
-  font-size: 12px;
-  color: #8a94a6;
-}
-
-.feedback-pill strong {
-  display: block;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: #0f172a;
-  font-size: 13px;
 }
 
 .inventory-summary-row {
@@ -929,9 +892,6 @@ function handleBatchCommand(command: string | number | object) {
   }
 
   .column-check-group,
-  .toolbar-feedback-strip {
-    grid-template-columns: 1fr;
-  }
 
   .column-order-item,
   .saved-view-item {
