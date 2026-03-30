@@ -141,32 +141,30 @@
                 导出选中
               </el-button>
 
-              <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
+              <div class="toolbar-minor-group">
+                <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
 
-              <el-dropdown v-if="canOperator || isAdmin" trigger="click" @command="handleMoreCommand">
-                <el-button class="toolbar-soft-btn" :disabled="initQrBusy || batchBusy || exportBusy || importBusy">
-                  更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                <el-dropdown v-if="canOperator || isAdmin" trigger="click" @command="handleMoreCommand">
+                  <el-button class="toolbar-soft-btn" :disabled="initQrBusy || batchBusy || exportBusy || importBusy">
+                    更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                  </el-button>
+                  <template #dropdown>
+                    <el-dropdown-menu>
+                      <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
+                      <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
+                      <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
+                      <el-dropdown-item command="location" :disabled="batchBusy">位置管理</el-dropdown-item>
+                      <el-dropdown-item command="initQr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                      <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                      <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
+                    </el-dropdown-menu>
+                  </template>
+                </el-dropdown>
+
+                <el-button v-if="canOperator" type="primary" plain class="toolbar-secondary-btn toolbar-create-button" @click="emit('open-create')">
+                  新增台账
                 </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
-                    <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
-                    <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
-                    <el-dropdown-item command="location" :disabled="batchBusy">位置管理</el-dropdown-item>
-                    <el-dropdown-item command="initQr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
-                    <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
-                    <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-            </div>
-
-            <div class="toolbar-spacer" />
-
-            <div class="toolbar-utility-group">
-              <el-button v-if="canOperator" type="primary" plain class="toolbar-secondary-btn toolbar-create-button" @click="emit('open-create')">
-                新增台账
-              </el-button>
+              </div>
             </div>
 
             <el-upload
@@ -536,7 +534,8 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-row,
 .toolbar-selection-row,
 .toolbar-action-group,
-.toolbar-utility-group {
+.toolbar-utility-group,
+.toolbar-minor-group {
   display: flex;
   align-items: center;
   gap: 10px;
@@ -548,7 +547,8 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 .toolbar-action-group,
-.toolbar-utility-group {
+.toolbar-utility-group,
+.toolbar-minor-group {
   position: relative;
   z-index: 1;
   padding: 8px;
@@ -559,11 +559,18 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 .toolbar-action-group {
+  flex-wrap: nowrap;
   background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 255, 0.90));
 }
 
-.toolbar-utility-group {
+.toolbar-utility-group,
+.toolbar-minor-group {
   background: linear-gradient(180deg, rgba(249, 251, 255, 0.94), rgba(255, 255, 255, 0.88));
+}
+
+.toolbar-minor-group {
+  flex-wrap: nowrap;
+  margin-left: auto;
 }
 
 .toolbar-select,
@@ -609,10 +616,6 @@ function handleBatchCommand(command: string | number | object) {
 
 .toolbar-create-button {
   margin-left: 0;
-}
-
-.toolbar-spacer {
-  flex: 1 1 auto;
 }
 
 .toolbar-upload-hidden {
@@ -719,14 +722,18 @@ function handleBatchCommand(command: string | number | object) {
   flex-direction: column;
   gap: 8px;
   margin-top: 10px;
+  max-width: 100%;
+  overflow: hidden;
 }
 
 .saved-view-item {
-  display: flex;
-  align-items: flex-start;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
   justify-content: space-between;
   gap: 12px;
   width: 100%;
+  max-width: 100%;
   overflow: hidden;
   box-sizing: border-box;
   padding: 12px 14px;
@@ -746,7 +753,7 @@ function handleBatchCommand(command: string | number | object) {
 
 .saved-view-item.active {
   border-color: rgba(64, 158, 255, 0.34);
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08), 0 12px 24px rgba(64, 158, 255, 0.10);
+  box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.12), 0 8px 16px rgba(64, 158, 255, 0.08);
 }
 
 .saved-view-main {
@@ -774,12 +781,13 @@ function handleBatchCommand(command: string | number | object) {
 
 .saved-view-actions {
   display: inline-flex;
-  flex: 0 1 auto;
+  flex: 0 0 auto;
   flex-wrap: wrap;
   justify-content: flex-end;
   align-items: center;
   gap: 8px;
   min-width: 0;
+  max-width: 42%;
 }
 
 .saved-view-action {
@@ -924,13 +932,17 @@ function handleBatchCommand(command: string | number | object) {
   .toolbar-action-group :deep(.el-button),
   .toolbar-utility-group,
   .toolbar-utility-group :deep(.el-button),
+  .toolbar-minor-group,
+  .toolbar-minor-group :deep(.el-button),
   .saved-view-input-row :deep(.el-button) {
     width: 100%;
   }
 
   .toolbar-action-group,
-  .toolbar-utility-group {
+  .toolbar-utility-group,
+  .toolbar-minor-group {
     align-items: stretch;
+    flex-wrap: wrap;
   }
 
   .toolbar-spacer {
@@ -956,6 +968,10 @@ function handleBatchCommand(command: string | number | object) {
 
 :deep(.ledger-toolbar-settings-dialog .el-dialog__header) {
   padding-bottom: 4px;
+}
+
+:deep(.ledger-toolbar-settings-dialog .el-dialog__content) {
+  overflow: hidden;
 }
 
 .monitor-toolbar .toolbar-location {
