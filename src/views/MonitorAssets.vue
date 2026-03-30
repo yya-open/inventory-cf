@@ -23,7 +23,11 @@
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
       :has-active-batch="hasActiveInventoryBatch"
+      :density="density"
+      :saved-views="savedViews"
+      :active-view-name="activeViewName"
       @update:visible-columns="updateVisibleColumns"
+      @update:density="setDensity"
       @move-column="moveVisibleColumn"
       @search="reloadList"
       @reset="resetFilters"
@@ -41,6 +45,9 @@
       @batch-owner="openBatchOwnerDialog"
       @batch-archive="batchArchiveSelected"
       @batch-restore="batchRestoreSelected"
+      @save-view="handleSaveView"
+      @apply-view="handleApplyView"
+      @delete-view="handleDeleteView"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
@@ -64,6 +71,7 @@
       :visible-columns="visibleColumns"
       :column-widths="columnWidths"
       :selected-ids="selectedIds"
+      :density="density"
       :show-inventory-column="hasActiveInventoryBatch"
       :enable-inventory-highlight="hasActiveInventoryBatch"
       :has-filters="hasActiveFilters"
@@ -198,7 +206,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
@@ -262,6 +270,9 @@ const {
   columnOrder,
   visibleColumns,
   columnWidths,
+  density,
+  savedViews,
+  activeViewName,
   initialPageSize,
   monitorColumnOptions,
   currentFilters,
@@ -272,12 +283,38 @@ const {
   restoreDefaultColumns,
   moveVisibleColumn,
   updateColumnWidth,
+  setDensity,
+  saveCurrentView,
+  applySavedView,
+  deleteSavedView,
   runWithoutAutoSearch,
 } = useMonitorAssetViewState(() => {
   const filters = currentFiltersForList();
   void refreshInventorySummary(filters);
   reload(filters);
 });
+
+
+function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
+  ElNotification({ title, message, type, duration: 2600, offset: 72 });
+}
+
+function handleSaveView(name: string) {
+  const savedName = saveCurrentView(name);
+  if (!savedName) return ElMessage.warning('请先输入视图名称');
+  notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
+}
+
+function handleApplyView(name: string) {
+  if (!applySavedView(name)) return ElMessage.warning('视图不存在或已失效');
+  notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
+  reloadList();
+}
+
+function handleDeleteView(name: string) {
+  if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  notifyAction('视图已删除', `已删除“${name}”视图。`, 'warning');
+}
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -805,6 +842,7 @@ async function submitBatchStatus() {
       status: batchStatusValue.value,
     });
     ElMessage.success(result?.message || '批量修改成功');
+    notifyAction('批量状态已更新', `已处理 ${selectedCount.value} 台显示器的状态。`);
     batchStatusVisible.value = false;
     applyMonitorStatusPatch(extractAffectedIds(result), batchStatusValue.value);
     clearSelection();
@@ -827,6 +865,7 @@ async function submitBatchLocation() {
       location_id: batchLocationValue.value,
     });
     ElMessage.success(result?.message || '批量修改成功');
+    notifyAction('批量位置已更新', `已处理 ${selectedCount.value} 台显示器的位置。`);
     batchLocationVisible.value = false;
     applyMonitorLocationPatch(extractAffectedIds(result), batchLocationValue.value);
     clearSelection();
@@ -852,6 +891,7 @@ async function submitBatchOwner() {
       department: batchOwnerForm.value.department,
     });
     ElMessage.success(result?.message || '批量修改领用人成功');
+    notifyAction('批量领用人已更新', `已处理 ${selectedCount.value} 台显示器的领用信息。`);
     batchOwnerVisible.value = false;
     applyMonitorOwnerPatch(extractAffectedIds(result), batchOwnerForm.value);
     clearSelection();
@@ -873,6 +913,7 @@ async function batchRestoreSelected() {
       ids: selectedIds.value.map((id) => Number(id)),
     });
     ElMessage.success(result?.message || '批量恢复成功');
+    notifyAction('批量恢复完成', `已恢复 ${selectedCount.value} 台显示器。`, 'info');
     applyMonitorRestorePatch(extractAffectedIds(result));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
@@ -904,6 +945,7 @@ async function submitBatchArchive() {
       note: batchArchiveForm.value.note,
     });
     ElMessage.success(result?.message || '批量归档成功');
+    notifyAction('批量归档完成', `已归档 ${selectedCount.value} 台显示器。`, 'warning');
     batchArchiveVisible.value = false;
     applyMonitorArchivePatch(extractAffectedIds(result), batchArchiveForm.value);
     clearSelection();
@@ -1125,9 +1167,11 @@ async function saveAsset() {
     if (dlgAsset.mode === 'create') {
       await apiPost('/api/monitor-assets', dlgAsset.form);
       ElMessage.success('新增成功');
+      notifyAction('显示器已新增', `已创建 ${String(dlgAsset.form.asset_code || '') || '新显示器'}。`);
     } else {
       await apiPut('/api/monitor-assets', dlgAsset.form);
       ElMessage.success('保存成功');
+      notifyAction('显示器已更新', `已更新 ${String(dlgAsset.form.asset_code || '') || '显示器记录'}。`);
     }
     dlgAsset.show = false;
     await refreshCurrent(true, true);
@@ -1137,9 +1181,11 @@ async function saveAsset() {
       if (dlgAsset.mode === 'create') {
         await apiPost('/api/monitor-assets', dlgAsset.form);
         ElMessage.success('新增成功');
+        notifyAction('显示器已新增', `已创建 ${String(dlgAsset.form.asset_code || '') || '新显示器'}。`);
       } else {
         await apiPut('/api/monitor-assets', dlgAsset.form);
         ElMessage.success('保存成功');
+        notifyAction('显示器已更新', `已更新 ${String(dlgAsset.form.asset_code || '') || '显示器记录'}。`);
       }
       dlgAsset.show = false;
       await refreshCurrent(true, true);
@@ -1679,11 +1725,12 @@ onActivated(() => {
   content: '';
   position: absolute;
   inset: -18px -18px auto;
-  height: 180px;
-  border-radius: 24px;
+  height: 220px;
+  border-radius: 30px;
   background:
-    radial-gradient(circle at top left, rgba(22, 119, 255, 0.08), transparent 34%),
-    linear-gradient(180deg, rgba(248, 250, 252, 0.96), rgba(255, 255, 255, 0));
+    radial-gradient(circle at top left, rgba(103, 194, 58, 0.11), transparent 36%),
+    radial-gradient(circle at top right, rgba(64, 158, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0));
   pointer-events: none;
 }
 
@@ -1696,21 +1743,21 @@ onActivated(() => {
   content: '';
   position: absolute;
   inset: 12px 20px auto 20px;
-  height: 56px;
-  border-radius: 18px;
-  background: linear-gradient(180deg, rgba(22, 119, 255, 0.06), rgba(22, 119, 255, 0));
-  filter: blur(12px);
+  height: 72px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(64, 158, 255, 0.08), rgba(64, 158, 255, 0));
+  filter: blur(10px);
   pointer-events: none;
 }
 
 :deep(.ledger-toolbar-card),
 :deep(.ledger-table-card) {
   position: relative;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 20px;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 28px;
   overflow: hidden;
-  background: var(--ledger-surface);
-  box-shadow: var(--ledger-shadow-md);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 249, 255, 0.94) 100%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
 }
 
 :deep(.ledger-toolbar-card > .el-card__body),
@@ -1725,7 +1772,7 @@ onActivated(() => {
   inset: 0;
   border-radius: inherit;
   pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
 }
 
 .batch-preview {

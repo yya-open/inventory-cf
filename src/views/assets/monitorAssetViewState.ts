@@ -4,6 +4,7 @@ import { getCachedSystemSettings } from '../../api/systemSettings';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { createIdleDebounced } from '../../utils/idleDebounce';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../../utils/tableColumns';
+import { findLedgerSavedView, normalizeLedgerDensity, removeLedgerSavedView, sanitizeLedgerViewName, upsertLedgerSavedView, type LedgerSavedView, type LedgerTableDensity } from '../../utils/ledgerViewPrefs';
 
 const STORAGE_KEY = 'inventory:monitor-assets:filters';
 export const MONITOR_COLUMN_OPTIONS = [
@@ -45,7 +46,14 @@ type PersistedMonitorAssetViewState = {
   visibleColumns?: string[];
   columnOrder?: string[];
   columnWidths?: Record<string, number>;
+  density?: LedgerTableDensity;
+  savedViews?: LedgerSavedView[];
+  activeViewName?: string;
 };
+
+function clampPageSize(value: unknown) {
+  return Math.min(200, Math.max(20, Number(value || getCachedSystemSettings().ui_default_page_size || 50) || 50));
+}
 
 export function useMonitorAssetViewState(onAutoSearch: () => void) {
   const persistedState = readJsonStorage<PersistedMonitorAssetViewState>(STORAGE_KEY, {
@@ -60,6 +68,9 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
     visibleColumns: MONITOR_COLUMN_KEYS,
     columnOrder: MONITOR_COLUMN_KEYS,
     columnWidths: {},
+    density: 'default',
+    savedViews: [],
+    activeViewName: 'default',
   });
 
   const status = ref(String(persistedState.status || ''));
@@ -69,7 +80,7 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
   const archiveReason = ref(String(persistedState.archiveReason || ''));
   const archiveMode = ref<ArchiveMode>((persistedState.archiveMode || (persistedState.showArchived ? 'all' : 'active')) as ArchiveMode);
   const showArchived = ref(Boolean(persistedState.showArchived || archiveMode.value !== 'active'));
-  const previousDefaultOrder = ['assetCode', 'brand', 'model', 'serialNo', 'sizeInch', 'status', 'inventory', 'owner', 'location', 'remark', 'archiveReason', 'updatedAt'];
+  const previousDefaultOrder = ['assetCode', 'model', 'status', 'inventory', 'location', 'owner', 'brand', 'serialNo', 'sizeInch', 'remark', 'archiveReason', 'updatedAt'];
   const normalizedStoredOrder = normalizeColumnOrder(persistedState.columnOrder, MONITOR_COLUMN_KEYS);
   const shouldPromoteInventory = JSON.stringify(normalizedStoredOrder) === JSON.stringify(previousDefaultOrder);
   const columnOrder = ref(shouldPromoteInventory ? promoteInventoryColumn(normalizedStoredOrder, 'assetCode') : normalizedStoredOrder);
@@ -86,8 +97,11 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
   }
   const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, MONITOR_COLUMN_KEYS));
+  const density = ref<LedgerTableDensity>(normalizeLedgerDensity(persistedState.density));
+  const savedViews = ref<LedgerSavedView[]>(Array.isArray(persistedState.savedViews) ? persistedState.savedViews : []);
+  const activeViewName = ref(sanitizeLedgerViewName(persistedState.activeViewName) || 'default');
 
-  const initialPageSize = Math.min(200, Math.max(20, Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50) || 50));
+  const initialPageSize = clampPageSize(persistedState.pageSize);
   const monitorColumnOptions = [...MONITOR_COLUMN_OPTIONS];
 
   let suppressAutoSearch = false;
@@ -115,10 +129,13 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
       archiveMode: archiveMode.value,
       archiveReason: archiveReason.value || '',
-      pageSize: Math.min(200, Math.max(20, Number(pageSizeRef?.value || initialPageSize || 50) || 50)),
+      pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
       visibleColumns: visibleColumns.value,
       columnOrder: columnOrder.value,
       columnWidths: columnWidths.value,
+      density: density.value,
+      savedViews: savedViews.value,
+      activeViewName: activeViewName.value,
     });
   }
 
@@ -140,7 +157,7 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
 
   function bindPersistence(pageSize: Ref<number>) {
     pageSizeRef = pageSize;
-    watch([status, locationId, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
+    watch([status, locationId, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths, density, savedViews, activeViewName], () => schedulePersistState(), { deep: true });
     watch(keyword, (_value, oldValue) => {
       if (suppressAutoSearch || oldValue === undefined) return;
       scheduleKeywordSearch();
@@ -163,6 +180,8 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
     columnOrder.value = [...MONITOR_COLUMN_KEYS];
     visibleColumns.value = [...MONITOR_COLUMN_KEYS];
     columnWidths.value = {};
+    density.value = 'default';
+    activeViewName.value = 'default';
   }
 
   function moveVisibleColumn(key: string, direction: 'up' | 'down') {
@@ -175,6 +194,47 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
     columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
   }
 
+  function setDensity(nextDensity: LedgerTableDensity) {
+    density.value = normalizeLedgerDensity(nextDensity);
+  }
+
+  function saveCurrentView(name: string) {
+    const nextName = sanitizeLedgerViewName(name);
+    if (!nextName) return '';
+    savedViews.value = upsertLedgerSavedView(savedViews.value, {
+      name: nextName,
+      visibleColumns: [...visibleColumns.value],
+      columnOrder: [...columnOrder.value],
+      columnWidths: { ...columnWidths.value },
+      density: density.value,
+      pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
+      updatedAt: new Date().toISOString(),
+    });
+    activeViewName.value = nextName;
+    return nextName;
+  }
+
+  function applySavedView(name: string) {
+    const matched = findLedgerSavedView(savedViews.value, name);
+    if (!matched) return false;
+    columnOrder.value = normalizeColumnOrder(matched.columnOrder, MONITOR_COLUMN_KEYS);
+    visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(matched.visibleColumns, MONITOR_COLUMN_KEYS), columnOrder.value);
+    columnWidths.value = normalizeColumnWidths(matched.columnWidths, MONITOR_COLUMN_KEYS);
+    density.value = normalizeLedgerDensity(matched.density);
+    if (pageSizeRef && matched.pageSize) pageSizeRef.value = clampPageSize(matched.pageSize);
+    activeViewName.value = matched.name;
+    return true;
+  }
+
+  function deleteSavedView(name: string) {
+    const normalized = sanitizeLedgerViewName(name);
+    if (!normalized) return false;
+    const nextViews = removeLedgerSavedView(savedViews.value, normalized);
+    if (nextViews.length === savedViews.value.length) return false;
+    savedViews.value = nextViews;
+    if (activeViewName.value === normalized) activeViewName.value = 'default';
+    return true;
+  }
 
   function runWithoutAutoSearch(fn: () => void) {
     suppressAutoSearch = true;
@@ -202,6 +262,9 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
     columnOrder,
     visibleColumns,
     columnWidths,
+    density,
+    savedViews,
+    activeViewName,
     initialPageSize,
     monitorColumnOptions,
     currentFilters,
@@ -212,6 +275,10 @@ export function useMonitorAssetViewState(onAutoSearch: () => void) {
     restoreDefaultColumns,
     moveVisibleColumn,
     updateColumnWidth,
+    setDensity,
+    saveCurrentView,
+    applySavedView,
+    deleteSavedView,
     runWithoutAutoSearch,
   };
 }

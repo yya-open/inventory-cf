@@ -7,7 +7,7 @@
             <div class="toolbar-title-wrap">
               <div class="toolbar-kicker">MONITOR ASSETS</div>
               <div class="toolbar-block-title">筛选查询</div>
-              <div class="toolbar-subtle">按状态、位置、盘点结果或关键词快速定位显示器</div>
+              <div class="toolbar-subtle">按状态、位置、盘点结果或关键词快速定位显示器，保证台账页信息密度高但不乱。</div>
             </div>
             <el-segmented
               :model-value="archiveMode"
@@ -102,6 +102,21 @@
               <strong>{{ summary.unchecked }}</strong>
             </button>
           </div>
+
+          <div class="toolbar-feedback-strip">
+            <div class="feedback-pill">
+              <span class="feedback-pill__label">当前视图</span>
+              <strong>{{ activeViewLabel }}</strong>
+            </div>
+            <div class="feedback-pill">
+              <span class="feedback-pill__label">表格密度</span>
+              <strong>{{ densityLabel }}</strong>
+            </div>
+            <div class="feedback-pill" :class="{ 'is-emphasis': selectedCount > 0 }">
+              <span class="feedback-pill__label">批量状态</span>
+              <strong>{{ selectionStateText }}</strong>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -111,7 +126,7 @@
             <div class="toolbar-title-wrap">
               <div class="toolbar-kicker">WORKSPACE</div>
               <div class="toolbar-block-title">快捷工具</div>
-              <div class="toolbar-subtle">常用操作前置，低频能力收进更多菜单，适合企业后台高频使用</div>
+              <div class="toolbar-subtle">把新增、批量处理、导出和表格偏好全部归拢到一个统一的工作台操作区。</div>
             </div>
             <span class="toolbar-inline-badge" :class="{ 'is-active': selectedCount > 0 }">{{ selectionStateText }}</span>
           </div>
@@ -147,21 +162,58 @@
             <div class="toolbar-spacer" />
 
             <div class="toolbar-utility-group">
-              <el-button
-                v-if="canOperator"
-                type="primary"
-                plain
-                class="toolbar-secondary-btn toolbar-create-button"
-                @click="emit('open-create')"
-              >
+              <el-button v-if="canOperator" type="primary" plain class="toolbar-secondary-btn toolbar-create-button" @click="emit('open-create')">
                 新增台账
               </el-button>
 
-              <el-popover placement="bottom-end" trigger="click" :width="320">
+              <el-popover placement="bottom-end" trigger="click" :width="360">
                 <template #reference>
-                  <el-button class="toolbar-soft-btn">显示列</el-button>
+                  <el-button class="toolbar-soft-btn">表格设置</el-button>
                 </template>
                 <div class="column-panel-head">
+                  <div class="column-panel-title">表格密度</div>
+                  <span class="toolbar-subtle toolbar-inline-tip">自动记住你的偏好</span>
+                </div>
+                <el-segmented
+                  :model-value="density"
+                  class="toolbar-density-mode"
+                  :options="densityOptions"
+                  @change="(value) => emit('update:density', String(value) as 'compact' | 'default' | 'comfortable')"
+                />
+
+                <div class="column-panel-title reorder-title">视图方案</div>
+                <div class="saved-view-input-row">
+                  <el-input v-model="viewDraftName" placeholder="保存当前列设置" maxlength="24" clearable />
+                  <el-button type="primary" plain @click="handleSaveView">保存</el-button>
+                </div>
+                <div class="saved-view-list">
+                  <div class="saved-view-item" :class="{ active: activeViewName === 'default' }" role="button" tabindex="0" @click="emit('restore-columns')">
+                    <div>
+                      <div class="saved-view-name">默认视图</div>
+                      <div class="saved-view-meta">默认列顺序 + 标准密度</div>
+                    </div>
+                    <span class="saved-view-action">恢复</span>
+                  </div>
+                  <div
+                    v-for="item in savedViews"
+                    :key="item.name"
+                    class="saved-view-item" role="button" tabindex="0"
+                    :class="{ active: item.name === activeViewName }"
+                    @click="emit('apply-view', item.name)"
+                  >
+                    <div>
+                      <div class="saved-view-name">{{ item.name }}</div>
+                      <div class="saved-view-meta">{{ densityText(item.density) }} · {{ item.visibleColumns.length }} 列</div>
+                    </div>
+                    <span class="saved-view-actions">
+                      <span class="saved-view-action">应用</span>
+                      <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
+                    </span>
+                  </div>
+                  <div v-if="!savedViews.length" class="toolbar-subtle">还没有保存的视图，可将常用列布局保存起来反复使用。</div>
+                </div>
+
+                <div class="column-panel-head reorder-title">
                   <div class="column-panel-title">表格列显示</div>
                   <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
                 </div>
@@ -193,10 +245,10 @@
                   <el-dropdown-menu>
                     <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
                     <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
-                    <el-dropdown-item v-if="canOperator" command="location">管理位置</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="initQr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                    <el-dropdown-item command="location" :disabled="batchBusy">位置管理</el-dropdown-item>
+                    <el-dropdown-item command="initQr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                    <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                    <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
                   </el-dropdown-menu>
                 </template>
               </el-dropdown>
@@ -225,6 +277,7 @@ import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import type { AssetInventorySummary } from '../../types/assets';
+import type { LedgerSavedView, LedgerTableDensity } from '../../utils/ledgerViewPrefs';
 
 const props = defineProps<{
   status: string;
@@ -248,6 +301,9 @@ const props = defineProps<{
   batchBusy: boolean;
   summary: AssetInventorySummary;
   hasActiveBatch: boolean;
+  density: LedgerTableDensity;
+  savedViews: LedgerSavedView[];
+  activeViewName: string;
 }>();
 
 const emit = defineEmits<{
@@ -260,6 +316,10 @@ const emit = defineEmits<{
   'update:show-archived': [boolean];
   'update:visible-columns': [string[]];
   'move-column': [string, 'up' | 'down'];
+  'update:density': [LedgerTableDensity];
+  'save-view': [string];
+  'apply-view': [string];
+  'delete-view': [string];
   search: [];
   reset: [];
   'set-inventory-filter': [string];
@@ -295,7 +355,10 @@ const orderedVisibleOptions = computed(() => {
 });
 
 const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
+const activeViewLabel = computed(() => props.activeViewName === 'default' ? '默认视图' : props.activeViewName || '默认视图');
+const densityLabel = computed(() => densityText(props.density));
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
+const viewDraftName = ref('');
 
 const archiveModeOptions = [
   { label: '在用', value: 'active' },
@@ -303,10 +366,29 @@ const archiveModeOptions = [
   { label: '全部', value: 'all' },
 ];
 
+const densityOptions = [
+  { label: '紧凑', value: 'compact' },
+  { label: '标准', value: 'default' },
+  { label: '宽松', value: 'comfortable' },
+];
+
 function openImportPicker() {
   const root = importUploadRef.value?.$el as HTMLElement | undefined;
   const input = root?.querySelector('input[type="file"]') as HTMLInputElement | null;
   input?.click();
+}
+
+function densityText(value: LedgerTableDensity) {
+  if (value === 'compact') return '紧凑';
+  if (value === 'comfortable') return '宽松';
+  return '标准';
+}
+
+function handleSaveView() {
+  const nextName = viewDraftName.value.trim();
+  if (!nextName) return;
+  emit('save-view', nextName);
+  viewDraftName.value = '';
 }
 
 function handleArchiveModeChange(value: string | number | boolean) {
@@ -347,7 +429,7 @@ function handleBatchCommand(command: string | number | object) {
 .pc-toolbar,
 .monitor-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(340px, 0.98fr);
+  grid-template-columns: minmax(0, 1.58fr) minmax(320px, 0.98fr);
   gap: 16px;
 }
 
@@ -363,21 +445,32 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-block {
   position: relative;
   padding: 18px 20px;
-  border: 1px solid var(--ledger-border);
-  border-radius: 18px;
-  background: var(--ledger-surface);
-  box-shadow: var(--ledger-shadow-sm);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.95) 100%);
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(8px);
 }
 
 .toolbar-block--filters::before,
 .toolbar-block--actions::before {
   content: '';
   position: absolute;
-  inset: 0 0 auto 0;
-  height: 3px;
-  border-radius: 18px 18px 0 0;
-  background: linear-gradient(90deg, rgba(22, 119, 255, 0.18), rgba(22, 119, 255, 0.02) 48%, rgba(15, 23, 42, 0));
+  inset: 0;
+  border-radius: inherit;
   pointer-events: none;
+  background: radial-gradient(circle at top right, rgba(64, 158, 255, 0.10), transparent 42%);
+}
+
+.toolbar-block--filters::after,
+.toolbar-block--actions::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9), rgba(255,255,255,0));
 }
 
 .toolbar-title-wrap {
@@ -386,8 +479,8 @@ function handleBatchCommand(command: string | number | object) {
 
 .toolbar-kicker {
   margin-bottom: 6px;
-  font-size: 10px;
-  font-weight: 700;
+  font-size: 11px;
+  font-weight: 800;
   letter-spacing: 0.14em;
   color: #94a3b8;
 }
@@ -395,12 +488,12 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-block-title {
   font-size: 15px;
   font-weight: 700;
-  color: var(--ledger-text-primary);
+  color: #1e293b;
 }
 
 .toolbar-subtle {
   margin-top: 4px;
-  color: var(--ledger-text-tertiary);
+  color: #8a94a6;
   font-size: 12px;
   line-height: 1.55;
 }
@@ -410,7 +503,7 @@ function handleBatchCommand(command: string | number | object) {
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 14px;
+  margin-bottom: 16px;
 }
 
 .toolbar-head--filters {
@@ -422,15 +515,15 @@ function handleBatchCommand(command: string | number | object) {
   align-items: center;
   justify-content: center;
   gap: 8px;
-  min-height: 32px;
-  padding: 0 12px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
+  min-height: 34px;
+  padding: 0 13px;
   border-radius: 999px;
-  background: var(--ledger-surface-soft);
-  color: var(--ledger-text-tertiary);
+  background: rgba(148, 163, 184, 0.12);
+  color: #64748b;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
   white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
 }
 
 .toolbar-inline-badge::before {
@@ -439,13 +532,12 @@ function handleBatchCommand(command: string | number | object) {
   height: 6px;
   border-radius: 999px;
   background: currentColor;
-  opacity: 0.72;
+  opacity: 0.7;
 }
 
 .toolbar-inline-badge.is-active {
-  border-color: rgba(22, 119, 255, 0.24);
-  background: rgba(22, 119, 255, 0.08);
-  color: var(--ledger-primary);
+  background: rgba(64, 158, 255, 0.14);
+  color: var(--el-color-primary-dark-2);
 }
 
 .toolbar-row,
@@ -467,9 +559,18 @@ function handleBatchCommand(command: string | number | object) {
   position: relative;
   z-index: 1;
   padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 14px;
-  background: var(--ledger-surface-soft);
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.toolbar-action-group {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 255, 0.90));
+}
+
+.toolbar-utility-group {
+  background: linear-gradient(180deg, rgba(249, 251, 255, 0.94), rgba(255, 255, 255, 0.88));
 }
 
 .toolbar-select,
@@ -498,6 +599,14 @@ function handleBatchCommand(command: string | number | object) {
   min-width: 220px;
 }
 
+.toolbar-density-mode {
+  width: 100%;
+}
+
+.toolbar-inline-tip {
+  margin-top: 0;
+}
+
 .toolbar-link-button {
   padding-left: 2px;
   padding-right: 2px;
@@ -519,16 +628,16 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-primary-btn,
 .toolbar-secondary-btn,
 .toolbar-soft-btn {
-  height: 36px;
-  border-radius: 10px;
-  font-weight: 600;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+  height: 40px;
+  border-radius: 12px;
+  font-weight: 700;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .toolbar-primary-btn {
-  border: 1px solid var(--ledger-primary);
-  background: var(--ledger-primary);
-  box-shadow: 0 8px 18px rgba(22, 119, 255, 0.18);
+  border: none;
+  background: linear-gradient(135deg, #409eff 0%, #6ba8ff 100%);
+  box-shadow: 0 16px 28px rgba(64, 158, 255, 0.24);
 }
 
 .toolbar-primary-btn:hover,
@@ -538,28 +647,25 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 .toolbar-secondary-btn {
-  border-color: rgba(148, 163, 184, 0.24);
-  background: #fff;
-  color: var(--ledger-text-secondary);
-  box-shadow: none;
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
 }
 
 .toolbar-secondary-btn:hover {
-  border-color: rgba(22, 119, 255, 0.32);
-  color: var(--ledger-primary);
-  box-shadow: var(--ledger-shadow-sm);
+  border-color: rgba(64, 158, 255, 0.24);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.07);
 }
 
 .toolbar-soft-btn {
-  border-color: rgba(148, 163, 184, 0.2);
-  background: var(--ledger-surface-soft);
-  color: var(--ledger-text-secondary);
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(248, 250, 252, 0.96);
+  color: #475569;
 }
 
 .toolbar-soft-btn:hover {
-  border-color: rgba(22, 119, 255, 0.22);
-  background: #fff;
-  color: var(--ledger-primary);
+  border-color: rgba(64, 158, 255, 0.20);
+  background: rgba(255, 255, 255, 0.98);
 }
 
 .column-panel-head {
@@ -572,7 +678,7 @@ function handleBatchCommand(command: string | number | object) {
 .column-panel-title {
   font-size: 13px;
   font-weight: 700;
-  color: var(--ledger-text-secondary);
+  color: #475569;
   margin-bottom: 8px;
 }
 
@@ -598,14 +704,113 @@ function handleBatchCommand(command: string | number | object) {
   justify-content: space-between;
   gap: 12px;
   padding: 10px 12px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
+  border: 1px solid rgba(15, 23, 42, 0.06);
   border-radius: 12px;
-  background: #fff;
+  background: rgba(255, 255, 255, 0.92);
 }
 
 .column-order-actions {
   display: flex;
   gap: 4px;
+}
+
+.saved-view-input-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.saved-view-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  margin-top: 10px;
+}
+
+.saved-view-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  width: 100%;
+  padding: 12px 14px;
+  text-align: left;
+  border: 1px solid rgba(148, 163, 184, 0.18);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.94);
+  cursor: pointer;
+  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+
+.saved-view-item:hover {
+  transform: translateY(-1px);
+  border-color: rgba(64, 158, 255, 0.28);
+  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
+}
+
+.saved-view-item.active {
+  border-color: rgba(64, 158, 255, 0.34);
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.08), 0 12px 24px rgba(64, 158, 255, 0.10);
+}
+
+.saved-view-name {
+  font-size: 13px;
+  font-weight: 700;
+  color: #1e293b;
+}
+
+.saved-view-meta {
+  margin-top: 4px;
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.saved-view-actions {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.saved-view-action {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--el-color-primary);
+}
+
+.toolbar-feedback-strip {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+
+.feedback-pill {
+  min-width: 0;
+  padding: 12px 14px;
+  border-radius: 16px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.82);
+}
+
+.feedback-pill.is-emphasis {
+  border-color: rgba(64, 158, 255, 0.2);
+  background: rgba(237, 245, 255, 0.9);
+}
+
+.feedback-pill__label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 12px;
+  color: #8a94a6;
+}
+
+.feedback-pill strong {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: #0f172a;
+  font-size: 13px;
 }
 
 .inventory-summary-row {
@@ -618,16 +823,16 @@ function handleBatchCommand(command: string | number | object) {
 .summary-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  background: #fff;
-  border-radius: 14px;
-  padding: 12px 14px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 18px;
+  padding: 14px 15px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.03);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
   transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
@@ -637,78 +842,77 @@ function handleBatchCommand(command: string | number | object) {
   left: 0;
   right: 0;
   top: 0;
-  height: 2px;
-  background: rgba(148, 163, 184, 0.42);
+  height: 3px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.7));
 }
 
 .summary-card.checked::before {
-  background: rgba(21, 128, 61, 0.55);
+  background: linear-gradient(90deg, rgba(103, 194, 58, 0.35), rgba(103, 194, 58, 0.86));
 }
 
 .summary-card.issue::before {
-  background: rgba(180, 83, 9, 0.55);
+  background: linear-gradient(90deg, rgba(245, 108, 108, 0.35), rgba(245, 108, 108, 0.86));
 }
 
 .summary-card.unchecked::before {
-  background: rgba(71, 85, 105, 0.48);
+  background: linear-gradient(90deg, rgba(144, 147, 153, 0.35), rgba(144, 147, 153, 0.86));
 }
 
 .summary-card:hover {
   transform: translateY(-1px);
-  box-shadow: var(--ledger-shadow-sm);
+  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
 }
 
 .summary-card strong {
-  font-size: 22px;
-  color: var(--ledger-text-primary);
+  font-size: 24px;
+  color: #0f172a;
 }
 
 .summary-label {
   font-size: 12px;
-  color: var(--ledger-text-tertiary);
+  color: #8a94a6;
 }
 
 .summary-card.active {
-  border-color: rgba(22, 119, 255, 0.34);
-  background: rgba(22, 119, 255, 0.04);
-  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.06), var(--ledger-shadow-sm);
+  border-color: rgba(64, 158, 255, 0.34);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.10), 0 20px 32px rgba(64, 158, 255, 0.12);
 }
 
-.summary-card.checked strong { color: var(--ledger-success); }
-.summary-card.issue strong { color: var(--ledger-warning); }
-.summary-card.unchecked strong { color: var(--ledger-info); }
+.summary-card.checked strong { color: var(--el-color-success); }
+.summary-card.issue strong { color: var(--el-color-danger); }
+.summary-card.unchecked strong { color: var(--el-color-info); }
 
 :deep(.el-input__wrapper),
 :deep(.el-select__wrapper) {
-  min-height: 36px;
-  border-radius: 10px;
-  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.2);
-  background: #fff;
+  min-height: 40px;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.94);
   transition: box-shadow 160ms ease, background 160ms ease;
 }
 
 :deep(.el-input__wrapper.is-focus),
 :deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px rgba(22, 119, 255, 0.34), 0 0 0 3px rgba(22, 119, 255, 0.10);
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.34), 0 0 0 4px rgba(64, 158, 255, 0.10);
 }
 
 :deep(.el-segmented) {
-  padding: 3px;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 12px;
-  background: var(--ledger-surface-soft);
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
 }
 
 :deep(.el-segmented__item) {
-  min-height: 32px;
-  border-radius: 9px;
-  color: var(--ledger-text-secondary);
+  min-height: 34px;
+  border-radius: 10px;
+  color: #475569;
   font-weight: 600;
 }
 
 :deep(.el-segmented__item-selected) {
-  border: 1px solid rgba(22, 119, 255, 0.18);
-  box-shadow: 0 4px 10px rgba(15, 23, 42, 0.04);
+  box-shadow: 0 10px 18px rgba(64, 158, 255, 0.18);
 }
 
 @media (max-width: 1100px) {
@@ -721,12 +925,13 @@ function handleBatchCommand(command: string | number | object) {
 @media (max-width: 768px) {
   .toolbar-block {
     padding: 14px;
-    border-radius: 16px;
+    border-radius: 18px;
   }
 
   .toolbar-head,
   .toolbar-head--filters,
-  .toolbar-selection-row {
+  .toolbar-selection-row,
+  .saved-view-input-row {
     flex-direction: column;
     align-items: stretch;
   }
@@ -742,7 +947,8 @@ function handleBatchCommand(command: string | number | object) {
   .toolbar-action-group,
   .toolbar-action-group :deep(.el-button),
   .toolbar-utility-group,
-  .toolbar-utility-group :deep(.el-button) {
+  .toolbar-utility-group :deep(.el-button),
+  .saved-view-input-row :deep(.el-button) {
     width: 100%;
   }
 
@@ -755,11 +961,13 @@ function handleBatchCommand(command: string | number | object) {
     display: none;
   }
 
-  .column-check-group {
+  .column-check-group,
+  .toolbar-feedback-strip {
     grid-template-columns: 1fr;
   }
 
-  .column-order-item {
+  .column-order-item,
+  .saved-view-item {
     flex-direction: column;
     align-items: stretch;
   }

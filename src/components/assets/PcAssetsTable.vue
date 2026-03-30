@@ -1,6 +1,9 @@
 <template>
-  <div>
-    <el-table
+  <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
+    <div v-if="loading && !rows.length" class="ledger-table-skeleton">
+      <el-skeleton :rows="8" animated />
+    </div>
+    <el-table v-else
       ref="tableRef"
       class="ledger-table"
       v-loading="loading"
@@ -189,6 +192,7 @@ const props = defineProps<{
   isAdmin: boolean;
   visibleColumns: string[];
   columnWidths: Record<string, number>;
+  density: 'compact' | 'default' | 'comfortable';
   selectedIds: string[];
   showInventoryColumn: boolean;
   enableInventoryHighlight: boolean;
@@ -299,17 +303,17 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .render-hint {
   margin-top: 12px;
   padding: 10px 14px;
-  color: var(--ledger-text-tertiary);
+  color: #64748b;
   font-size: 12px;
   border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 12px;
-  background: var(--ledger-surface-soft);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
 
 .pager-wrap {
-  margin-top: 16px;
   display: flex;
   justify-content: flex-end;
+  margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
 }
@@ -319,11 +323,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   display: flex;
   flex-direction: column;
   justify-content: center;
-  gap: 6px;
-}
-
-.compact-cell {
-  min-height: 44px;
+  gap: 5px;
 }
 
 .asset-cell {
@@ -332,16 +332,15 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 
 .asset-main,
 .cell-primary {
-  color: var(--ledger-text-primary);
-  font-size: 14px;
+  color: #0f172a;
   font-weight: 600;
-  line-height: 1.45;
+  line-height: 1.5;
 }
 
 .asset-meta,
 .cell-secondary,
 .cell-placeholder {
-  color: var(--ledger-text-tertiary);
+  color: #64748b;
   font-size: 12px;
   line-height: 1.5;
 }
@@ -353,7 +352,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 .status-cell {
-  gap: 8px;
+  gap: 7px;
 }
 
 .inventory-cell {
@@ -363,53 +362,46 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .status-chip {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   width: fit-content;
   padding: 3px 10px;
   border-radius: 999px;
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.01em;
   line-height: 20px;
   border: 1px solid transparent;
-}
-
-.status-chip::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.72;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
 }
 
 .status-chip--success {
-  color: var(--ledger-success);
-  background: var(--ledger-success-weak);
-  border-color: rgba(21, 128, 61, 0.16);
+  color: #0f8f57;
+  background: #ecf8f1;
+  border-color: #b7ebd0;
 }
 
 .status-chip--warning {
-  color: var(--ledger-warning);
-  background: var(--ledger-warning-weak);
-  border-color: rgba(180, 83, 9, 0.16);
+  color: #c06a00;
+  background: #fff6e8;
+  border-color: #f6d7a6;
 }
 
 .status-chip--info {
-  color: var(--ledger-info);
-  background: var(--ledger-info-weak);
-  border-color: rgba(71, 85, 105, 0.14);
+  color: #516072;
+  background: #f4f7fb;
+  border-color: #d8e0ea;
 }
 
 .status-chip--danger {
-  color: var(--ledger-danger);
-  background: var(--ledger-danger-weak);
-  border-color: rgba(180, 35, 24, 0.14);
+  color: #c23d3d;
+  background: #fff1f1;
+  border-color: #f2b9b9;
 }
 
 .status-chip--archived {
-  color: #8a5a00;
+  color: #9a6700;
   background: #fff8eb;
-  border-color: rgba(138, 90, 0, 0.14);
+  border-color: #f4d39b;
 }
 
 .status-chip--soft {
@@ -417,7 +409,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 .inventory-advice {
-  color: var(--ledger-danger);
+  color: var(--el-color-danger);
   font-size: 12px;
   line-height: 1.45;
 }
@@ -429,25 +421,26 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 
 .row-more-trigger {
   min-height: 32px;
-  padding: 0 10px;
+  padding: 0 12px;
   border-radius: 10px;
-  color: var(--ledger-text-secondary);
-  background: var(--ledger-surface-soft);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, color 160ms ease;
+  color: #334155;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
 
 .row-more-trigger:hover {
   transform: translateY(-1px);
-  color: var(--ledger-primary);
-  background: #fff;
-  border-color: rgba(22, 119, 255, 0.24);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(64, 158, 255, 0.28);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.09);
 }
 
 .archive-detail {
   line-height: 1.8;
   font-size: 12px;
-  color: var(--ledger-text-secondary);
+  color: #475569;
 }
 
 .empty-wrap {
@@ -459,7 +452,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 .empty-tip {
-  color: var(--ledger-text-tertiary);
+  color: #64748b;
   font-size: 12px;
   max-width: 320px;
   text-align: center;
@@ -471,16 +464,12 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   text-overflow: ellipsis;
 }
 
-:deep(.ledger-table-card > .el-card__body) {
-  padding: 18px;
-}
-
 :deep(.ledger-table .cell) {
   line-height: 1.45;
 }
 
 :deep(.ledger-table .el-table__inner-wrapper) {
-  border-radius: 16px;
+  border-radius: 20px;
   overflow: hidden;
 }
 
@@ -489,50 +478,43 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 :deep(.ledger-table__row td) {
-  padding-top: 11px;
-  padding-bottom: 11px;
+  padding-top: 10px;
+  padding-bottom: 10px;
   border-bottom-color: rgba(226, 232, 240, 0.88);
 }
 
 :deep(.ledger-table__body tr:nth-child(even) > td.el-table__cell) {
-  background: rgba(248, 250, 252, 0.7);
+  background: rgba(248, 250, 252, 0.56);
 }
 
 :deep(.ledger-table__body tr:hover > td.el-table__cell) {
-  background: rgba(22, 119, 255, 0.05) !important;
+  background: linear-gradient(90deg, rgba(64, 158, 255, 0.08), rgba(255, 255, 255, 0.96)) !important;
 }
 
 :deep(.ledger-table__header-wrapper th) {
-  height: 44px;
-  background: #f8fafc;
-  color: var(--ledger-text-secondary);
+  background: linear-gradient(180deg, #f8fbff 0%, #f1f5fb 100%);
+  color: #475569;
   font-size: 12px;
   font-weight: 700;
-  letter-spacing: 0.01em;
+  letter-spacing: 0.02em;
 }
 
 :deep(.ledger-table__header-wrapper th.el-table__cell.is-leaf) {
-  border-bottom-color: rgba(203, 213, 225, 0.9);
-}
-
-:deep(.ledger-table__header-wrapper th .cell) {
-  display: inline-flex;
-  align-items: center;
-  min-height: 22px;
+  border-bottom-color: rgba(203, 213, 225, 0.8);
 }
 
 :deep(.ledger-table .el-table__fixed-right::before),
 :deep(.ledger-table .el-table__fixed::before) {
-  background-color: rgba(148, 163, 184, 0.14);
+  background-color: rgba(148, 163, 184, 0.16);
 }
 
 :deep(.ledger-table .el-table__fixed-right),
 :deep(.ledger-table .el-table__fixed) {
-  box-shadow: inset 1px 0 0 rgba(241, 245, 249, 0.96);
+  box-shadow: 0 0 0 1px rgba(241, 245, 249, 0.88);
 }
 
 :deep(.ledger-table .el-table__empty-block) {
-  background: linear-gradient(180deg, rgba(248, 250, 252, 0.75), rgba(255, 255, 255, 0.98));
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.74), rgba(255, 255, 255, 0.98));
 }
 
 :deep(.ledger-table .el-table__empty-text) {
@@ -540,18 +522,18 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 :deep(.inventory-row-issue td) {
-  background: linear-gradient(90deg, rgba(180, 35, 24, 0.06), rgba(255, 255, 255, 0) 18%), rgba(180, 35, 24, 0.03);
+  background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(245, 108, 108, 0.05);
 }
 
 :deep(.inventory-row-issue td:first-child) {
-  box-shadow: inset 3px 0 0 rgba(180, 35, 24, 0.72);
+  box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85);
 }
 
 :deep(.inventory-row-unchecked td) {
-  background: linear-gradient(90deg, rgba(100, 116, 139, 0.08), rgba(255, 255, 255, 0) 18%), rgba(100, 116, 139, 0.03);
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(148, 163, 184, 0.04);
 }
 
 :deep(.inventory-row-unchecked td:first-child) {
-  box-shadow: inset 3px 0 0 rgba(100, 116, 139, 0.56);
+  box-shadow: inset 4px 0 0 rgba(100, 116, 139, 0.72);
 }
 </style>
