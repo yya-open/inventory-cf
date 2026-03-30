@@ -10,10 +10,53 @@ const KIND_CONFIG: Record<AssetInventoryKind, { assetTable: string; logTable: st
   monitor: { assetTable: 'monitor_assets', logTable: 'monitor_inventory_log' },
 };
 
+const INVENTORY_SYNC_CHUNK_SIZE = 200;
+
 export function normalizeInventoryStatus(status: any): InventoryDisplayStatus {
   const value = String(status || '').toUpperCase();
   if (value === 'CHECKED_OK' || value === 'CHECKED_ISSUE') return value;
   return 'UNCHECKED';
+}
+
+function chunkIds(ids: number[], size = INVENTORY_SYNC_CHUNK_SIZE) {
+  const chunks: number[][] = [];
+  for (let index = 0; index < ids.length; index += size) chunks.push(ids.slice(index, index + size));
+  return chunks;
+}
+
+async function loadLatestInventoryLogs(
+  db: D1Database,
+  logTable: string,
+  assetIds: number[],
+  batchId?: number | null,
+) {
+  if (!assetIds.length) return new Map<number, any>();
+  const placeholders = assetIds.map(() => '?').join(',');
+  const binds: any[] = [...assetIds];
+  let batchWhere = '';
+  if (batchId) {
+    batchWhere = ' AND batch_id=?';
+    binds.push(batchId);
+  }
+  const { results } = await db.prepare(
+    `SELECT asset_id, action, issue_type, created_at, batch_id
+       FROM (
+         SELECT asset_id, action, issue_type, created_at, batch_id,
+                ROW_NUMBER() OVER (
+                  PARTITION BY asset_id
+                  ORDER BY datetime(created_at) DESC, id DESC
+                ) AS rn
+           FROM ${logTable}
+          WHERE asset_id IN (${placeholders})${batchWhere}
+       ) t
+      WHERE rn=1`
+  ).bind(...binds).all<any>();
+  const latestByAssetId = new Map<number, any>();
+  for (const row of results || []) {
+    const assetId = Number((row as any)?.asset_id || 0);
+    if (assetId > 0) latestByAssetId.set(assetId, row);
+  }
+  return latestByAssetId;
 }
 
 export async function syncAssetInventoryState(db: D1Database, kind: AssetInventoryKind, assetIds: number[]) {
@@ -23,21 +66,6 @@ export async function syncAssetInventoryState(db: D1Database, kind: AssetInvento
   if (!ids.length) return;
 
   const effectiveBatch = await getEffectiveInventoryBatch(db, kind);
-  const latestStmt = effectiveBatch?.id
-    ? db.prepare(
-        `SELECT action, issue_type, created_at, batch_id
-           FROM ${cfg.logTable}
-          WHERE asset_id=? AND batch_id=?
-          ORDER BY datetime(created_at) DESC, id DESC
-          LIMIT 1`
-      )
-    : db.prepare(
-        `SELECT action, issue_type, created_at, batch_id
-           FROM ${cfg.logTable}
-          WHERE asset_id=?
-          ORDER BY datetime(created_at) DESC, id DESC
-          LIMIT 1`
-      );
   const updateStmt = db.prepare(
     `UPDATE ${cfg.assetTable}
         SET inventory_status=?,
@@ -48,20 +76,23 @@ export async function syncAssetInventoryState(db: D1Database, kind: AssetInvento
       WHERE id=?`
   );
 
-  for (const assetId of ids) {
-    const latest = effectiveBatch?.id
-      ? await latestStmt.bind(assetId, effectiveBatch.id).first<any>()
-      : await latestStmt.bind(assetId).first<any>();
-    const action = String(latest?.action || '').toUpperCase();
-    const inventoryStatus: InventoryDisplayStatus = action === 'ISSUE'
-      ? 'CHECKED_ISSUE'
-      : action === 'OK'
-        ? 'CHECKED_OK'
-        : 'UNCHECKED';
-    const inventoryAt = action ? String(latest?.created_at || '') || null : null;
-    const inventoryIssueType = action === 'ISSUE' ? String(latest?.issue_type || '').toUpperCase() || null : null;
-    const inventoryBatchId = action ? Number(latest?.batch_id || effectiveBatch?.id || 0) || null : (effectiveBatch?.id || null);
-    await updateStmt.bind(inventoryStatus, inventoryAt, inventoryIssueType, inventoryBatchId, assetId).run();
+  for (const chunk of chunkIds(ids)) {
+    const latestByAssetId = await loadLatestInventoryLogs(db, cfg.logTable, chunk, effectiveBatch?.id || null);
+    const statements: D1PreparedStatement[] = [];
+    for (const assetId of chunk) {
+      const latest = latestByAssetId.get(assetId);
+      const action = String(latest?.action || '').toUpperCase();
+      const inventoryStatus: InventoryDisplayStatus = action === 'ISSUE'
+        ? 'CHECKED_ISSUE'
+        : action === 'OK'
+          ? 'CHECKED_OK'
+          : 'UNCHECKED';
+      const inventoryAt = action ? String(latest?.created_at || '') || null : null;
+      const inventoryIssueType = action === 'ISSUE' ? String(latest?.issue_type || '').toUpperCase() || null : null;
+      const inventoryBatchId = action ? Number(latest?.batch_id || effectiveBatch?.id || 0) || null : (effectiveBatch?.id || null);
+      statements.push(updateStmt.bind(inventoryStatus, inventoryAt, inventoryIssueType, inventoryBatchId, assetId));
+    }
+    if (statements.length) await db.batch(statements);
   }
 }
 

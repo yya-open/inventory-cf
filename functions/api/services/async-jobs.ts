@@ -11,8 +11,9 @@ import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 import * as XLSX from 'xlsx';
+import { buildBackupFilename, buildBackupPayload, parseBackupOptions } from '../admin/_backup_helpers';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -601,6 +602,30 @@ function estimateBase64DecodedByteLength(input: any) {
   return Math.max(0, Math.floor(base64.length * 3 / 4) - padding);
 }
 
+function encodeBytesToBase64(bytes: Uint8Array) {
+  let binary = '';
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    const chunk = bytes.subarray(i, i + chunkSize);
+    binary += String.fromCharCode(...chunk);
+  }
+  return btoa(binary);
+}
+
+async function gzipTextToBase64(text: string) {
+  if (typeof (globalThis as any).CompressionStream === 'undefined') {
+    throw new Error('当前环境不支持 gzip 压缩');
+  }
+  const stream = new ReadableStream({
+    start(controller) {
+      controller.enqueue(utf8Encoder.encode(text));
+      controller.close();
+    },
+  }).pipeThrough(new CompressionStream('gzip') as any);
+  const arrayBuffer = await new Response(stream).arrayBuffer();
+  return encodeBytesToBase64(new Uint8Array(arrayBuffer));
+}
+
 function decodeBase64ToBytes(input: any) {
   const base64 = String(input || '');
   if (!base64) return new Uint8Array();
@@ -766,6 +791,23 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
 
   if (type === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') {
     return buildInventoryBatchSnapshotWorkbook(db, requestJson);
+  }
+
+  if (type === 'BACKUP_EXPORT') {
+    const backupOptions = parseBackupOptions(requestJson, {
+      actor: String(requestJson?.actor || 'async_job'),
+      reason: String(requestJson?.reason || 'async_backup_export'),
+    });
+    const payload = await buildBackupPayload(db, backupOptions);
+    const jsonText = JSON.stringify(payload);
+    const gzip = requestJson?.gzip === true || requestJson?.gzip === 1 || requestJson?.gzip === '1';
+    const table = String(requestJson?.table || '').trim() || null;
+    const filename = buildBackupFilename({ table, gzip });
+    if (gzip) {
+      const blobBase64 = await gzipTextToBase64(jsonText);
+      return { blobBase64, filename, contentType: 'application/gzip', message: `备份已生成（${Object.keys(payload.tables || {}).length} 张表）` };
+    }
+    return { text: jsonText, filename, contentType: 'application/json; charset=utf-8', message: `备份已生成（${Object.keys(payload.tables || {}).length} 张表）` };
   }
 
   if (type === 'DASHBOARD_PRECOMPUTE') {

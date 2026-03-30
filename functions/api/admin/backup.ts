@@ -3,7 +3,7 @@ import { logAudit } from '../_audit';
 import { ensureCoreSchema } from '../_schema';
 import { ensurePcSchema } from '../_pc';
 import { ensureMonitorSchema } from '../_monitor';
-import { buildBackupPayload } from './_backup_helpers';
+import { buildBackupFilename, buildBackupPayload, parseBackupOptions } from './_backup_helpers';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
@@ -12,10 +12,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     await ensurePcSchema(env.DB);
     await ensureMonitorSchema(env.DB);
 
-    const payload = await buildBackupPayload(env.DB, { actor: actor.username, reason: 'manual_backup' });
     const url = new URL(request.url);
     const gzip = url.searchParams.get('gzip') === '1';
     const download = url.searchParams.get('download') === '1';
+    const backupOptions = parseBackupOptions(url.searchParams, { actor: actor.username, reason: 'manual_backup' });
+    const payload = await buildBackupPayload(env.DB, backupOptions);
 
     const jsonText = JSON.stringify(payload);
     let body: BodyInit = jsonText;
@@ -35,11 +36,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       headers.set('content-encoding', 'gzip');
     }
 
-    const d = new Date();
-    const y = d.getFullYear();
-    const m = String(d.getMonth() + 1).padStart(2, '0');
-    const day = String(d.getDate()).padStart(2, '0');
-    const fname = `inventory_backup_${y}${m}${day}.json${gzip ? '.gz' : ''}`;
+    const table = String(url.searchParams.get('table') || '').trim() || null;
+    const fname = buildBackupFilename({ table, gzip });
     if (download) headers.set('content-disposition', `attachment; filename="${fname}"`);
 
     waitUntil(logAudit(env.DB, request, actor, 'ADMIN_BACKUP', 'backup', null, {
@@ -48,6 +46,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       table_count: Object.keys(payload.tables || {}).length,
       stats: payload.stats,
       version: payload.version,
+      filters: payload.meta?.filters || null,
     }).catch(() => {}));
 
     return new Response(body, { headers });

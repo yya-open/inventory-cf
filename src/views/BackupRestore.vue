@@ -696,7 +696,7 @@ import { ElDivider, ElProgress, ElRadio, ElRadioGroup } from 'element-plus';
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessageBox } from "../utils/el-services";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";
-import { apiDownload, apiPostForm, apiGet, apiPost, apiPut } from "../api/client";
+import { apiPostForm, apiGet, apiPost, apiPut } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
 import { scheduleOnIdle } from '../utils/idle';
 import { can } from "../store/auth";
@@ -755,74 +755,58 @@ const validateDlg = ref(false);
 const validatingRestore = ref(false);
 const restoreValidate = ref<any>(null);
 const restoreValidateAt = ref<string>("");
-function buildBackupQuery(extra?: Record<string, string>) {
-  const q = new URLSearchParams();
-  if (bk.value.include_tx) q.set("include_tx", "1");
-  if (bk.value.include_stocktake) q.set("include_stocktake", "1");
-  if (bk.value.include_audit) q.set("include_audit", "1");
-  if (bk.value.include_throttle) q.set("include_throttle", "1");
-
-  // gzip / pagination
-  if (bk.value.gzip) q.set("gzip", "1");
-  q.set("page_size", String(bk.value.page_size || 1000));
-
-  // time ranges for big tables
+function buildBackupRequestJson(extra?: Record<string, string>) {
+  const payload: Record<string, any> = {
+    selection_mode: 'ui',
+    gzip: !!bk.value.gzip,
+    page_size: Number(bk.value.page_size || 1000),
+    include_tx: !!bk.value.include_tx,
+    include_stocktake: !!bk.value.include_stocktake,
+    include_audit: !!bk.value.include_audit,
+    include_throttle: !!bk.value.include_throttle,
+  };
   if (bk.value.include_tx && Array.isArray(bk.value.txRange) && bk.value.txRange.length === 2) {
-    q.set("tx_since", bk.value.txRange[0]);
-    q.set("tx_until", bk.value.txRange[1]);
+    payload.tx_since = bk.value.txRange[0];
+    payload.tx_until = bk.value.txRange[1];
   }
   if (bk.value.include_audit && Array.isArray(bk.value.auditRange) && bk.value.auditRange.length === 2) {
-    q.set("audit_since", bk.value.auditRange[0]);
-    q.set("audit_until", bk.value.auditRange[1]);
+    payload.audit_since = bk.value.auditRange[0];
+    payload.audit_until = bk.value.auditRange[1];
   }
+  if (extra) Object.assign(payload, extra);
+  return payload;
+}
 
-  if (extra) {
-    Object.entries(extra).forEach(([k, v]) => q.set(k, v));
+async function submitBackupJob(extra?: Record<string, string>, successMessage = '备份任务已创建，可到“系统工具 / 异步任务”下载结果') {
+  downloading.value = true;
+  try {
+    const request_json = buildBackupRequestJson(extra);
+    const r:any = await apiPost('/api/jobs', {
+      job_type: 'BACKUP_EXPORT',
+      permission_scope: 'async_job_manage',
+      request_json,
+      retain_days: 7,
+      max_retries: 1,
+    });
+    const jobId = Number(r?.data?.id || 0);
+    msgSuccess(jobId ? `${successMessage}（#${jobId}）` : successMessage);
+  } catch (e:any) {
+    msgError(e?.message || '创建备份任务失败');
+  } finally {
+    downloading.value = false;
   }
-  q.set("download", "1");
-  return q;
 }
 
 async function downloadBackup() {
-  downloading.value = true;
-  try {
-    const q = buildBackupQuery();
-    const fname = bk.value.gzip ? "inventory_backup.json.gz" : "inventory_backup.json";
-    await apiDownload(`/api/admin/backup?${q.toString()}`, fname);
-    msgSuccess("备份已下载");
-  } catch (e:any) {
-    msgError(e?.message || "下载失败");
-  } finally {
-    downloading.value = false;
-  }
+  await submitBackupJob();
 }
 
 async function downloadTxOnly() {
-  downloading.value = true;
-  try {
-    const q = buildBackupQuery({ table: "stock_tx" });
-    const fname = bk.value.gzip ? "inventory_stock_tx.json.gz" : "inventory_stock_tx.json";
-    await apiDownload(`/api/admin/backup?${q.toString()}`, fname);
-    msgSuccess("明细已下载");
-  } catch (e:any) {
-    msgError(e?.message || "下载失败");
-  } finally {
-    downloading.value = false;
-  }
+  await submitBackupJob({ table: 'stock_tx' }, '库存流水导出任务已创建，可到“系统工具 / 异步任务”下载结果');
 }
 
 async function downloadAuditOnly() {
-  downloading.value = true;
-  try {
-    const q = buildBackupQuery({ table: "audit_log" });
-    const fname = bk.value.gzip ? "inventory_audit_log.json.gz" : "inventory_audit_log.json";
-    await apiDownload(`/api/admin/backup?${q.toString()}`, fname);
-    msgSuccess("审计已下载");
-  } catch (e:any) {
-    msgError(e?.message || "下载失败");
-  } finally {
-    downloading.value = false;
-  }
+  await submitBackupJob({ table: 'audit_log' }, '审计日志导出任务已创建，可到“系统工具 / 异步任务”下载结果');
 }
 
 // 选中文件（Upload 组件有时 raw 为空，用 fileList 双保险）

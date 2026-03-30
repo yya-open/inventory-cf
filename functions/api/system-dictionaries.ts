@@ -5,6 +5,7 @@ import {
   deleteSystemDictionaryItem,
   getSystemDictionaryItemById,
   groupDictionaryItems,
+  getSystemDictionaryVersion,
   listSystemDictionaryItems,
   reorderSystemDictionaryItems,
   type SystemDictionaryKey,
@@ -24,11 +25,28 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     await requireAuth(env, request, 'viewer');
     const url = new URL(request.url);
     const dictionaryKey = parseDictionaryKey(url.searchParams.get('dictionary_key'));
+    const version = await getSystemDictionaryVersion(env.DB, dictionaryKey);
+    const etag = `W/"${version}"`;
+    if (request.headers.get('if-none-match') === etag) {
+      return new Response(null, {
+        status: 304,
+        headers: {
+          ETag: etag,
+          'Cache-Control': 'private, max-age=60, stale-while-revalidate=300',
+          Vary: 'Cookie, Authorization',
+        },
+      });
+    }
     const items = await listSystemDictionaryItems(env.DB, dictionaryKey);
-    return json(true, {
+    const res = json(true, {
       items,
       grouped: groupDictionaryItems(items),
+      version,
     });
+    res.headers.set('ETag', etag);
+    res.headers.set('Cache-Control', 'private, max-age=60, stale-while-revalidate=300');
+    res.headers.set('Vary', 'Cookie, Authorization');
+    return res;
   } catch (e: any) {
     return errorResponse(e);
   }

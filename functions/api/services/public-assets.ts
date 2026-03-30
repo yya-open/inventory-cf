@@ -1,9 +1,10 @@
-import { verifyJwt } from "../_auth";
-import { sqlNowStored, sqlStoredHoursAgo } from "../_time";
+import { verifyJwt } from '../_auth';
+import { sqlNowStored } from '../_time';
 import { syncAssetInventoryState } from './asset-inventory-state';
 import { resolveInventoryBatchIdForWrite } from './asset-inventory-batches';
+import { cleanupPublicThrottleBuckets, ensurePublicThrottleTable, getClientIp, incrementPublicThrottleBucket } from './rate-limit';
 
-export type PublicAssetKind = "pc" | "monitor";
+export type PublicAssetKind = 'pc' | 'monitor';
 
 type ResolvePublicAssetArgs = {
   env: { DB: D1Database; JWT_SECRET?: string };
@@ -13,95 +14,72 @@ type ResolvePublicAssetArgs = {
 };
 
 const PUBLIC_INVENTORY_ISSUE_TYPES = new Set([
-  "NOT_FOUND",
-  "WRONG_LOCATION",
-  "WRONG_QR",
-  "WRONG_STATUS",
-  "MISSING",
-  "OTHER",
+  'NOT_FOUND',
+  'WRONG_LOCATION',
+  'WRONG_QR',
+  'WRONG_STATUS',
+  'MISSING',
+  'OTHER',
 ]);
 
 const ASSET_CONFIG: Record<PublicAssetKind, {
-  assetTable: "pc_assets" | "monitor_assets";
+  assetTable: 'pc_assets' | 'monitor_assets';
   label: string;
-  scope: "pc_view" | "monitor_view";
-  tokenField: "pc_asset_id" | "monitor_asset_id";
+  scope: 'pc_view' | 'monitor_view';
+  tokenField: 'pc_asset_id' | 'monitor_asset_id';
 }> = {
   pc: {
-    assetTable: "pc_assets",
-    label: "电脑台账",
-    scope: "pc_view",
-    tokenField: "pc_asset_id",
+    assetTable: 'pc_assets',
+    label: '电脑台账',
+    scope: 'pc_view',
+    tokenField: 'pc_asset_id',
   },
   monitor: {
-    assetTable: "monitor_assets",
-    label: "显示器台账",
-    scope: "monitor_view",
-    tokenField: "monitor_asset_id",
+    assetTable: 'monitor_assets',
+    label: '显示器台账',
+    scope: 'monitor_view',
+    tokenField: 'monitor_asset_id',
   },
 };
 
-export function getClientIp(request: Request) {
-  const h = request.headers;
-  return h.get("CF-Connecting-IP") || h.get("X-Forwarded-For")?.split(",")[0]?.trim() || "";
-}
-
-export async function ensurePublicThrottleTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS public_api_throttle (
-      k TEXT PRIMARY KEY,
-      count INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-}
+export { ensurePublicThrottleTable, getClientIp };
 
 export async function rateLimitPublic(db: D1Database, request: Request, route: string, subject: string, limitPerMinute: number) {
   await ensurePublicThrottleTable(db);
 
-  const ip = getClientIp(request) || "unknown";
+  const ip = getClientIp(request) || 'unknown';
   const minuteBucket = Math.floor(Date.now() / 60000);
   const key = `${route}|${subject}|${ip}|${minuteBucket}`;
 
-  if ((Date.now() & 63) === 0) {
-    await db.prepare(`DELETE FROM public_api_throttle WHERE updated_at < ${sqlStoredHoursAgo(2)}`).run();
-  }
+  if ((Date.now() & 63) === 0) await cleanupPublicThrottleBuckets(db, 2);
 
-  await db
-    .prepare(
-      `INSERT INTO public_api_throttle (k, count) VALUES (?, 1)
-       ON CONFLICT(k) DO UPDATE SET count = count + 1, updated_at = ${sqlNowStored()}`
-    )
-    .bind(key)
-    .run();
-
-  const row = await db.prepare("SELECT count FROM public_api_throttle WHERE k=?").bind(key).first<any>();
+  const row = await incrementPublicThrottleBucket(db, key);
   if (Number(row?.count || 0) > limitPerMinute) {
-    throw Object.assign(new Error("访问过于频繁，请稍后再试"), { status: 429 });
+    throw Object.assign(new Error('访问过于频繁，请稍后再试'), { status: 429 });
   }
 }
 
 export function parsePublicInventoryBody(body: any) {
-  const action = String(body?.action || "").toUpperCase();
-  const issueType = String(body?.issue_type || "").toUpperCase();
-  const remark = String(body?.remark || "").slice(0, 500).trim();
+  const action = String(body?.action || '').toUpperCase();
+  const issueType = String(body?.issue_type || '').toUpperCase();
+  const remark = String(body?.remark || '').slice(0, 500).trim();
 
-  if (action !== "OK" && action !== "ISSUE") {
-    throw Object.assign(new Error("action 参数无效"), { status: 400 });
+  if (action !== 'OK' && action !== 'ISSUE') {
+    throw Object.assign(new Error('action 参数无效'), { status: 400 });
   }
-  if (action === "ISSUE" && !PUBLIC_INVENTORY_ISSUE_TYPES.has(issueType)) {
-    throw Object.assign(new Error("issue_type 参数无效"), { status: 400 });
+  if (action === 'ISSUE' && !PUBLIC_INVENTORY_ISSUE_TYPES.has(issueType)) {
+    throw Object.assign(new Error('issue_type 参数无效'), { status: 400 });
   }
 
   return {
     action,
-    issueType: action === "ISSUE" ? issueType : null,
+    issueType: action === 'ISSUE' ? issueType : null,
     remark: remark || null,
   };
 }
 
 export function publicAssetSubject(url: URL) {
-  return url.searchParams.get("id") || url.searchParams.get("token")?.slice(0, 12) || "unknown";
+  return url.searchParams.get('id') || url.searchParams.get('token')?.slice(0, 12) || 'unknown';
 }
 
 export async function resolvePublicAssetId(args: ResolvePublicAssetArgs) {
@@ -109,55 +87,55 @@ export async function resolvePublicAssetId(args: ResolvePublicAssetArgs) {
   const allowToken = args.allowToken !== false;
   const cfg = ASSET_CONFIG[kind];
   const url = new URL(request.url);
-  const idParam = String(url.searchParams.get("id") || "").trim();
-  const keyParam = String(url.searchParams.get("key") || "").trim();
-  const token = String(url.searchParams.get("token") || "").trim();
+  const idParam = String(url.searchParams.get('id') || '').trim();
+  const keyParam = String(url.searchParams.get('key') || '').trim();
+  const token = String(url.searchParams.get('token') || '').trim();
 
   if (idParam && keyParam) {
     const id = Number(idParam || 0);
     if (!id || !keyParam) {
-      throw Object.assign(new Error("二维码参数无效"), { status: 400 });
+      throw Object.assign(new Error('二维码参数无效'), { status: 400 });
     }
     const row = await env.DB.prepare(`SELECT id, qr_key FROM ${cfg.assetTable} WHERE id=?`).bind(id).first<any>();
     if (!row) {
       throw Object.assign(new Error(`${cfg.label}不存在或已删除`), { status: 404 });
     }
-    const dbKey = String(row.qr_key || "").trim();
+    const dbKey = String(row.qr_key || '').trim();
     if (!dbKey) {
-      throw Object.assign(new Error(`该${kind === "pc" ? "电脑" : "显示器"}尚未启用二维码（请先在系统里生成一次二维码）`), { status: 400 });
+      throw Object.assign(new Error(`该${kind === 'pc' ? '电脑' : '显示器'}尚未启用二维码（请先在系统里生成一次二维码）`), { status: 400 });
     }
     if (dbKey !== keyParam) {
-      throw Object.assign(new Error("二维码已失效（可能已被重置）"), { status: 401 });
+      throw Object.assign(new Error('二维码已失效（可能已被重置）'), { status: 401 });
     }
     return id;
   }
 
   if (allowToken && token) {
     if (!env.JWT_SECRET) {
-      throw Object.assign(new Error("缺少 JWT_SECRET"), { status: 500 });
+      throw Object.assign(new Error('缺少 JWT_SECRET'), { status: 500 });
     }
     const payload = await verifyJwt(token, env.JWT_SECRET);
     if (!payload) {
-      throw Object.assign(new Error("二维码已失效"), { status: 401 });
+      throw Object.assign(new Error('二维码已失效'), { status: 401 });
     }
     if (payload.scope !== cfg.scope) {
-      throw Object.assign(new Error("二维码无效"), { status: 401 });
+      throw Object.assign(new Error('二维码无效'), { status: 401 });
     }
     const id = Number(payload[cfg.tokenField] || 0);
     if (!id) {
-      throw Object.assign(new Error("二维码无效"), { status: 401 });
+      throw Object.assign(new Error('二维码无效'), { status: 401 });
     }
     return id;
   }
 
-  throw Object.assign(new Error("缺少二维码参数"), { status: 400 });
+  throw Object.assign(new Error('缺少二维码参数'), { status: 400 });
 }
 
 function duplicateInventoryPrompt(kind: PublicAssetKind, existing: any) {
   const issueLabel = existing?.issue_type ? `（${String(existing.issue_type || '').toUpperCase()}）` : '';
   const actionLabel = String(existing?.action || '').toUpperCase() === 'ISSUE' ? `异常${issueLabel}` : '在位';
   const targetLabel = kind === 'pc' ? '该电脑' : '该显示器';
-  return `${targetLabel}本轮已记录为${actionLabel}（${String(existing?.created_at || '-') }），请勿重复点击“就位”。如需更正，请先删除原盘点记录后再重新提交。`;
+  return `${targetLabel}本轮已记录为${actionLabel}（${String(existing?.created_at || '-')}），请勿重复点击“就位”。如需更正，请先删除原盘点记录后再重新提交。`;
 }
 
 function inactiveInventoryBatchPrompt(kind: PublicAssetKind) {

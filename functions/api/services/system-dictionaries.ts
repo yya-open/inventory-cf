@@ -342,6 +342,24 @@ export async function listSystemDictionaryItems(db: D1Database, key?: SystemDict
   });
 }
 
+export async function getSystemDictionaryVersion(db: D1Database, key?: SystemDictionaryKey) {
+  if (key) await bootstrapDictionaryIfNeeded(db, key);
+  else await bootstrapAllDictionaries(db);
+  const binds = key ? [key] : [];
+  const where = key ? 'WHERE dictionary_key=?' : '';
+  const row = await db.prepare(
+    `SELECT COUNT(*) AS item_count,
+            COALESCE(SUM(enabled), 0) AS enabled_count,
+            COALESCE(MAX(updated_at), '') AS latest_updated_at
+       FROM system_dictionary_items
+       ${where}`
+  ).bind(...binds).first<any>();
+  const itemCount = Number(row?.item_count || 0);
+  const enabledCount = Number(row?.enabled_count || 0);
+  const latestUpdatedAt = String(row?.latest_updated_at || '').trim() || '0';
+  return `dict:${key || 'all'}:${itemCount}:${enabledCount}:${latestUpdatedAt}`;
+}
+
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {
   await bootstrapDictionaryIfNeeded(db, key);
   const { results } = await db.prepare(
