@@ -1,4 +1,6 @@
 import { cleanupAsyncJobHousekeeping, processAsyncJob } from '../functions/api/services/async-jobs';
+import { runAuditCleanupIfDue, refreshAuditStorageStats } from '../functions/api/_audit';
+import { maybeRunAuditArchiveMaintenance } from '../functions/api/services/audit-archive';
 import { refreshDirtySystemDictionaryUsageCounters } from '../functions/api/services/system-dictionaries';
 
 type QueueMessage<T> = {
@@ -44,6 +46,9 @@ export default {
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {
     ctx.waitUntil(cleanupAsyncJobHousekeeping(env.DB, env.BACKUP_BUCKET));
+    ctx.waitUntil(runAuditCleanupIfDue(env.DB));
+    ctx.waitUntil(refreshAuditStorageStats(env.DB));
+    ctx.waitUntil(maybeRunAuditArchiveMaintenance(env.DB, env.BACKUP_BUCKET));
     ctx.waitUntil(refreshDirtySystemDictionaryUsageCounters(env.DB));
   },
 };

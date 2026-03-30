@@ -12,8 +12,9 @@ import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplat
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 import * as XLSX from 'xlsx';
 import { buildBackupFilename, buildBackupPayload, parseBackupOptions } from '../admin/_backup_helpers';
+import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -327,6 +328,7 @@ type AsyncJobBuiltResult = {
   filename: string;
   contentType: string;
   message: string;
+  meta?: Record<string, any> | null;
 };
 
 type AsyncJobResultBucket = {
@@ -845,6 +847,38 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     return { text: '﻿' + lines.join('\n'), filename: `audit_export_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
   }
 
+  if (type === 'AUDIT_ARCHIVE_EXPORT') {
+    const archiveBefore = String(requestJson?.archive_before || '').trim();
+    const maxRows = Math.max(100, Math.min(50000, Number(requestJson?.max_rows || 5000)));
+    if (!archiveBefore) throw new Error('缺少 archive_before，无法生成审计归档文件');
+    const { results } = await db.prepare(
+      `SELECT id, user_id, username, action, entity, entity_id, payload_json, ip, ua,
+              module_code, high_risk, target_name, target_code, summary_text, search_text_norm, created_at
+         FROM audit_log
+        WHERE created_at < ?
+        ORDER BY created_at ASC, id ASC
+        LIMIT ?`
+    ).bind(archiveBefore, maxRows).all<any>();
+    const rows = Array.isArray(results) ? results : [];
+    if (!rows.length) throw new Error('当前没有符合归档条件的审计日志');
+    const lines = rows.map((row) => JSON.stringify(row));
+    const text = lines.join('\n') + '\n';
+    const blobBase64 = await gzipTextToBase64(text);
+    const safeBefore = archiveBefore.replace(/[^0-9]/g, '').slice(0, 14) || String(Date.now());
+    return {
+      blobBase64,
+      filename: `audit_archive_before_${safeBefore}_${rows.length}.ndjson.gz`,
+      contentType: 'application/gzip',
+      message: `已归档导出 ${rows.length} 条审计日志`,
+      meta: {
+        archive_before: archiveBefore,
+        delete_after_export: requestJson?.delete_after_export === true || requestJson?.delete_after_export === 1 || requestJson?.delete_after_export === '1',
+        row_ids: rows.map((row) => Number(row.id)).filter((value) => Number.isFinite(value) && value > 0),
+        exported_rows: rows.length,
+      },
+    };
+  }
+
   const url = new URL('https://local/export');
   for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
   const query = buildPcAssetQuery(url);
@@ -943,7 +977,7 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   }
   const jobType = String(row.job_type || '') as AsyncJobType;
   const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
-  if (jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
+  if ((jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' || jobType === 'AUDIT_ARCHIVE_EXPORT') && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
@@ -958,6 +992,27 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
     await db.prepare(
       `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_object_key=?, result_file_size=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
     ).bind(storedFile ? null : (result.text ?? null), storedFile ? null : (result.blobBase64 ?? null), storedFile?.objectKey ?? null, storedFile?.fileSize ?? null, result.contentType, result.filename, result.message, id).run();
+    if (jobType === 'AUDIT_ARCHIVE_EXPORT') {
+      const archiveBefore = String((result.meta as any)?.archive_before || req?.archive_before || '').trim();
+      const rowIds = Array.isArray((result.meta as any)?.row_ids) ? (result.meta as any)?.row_ids : [];
+      const shouldDelete = !!((result.meta as any)?.delete_after_export);
+      const exportedRows = Number((result.meta as any)?.exported_rows || rowIds.length || 0);
+      let deletedRows = 0;
+      if (shouldDelete && rowIds.length) deletedRows = await deleteAuditRowsByIds(db, rowIds);
+      await recordAuditArchiveRun(db, {
+        job_id: id,
+        archive_before: archiveBefore || req?.archive_before || '',
+        exported_rows: exportedRows,
+        deleted_rows: deletedRows,
+        result_object_key: storedFile?.objectKey ?? null,
+        result_filename: result.filename,
+        result_file_size: storedFile?.fileSize ?? null,
+        content_type: result.contentType,
+        status: 'success',
+        message: shouldDelete ? `已归档并删除 ${deletedRows} 条审计日志` : `已归档 ${exportedRows} 条审计日志`,
+      });
+      await db.prepare(`UPDATE async_jobs SET message=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(shouldDelete ? `已归档 ${exportedRows} 条审计日志，并删除 ${deletedRows} 条原始记录` : `已归档 ${exportedRows} 条审计日志`, id).run();
+    }
     await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'success', errorMessage: null, filename: result.filename, objectKey: storedFile?.objectKey ?? null, fileSize: storedFile?.fileSize ?? null, exportedAt: formatBeijingDateTimeText(new Date().toISOString()) });
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();

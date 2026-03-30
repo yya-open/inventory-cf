@@ -203,5 +203,10 @@
     "id": "202603300030_items_categories_pc_dates_request_logs",
     "file": "sql/migrate_items_categories_pc_dates_request_logs.sql",
     "description": "items category dictionary normalization, pc asset timestamp columns, and precreated request log tables"
+  },
+  {
+    "id": "202603300040_audit_archive_capacity_control",
+    "file": "sql/migrate_audit_archive_capacity_control.sql",
+    "description": "audit log archive policy, storage stats cache, and archive run history for d1 capacity control"
   }
 ]
