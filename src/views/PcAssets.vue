@@ -1,6 +1,7 @@
 <template>
-  <div>
-    <PcAssetsToolbar
+  <div class="ledger-page ledger-page--pc">
+    <section class="ledger-section ledger-section--toolbar">
+      <PcAssetsToolbar
       v-model:status="status"
       v-model:inventory-status="inventoryStatus"
       v-model:keyword="keyword"
@@ -41,10 +42,12 @@
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
       @import-file="onImportAssetsFile"
-    />
+      />
+    </section>
 
-    <el-card shadow="never">
-      <PcAssetsTable
+    <section class="ledger-section ledger-section--table">
+      <el-card shadow="never" class="ledger-table-card">
+        <PcAssetsTable
       :rows="rows"
       :loading="loading"
       :page="page"
@@ -69,8 +72,9 @@
       @page-change="(value) => onPageChange(currentFiltersForList(), value)"
       @page-size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
       @reset-filters="reset"
-      />
-    </el-card>
+        />
+      </el-card>
+    </section>
 
     <PcAssetEditDialog
       v-if="lazyEditDialog"
@@ -1335,16 +1339,88 @@ onActivated(() => {
 </script>
 
 <style scoped>
+.ledger-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ledger-page::before {
+  content: '';
+  position: absolute;
+  inset: -18px -18px auto;
+  height: 220px;
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at top left, rgba(64, 158, 255, 0.16), transparent 38%),
+    radial-gradient(circle at top right, rgba(24, 144, 255, 0.10), transparent 32%),
+    linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.ledger-section {
+  position: relative;
+  z-index: 1;
+}
+
+.ledger-section--table::before {
+  content: '';
+  position: absolute;
+  inset: 12px 20px auto 20px;
+  height: 72px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(64, 158, 255, 0.09), rgba(64, 158, 255, 0));
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+:deep(.ledger-toolbar-card),
+:deep(.ledger-table-card) {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 249, 255, 0.94) 100%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+}
+
+:deep(.ledger-toolbar-card > .el-card__body),
+:deep(.ledger-table-card > .el-card__body) {
+  padding: 18px;
+}
+
+:deep(.ledger-toolbar-card::after),
+:deep(.ledger-table-card::after) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
 .batch-preview {
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:6px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .batch-help {
   color: #909399;
   font-size: 12px;
   padding-left: 4px;
+}
+
+@media (max-width: 768px) {
+  .ledger-page {
+    gap: 14px;
+  }
+
+  :deep(.ledger-toolbar-card > .el-card__body),
+  :deep(.ledger-table-card > .el-card__body) {
+    padding: 14px;
+  }
 }
 </style>

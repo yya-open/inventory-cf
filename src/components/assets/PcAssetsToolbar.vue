@@ -1,10 +1,11 @@
 <template>
-  <el-card shadow="never" class="pc-toolbar-card">
+  <el-card shadow="never" class="pc-toolbar-card ledger-toolbar-card">
     <div class="pc-toolbar">
       <div class="toolbar-left">
-        <div class="toolbar-block">
+        <div class="toolbar-block toolbar-block--filters">
           <div class="toolbar-head toolbar-head--filters">
-            <div>
+            <div class="toolbar-title-wrap">
+              <div class="toolbar-kicker">PC ASSETS</div>
               <div class="toolbar-block-title">筛选查询</div>
               <div class="toolbar-subtle">按状态、盘点结果或关键词快速定位设备</div>
             </div>
@@ -66,8 +67,8 @@
               <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
             </el-select>
             <div class="toolbar-actions-inline">
-              <el-button type="primary" @click="emit('search')">查询</el-button>
-              <el-button @click="emit('reset')">重置</el-button>
+              <el-button type="primary" class="toolbar-primary-btn" @click="emit('search')">查询</el-button>
+              <el-button class="toolbar-soft-btn" @click="emit('reset')">重置</el-button>
             </div>
           </div>
 
@@ -93,83 +94,89 @@
       </div>
 
       <div class="toolbar-right">
-        <div class="toolbar-block">
+        <div class="toolbar-block toolbar-block--actions">
           <div class="toolbar-head">
-            <div>
+            <div class="toolbar-title-wrap">
+              <div class="toolbar-kicker">WORKSPACE</div>
               <div class="toolbar-block-title">快捷工具</div>
-              <div class="toolbar-subtle">已选 {{ selectedCount }} 项，支持跨页保留</div>
+              <div class="toolbar-subtle">导出、列管理与批量操作按优先级分层展示</div>
             </div>
+            <span class="toolbar-inline-badge" :class="{ 'is-active': selectedCount > 0 }">{{ selectionStateText }}</span>
           </div>
 
           <div class="toolbar-selection-row">
-            <el-dropdown trigger="click" @command="handleBatchCommand">
-              <el-button type="primary" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
-                批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            <div class="toolbar-action-group">
+              <el-dropdown trigger="click" @command="handleBatchCommand">
+                <el-button type="primary" class="toolbar-primary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
+                  批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
+                    <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
+                    <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+
+              <el-button class="toolbar-secondary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="emit('export-selected')">
+                导出选中
               </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
-                  <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
-                  <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
 
-            <el-button plain :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="emit('export-selected')">
-              导出选中
-            </el-button>
-
-            <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
+              <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
+            </div>
 
             <div class="toolbar-spacer" />
 
-            <el-popover placement="bottom-end" trigger="click" :width="320">
-              <template #reference>
-                <el-button>显示列</el-button>
-              </template>
-              <div class="column-panel-head">
-                <div class="column-panel-title">表格列显示</div>
-                <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
-              </div>
-              <el-checkbox-group
-                :model-value="visibleColumns"
-                class="column-check-group"
-                @update:model-value="emit('update:visible-columns', $event as string[])"
-              >
-                <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
-              </el-checkbox-group>
-              <div class="column-panel-title reorder-title">列顺序</div>
-              <div v-if="orderedVisibleOptions.length" class="column-order-list">
-                <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
-                  <span>{{ index + 1 }}. {{ item.label }}</span>
-                  <div class="column-order-actions">
-                    <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
-                    <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
+            <div class="toolbar-utility-group">
+              <el-popover placement="bottom-end" trigger="click" :width="320">
+                <template #reference>
+                  <el-button class="toolbar-soft-btn">显示列</el-button>
+                </template>
+                <div class="column-panel-head">
+                  <div class="column-panel-title">表格列显示</div>
+                  <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
+                </div>
+                <el-checkbox-group
+                  :model-value="visibleColumns"
+                  class="column-check-group"
+                  @update:model-value="emit('update:visible-columns', $event as string[])"
+                >
+                  <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
+                </el-checkbox-group>
+                <div class="column-panel-title reorder-title">列顺序</div>
+                <div v-if="orderedVisibleOptions.length" class="column-order-list">
+                  <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
+                    <span>{{ index + 1 }}. {{ item.label }}</span>
+                    <div class="column-order-actions">
+                      <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
+                      <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
+                    </div>
                   </div>
                 </div>
-              </div>
-              <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
-            </el-popover>
+                <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
+              </el-popover>
 
-            <el-dropdown trigger="click" @command="handleMoreCommand">
-              <el-button :disabled="initQrBusy || batchBusy">
-                更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-              </el-button>
-              <template #dropdown>
-                <el-dropdown-menu>
-                  <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
-                  <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
-                  <el-dropdown-item v-if="isAdmin" command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
-                  <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
-                  <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入（批量入库）</el-dropdown-item>
-                </el-dropdown-menu>
-              </template>
-            </el-dropdown>
+              <el-dropdown trigger="click" @command="handleMoreCommand">
+                <el-button class="toolbar-soft-btn" :disabled="initQrBusy || batchBusy">
+                  更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                </el-button>
+                <template #dropdown>
+                  <el-dropdown-menu>
+                    <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
+                    <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
+                    <el-dropdown-item v-if="isAdmin" command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                    <el-dropdown-item v-if="canOperator" command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                    <el-dropdown-item v-if="canOperator" command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入（批量入库）</el-dropdown-item>
+                  </el-dropdown-menu>
+                </template>
+              </el-dropdown>
+            </div>
 
             <el-upload
               ref="importUploadRef"
@@ -257,6 +264,7 @@ const orderedVisibleOptions = computed(() => {
   return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
 });
 
+const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 
 const archiveModeOptions = [
@@ -301,190 +309,441 @@ function handleBatchCommand(command: string | number | object) {
 </script>
 
 <style scoped>
-.pc-toolbar {
+ .pc-toolbar,
+.monitor-toolbar {
   display: grid;
-  grid-template-columns: minmax(0, 1.55fr) minmax(320px, 1fr);
+  grid-template-columns: minmax(0, 1.58fr) minmax(320px, 0.98fr);
   gap: 16px;
 }
+
 .toolbar-left,
 .toolbar-right {
   min-width: 0;
 }
+
+:deep(.ledger-toolbar-card > .el-card__body) {
+  padding: 0;
+}
+
 .toolbar-block {
-  padding: 14px 16px;
-  border: 1px solid #ebeef5;
-  border-radius: 16px;
-  background: linear-gradient(180deg, #fff 0%, #fafcff 100%);
+  position: relative;
+  padding: 18px 20px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 24px;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.95) 100%);
+  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
+  backdrop-filter: blur(8px);
 }
+
+.toolbar-block--filters::before,
+.toolbar-block--actions::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  background: radial-gradient(circle at top right, rgba(64, 158, 255, 0.10), transparent 42%);
+}
+
+.toolbar-block--filters::after,
+.toolbar-block--actions::after {
+  content: '';
+  position: absolute;
+  left: 20px;
+  right: 20px;
+  top: 0;
+  height: 1px;
+  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9), rgba(255,255,255,0));
+}
+
+.toolbar-title-wrap {
+  min-width: 0;
+}
+
+.toolbar-kicker {
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 800;
+  letter-spacing: 0.14em;
+  color: #94a3b8;
+}
+
 .toolbar-block-title {
-  font-size: 13px;
+  font-size: 15px;
   font-weight: 700;
-  color: #606266;
+  color: #1e293b;
 }
+
 .toolbar-subtle {
   margin-top: 4px;
-  color: #909399;
+  color: #8a94a6;
   font-size: 12px;
+  line-height: 1.55;
 }
+
 .toolbar-head {
   display: flex;
   align-items: flex-start;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  margin-bottom: 16px;
 }
+
 .toolbar-head--filters {
   align-items: center;
 }
+
+.toolbar-inline-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 34px;
+  padding: 0 13px;
+  border-radius: 999px;
+  background: rgba(148, 163, 184, 0.12);
+  color: #64748b;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
+}
+
+.toolbar-inline-badge::before {
+  content: '';
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: currentColor;
+  opacity: 0.7;
+}
+
+.toolbar-inline-badge.is-active {
+  background: rgba(64, 158, 255, 0.14);
+  color: var(--el-color-primary-dark-2);
+}
+
 .toolbar-row,
-.toolbar-selection-row {
+.toolbar-selection-row,
+.toolbar-action-group,
+.toolbar-utility-group {
   display: flex;
   align-items: center;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .toolbar-row--dense {
   align-items: stretch;
 }
-.toolbar-select {
+
+.toolbar-action-group,
+.toolbar-utility-group {
+  position: relative;
+  z-index: 1;
+  padding: 8px;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.78);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
+}
+
+.toolbar-action-group {
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 255, 0.90));
+}
+
+.toolbar-utility-group {
+  background: linear-gradient(180deg, rgba(249, 251, 255, 0.94), rgba(255, 255, 255, 0.88));
+}
+
+.toolbar-select,
+.toolbar-location {
   width: 150px;
 }
+
 .toolbar-input {
   flex: 1 1 280px;
   min-width: 220px;
   max-width: 100%;
 }
+
 .toolbar-archive-input {
   width: 170px;
   max-width: 100%;
 }
+
 .toolbar-actions-inline {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
 }
+
 .toolbar-archive-mode {
   min-width: 220px;
 }
+
 .toolbar-link-button {
-  padding-left: 0;
-  padding-right: 0;
+  padding-left: 2px;
+  padding-right: 2px;
+  font-weight: 600;
 }
+
+.toolbar-create-button {
+  margin-left: 0;
+}
+
 .toolbar-spacer {
   flex: 1 1 auto;
 }
+
 .toolbar-upload-hidden {
   display: none;
 }
+
+.toolbar-primary-btn,
+.toolbar-secondary-btn,
+.toolbar-soft-btn {
+  height: 40px;
+  border-radius: 12px;
+  font-weight: 700;
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.toolbar-primary-btn {
+  border: none;
+  background: linear-gradient(135deg, #409eff 0%, #6ba8ff 100%);
+  box-shadow: 0 16px 28px rgba(64, 158, 255, 0.24);
+}
+
+.toolbar-primary-btn:hover,
+.toolbar-secondary-btn:hover,
+.toolbar-soft-btn:hover {
+  transform: translateY(-1px);
+}
+
+.toolbar-secondary-btn {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
+}
+
+.toolbar-secondary-btn:hover {
+  border-color: rgba(64, 158, 255, 0.24);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.07);
+}
+
+.toolbar-soft-btn {
+  border-color: rgba(148, 163, 184, 0.18);
+  background: rgba(248, 250, 252, 0.96);
+  color: #475569;
+}
+
+.toolbar-soft-btn:hover {
+  border-color: rgba(64, 158, 255, 0.20);
+  background: rgba(255, 255, 255, 0.98);
+}
+
 .column-panel-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
 }
+
 .column-panel-title {
   font-size: 13px;
   font-weight: 700;
-  color: #606266;
+  color: #475569;
   margin-bottom: 8px;
 }
+
 .reorder-title {
   margin-top: 12px;
 }
+
 .column-check-group {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
   gap: 8px 12px;
 }
+
 .column-order-list {
   display: flex;
   flex-direction: column;
   gap: 8px;
 }
+
 .column-order-item {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  padding: 8px 10px;
-  border: 1px solid #ebeef5;
-  border-radius: 10px;
-  background: #fff;
+  padding: 10px 12px;
+  border: 1px solid rgba(15, 23, 42, 0.06);
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.92);
 }
+
 .column-order-actions {
   display: flex;
   gap: 4px;
 }
+
 .inventory-summary-row {
   display: grid;
   grid-template-columns: repeat(4, minmax(0, 1fr));
   gap: 10px;
-  margin-top: 14px;
+  margin-top: 16px;
 }
+
 .summary-card {
-  border: 1px solid #ebeef5;
-  background: #fff;
-  border-radius: 14px;
-  padding: 12px 14px;
+  position: relative;
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.14);
+  background: rgba(255, 255, 255, 0.94);
+  border-radius: 18px;
+  padding: 14px 15px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
 }
+
+.summary-card::before {
+  content: '';
+  position: absolute;
+  left: 0;
+  right: 0;
+  top: 0;
+  height: 3px;
+  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.7));
+}
+
+.summary-card.checked::before {
+  background: linear-gradient(90deg, rgba(103, 194, 58, 0.35), rgba(103, 194, 58, 0.86));
+}
+
+.summary-card.issue::before {
+  background: linear-gradient(90deg, rgba(245, 108, 108, 0.35), rgba(245, 108, 108, 0.86));
+}
+
+.summary-card.unchecked::before {
+  background: linear-gradient(90deg, rgba(144, 147, 153, 0.35), rgba(144, 147, 153, 0.86));
+}
+
+.summary-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
+}
+
 .summary-card strong {
-  font-size: 22px;
-  color: #303133;
+  font-size: 24px;
+  color: #0f172a;
 }
+
 .summary-label {
   font-size: 12px;
-  color: #909399;
+  color: #8a94a6;
 }
+
 .summary-card.active {
-  border-color: var(--el-color-primary);
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.15);
+  border-color: rgba(64, 158, 255, 0.34);
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.10), 0 20px 32px rgba(64, 158, 255, 0.12);
 }
+
 .summary-card.checked strong { color: var(--el-color-success); }
 .summary-card.issue strong { color: var(--el-color-danger); }
 .summary-card.unchecked strong { color: var(--el-color-info); }
+
+:deep(.el-input__wrapper),
+:deep(.el-select__wrapper) {
+  min-height: 40px;
+  border-radius: 12px;
+  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
+  background: rgba(255, 255, 255, 0.94);
+  transition: box-shadow 160ms ease, background 160ms ease;
+}
+
+:deep(.el-input__wrapper.is-focus),
+:deep(.el-select__wrapper.is-focused) {
+  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.34), 0 0 0 4px rgba(64, 158, 255, 0.10);
+}
+
+:deep(.el-segmented) {
+  padding: 4px;
+  border-radius: 14px;
+  background: rgba(148, 163, 184, 0.12);
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
+}
+
+:deep(.el-segmented__item) {
+  min-height: 34px;
+  border-radius: 10px;
+  color: #475569;
+  font-weight: 600;
+}
+
+:deep(.el-segmented__item-selected) {
+  box-shadow: 0 10px 18px rgba(64, 158, 255, 0.18);
+}
+
 @media (max-width: 1100px) {
-  .pc-toolbar {
+  .pc-toolbar,
+  .monitor-toolbar {
     grid-template-columns: 1fr;
   }
 }
+
 @media (max-width: 768px) {
   .toolbar-block {
-    padding: 12px;
-    border-radius: 14px;
+    padding: 14px;
+    border-radius: 18px;
   }
+
   .toolbar-head,
-  .toolbar-head--filters {
+  .toolbar-head--filters,
+  .toolbar-selection-row {
     flex-direction: column;
     align-items: stretch;
   }
+
+  .toolbar-inline-badge,
   .toolbar-select,
+  .toolbar-location,
   .toolbar-input,
   .toolbar-archive-input,
   .toolbar-archive-mode,
   .toolbar-actions-inline,
   .toolbar-actions-inline :deep(.el-button),
-  .toolbar-selection-row,
-  .toolbar-selection-row :deep(.el-button) {
+  .toolbar-action-group,
+  .toolbar-action-group :deep(.el-button),
+  .toolbar-utility-group,
+  .toolbar-utility-group :deep(.el-button) {
     width: 100%;
   }
-  .toolbar-selection-row {
+
+  .toolbar-action-group,
+  .toolbar-utility-group {
     align-items: stretch;
   }
+
   .toolbar-spacer {
     display: none;
   }
+
   .column-check-group {
     grid-template-columns: 1fr;
   }
+
   .column-order-item {
     flex-direction: column;
     align-items: stretch;
   }
+
   .inventory-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
