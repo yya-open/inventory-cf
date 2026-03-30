@@ -1,298 +1,87 @@
-:root {
-  --bg-page: #f5f7fa;
-  --bg-surface: #ffffff;
-  --bg-muted: #fafbfc;
-  --text-primary: #101828;
-  --text-secondary: #475467;
-  --text-tertiary: #667085;
-  --border-default: #e4e7ec;
-  --border-subtle: #f0f2f5;
-  --brand-600: #2f6bff;
-  --brand-500: #4c7dff;
-  --brand-50: #eef4ff;
-  --success-500: #12b76a;
-  --warning-500: #f79009;
-  --danger-500: #f04438;
-  --radius-sm: 8px;
-  --radius-md: 10px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
-  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.06);
-  --shadow-md: 0 12px 32px rgba(16, 24, 40, 0.08);
-}
-
-html,
-body,
-#app {
+/* 全局基础 */
+html, body, #app {
   height: 100%;
 }
 
 body {
   margin: 0;
-  color: var(--text-primary);
-  background: var(--bg-page);
-  font-family: Inter, "PingFang SC", "Microsoft YaHei", sans-serif;
+  color: #222;
+  background: #f6f7fb;
 }
 
-* {
-  box-sizing: border-box;
-}
-
+/* 轻渐变背景层（不影响内容可读性） */
 .app-root {
   height: 100vh;
   position: relative;
 }
 
-.app-bg {
+.app-bg{
   position: fixed;
   inset: 0;
   z-index: -1;
-  background: linear-gradient(180deg, #f7f8fa 0%, #f3f5f8 100%);
+  /* 轻微渐变 + 柔和光晕 */
+  background:
+    radial-gradient(900px 420px at 18% 10%, rgba(64, 158, 255, 0.14), rgba(255,255,255,0) 60%),
+    radial-gradient(760px 380px at 82% 20%, rgba(103, 194, 58, 0.10), rgba(255,255,255,0) 55%),
+    radial-gradient(820px 420px at 60% 92%, rgba(230, 162, 60, 0.10), rgba(255,255,255,0) 60%),
+    linear-gradient(180deg, #f8fafc 0%, #f5f7fb 100%);
 }
 
+/* 主布局 */
 .app-layout {
   height: 100vh;
 }
 
+/* 左侧栏：轻微磨砂 */
 .app-aside {
-  display: flex;
-  flex-direction: column;
-  padding: 16px 14px 14px;
-  border-right: 1px solid var(--border-default);
-  background: rgba(255, 255, 255, 0.96);
+  border-right: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(10px);
 }
 
-.app-brand {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 6px 6px 18px;
-}
-
-.app-brand__mark {
-  width: 38px;
-  height: 38px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border-radius: 12px;
-  background: var(--brand-50);
-  color: var(--brand-600);
-  font-size: 14px;
-  font-weight: 700;
-}
-
-.app-brand__title {
-  font-size: 16px;
-  line-height: 24px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.app-brand__subtitle {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-tertiary);
-}
-
-.app-nav-caption {
-  padding: 0 8px 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary);
-}
-
-.app-menu {
-  flex: 1 1 auto;
-  border-right: none !important;
-  background: transparent;
-}
-
-.app-menu__group-label {
-  padding: 16px 12px 8px;
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 700;
-  color: var(--text-tertiary);
-}
-
-.app-menu .el-menu-item {
-  height: 40px;
-  margin: 0 4px 4px;
-  border-radius: 10px;
-  color: var(--text-secondary);
-}
-
-.app-menu .el-menu-item:hover {
-  background: var(--bg-muted);
-}
-
-.app-menu .el-menu-item.is-active {
-  background: var(--brand-50);
-  color: var(--brand-600);
-  font-weight: 600;
-}
-
-.app-aside-footer {
-  margin-top: 12px;
-  padding: 14px;
-  border: 1px solid var(--border-subtle);
-  border-radius: 14px;
-  background: var(--bg-muted);
-}
-
-.app-aside-footer__label {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-tertiary);
-}
-
-.app-aside-footer__value {
-  margin-top: 6px;
-  font-size: 14px;
-  line-height: 22px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.app-aside-footer__hint {
-  margin-top: 6px;
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-tertiary);
-}
-
+/* 顶部栏：轻微磨砂 */
 .app-header {
-  min-height: 72px;
-  padding: 16px 24px;
+  border-bottom: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.82);
+  backdrop-filter: blur(10px);
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 16px;
-  border-bottom: 1px solid var(--border-default);
-  background: rgba(255, 255, 255, 0.96);
 }
 
-.app-header__left {
-  min-width: 0;
-  display: flex;
-  align-items: center;
-  gap: 18px;
-}
-
-.app-header__titles {
-  min-width: 0;
-}
-
-.app-header__eyebrow {
-  font-size: 12px;
-  line-height: 18px;
-  font-weight: 700;
-  letter-spacing: 0.04em;
-  color: var(--text-tertiary);
-}
-
-.app-header__title {
-  margin-top: 2px;
-  font-size: 22px;
-  line-height: 30px;
-  font-weight: 700;
-  color: var(--text-primary);
-}
-
-.app-header__desc {
-  margin-top: 2px;
-  font-size: 13px;
-  line-height: 20px;
-  color: var(--text-tertiary);
-}
-
-.app-area-switch .el-button {
-  min-width: 84px;
-}
-
-.app-header__right {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.app-user-chip {
-  min-width: 0;
-  padding: 8px 12px;
-  border: 1px solid var(--border-default);
-  border-radius: 12px;
-  background: var(--bg-surface);
-}
-
-.app-user-chip__name {
-  font-size: 13px;
-  line-height: 18px;
-  font-weight: 600;
-  color: var(--text-primary);
-}
-
-.app-user-chip__role {
-  font-size: 12px;
-  line-height: 18px;
-  color: var(--text-tertiary);
-}
-
+/* 内容区：留白 + 居中最大宽度 */
 .app-main {
-  padding: 20px 24px 24px;
+  padding: 16px;
   background: transparent;
 }
 
 .page-wrap {
-  max-width: 1440px;
+  max-width: 1400px;
   margin: 0 auto;
 }
 
-.app-page-alert {
-  margin-bottom: 12px;
-}
-
-.app-alert-titlebar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  flex-wrap: wrap;
-}
-
-.app-alert-titlebar__text {
-  font-weight: 600;
-}
-
-.app-alert-titlebar__actions {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-}
-
-.app-alert-detail {
-  line-height: 1.7;
-}
-
+/* 卡片：更统一、更耐看 */
 .el-card {
   border-radius: 12px;
-  border: 1px solid var(--border-default);
-  background: rgba(255, 255, 255, 0.96);
-  box-shadow: var(--shadow-sm);
+  border: 1px solid rgba(0,0,0,0.06);
+  background: rgba(255,255,255,0.92);
+  box-shadow: 0 6px 24px rgba(0,0,0,0.06);
 }
 
+/* 表格在卡片里更协调（尽量不侵入 el-table 结构，只做外观） */
 .el-table {
   border-radius: 10px;
   overflow: hidden;
 }
 
 .el-dialog {
-  border-radius: 14px;
+  border-radius: 12px;
 }
 
+
+/* 统一页头工具区（参考电脑台账） */
 .ui-page-card {
-  border-radius: 14px;
+  border-radius: 18px;
 }
 
 .ui-toolbar {
@@ -309,16 +98,16 @@ body {
 
 .ui-toolbar-block {
   padding: 14px 16px;
-  border: 1px solid var(--border-default);
-  border-radius: 14px;
-  background: linear-gradient(180deg, #ffffff 0%, #fafbfc 100%);
+  border: 1px solid #ebeef5;
+  border-radius: 16px;
+  background: linear-gradient(180deg, #ffffff 0%, #fafcff 100%);
 }
 
 .ui-toolbar-title {
   margin-bottom: 10px;
   font-size: 13px;
   font-weight: 700;
-  color: var(--text-secondary);
+  color: #606266;
 }
 
 .ui-toolbar-row {
@@ -392,6 +181,32 @@ body {
   font-weight: 600;
 }
 
+@media (max-width: 1100px) {
+  .ui-toolbar {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .ui-toolbar-block {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .ui-toolbar-select,
+  .ui-toolbar-select-wide,
+  .ui-toolbar-input,
+  .ui-toolbar-date,
+  .ui-toolbar-actions,
+  .ui-toolbar-actions .el-button,
+  .ui-toolbar-tool-grid,
+  .ui-toolbar-tool-grid .el-button,
+  .ui-toolbar-tool-grid .el-upload,
+  .ui-toolbar-tool-grid .el-upload .el-button {
+    width: 100%;
+  }
+}
+
 .app-table-scroll-shell__topbar {
   position: sticky;
   top: 0;
@@ -434,68 +249,4 @@ body {
 
 .app-table-scroll-shell__topbar::-webkit-scrollbar-thumb:hover {
   background: rgba(120, 122, 128, 0.88);
-}
-
-@media (max-width: 1200px) {
-  .app-header {
-    align-items: flex-start;
-  }
-
-  .app-header__left {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-@media (max-width: 1100px) {
-  .ui-toolbar {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 900px) {
-  .app-header,
-  .app-main {
-    padding-inline: 16px;
-  }
-
-  .app-user-chip {
-    display: none;
-  }
-}
-
-@media (max-width: 768px) {
-  .app-aside {
-    display: none;
-  }
-
-  .app-header {
-    min-height: auto;
-    flex-direction: column;
-    align-items: flex-start;
-  }
-
-  .app-header__right {
-    width: 100%;
-    justify-content: flex-start;
-    flex-wrap: wrap;
-  }
-
-  .ui-toolbar-block {
-    padding: 12px;
-    border-radius: 14px;
-  }
-
-  .ui-toolbar-select,
-  .ui-toolbar-select-wide,
-  .ui-toolbar-input,
-  .ui-toolbar-date,
-  .ui-toolbar-actions,
-  .ui-toolbar-actions .el-button,
-  .ui-toolbar-tool-grid,
-  .ui-toolbar-tool-grid .el-button,
-  .ui-toolbar-tool-grid .el-upload,
-  .ui-toolbar-tool-grid .el-upload .el-button {
-    width: 100%;
-  }
 }
