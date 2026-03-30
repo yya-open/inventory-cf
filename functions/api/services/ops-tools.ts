@@ -1,6 +1,7 @@
 import { sqlNowStored } from '../_time';
 import { rebuildPcLatestStateForAssets } from './pc-latest-state';
-import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
+import { refreshSystemDictionaryUsageCounters } from './system-dictionaries';
+import { rebuildSearchFtsTables } from './search-fts';
 import { materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode, isAuditHighRisk } from '../_audit';
 import { normalizeSearchText } from '../_search';
 import { getSchemaStatus } from './schema-status';
@@ -240,7 +241,7 @@ export async function repairPcLatestState(db: D1Database) {
 }
 
 export async function repairDictionaryCounters(db: D1Database) {
-  await syncSystemDictionaryUsageCounters(db);
+  await refreshSystemDictionaryUsageCounters(db);
   const row = await db.prepare(`SELECT COUNT(*) AS c FROM dictionary_usage_counters`).first<any>();
   return { repaired: Number(row?.c || 0), rows: Number(row?.c || 0) };
 }
@@ -292,6 +293,7 @@ export async function repairSearchNormalize(db: D1Database) {
     repaired += 1;
   }
   if (monStatements.length) await db.batch(monStatements);
+  await rebuildSearchFtsTables(db);
   return { repaired };
 }
 

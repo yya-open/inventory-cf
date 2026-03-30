@@ -1,6 +1,7 @@
 import { errorResponse, json } from '../_auth';
 import { requirePermission } from '../_permissions';
-import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, listAsyncJobs, processAsyncJobIds, retryAsyncJob } from './services/async-jobs';
+import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
+import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';
 
@@ -27,7 +28,7 @@ function chunkIds(ids: number[], size = QR_EXPORT_CHUNK_SIZE) {
   return chunks;
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
+export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async ({ env, request }) => {
   try {
     const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
     const status = await getSchemaStatus(env.DB);
@@ -50,7 +51,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
   }
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async (context) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
     const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
@@ -69,16 +70,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
           createdIds.push(id);
         }
         if (createdIds.length) {
-          if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, createdIds, env.BACKUP_BUCKET));
-          else void processAsyncJobIds(env.DB, createdIds, env.BACKUP_BUCKET);
+          await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
         }
         await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', `batch:${batchKey}`, { job_type, retain_days, max_retries, batch_key: batchKey, split_count: createdIds.length, total_ids: ids.length });
         return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length }, `已按每 500 条自动拆分为 ${createdIds.length} 个异步任务，后台将继续处理`);
       }
     }
     const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries }, env.BACKUP_BUCKET);
-    if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [id], env.BACKUP_BUCKET));
-    else void processAsyncJobIds(env.DB, [id], env.BACKUP_BUCKET);
+    await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
     await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', id, { job_type, retain_days, max_retries });
     return json(true, { id, job_type, status: 'queued' }, '任务已创建，后台将继续处理');
   } catch (e: any) {
@@ -86,7 +85,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
   }
 };
 
-export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async (context) => {
+export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
     const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
@@ -106,8 +105,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
     }
     if (action === 'retry') {
       await retryAsyncJob(env.DB, id, env.BACKUP_BUCKET);
-      if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [id], env.BACKUP_BUCKET));
-      else void processAsyncJobIds(env.DB, [id], env.BACKUP_BUCKET);
+      await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
       return json(true, { id }, '任务已重试，后台将继续处理');
     }

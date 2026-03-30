@@ -1,0 +1,35 @@
+{
+  "$schema": "./node_modules/wrangler/config-schema.json",
+  "name": "inventory-cf-async-jobs-consumer",
+  "main": "workers/async-jobs-consumer.ts",
+  "compatibility_date": "2026-03-30",
+  "d1_databases": [
+    {
+      "binding": "DB",
+      "database_name": "inventory_db",
+      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+    }
+  ],
+  "r2_buckets": [
+    {
+      "binding": "BACKUP_BUCKET",
+      "bucket_name": "REPLACE_WITH_YOUR_R2_BUCKET"
+    }
+  ],
+  "queues": {
+    "consumers": [
+      {
+        "queue": "inventory-async-jobs",
+        "max_batch_size": 10,
+        "max_batch_timeout": 10,
+        "max_retries": 3,
+        "dead_letter_queue": "inventory-async-jobs-dlq"
+      }
+    ]
+  },
+  "triggers": {
+    "crons": [
+      "*/15 * * * *"
+    ]
+  }
+}

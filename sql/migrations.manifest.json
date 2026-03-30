@@ -193,5 +193,10 @@
     "id": "202603300010_asset_inventory_summary_cache",
     "file": "sql/migrate_asset_inventory_summary_cache.sql",
     "description": "cache default-scope inventory summary snapshots for pc and monitor ledgers"
+  },
+  {
+    "id": "202603300020_asset_search_fts_async_queue_dictionary_dirty",
+    "file": "sql/migrate_asset_search_fts_async_queue_dictionary_dirty.sql",
+    "description": "fts search indexes for assets and audit logs, plus dirty-key dictionary counter refresh support"
   }
 ]

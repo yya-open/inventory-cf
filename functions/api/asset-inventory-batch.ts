@@ -1,7 +1,8 @@
 import { errorResponse, requireAuth } from './_auth';
 import { logAudit } from './_audit';
 import { clearInventoryLogsForNewBatch, closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, attachInventoryBatchSnapshotJob, type AssetInventoryKind } from './services/asset-inventory-batches';
-import { createAsyncJob, processAsyncJobIds } from './services/async-jobs';
+import { createAsyncJob } from './services/async-jobs';
+import { dispatchAsyncJobIds } from './services/async-job-queue';
 
 function parseKind(input: any): AssetInventoryKind {
   const kind = String(input || '').trim().toLowerCase();
@@ -9,7 +10,7 @@ function parseKind(input: any): AssetInventoryKind {
   throw Object.assign(new Error('kind 参数无效'), { status: 400 });
 }
 
-type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any };
+type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
@@ -85,8 +86,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         },
       }, env.BACKUP_BUCKET);
       const attached = await attachInventoryBatchSnapshotJob(env.DB, kind, targetBatchId, jobId);
-      if (typeof waitUntil === 'function') waitUntil(processAsyncJobIds(env.DB, [jobId], env.BACKUP_BUCKET));
-      else void processAsyncJobIds(env.DB, [jobId], env.BACKUP_BUCKET);
+      await dispatchAsyncJobIds({ db: env.DB, ids: [jobId], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', targetBatchId, {
         kind,
         batch_id: targetBatchId,

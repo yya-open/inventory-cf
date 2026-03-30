@@ -1,4 +1,5 @@
 import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
+import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
@@ -103,15 +104,20 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
       prefix: ['a.serial_no', 'a.brand', 'a.model'],
       contains: [],
     });
+    const fts = buildFtsKeywordWhere(keyword, {
+      table: 'pc_assets_fts',
+      rowIdColumn: 'a.id',
+    });
     const norm = buildNormalizedKeywordWhere(keyword, {
       column: 'a.search_text_norm',
       numericId: 'a.id',
       exact: ['a.serial_no'],
+      preferFts: true,
     });
-    const parts = [kw.sql, norm.sql].filter(Boolean);
+    const parts = [kw.sql, fts.sql, norm.sql].filter(Boolean);
     if (parts.length) {
       clauses.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
-      binds.push(...kw.binds, ...norm.binds);
+      binds.push(...kw.binds, ...fts.binds, ...norm.binds);
     }
   }
 
@@ -171,15 +177,20 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
       prefix: ['a.asset_code', 'a.sn', 'a.brand', 'a.model', 'a.employee_name', 'a.department'],
       contains: [],
     });
+    const fts = buildFtsKeywordWhere(keyword, {
+      table: 'monitor_assets_fts',
+      rowIdColumn: 'a.id',
+    });
     const norm = buildNormalizedKeywordWhere(keyword, {
       column: 'a.search_text_norm',
       numericId: 'a.id',
       exact: ['a.asset_code', 'a.sn', 'a.employee_no'],
+      preferFts: true,
     });
-    const parts = [kw.sql, norm.sql].filter(Boolean);
+    const parts = [kw.sql, fts.sql, norm.sql].filter(Boolean);
     if (parts.length) {
       clauses.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
-      binds.push(...kw.binds, ...norm.binds);
+      binds.push(...kw.binds, ...fts.binds, ...norm.binds);
     }
   }
 
@@ -196,11 +207,13 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
 }
 
 export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins'>) {
+  await ensureSearchFtsTables(db);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.joins || ''} ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
+  await ensureSearchFtsTables(db);
   const sql = `
     WITH page_a AS (
       SELECT a.id
@@ -229,6 +242,7 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
 }
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
+  await ensureSearchFtsTables(db);
   const sql = `
     SELECT
       a.*,

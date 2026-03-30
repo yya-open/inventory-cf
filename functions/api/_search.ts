@@ -108,7 +108,7 @@ export function buildKeywordWhere(keywordRaw: string, fields: KeywordFields) {
   };
 }
 
-export function buildNormalizedKeywordWhere(keywordRaw: string, options: { column: string; numericId?: string; exact?: string[] } ) {
+export function buildNormalizedKeywordWhere(keywordRaw: string, options: { column: string; numericId?: string; exact?: string[]; preferFts?: boolean } ) {
   const keyword = normalizeKeyword(keywordRaw);
   if (!keyword) return { sql: '', binds: [] as any[], mode: 'none' as KeywordMode };
   const normalized = normalizeSearchText(keyword);
@@ -129,6 +129,11 @@ export function buildNormalizedKeywordWhere(keywordRaw: string, options: { colum
     if (exactClauses.length) {
       return { sql: `(${exactClauses.join(' OR ')})`, binds: exactBinds, mode: 'exact' as KeywordMode };
     }
+  }
+
+  if (options.preferFts) {
+    const shouldFallback = tokens.some((token) => token.length <= 1 || /[^\x00-\x7F]/.test(token));
+    if (!shouldFallback) return { sql: '', binds: [] as any[], mode: 'none' as KeywordMode };
   }
 
   const groups = tokens.map((token) => `${options.column} LIKE ? ESCAPE '\\'`);

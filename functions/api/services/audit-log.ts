@@ -1,5 +1,6 @@
 import { toSqlRange } from '../_date';
 import { buildKeywordWhere, buildNormalizedKeywordWhere } from '../_search';
+import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
 
 export type AuditModuleCode = 'STOCK' | 'STOCKTAKE' | 'ITEM' | 'USER' | 'AUDIT' | 'ADMIN' | 'PC' | 'MONITOR' | 'OTHER';
 
@@ -90,15 +91,20 @@ export function buildAuditWhere(filters: AuditListFilters) {
       prefix: ['a.username', 'a.action', 'a.entity', 'a.entity_id', 'a.target_name', 'a.target_code'],
       contains: [],
     });
+    const fts = buildFtsKeywordWhere(filters.keyword, {
+      table: 'audit_log_fts',
+      rowIdColumn: 'a.id',
+    });
     const norm = buildNormalizedKeywordWhere(filters.keyword, {
       column: 'a.search_text_norm',
       numericId: 'a.id',
       exact: ['a.entity_id', 'a.target_code'],
+      preferFts: true,
     });
-    const parts = [kw.sql, norm.sql].filter(Boolean);
+    const parts = [kw.sql, fts.sql, norm.sql].filter(Boolean);
     if (parts.length) {
       wh.push(parts.length === 1 ? parts[0] : `(${parts.join(' OR ')})`);
-      binds.push(...kw.binds, ...norm.binds);
+      binds.push(...kw.binds, ...fts.binds, ...norm.binds);
     }
   }
   if (filters.action) { wh.push('a.action=?'); binds.push(filters.action); }
@@ -124,12 +130,14 @@ function getAuditOrderBy(filters: AuditListFilters) {
 }
 
 export async function countAuditRows(db: D1Database, filters: AuditListFilters) {
+  await ensureSearchFtsTables(db);
   const { where, binds } = buildAuditWhere(filters);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM audit_log a ${where}`).bind(...binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listAuditRows(db: D1Database, filters: AuditListFilters, options?: { limit?: number; offset?: number }) {
+  await ensureSearchFtsTables(db);
   const { where, binds } = buildAuditWhere(filters);
   const orderBy = getAuditOrderBy(filters);
   const limit = Number(options?.limit ?? filters.pageSize);
