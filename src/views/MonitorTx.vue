@@ -119,10 +119,11 @@
         />
         <el-table-column
           label="动作"
-          width="100"
+          width="120"
         >
           <template #default="{ row }">
-            {{ typeText(row.tx_type) }}
+            <div>{{ typeText(row.tx_type) }}</div>
+            <el-tag v-if="row.is_current_effective" type="success" effect="plain" size="small" style="margin-top:6px">当前生效</el-tag>
           </template>
         </el-table-column>
         <el-table-column

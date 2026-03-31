@@ -144,7 +144,7 @@
       <el-table-column
         prop="type"
         label="类型"
-        width="110"
+        width="120"
       >
         <template #default="{row}">
           <el-tag
@@ -177,6 +177,9 @@
           >
             回收
           </el-tag>
+          <div v-if="row.is_current_effective" style="margin-top:8px">
+            <el-tag type="success" effect="plain" size="small">当前生效</el-tag>
+          </div>
         </template>
       </el-table-column>
 

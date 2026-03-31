@@ -168,7 +168,27 @@ export async function countPcTxRows(db: D1Database, query: Pick<PcTxQuery, 'wher
 }
 
 export async function listPcTxRows(db: D1Database, query: PcTxQuery) {
-  const result = await db.prepare(`SELECT * FROM ( ${PC_TX_UNION_SQL} ) x ${query.where} ${query.orderBy} LIMIT ? OFFSET ?`).bind(...query.binds, query.pageSize, query.offset).all<any>();
+  const sql = `
+    WITH tx AS ( ${PC_TX_UNION_SQL} ),
+    latest AS (
+      SELECT ranked.asset_id, ranked.id, ranked.type
+      FROM (
+        SELECT t.asset_id, t.id, t.type, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
+        FROM tx t
+        WHERE t.asset_id IS NOT NULL
+      ) ranked
+      WHERE ranked.rn = 1
+    )
+    SELECT
+      x.*,
+      CASE WHEN l.asset_id IS NOT NULL AND l.id = x.id AND l.type = x.type THEN 1 ELSE 0 END AS is_current_effective
+    FROM tx x
+    LEFT JOIN latest l ON l.asset_id = x.asset_id
+    ${query.where}
+    ${query.orderBy}
+    LIMIT ? OFFSET ?
+  `;
+  const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all<any>();
   return result.results || [];
 }
 
@@ -228,6 +248,15 @@ export async function countMonitorTxRows(db: D1Database, query: Pick<MonitorTxQu
 
 export async function listMonitorTxRows(db: D1Database, query: MonitorTxQuery) {
   const sql = `
+    WITH latest AS (
+      SELECT ranked.asset_id, ranked.id
+      FROM (
+        SELECT t.asset_id, t.id, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
+        FROM monitor_tx t
+        WHERE t.asset_id IS NOT NULL
+      ) ranked
+      WHERE ranked.rn = 1
+    )
     SELECT
       t.id,
       t.tx_no,
@@ -248,14 +277,16 @@ export async function listMonitorTxRows(db: D1Database, query: MonitorTxQuery) {
       fl.name AS from_location_name,
       tl.name AS to_location_name,
       fp.name AS from_parent_location_name,
-      tp.name AS to_parent_location_name
+      tp.name AS to_parent_location_name,
+      CASE WHEN l.asset_id IS NOT NULL AND l.id = t.id THEN 1 ELSE 0 END AS is_current_effective
     FROM monitor_tx t
+    LEFT JOIN latest l ON l.asset_id = t.asset_id
     LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
     LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
     LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
     LEFT JOIN pc_locations tp ON tp.id = tl.parent_id
     ${query.where}
-    ORDER BY t.id DESC
+    ORDER BY t.created_at DESC, t.id DESC
     LIMIT ? OFFSET ?
   `;
   const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all<any>();
