@@ -72,6 +72,17 @@
                   查询
                 </el-button>
               </div>
+
+              <el-radio-group
+                v-model="q.effective"
+                size="small"
+                class="ui-toolbar-toggle-group"
+                @change="reload()"
+              >
+                <el-radio-button label="">全部记录</el-radio-button>
+                <el-radio-button label="history">非当前生效</el-radio-button>
+                <el-radio-button label="current">当前生效</el-radio-button>
+              </el-radio-group>
             </div>
           </div>
         </div>
@@ -185,7 +196,7 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 
-const q = reactive({ type: "", keyword: "", dates: [] as any[] });
+const q = reactive({ type: "", keyword: "", dates: [] as any[], effective: '' as '' | 'current' | 'history' });
 const selected = ref<any[]>([]);
 const actionLoading = ref(false);
 const SOFT_REFRESH_TTL_MS = 20_000;
@@ -196,6 +207,7 @@ type MonitorTxFilters = {
   keyword: string;
   dateFrom: string;
   dateTo: string;
+  effective: '' | 'current' | 'history';
 };
 
 function currentFilters(): MonitorTxFilters {
@@ -204,6 +216,7 @@ function currentFilters(): MonitorTxFilters {
     keyword: String(q.keyword || "").trim(),
     dateFrom: String(q.dates?.[0] || "").trim(),
     dateTo: String(q.dates?.[1] || "").trim(),
+    effective: q.effective,
   };
 }
 
@@ -261,6 +274,7 @@ function buildParams(filters: MonitorTxFilters, withPage: boolean, pageNumber = 
   if (filters.keyword) params.set("keyword", filters.keyword);
   if (filters.dateFrom) params.set("date_from", filters.dateFrom);
   if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.effective) params.set("effective", filters.effective);
   return params;
 }
 

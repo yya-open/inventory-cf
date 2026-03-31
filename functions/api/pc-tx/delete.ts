@@ -108,7 +108,7 @@ async function listPcLatestEvents(db: D1Database, assetIds: number[]) {
      LEFT JOIN latest_out lo ON lo.asset_id = a.id
      LEFT JOIN latest_recycle lr ON lr.asset_id = a.id
      WHERE a.id IN (${placeholders})`
-  ).bind(...ids, ...ids, ...ids, ...ids, ...ids, ...ids, ...ids).all<PcLatestEvent>();
+  ).bind(...ids, ...ids, ...ids, ...ids, ...ids, ...ids, ...ids, ...ids).all<PcLatestEvent>();
 
   const latestByAsset = new Map<number, PcLatestEvent>();
   for (const row of results || []) {

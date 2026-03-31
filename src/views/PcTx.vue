@@ -61,6 +61,17 @@
                 重置
               </el-button>
             </div>
+
+            <el-radio-group
+              v-model="effectiveFilter"
+              size="small"
+              class="ui-toolbar-toggle-group"
+              @change="onSearch"
+            >
+              <el-radio-button label="">全部记录</el-radio-button>
+              <el-radio-button label="history">非当前生效</el-radio-button>
+              <el-radio-button label="current">当前生效</el-radio-button>
+            </el-radio-group>
           </div>
         </div>
       </div>
@@ -264,6 +275,7 @@ const selectedRows = ref<any[]>([]);
 const type = ref<string>("");
 const keyword = ref<string>("");
 const dateRange = ref<[string, string] | null>(null);
+const effectiveFilter = ref<'' | 'current' | 'history'>('');
 const SOFT_REFRESH_TTL_MS = 20_000;
 let lastRefreshAt = 0;
 
@@ -272,6 +284,7 @@ type PcTxFilters = {
   keyword: string;
   dateFrom: string;
   dateTo: string;
+  effective: '' | 'current' | 'history';
 };
 
 function currentFilters(): PcTxFilters {
@@ -280,11 +293,12 @@ function currentFilters(): PcTxFilters {
     keyword: String(keyword.value || "").trim(),
     dateFrom: String(dateRange.value?.[0] || "").trim(),
     dateTo: String(dateRange.value?.[1] || "").trim(),
+    effective: effectiveFilter.value,
   };
 }
 
 function filterKey(filters: PcTxFilters) {
-  return `type=${filters.type}&keyword=${filters.keyword}&d0=${filters.dateFrom}&d1=${filters.dateTo}`;
+  return `type=${filters.type}&keyword=${filters.keyword}&d0=${filters.dateFrom}&d1=${filters.dateTo}&effective=${filters.effective}`;
 }
 
 function buildListParams(filters: PcTxFilters, withPage: boolean, pageNumber = page.value, size = pageSize.value) {
@@ -293,6 +307,7 @@ function buildListParams(filters: PcTxFilters, withPage: boolean, pageNumber = p
   if (filters.keyword) params.set("keyword", filters.keyword);
   if (filters.dateFrom) params.set("date_from", `${filters.dateFrom} 00:00:00`);
   if (filters.dateTo) params.set("date_to", `${filters.dateTo} 23:59:59`);
+  if (filters.effective) params.set("effective", filters.effective);
   if (withPage) {
     params.set("page", String(pageNumber));
     params.set("page_size", String(size));
@@ -350,6 +365,7 @@ function reset() {
   type.value = "";
   keyword.value = "";
   dateRange.value = null;
+  effectiveFilter.value = '';
   page.value = 1;
   clearTotalCache();
   void load({ forceRefresh: true });
@@ -383,6 +399,7 @@ async function fetchAll() {
     if (keyword.value) params.set("keyword", keyword.value);
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+    if (effectiveFilter.value) params.set("effective", effectiveFilter.value);
     params.set("page", String(p));
     params.set("page_size", "200");
     const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
@@ -616,7 +633,7 @@ async function deleteSelected() {
 async function clearPcTx() {
   if (!isAdmin.value) return;
   try {
-    const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1]);
+    const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1] || effectiveFilter.value);
     const action = await ElMessageBox.confirm(
       hasFilter ? "将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。" : "当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！",
       "清空电脑出入库明细",
