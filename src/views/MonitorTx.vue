@@ -131,34 +131,11 @@
           min-width="160"
         />
         <el-table-column
-          prop="sn"
-          label="SN"
-          min-width="140"
-        />
-        <el-table-column
           label="型号"
           min-width="200"
         >
           <template #default="{ row }">
             {{ [row.brand, row.model].filter(Boolean).join(' ') }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="size_inch"
-          label="尺寸"
-          width="90"
-        />
-        <el-table-column
-          label="位置"
-          min-width="220"
-        >
-          <template #default="{ row }">
-            <div v-if="row.from_location_name || row.to_location_name">
-              <span v-if="row.from_location_name">{{ locLabel(row.from_parent_location_name, row.from_location_name) }}</span>
-              <span v-if="row.from_location_name || row.to_location_name"> → </span>
-              <span v-if="row.to_location_name">{{ locLabel(row.to_parent_location_name, row.to_location_name) }}</span>
-            </div>
-            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column
@@ -170,11 +147,6 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column
-          prop="department"
-          label="部门"
-          min-width="140"
-        />
         <el-table-column
           prop="remark"
           label="备注"
@@ -229,9 +201,6 @@ function typeText(v: any) {
   return x || "-";
 }
 
-function locLabel(p: any, c: any) {
-  return [p, c].filter(Boolean).join("/");
-}
 
 function filterKey() {
   return JSON.stringify({ type: q.type || "", keyword: q.keyword || "", dates: q.dates || [] });

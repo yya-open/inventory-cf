@@ -142,11 +142,6 @@
         </template>
       </el-table-column>
       <el-table-column
-        prop="tx_no"
-        label="单号"
-        width="210"
-      />
-      <el-table-column
         prop="type"
         label="类型"
         width="110"
@@ -225,12 +220,6 @@
         prop="recycle_date"
         label="回收/归还日期"
         width="130"
-      />
-      <el-table-column
-        prop="remark"
-        label="备注"
-        min-width="220"
-        show-overflow-tooltip
       />
     </el-table>
 
