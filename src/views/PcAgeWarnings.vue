@@ -342,17 +342,20 @@ async function exportExcel(all: boolean) {
 }
 
 onMounted(async () => {
-  try {
-    const settings = await fetchSystemSettings();
-    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
-    if (nextYears !== ageYears.value) {
-      ageYears.value = nextYears;
-    }
-  } catch {
-    // ignore and keep cached fallback
-  }
   page.value = 1;
   clearTotalCache();
   await reload(currentFilters());
+
+  try {
+    const settings = await fetchSystemSettings();
+    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
+    if (nextYears === ageYears.value) return;
+    ageYears.value = nextYears;
+    page.value = 1;
+    clearTotalCache();
+    await reload(currentFilters(), { silent: true });
+  } catch {
+    // ignore and keep cached fallback
+  }
 });
 </script>

@@ -56,7 +56,7 @@
       <el-card shadow="never" class="ledger-table-card">
         <PcAssetsTable
       :rows="rows"
-      :loading="loading"
+      :loading="loading || !initialized"
       :page="page"
       :page-size="pageSize"
       :total="total"
@@ -371,7 +371,7 @@ async function buildInlineQrSvg(link: string, size = 260) {
 }
 
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
+const { rows, loading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
   cacheNamespace: 'pc-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
@@ -559,23 +559,34 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
   }
 }
 
-function runAfterFirstPaint(task: () => void | Promise<void>) {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   if (typeof window === 'undefined') {
     void Promise.resolve().then(task);
     return;
   }
-  window.requestAnimationFrame(() => {
+  const runner = () => {
     window.setTimeout(() => {
       void task();
-    }, 0);
+    }, 80);
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => runner(), { timeout });
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    runner();
   });
 }
 
 function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
   const snapshot = { ...initialFilters };
-  runAfterFirstPaint(async () => {
+  runWhenBrowserIdle(async () => {
     void refreshInventorySummary(snapshot);
-    await refreshInventoryBatch();
+    try {
+      await refreshInventoryBatch();
+    } catch {
+      return;
+    }
     const nextFilters = currentFiltersForList();
     const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
       || nextFilters.inventoryStatus !== snapshot.inventoryStatus;

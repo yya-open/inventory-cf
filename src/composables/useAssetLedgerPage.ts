@@ -4,6 +4,7 @@ import type { PagedResponse } from '../api/assetLedgers';
 type AssetPageOptions<TFilters, TItem> = {
   cacheNamespace?: string;
   cacheTtlMs?: number;
+  totalDebounceMs?: number;
   createFilterKey: (filters: TFilters) => string;
   fetchPage: (filters: TFilters, page: number, pageSize: number, fast: boolean, signal?: AbortSignal) => Promise<PagedResponse<TItem>>;
   fetchTotal?: (filters: TFilters, signal?: AbortSignal) => Promise<number>;
@@ -13,6 +14,7 @@ export function useAssetLedgerPage<TFilters, TItem>(options: AssetPageOptions<TF
   const list = usePagedAssetList<TFilters, TItem>({
     cacheNamespace: options.cacheNamespace,
     cacheTtlMs: options.cacheTtlMs,
+    totalDebounceMs: options.totalDebounceMs ?? 900,
     createFilterKey: options.createFilterKey,
     fetchPage: ({ filters, page, pageSize, fast, signal }) => options.fetchPage(filters, page, pageSize, fast, signal),
     fetchTotal: options.fetchTotal,

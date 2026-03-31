@@ -60,7 +60,7 @@
     <section class="ledger-section ledger-section--table">
       <MonitorAssetsTable
       :rows="rows"
-      :loading="loading"
+      :loading="loading || !initialized"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -494,7 +494,7 @@ async function ensureLocationOptionsReady(force = false) {
   await loadLocations(force);
 }
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+const { rows, loading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
   cacheNamespace: 'monitor-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
@@ -680,23 +680,34 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   }
 }
 
-function runAfterFirstPaint(task: () => void | Promise<void>) {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   if (typeof window === 'undefined') {
     void Promise.resolve().then(task);
     return;
   }
-  window.requestAnimationFrame(() => {
+  const runner = () => {
     window.setTimeout(() => {
       void task();
-    }, 0);
+    }, 80);
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => runner(), { timeout });
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    runner();
   });
 }
 
 function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
   const snapshot = { ...initialFilters };
-  runAfterFirstPaint(async () => {
+  runWhenBrowserIdle(async () => {
     void refreshInventorySummary(snapshot);
-    await refreshInventoryBatch();
+    try {
+      await refreshInventoryBatch();
+    } catch {
+      return;
+    }
     const nextFilters = currentFiltersForList();
     const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
       || nextFilters.inventoryStatus !== snapshot.inventoryStatus;

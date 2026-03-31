@@ -255,7 +255,7 @@
               <div>{{ opsAlert.detail }}</div>
             </el-alert>
             <router-view v-slot="{ Component }">
-              <keep-alive :include="cachedViewNames" :max="12">
+              <keep-alive :include="cachedViewNames" :max="16">
                 <component :is="Component" />
               </keep-alive>
             </router-view>
