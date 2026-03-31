@@ -22,6 +22,7 @@ type PersistentTotalEntry = { total: number; timestamp: number };
 
 const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
+const primedNamespaces = new Set<string>();
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -141,11 +142,39 @@ function patchPageCacheTotal(prefix: string, total: number) {
   }
 }
 
+export function markPagedListNamespacePrimed(namespace: string) {
+  primedNamespaces.add(String(namespace || 'paged-list'));
+}
+
+export function hasPrimedPagedListNamespace(namespace: string) {
+  return primedNamespaces.has(String(namespace || 'paged-list'));
+}
+
+export function primePagedListCache(namespace: string, filterKey: string, page: number, pageSize: number, payload: { rows: unknown[]; total?: number | null; timestamp?: number }) {
+  const normalizedNamespace = String(namespace || 'paged-list');
+  const normalizedFilterKey = String(filterKey || '');
+  const normalizedPage = Math.max(1, Number(page || 1) || 1);
+  const normalizedPageSize = Math.max(20, Number(pageSize || 50) || 50);
+  const total = typeof payload?.total === 'number' ? Number(payload.total || 0) : 0;
+  const timestamp = Number(payload?.timestamp || Date.now());
+  const entry: PageCacheEntry = {
+    rows: Array.isArray(payload?.rows) ? [...payload.rows] : [],
+    total,
+    timestamp,
+  };
+  const filterPrefix = `${normalizedNamespace}::${normalizedFilterKey}`;
+  const pageKey = `${filterPrefix}::page=${normalizedPage}::size=${normalizedPageSize}`;
+  pageCache.set(pageKey, entry);
+  persistPageCache({ cacheNamespace: normalizedNamespace } as UsePagedAssetListOptions<any, any>, normalizedFilterKey, normalizedPage, normalizedPageSize, entry);
+  persistTotal({ cacheNamespace: normalizedNamespace } as UsePagedAssetListOptions<any, any>, normalizedFilterKey, total);
+  markPagedListNamespacePrimed(normalizedNamespace);
+}
+
 export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOptions<TFilters, TItem>) {
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
   const refreshing = ref(false);
-  const initialLoading = ref(false);
+  const initialLoading = ref(true);
   const initialized = ref(false);
   const page = ref(1);
   const maxPageSize = Math.max(20, Number(options.maxPageSize ?? 200) || 200);

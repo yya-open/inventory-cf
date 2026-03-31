@@ -39,12 +39,16 @@ import { fetchMe, hydrateAuthFromCache, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
+import { listPcAssets, listMonitorAssets } from "../api/assetLedgers";
+import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed, primePagedListCache } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
 let routePageSkeletonTimer: ReturnType<typeof setTimeout> | null = null;
+let firstRouteResolved = false;
 
 function startRoutePagePending() {
   routePagePending.value = true;
@@ -52,9 +56,13 @@ function startRoutePagePending() {
     clearTimeout(routePageSkeletonTimer);
     routePageSkeletonTimer = null;
   }
+  if (!firstRouteResolved) {
+    routePageSkeletonVisible.value = true;
+    return;
+  }
   routePageSkeletonTimer = setTimeout(() => {
     if (routePagePending.value) routePageSkeletonVisible.value = true;
-  }, 120);
+  }, 80);
 }
 
 function finishRoutePagePending() {
@@ -64,6 +72,7 @@ function finishRoutePagePending() {
     routePageSkeletonTimer = null;
   }
   routePageSkeletonVisible.value = false;
+  firstRouteResolved = true;
 }
 
 const preloadPcAssets = () => Promise.resolve(PcAssets);
@@ -239,6 +248,33 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
   }, 1800);
 }
 
+const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
+const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
+
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
+  if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
+  scheduleOnIdle(async () => {
+    try {
+      if (!hasPrimedPagedListNamespace('pc-assets')) {
+        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+        const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
+        primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+      }
+      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+        const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
+        primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+      }
+      if (!hasPrimedPagedListNamespace('system-settings')) {
+        await fetchSystemSettings();
+        markPagedListNamespacePrimed('system-settings');
+      }
+    } catch {
+      // ignore prewarm failures
+    }
+  }, 300);
+}
+
 router.afterEach((to) => {
   requestAnimationFrame(() => finishRoutePagePending());
   if ((to.meta as any)?.public || !shouldAllowRoutePrefetch()) return;
@@ -253,6 +289,8 @@ router.afterEach((to) => {
   const canViewPc = canAccessModuleArea(auth.user, 'pc');
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
+
+  prewarmPcLedgerData(auth.user);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {

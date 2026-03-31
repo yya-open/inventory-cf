@@ -135,7 +135,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeUnmount, onMounted } from 'vue';
+import { ref, onBeforeMount, onBeforeUnmount, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost } from '../api/client';
 import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';

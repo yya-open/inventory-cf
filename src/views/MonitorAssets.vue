@@ -205,7 +205,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
@@ -1743,8 +1743,11 @@ async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean }
   await refreshLedgerData(options);
 }
 
-onMounted(() => {
+onBeforeMount(() => {
   void hydrateViewData();
+});
+
+onMounted(() => {
   if (locationId.value) {
     void ensureLocationOptionsReady();
   }
