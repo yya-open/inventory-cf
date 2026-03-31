@@ -215,6 +215,8 @@ const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
 const selected = ref<any[]>([]);
+const totalCache = new Map<string, number>();
+let totalTimer: ReturnType<typeof setTimeout> | null = null;
 
 function typeText(v: any) {
   const x = String(v || "");
@@ -229,6 +231,10 @@ function typeText(v: any) {
 
 function locLabel(p: any, c: any) {
   return [p, c].filter(Boolean).join("/");
+}
+
+function filterKey() {
+  return JSON.stringify({ type: q.type || "", keyword: q.keyword || "", dates: q.dates || [] });
 }
 
 function buildParams(fast: boolean) {
@@ -251,8 +257,30 @@ async function loadList() {
     const p = buildParams(true);
     const r = await apiGet<any>(`/api/monitor-tx?${p.toString()}`);
     rows.value = r.data || [];
-    const c = await apiGet<any>(`/api/monitor-tx-count?${p.toString().replace('fast=1&', '')}`);
-    total.value = Number(c.data?.total || 0);
+
+    const key = filterKey();
+    if (totalCache.has(key)) {
+      total.value = Number(totalCache.get(key) || 0);
+      return;
+    }
+
+    if (r.total === null || typeof r.total === 'undefined') {
+      if (totalTimer) clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => {
+        const p2 = buildParams(false);
+        apiGet<any>(`/api/monitor-tx-count?${p2.toString()}`)
+          .then((j: any) => {
+            const v = Number(j?.data?.total || j?.total || 0);
+            totalCache.set(filterKey(), v);
+            total.value = v;
+          })
+          .catch(() => {});
+      }, 250);
+    } else {
+      const v = Number(r.total || 0);
+      totalCache.set(key, v);
+      total.value = v;
+    }
   } finally {
     loading.value = false;
   }

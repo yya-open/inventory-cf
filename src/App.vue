@@ -255,7 +255,7 @@
               <div>{{ opsAlert.detail }}</div>
             </el-alert>
             <router-view v-slot="{ Component }">
-              <keep-alive :include="cachedViewNames" :max="8">
+              <keep-alive :include="cachedViewNames" :max="12">
                 <component :is="Component" />
               </keep-alive>
             </router-view>
@@ -402,7 +402,7 @@ function doLogout() {
 }
 
 const showChange = ref(false);
-const cachedViewNames = ['StockQuery', 'TxList', 'Warnings', 'PcAssets', 'MonitorAssets'];
+const cachedViewNames = ['StockQuery', 'TxList', 'Warnings', 'PcAssets', 'MonitorAssets', 'PcAgeWarnings', 'PcTx', 'MonitorTx', 'PcInventoryLogs', 'MonitorInventoryLogs'];
 const needsSystemMeta = computed(() => ['/system/home', '/system/tools', '/system/release-check', '/system/dashboard'].includes(route.path));
 const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
 const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: string; detail: string }>({ visible: false, type: 'warning', title: '', detail: '' });

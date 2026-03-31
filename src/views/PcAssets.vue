@@ -156,6 +156,7 @@ import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countPcAssets, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
+import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -229,9 +230,7 @@ const {
   deleteSavedView,
   runWithoutAutoSearch,
 } = usePcAssetViewState(() => {
-  const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  reload(filters);
+  void refreshLedgerData();
 });
 
 
@@ -376,7 +375,8 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   cacheNamespace: 'pc-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
+  fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
+  fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
 
 pageSize.value = initialPageSize;
@@ -540,7 +540,7 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -559,12 +559,47 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
   }
 }
 
-const onSearch = () => {
+function runAfterFirstPaint(task: () => void | Promise<void>) {
+  if (typeof window === 'undefined') {
+    void Promise.resolve().then(task);
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      void task();
+    }, 0);
+  });
+}
+
+function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+  const snapshot = { ...initialFilters };
+  runAfterFirstPaint(async () => {
+    void refreshInventorySummary(snapshot);
+    await refreshInventoryBatch();
+    const nextFilters = currentFiltersForList();
+    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
+    if (!batchStateChanged) return;
+    await load(nextFilters, { keepPage: true, silent: true });
+    void refreshInventorySummary(nextFilters);
+  });
+}
+
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  void refreshInventoryBatch();
-  reload(filters);
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  if (options.keepPage) {
+    await load(filters, { keepPage: true, silent: options.silent });
+  } else {
+    await reload(filters, { silent: options.silent });
+  }
+  lastRefreshAt = Date.now();
+  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+}
+
+const onSearch = () => {
+  void refreshLedgerData();
 };
 const reset = () => {
   runWithoutAutoSearch(() => {
@@ -575,10 +610,7 @@ const reset = () => {
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
-  clearKeywordTimer();
-  const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  reload(filters);
+  void refreshLedgerData();
 };
 
 async function initQrKeys() {
@@ -1361,25 +1393,7 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
-  const initialFilters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
-  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
-  await Promise.allSettled([
-    load(initialFilters, loadOptions),
-    refreshInventorySummary(initialFilters),
-    refreshInventoryBatch(),
-  ]);
-
-  const nextFilters = currentFiltersForList();
-  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
-  if (batchStateChanged) {
-    await Promise.allSettled([
-      load(nextFilters, loadOptions),
-      refreshInventorySummary(nextFilters),
-    ]);
-  }
-  lastRefreshAt = Date.now();
+  await refreshLedgerData(options);
 }
 
 onMounted(() => {
@@ -1392,7 +1406,6 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
-  lastRefreshAt = Date.now();
   void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>

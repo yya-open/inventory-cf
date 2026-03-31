@@ -210,6 +210,7 @@ import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
+import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -289,9 +290,7 @@ const {
   deleteSavedView,
   runWithoutAutoSearch,
 } = useMonitorAssetViewState(() => {
-  const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  reload(filters);
+  void refreshLedgerData();
 });
 
 
@@ -499,14 +498,15 @@ const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPage
   cacheNamespace: 'monitor-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
+  fetchPage: async (filters, currentPage, currentPageSize, fast, signal) => {
     try {
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     } catch (error: any) {
       await handleMaybeMissingSchema(error);
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     }
   },
+  fetchTotal: (filters, signal) => countMonitorAssets(filters, signal),
 });
 
 pageSize.value = initialPageSize;
@@ -661,7 +661,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -680,12 +680,47 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   }
 }
 
-const reloadList = () => {
+function runAfterFirstPaint(task: () => void | Promise<void>) {
+  if (typeof window === 'undefined') {
+    void Promise.resolve().then(task);
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    window.setTimeout(() => {
+      void task();
+    }, 0);
+  });
+}
+
+function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+  const snapshot = { ...initialFilters };
+  runAfterFirstPaint(async () => {
+    void refreshInventorySummary(snapshot);
+    await refreshInventoryBatch();
+    const nextFilters = currentFiltersForList();
+    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
+    if (!batchStateChanged) return;
+    await load(nextFilters, { keepPage: true, silent: true });
+    void refreshInventorySummary(nextFilters);
+  });
+}
+
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  void refreshInventoryBatch();
-  reload(filters);
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  if (options.keepPage) {
+    await load(filters, { keepPage: true, silent: options.silent });
+  } else {
+    await reload(filters, { silent: options.silent });
+  }
+  lastRefreshAt = Date.now();
+  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+}
+
+const reloadList = () => {
+  void refreshLedgerData();
 };
 
 function handleToolbarMore(command: string) {
@@ -1665,7 +1700,7 @@ function resetFilters() {
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
-  reloadList();
+  void refreshLedgerData();
 }
 
 function setInventoryFilter(nextStatus: string) {
@@ -1693,25 +1728,7 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
-  const initialFilters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
-  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
-  await Promise.allSettled([
-    load(initialFilters, loadOptions),
-    refreshInventorySummary(initialFilters),
-    refreshInventoryBatch(),
-  ]);
-
-  const nextFilters = currentFiltersForList();
-  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
-  if (batchStateChanged) {
-    await Promise.allSettled([
-      load(nextFilters, loadOptions),
-      refreshInventorySummary(nextFilters),
-    ]);
-  }
-  lastRefreshAt = Date.now();
+  await refreshLedgerData(options);
 }
 
 onMounted(() => {
@@ -1727,7 +1744,6 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
-  lastRefreshAt = Date.now();
   void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>

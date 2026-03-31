@@ -342,18 +342,17 @@ async function exportExcel(all: boolean) {
 }
 
 onMounted(async () => {
-  await reload(currentFilters());
   try {
     const settings = await fetchSystemSettings();
     const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
     if (nextYears !== ageYears.value) {
       ageYears.value = nextYears;
-      page.value = 1;
-      clearTotalCache();
-      await reload(currentFilters());
     }
   } catch {
     // ignore and keep cached fallback
   }
+  page.value = 1;
+  clearTotalCache();
+  await reload(currentFilters());
 });
 </script>

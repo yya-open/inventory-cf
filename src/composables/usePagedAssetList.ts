@@ -84,15 +84,18 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (effectivePageSize !== pageSize.value) pageSize.value = effectivePageSize;
     const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
     const ttlMs = Number(options.cacheTtlMs ?? 30_000);
-    const shouldShowLoading = !opts.silent || !rows.value.length;
     const cached = pageCache.get(pageKey);
+    const hasWarmRows = Boolean((cached?.rows || []).length || rows.value.length);
+    const shouldShowLoading = !opts.silent && !hasWarmRows;
 
-    if (cached && !opts.forceRefresh && Date.now() - cached.timestamp < ttlMs) {
+    if (cached && !opts.forceRefresh) {
       rows.value = [...(cached.rows || [])] as TItem[];
       total.value = Number(cached.total || 0);
       if (!opts.keepPage) page.value = 1;
-      if (!opts.silent) loading.value = false;
-      return;
+      if (Date.now() - cached.timestamp < ttlMs) {
+        if (!opts.silent) loading.value = false;
+        return;
+      }
     }
 
     if (activePageRequestKey && activePageRequestKey !== pageKey) {
