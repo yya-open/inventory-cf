@@ -68,7 +68,7 @@
             <div class="ui-toolbar-segmented" role="tablist" aria-label="生效状态筛选">
               <el-button
                 class="ui-toolbar-segment"
-                :class="{ "is-active": effectiveFilter === '' }"
+                :class="{ 'is-active': effectiveFilter === '' }"
                 :type="effectiveFilter === '' ? 'primary' : 'default'"
                 plain
                 @click="setEffectiveFilter('')"
@@ -77,7 +77,7 @@
               </el-button>
               <el-button
                 class="ui-toolbar-segment"
-                :class="{ "is-active": effectiveFilter === 'history' }"
+                :class="{ 'is-active': effectiveFilter === 'history' }"
                 :type="effectiveFilter === 'history' ? 'primary' : 'default'"
                 plain
                 @click="setEffectiveFilter('history')"
@@ -86,7 +86,7 @@
               </el-button>
               <el-button
                 class="ui-toolbar-segment"
-                :class="{ "is-active": effectiveFilter === 'current' }"
+                :class="{ 'is-active': effectiveFilter === 'current' }"
                 :type="effectiveFilter === 'current' ? 'primary' : 'default'"
                 plain
                 @click="setEffectiveFilter('current')"
