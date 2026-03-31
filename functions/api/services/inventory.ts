@@ -38,6 +38,7 @@ export type TxListQuery = PagedQuery & {
   item_id: number | null;
   warehouse_id: number | null;
   keyword_mode: string;
+  fast: boolean;
 };
 
 export type WarningsListQuery = PagedQuery & {
@@ -291,6 +292,7 @@ export function buildTxListQuery(url: URL, options: { includeKeyword?: boolean }
     binds.push(toSql);
   }
 
+  const fast = String(url.searchParams.get('fast') || '').trim() === '1';
   const sortByRaw = normalizeKeyword(url.searchParams.get('sort_by')) || 'id';
   const sortDirRaw = normalizeKeyword(url.searchParams.get('sort_dir')).toLowerCase() || 'desc';
   const sortDir = normalizeSortDir(sortDirRaw);
@@ -317,6 +319,7 @@ export function buildTxListQuery(url: URL, options: { includeKeyword?: boolean }
     item_id,
     warehouse_id,
     keyword_mode,
+    fast,
   };
 }
 

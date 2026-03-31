@@ -3,7 +3,7 @@ import { ref } from "vue";
 const StockQuery = () => import("../views/StockQuery.vue");
 const StockIn = () => import("../views/StockIn.vue");
 const StockOut = () => import("../views/StockOut.vue");
-const TxList = () => import("../views/TxList.vue");
+import TxList from "../views/TxList.vue";
 const Warnings = () => import("../views/Warnings.vue");
 const BatchTx = () => import("../views/BatchTx.vue");
 const Stocktake = () => import("../views/Stocktake.vue");
