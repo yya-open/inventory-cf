@@ -64,13 +64,11 @@
       </div>
     </div>
 
-    <div v-if="loading && !initialized && !rows.length" class="ledger-table-skeleton">
-      <el-skeleton :rows="8" animated />
-    </div>
+    <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
 
     <el-table
       v-else
-      v-loading="loading"
+      v-loading="refreshing"
       :data="rows"
       border
       @selection-change="onSelectionChange"
@@ -144,6 +142,7 @@ import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSetti
 import { exportToXlsx } from '../utils/excel';
 import { usePagedAssetList } from '../composables/usePagedAssetList';
 import { scheduleOnIdle } from '../utils/idle';
+import LedgerTableSkeleton from '../components/assets/LedgerTableSkeleton.vue';
 
 type WarningFilters = {
   ageYears: number;
@@ -170,6 +169,8 @@ function currentFilters(): WarningFilters {
 const {
   rows,
   loading,
+  refreshing,
+  initialLoading,
   initialized,
   page,
   pageSize,

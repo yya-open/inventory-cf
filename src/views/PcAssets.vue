@@ -56,7 +56,8 @@
       <el-card shadow="never" class="ledger-table-card">
         <PcAssetsTable
       :rows="rows"
-      :loading="loading || !initialized"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :page="page"
       :page-size="pageSize"
       :total="total"
@@ -371,7 +372,7 @@ async function buildInlineQrSvg(link: string, size = 260) {
 }
 
 
-const { rows, loading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
+const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
   cacheNamespace: 'pc-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,

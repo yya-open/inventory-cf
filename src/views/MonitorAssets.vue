@@ -60,7 +60,8 @@
     <section class="ledger-section ledger-section--table">
       <MonitorAssetsTable
       :rows="rows"
-      :loading="loading || !initialized"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -494,7 +495,7 @@ async function ensureLocationOptionsReady(force = false) {
   await loadLocations(force);
 }
 
-const { rows, loading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
   cacheNamespace: 'monitor-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,

@@ -145,6 +145,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
   const refreshing = ref(false);
+  const initialLoading = ref(false);
   const initialized = ref(false);
   const page = ref(1);
   const maxPageSize = Math.max(20, Number(options.maxPageSize ?? 200) || 200);
@@ -212,19 +213,21 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       if (!opts.silent) {
         loading.value = false;
         refreshing.value = false;
+        initialLoading.value = false;
       }
       return;
     }
 
     const hasWarmRows = Boolean(rows.value.length);
-    const shouldShowLoading = !opts.silent && !hasWarmRows;
+    const shouldShowInitialLoading = !opts.silent && !initialized.value && !hasWarmRows;
 
     if (activePageRequestKey && activePageRequestKey !== pageKey) {
       pageController?.abort();
     }
 
-    loading.value = shouldShowLoading;
-    refreshing.value = !shouldShowLoading && !opts.silent;
+    loading.value = !opts.silent;
+    initialLoading.value = shouldShowInitialLoading;
+    refreshing.value = !shouldShowInitialLoading && !opts.silent;
     activePageRequestKey = pageKey;
 
     try {
@@ -321,6 +324,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       if (currentSeq === requestSeq) {
         loading.value = false;
         refreshing.value = false;
+        initialLoading.value = false;
       }
     }
   }
@@ -364,5 +368,5 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     return load(filters, { keepPage: true });
   };
 
-  return { rows, loading, refreshing, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, invalidateCache, clearTotalCache };
+  return { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, invalidateCache, clearTotalCache };
 }

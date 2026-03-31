@@ -289,11 +289,13 @@
                 </div>
               </div>
             </div>
-            <router-view v-slot="{ Component }">
-              <keep-alive :include="cachedViewNames" :max="16">
-                <component :is="Component" />
-              </keep-alive>
-            </router-view>
+            <div class="page-wrap__content" :class="{ 'page-wrap__content--pending': showRouteSkeleton }">
+              <router-view v-slot="{ Component }">
+                <keep-alive :include="cachedViewNames" :max="16">
+                  <component :is="Component" />
+                </keep-alive>
+              </router-view>
+            </div>
           </div>
         </el-main>
       </el-container>
