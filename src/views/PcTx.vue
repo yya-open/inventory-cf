@@ -65,16 +65,35 @@
 
           <div class="ui-toolbar-filter-bar">
             <span class="ui-toolbar-filter-label">生效状态</span>
-            <el-radio-group
-              v-model="effectiveFilter"
-              size="small"
-              class="ui-toolbar-toggle-group"
-              @change="onSearch"
-            >
-              <el-radio-button label="">全部记录</el-radio-button>
-              <el-radio-button label="history">非当前生效</el-radio-button>
-              <el-radio-button label="current">当前生效</el-radio-button>
-            </el-radio-group>
+            <div class="ui-toolbar-segmented" role="tablist" aria-label="生效状态筛选">
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ "is-active": effectiveFilter === '' }"
+                :type="effectiveFilter === '' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('')"
+              >
+                全部记录
+              </el-button>
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ "is-active": effectiveFilter === 'history' }"
+                :type="effectiveFilter === 'history' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('history')"
+              >
+                非当前生效
+              </el-button>
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ "is-active": effectiveFilter === 'current' }"
+                :type="effectiveFilter === 'current' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('current')"
+              >
+                当前生效
+              </el-button>
+            </div>
           </div>
         </div>
       </div>
@@ -362,6 +381,12 @@ async function load(options: { keepPage?: boolean; silent?: boolean; forceRefres
 function onSearch() {
   page.value = 1;
   void load();
+}
+
+function setEffectiveFilter(value: '' | 'current' | 'history') {
+  if (effectiveFilter.value === value) return;
+  effectiveFilter.value = value;
+  onSearch();
 }
 
 function reset() {

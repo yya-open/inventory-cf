@@ -366,30 +366,31 @@ body {
   color: #606266;
 }
 
-.ui-toolbar-toggle-group {
+.ui-toolbar-segmented {
   display: inline-flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.ui-toolbar-toggle-group .el-radio-button__inner {
-  min-width: 104px;
+.ui-toolbar-segment {
+  min-width: 108px;
   height: 34px;
-  line-height: 32px;
   padding: 0 16px;
   border-radius: 999px !important;
   border: 1px solid rgba(191, 203, 217, 0.92) !important;
-  background: #fff;
-  color: #475569;
+  background: #fff !important;
+  color: #475569 !important;
   box-shadow: none !important;
 }
 
-.ui-toolbar-toggle-group .el-radio-button:first-child .el-radio-button__inner,
-.ui-toolbar-toggle-group .el-radio-button:last-child .el-radio-button__inner {
-  border-radius: 999px !important;
+.ui-toolbar-segment:hover,
+.ui-toolbar-segment:focus-visible {
+  border-color: #8ec5ff !important;
+  color: #2f6fb3 !important;
 }
 
-.ui-toolbar-toggle-group .el-radio-button__original-radio:checked + .el-radio-button__inner {
+.ui-toolbar-segment.is-active,
+.ui-toolbar-segment.el-button--primary {
   border-color: #409eff !important;
   background: linear-gradient(135deg, #409eff, #67b3ff) !important;
   color: #fff !important;

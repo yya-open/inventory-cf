@@ -76,16 +76,35 @@
 
             <div class="ui-toolbar-filter-bar">
               <span class="ui-toolbar-filter-label">生效状态</span>
-              <el-radio-group
-                v-model="q.effective"
-                size="small"
-                class="ui-toolbar-toggle-group"
-                @change="reload()"
-              >
-                <el-radio-button label="">全部记录</el-radio-button>
-                <el-radio-button label="history">非当前生效</el-radio-button>
-                <el-radio-button label="current">当前生效</el-radio-button>
-              </el-radio-group>
+              <div class="ui-toolbar-segmented" role="tablist" aria-label="生效状态筛选">
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ "is-active": q.effective === '' }"
+                  :type="q.effective === '' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('')"
+                >
+                  全部记录
+                </el-button>
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ "is-active": q.effective === 'history' }"
+                  :type="q.effective === 'history' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('history')"
+                >
+                  非当前生效
+                </el-button>
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ "is-active": q.effective === 'current' }"
+                  :type="q.effective === 'current' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('current')"
+                >
+                  当前生效
+                </el-button>
+              </div>
             </div>
           </div>
         </div>
@@ -293,6 +312,12 @@ async function loadList(options: { keepPage?: boolean; silent?: boolean; forceRe
 function reload() {
   page.value = 1;
   void loadList();
+}
+
+function setEffectiveFilter(value: '' | 'current' | 'history') {
+  if (q.effective === value) return;
+  q.effective = value;
+  reload();
 }
 
 function onPage(p: number) {
