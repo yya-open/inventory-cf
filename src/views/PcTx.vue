@@ -61,7 +61,10 @@
                 重置
               </el-button>
             </div>
+          </div>
 
+          <div class="ui-toolbar-filter-bar">
+            <span class="ui-toolbar-filter-label">生效状态</span>
             <el-radio-group
               v-model="effectiveFilter"
               size="small"
