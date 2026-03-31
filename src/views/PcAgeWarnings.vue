@@ -64,7 +64,12 @@
       </div>
     </div>
 
+    <div v-if="loading && !initialized && !rows.length" class="ledger-table-skeleton">
+      <el-skeleton :rows="8" animated />
+    </div>
+
     <el-table
+      v-else
       v-loading="loading"
       :data="rows"
       border
@@ -132,12 +137,13 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onBeforeUnmount, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost } from '../api/client';
 import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
 import { exportToXlsx } from '../utils/excel';
 import { usePagedAssetList } from '../composables/usePagedAssetList';
+import { scheduleOnIdle } from '../utils/idle';
 
 type WarningFilters = {
   ageYears: number;
@@ -164,6 +170,7 @@ function currentFilters(): WarningFilters {
 const {
   rows,
   loading,
+  initialized,
   page,
   pageSize,
   total,
@@ -318,6 +325,22 @@ async function createScrap() {
   }
 }
 
+let cancelSettingsSync: (() => void) | null = null;
+
+async function syncAgeYearsFromSettings() {
+  try {
+    const settings = await fetchSystemSettings();
+    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
+    if (nextYears === ageYears.value) return;
+    ageYears.value = nextYears;
+    page.value = 1;
+    clearTotalCache();
+    await reload(currentFilters(), { silent: true });
+  } catch {
+    // ignore and keep cached fallback
+  }
+}
+
 async function exportExcel(all: boolean) {
   const loadingRef = all ? exportingAll : exporting;
   try {
@@ -345,17 +368,13 @@ onMounted(async () => {
   page.value = 1;
   clearTotalCache();
   await reload(currentFilters());
+  cancelSettingsSync = scheduleOnIdle(() => {
+    void syncAgeYearsFromSettings();
+  }, 1200);
+});
 
-  try {
-    const settings = await fetchSystemSettings();
-    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
-    if (nextYears === ageYears.value) return;
-    ageYears.value = nextYears;
-    page.value = 1;
-    clearTotalCache();
-    await reload(currentFilters(), { silent: true });
-  } catch {
-    // ignore and keep cached fallback
-  }
+onBeforeUnmount(() => {
+  cancelSettingsSync?.();
+  cancelSettingsSync = null;
 });
 </script>
