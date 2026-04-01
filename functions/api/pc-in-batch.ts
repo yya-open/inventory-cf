@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchema, must, optional, pcInNo } from './_pc';
-import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
+import { createPcAssetAndInRecord } from './services/asset-write';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
@@ -45,9 +45,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
         const brand = must(it?.brand, '品牌', 120);
         await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
-        const serial_no = normalizePcSerialNo(must(it?.serial_no, '序列号', 120));
+        const serial_no = must(it?.serial_no, '序列号', 120).trim().toUpperCase();
         const model = must(it?.model, '型号', 160);
-        const snKey = serial_no;
+        const snKey = String(serial_no || '').trim().toUpperCase();
         if (seenSerial.has(snKey)) throw new Error(`序列号重复：${snKey}`);
         seenSerial.add(snKey);
 
