@@ -23,6 +23,7 @@ type PersistentTotalEntry = { total: number; timestamp: number };
 const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
 const primedNamespaces = new Set<string>();
+const prefetchedPageKeys = new Set<string>();
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -170,6 +171,16 @@ export function primePagedListCache(namespace: string, filterKey: string, page: 
   markPagedListNamespacePrimed(normalizedNamespace);
 }
 
+function scheduleIdle(callback: () => void, timeout = 500) {
+  if (typeof window === 'undefined') return;
+  const ric = (window as any).requestIdleCallback;
+  if (typeof ric === 'function') {
+    ric(callback, { timeout });
+    return;
+  }
+  window.setTimeout(callback, Math.min(timeout, 250));
+}
+
 export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOptions<TFilters, TItem>) {
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
@@ -222,6 +233,38 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       return persisted;
     }
     return Number(fallback || 0);
+  }
+
+  function prefetchAdjacentPage(filters: TFilters, filterKey: string, sourcePage: number, effectivePageSize: number) {
+    const nextPage = sourcePage + 1;
+    const nextPageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
+    if (pageCache.has(nextPageKey) || pageRequests.has(nextPageKey) || prefetchedPageKeys.has(nextPageKey)) return;
+    prefetchedPageKeys.add(nextPageKey);
+    scheduleIdle(() => {
+      const controller = new AbortController();
+      const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: true, signal: controller.signal })
+        .then((result) => {
+          const rows = Array.isArray(result?.rows) ? result.rows : [];
+          const inferredTotal = typeof result?.total === 'number'
+            ? Number(result.total || 0)
+            : (rows.length < effectivePageSize ? ((nextPage - 1) * effectivePageSize) + rows.length : resolveKnownTotal(filterKey, 0));
+          const entry = { rows: [...rows], total: inferredTotal, timestamp: Date.now() } satisfies PageCacheEntry;
+          pageCache.set(nextPageKey, entry);
+          persistPageCache(options, filterKey, nextPage, effectivePageSize, entry);
+          if (typeof result?.total === 'number' || rows.length < effectivePageSize) {
+            totalCache.set(filterKey, inferredTotal);
+            persistTotal(options, filterKey, inferredTotal);
+            patchPageCacheTotal(getFilterPrefix(options, filterKey), inferredTotal);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          prefetchedPageKeys.delete(nextPageKey);
+          const active = pageRequests.get(nextPageKey);
+          if (active?.promise === request) pageRequests.delete(nextPageKey);
+        });
+      pageRequests.set(nextPageKey, { controller, promise: request as Promise<LoadResult<any>> });
+    }, 900);
   }
 
   async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
@@ -292,9 +335,12 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       initialized.value = true;
       if (!opts.keepPage) page.value = 1;
 
+      const inferredPartialTotal = Array.isArray(result.rows) && result.rows.length < effectivePageSize
+        ? ((nextPage - 1) * effectivePageSize) + result.rows.length
+        : null;
       const knownTotal = typeof result.total === 'number'
         ? Number(result.total || 0)
-        : resolveKnownTotal(filterKey, total.value);
+        : (inferredPartialTotal !== null ? inferredPartialTotal : resolveKnownTotal(filterKey, total.value));
 
       const entry = {
         rows: [...(result.rows || [])],
@@ -304,8 +350,12 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       pageCache.set(pageKey, entry);
       persistPageCache(options, filterKey, nextPage, effectivePageSize, entry);
 
-      if (typeof result.total === 'number') {
-        total.value = Number(result.total || 0);
+      if (Array.isArray(result.rows) && result.rows.length === effectivePageSize) {
+        prefetchAdjacentPage(filters, filterKey, nextPage, effectivePageSize);
+      }
+
+      if (typeof result.total === 'number' || inferredPartialTotal !== null) {
+        total.value = typeof result.total === 'number' ? Number(result.total || 0) : Number(inferredPartialTotal || 0);
         totalCache.set(filterKey, total.value);
         persistTotal(options, filterKey, total.value);
         patchPageCacheTotal(cachePrefix, total.value);

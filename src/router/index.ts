@@ -44,13 +44,16 @@ import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSetti
 import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed, primePagedListCache } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
+import { flushBrowserPerfQueue, trackRoutePerf } from '../utils/browserPerf';
 
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
 let routePageSkeletonTimer: ReturnType<typeof setTimeout> | null = null;
 let firstRouteResolved = false;
+let routePerfStartedAt = 0;
 
 function startRoutePagePending() {
+  routePerfStartedAt = performance.now();
   routePagePending.value = true;
   if (routePageSkeletonTimer) {
     clearTimeout(routePageSkeletonTimer);
@@ -75,25 +78,13 @@ function finishRoutePagePending() {
   firstRouteResolved = true;
 }
 
-const preloadPcAssets = PcAssets;
-const preloadMonitorAssets = MonitorAssets;
-const preloadPcAgeWarnings = PcAgeWarnings;
-const preloadPcTx = PcTx;
-const preloadMonitorTx = MonitorTx;
-const preloadPcInventoryLogs = PcInventoryLogs;
-const preloadMonitorInventoryLogs = MonitorInventoryLogs;
-const prewarmedAreas = new Set<string>();
-
-function canUseAggressivePrewarm() {
-  if (typeof navigator === "undefined") return false;
-  const connection = (navigator as Navigator & { connection?: { saveData?: boolean; effectiveType?: string; downlink?: number } }).connection;
-  if (!connection) return true;
-  if (connection.saveData) return false;
-  if (connection.effectiveType && /(^|slow-)?2g|3g/i.test(connection.effectiveType)) return false;
-  if (typeof connection.downlink === 'number' && connection.downlink > 0 && connection.downlink < 2) return false;
-  return true;
-}
-
+const preloadPcAssets = () => Promise.resolve(PcAssets);
+const preloadMonitorAssets = () => Promise.resolve(MonitorAssets);
+const preloadPcAgeWarnings = () => Promise.resolve(PcAgeWarnings);
+const preloadPcTx = () => Promise.resolve(PcTx);
+const preloadMonitorTx = () => Promise.resolve(MonitorTx);
+const preloadPcInventoryLogs = () => Promise.resolve(PcInventoryLogs);
+const preloadMonitorInventoryLogs = () => Promise.resolve(MonitorInventoryLogs);
 
 const router = createRouter({
   history: createWebHistory(),
@@ -257,37 +248,51 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
     loader().catch(() => {
       clearPrefetchedRouteChunk(key);
     });
-  }, 2600);
+  }, 1800);
 }
 
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
-function prewarmAreaData(area: 'pc' | 'system', authUser: ReturnType<typeof useAuth>["user"]) {
-  if (!authUser || prewarmedAreas.has(area) || !canUseAggressivePrewarm()) return;
-  if (area === 'pc' && !canAccessModuleArea(authUser, 'pc')) return;
-  if (area === 'system' && authUser.role !== 'admin') return;
-  prewarmedAreas.add(area);
+const warmedAreas = new Set<string>();
+
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
+  if (!authUser || !canAccessModuleArea(authUser, 'pc') || warmedAreas.has('pc')) return;
+  warmedAreas.add('pc');
   scheduleOnIdle(async () => {
     try {
-      if (area === 'pc') {
+      if (!hasPrimedPagedListNamespace('pc-assets')) {
         const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-        if (canAccessPcSection(authUser, 'pc') && !hasPrimedPagedListNamespace('pc-assets')) {
-          const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
-          primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-        }
-        if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-          const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
-          primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-        }
-      } else if (area === 'system' && !hasPrimedPagedListNamespace('system-settings')) {
+        const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
+        primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+      }
+      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+        const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
+        primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+      }
+      
+    } catch {
+      // ignore prewarm failures
+    }
+  }, 300);
+}
+
+
+function prewarmSystemData(authUser: ReturnType<typeof useAuth>["user"]) {
+  if (!authUser || authUser.role !== 'admin' || warmedAreas.has('system')) return;
+  warmedAreas.add('system');
+  scheduleOnIdle(async () => {
+    try {
+      if (!hasPrimedPagedListNamespace('system-settings')) {
         await fetchSystemSettings();
         markPagedListNamespacePrimed('system-settings');
       }
+      void flushBrowserPerfQueue();
     } catch {
-      prewarmedAreas.delete(area);
+      // ignore prewarm failures
     }
-  }, area === 'pc' ? 1800 : 2200);
+  }, 800);
 }
 
 router.afterEach((to) => {
@@ -305,8 +310,8 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  if (to.path.startsWith('/pc')) prewarmAreaData('pc', auth.user);
-  else if (to.path.startsWith('/system')) prewarmAreaData('system', auth.user);
+  if (to.path.startsWith('/pc')) prewarmPcLedgerData(auth.user);
+  if (to.path.startsWith('/system')) prewarmSystemData(auth.user);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
@@ -361,6 +366,10 @@ router.afterEach((to) => {
     .filter(([key, , enabled]) => enabled && key !== to.path)
     .slice(0, 1);
   selected.forEach(([key, loader]) => prefetchChunk(key, loader));
+  requestAnimationFrame(() => {
+    const duration = Math.max(0, Math.round(performance.now() - routePerfStartedAt));
+    trackRoutePerf(to.path || to.fullPath, duration, to.fullPath);
+  });
 });
 
 
