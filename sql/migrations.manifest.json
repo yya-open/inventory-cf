@@ -208,5 +208,10 @@
     "id": "202603300040_audit_archive_capacity_control",
     "file": "sql/migrate_audit_archive_capacity_control.sql",
     "description": "audit log archive policy, storage stats cache, and archive run history for d1 capacity control"
+  },
+  {
+    "id": "202604010010_v13_perf_indexes",
+    "file": "sql/migrate_v13_perf_indexes.sql",
+    "description": "v13 targeted indexes for hottest list, count, and observability queries"
   }
 ]

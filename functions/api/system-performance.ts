@@ -26,10 +26,12 @@ type PerfPayload = {
   range_days: number;
   summary: Record<string, number>;
   top_slow_paths: any[];
+  top_p95_paths: any[];
   top_error_paths: any[];
   recent_slow_requests: any[];
   recent_error_requests: any[];
   top_browser_routes: any[];
+  top_browser_p95_routes: any[];
   recent_browser_routes: any[];
 };
 
@@ -47,13 +49,23 @@ function percentile(values: number[], p: number) {
 async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayload> {
   await Promise.all([ensureSlowRequestLogTable(db), ensureRequestErrorLogTable(db), ensureBrowserPerfTable(db)]);
   const since = `-${days} day`;
-  const [slowRowsRes, errorRowsRes, topSlowRes, topErrorRes, statusRes, browserTopRes, browserRecentRes] = await Promise.all([
+  const [slowRowsRes, errorRowsRes, topSlowRes, topP95Res, topErrorRes, statusRes, browserTopRes, browserP95Res, browserRecentRes] = await Promise.all([
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM slow_request_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 300`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 200`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT path, COUNT(*) AS hit_count, ROUND(AVG(total_ms),1) AS avg_total_ms, MAX(total_ms) AS max_total_ms, ROUND(AVG(sql_ms),1) AS avg_sql_ms FROM slow_request_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path ORDER BY avg_total_ms DESC, hit_count DESC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT path, COUNT(*) AS hit_count, MAX(total_ms) AS p95_total_ms FROM (
+      SELECT path, total_ms, NTILE(20) OVER (PARTITION BY path ORDER BY total_ms) AS bucket
+      FROM slow_request_log
+      WHERE created_at >= datetime('now','+8 hours', ?)
+    ) t WHERE bucket = 19 OR bucket = 20 GROUP BY path ORDER BY p95_total_ms DESC, hit_count DESC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT path, status, COUNT(*) AS hit_count FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path, status ORDER BY hit_count DESC, path ASC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT status, COUNT(*) AS c FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY status`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT path, COUNT(*) AS hit_count, ROUND(AVG(duration_ms),1) AS avg_duration_ms, MAX(duration_ms) AS max_duration_ms FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path ORDER BY avg_duration_ms DESC, hit_count DESC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT path, COUNT(*) AS hit_count, MAX(duration_ms) AS p95_duration_ms FROM (
+      SELECT path, duration_ms, NTILE(20) OVER (PARTITION BY path ORDER BY duration_ms) AS bucket
+      FROM browser_perf_log
+      WHERE created_at >= datetime('now','+8 hours', ?)
+    ) t WHERE bucket = 19 OR bucket = 20 GROUP BY path ORDER BY p95_duration_ms DESC, hit_count DESC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT created_at, path, full_path, duration_ms, username FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 100`).bind(since).all<any>().catch(() => ({ results: [] })),
   ]);
 
@@ -84,10 +96,12 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
       error_5xx: error5xx,
     },
     top_slow_paths: topSlowRes.results || [],
+    top_p95_paths: topP95Res.results || [],
     top_error_paths: topErrorRes.results || [],
     recent_slow_requests: slowRows,
     recent_error_requests: errorRows,
     top_browser_routes: browserTopRes.results || [],
+    top_browser_p95_routes: browserP95Res.results || [],
     recent_browser_routes: browserRecentRes.results || [],
   };
 }

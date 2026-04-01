@@ -4,6 +4,8 @@ import { ensureMonitorQrColumns } from '../_monitor';
 import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
+import { buildTxExportSql, buildTxListQuery } from './inventory';
+import { buildPcInventoryLogExportSql, buildPcInventoryLogQuery, buildMonitorInventoryLogExportSql, buildMonitorInventoryLogQuery } from './asset-events';
 import { updateInventoryBatchSnapshotJobState, type AssetInventoryKind } from './asset-inventory-batches';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
@@ -14,7 +16,7 @@ import * as XLSX from 'xlsx';
 import { buildBackupFilename, buildBackupPayload, parseBackupOptions } from '../admin/_backup_helpers';
 import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 
-export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
+export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' | 'TX_EXPORT' | 'PC_INVENTORY_LOG_EXPORT' | 'MONITOR_INVENTORY_LOG_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
 export async function ensureAsyncJobsTable(db: D1Database) {
@@ -64,6 +66,42 @@ function csvEscape(v: any) {
   const s = String(v ?? '');
   if (/[",\n\r]/.test(s)) return '"' + s.replace(/"/g, '""') + '"';
   return s;
+}
+
+function toCsvText(headers: string[], rows: any[][]) {
+  return '﻿' + [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('
+');
+}
+
+function statusText(value: any) {
+  const v = String(value || '');
+  if (v === 'IN_STOCK') return '在库';
+  if (v === 'ASSIGNED') return '已领用';
+  if (v === 'RECYCLED') return '已回收';
+  if (v === 'SCRAPPED') return '已报废';
+  return v || '-';
+}
+
+function pcIssueTypeText(value: any) {
+  const v = String(value || '');
+  if (v === 'NOT_FOUND') return '找不到电脑';
+  if (v === 'WRONG_LOCATION') return '位置不符';
+  if (v === 'WRONG_QR') return '二维码不符';
+  if (v === 'WRONG_STATUS') return '台账状态不符';
+  if (v === 'MISSING') return '设备缺失';
+  if (v === 'OTHER') return '其他原因';
+  return v || '-';
+}
+
+function monitorIssueTypeText(value: any) {
+  const v = String(value || '');
+  if (v === 'NOT_FOUND') return '找不到显示器';
+  if (v === 'WRONG_LOCATION') return '位置不符';
+  if (v === 'WRONG_QR') return '二维码不符';
+  if (v === 'WRONG_STATUS') return '台账状态不符';
+  if (v === 'MISSING') return '设备缺失';
+  if (v === 'OTHER') return '其他原因';
+  return v || '-';
 }
 
 
@@ -793,6 +831,116 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
 
   if (type === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') {
     return buildInventoryBatchSnapshotWorkbook(db, requestJson);
+  }
+
+  if (type === 'TX_EXPORT') {
+    const url = new URL('https://local/export');
+    for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
+    const query = buildTxListQuery(url);
+    const maxRows = Math.min(100000, Math.max(1000, Number(requestJson?.max || 50000)));
+    const pageSize = 1000;
+    let written = 0;
+    let lastId = Number.MAX_SAFE_INTEGER;
+    const sql = buildTxExportSql(query);
+    const rowsOut: any[][] = [];
+    while (written < maxRows) {
+      const binds = [...query.bindsBase, lastId, pageSize];
+      const { results } = await db.prepare(sql).bind(...binds).all<any>();
+      const rows = (results || []) as any[];
+      if (!rows.length) break;
+      for (const r of rows) {
+        rowsOut.push([
+          r.created_at_bj || r.created_at,
+          r.tx_no,
+          r.type,
+          r.sku,
+          r.name,
+          r.warehouse_name,
+          r.qty,
+          typeof r.delta_qty === 'number' ? r.delta_qty : 0,
+          r.source || '',
+          r.target || '',
+          r.remark || '',
+        ]);
+        written += 1;
+        if (written >= maxRows) break;
+      }
+      lastId = Number(rows[rows.length - 1]?.id || 0);
+      if (!lastId || rows.length < pageSize) break;
+    }
+    return { text: toCsvText(['时间','单号','类型','SKU','名称','仓库','数量','变动','来源','去向','备注'], rowsOut), filename: `stock_tx_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rowsOut.length} 条配件出入库明细导出` };
+  }
+
+  if (type === 'PC_INVENTORY_LOG_EXPORT') {
+    const url = new URL('https://local/export');
+    for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
+    const query = buildPcInventoryLogQuery(url);
+    const maxRows = Math.min(100000, Math.max(1000, Number(requestJson?.max || 50000)));
+    const pageSize = 1000;
+    let written = 0;
+    let lastId = Number.MAX_SAFE_INTEGER;
+    const sql = buildPcInventoryLogExportSql(query);
+    const rowsOut: any[][] = [];
+    while (written < maxRows) {
+      const rows = (await db.prepare(sql).bind(...query.binds, lastId, pageSize).all<any>()).results || [];
+      if (!rows.length) break;
+      for (const r of rows) {
+        rowsOut.push([
+          r.created_at_bj || r.created_at,
+          r.action === 'OK' ? '在位' : '异常',
+          pcIssueTypeText(r.issue_type),
+          r.serial_no,
+          r.brand,
+          r.model,
+          statusText(r.status),
+          r.employee_no || '',
+          r.employee_name || '',
+          r.department || '',
+          r.remark || '',
+        ]);
+        written += 1;
+        if (written >= maxRows) break;
+      }
+      lastId = Number(rows[rows.length - 1]?.id || 0);
+      if (!lastId || rows.length < pageSize) break;
+    }
+    return { text: toCsvText(['时间','结果','异常类型','SN','品牌','型号','台账状态','员工工号','员工姓名','部门','备注'], rowsOut), filename: `pc_inventory_log_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rowsOut.length} 条电脑盘点记录导出` };
+  }
+
+  if (type === 'MONITOR_INVENTORY_LOG_EXPORT') {
+    const url = new URL('https://local/export');
+    for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
+    const query = buildMonitorInventoryLogQuery(url);
+    const maxRows = Math.min(100000, Math.max(1000, Number(requestJson?.max || 50000)));
+    const pageSize = 1000;
+    let exported = 0;
+    const sql = buildMonitorInventoryLogExportSql(query);
+    const rowsOut: any[][] = [];
+    for (let offset = 0; offset < maxRows; offset += pageSize) {
+      const rows = (await db.prepare(sql).bind(...query.binds, pageSize, offset).all<any>()).results || [];
+      if (!rows.length) break;
+      for (const r of rows) {
+        const empInfo = r.employee_no || r.employee_name || r.department ? `${r.employee_no || '-'} / ${r.employee_name || '-'} / ${r.department || '-'}` : '-';
+        rowsOut.push([
+          r.created_at || '',
+          r.action === 'OK' ? '在位' : '异常',
+          monitorIssueTypeText(r.issue_type),
+          r.asset_code || '',
+          r.sn || '',
+          r.brand || '',
+          r.model || '',
+          r.size_inch || '',
+          statusText(r.status),
+          r.location_name || '-',
+          empInfo,
+          r.remark || '',
+        ]);
+        exported += 1;
+        if (exported >= maxRows) break;
+      }
+      if (exported >= maxRows) break;
+    }
+    return { text: toCsvText(['时间','结果','异常类型','资产编号','SN','品牌','型号','尺寸','台账状态','位置','领用信息','备注'], rowsOut), filename: `monitor_inventory_log_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rowsOut.length} 条显示器盘点记录导出` };
   }
 
   if (type === 'BACKUP_EXPORT') {

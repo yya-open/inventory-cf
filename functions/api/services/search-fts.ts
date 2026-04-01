@@ -1,14 +1,14 @@
 import { normalizeSearchText } from '../_search';
 
-type FtsTableKey = 'pc' | 'monitor' | 'audit';
+export type FtsTableKey = 'pc' | 'monitor' | 'audit';
 
 type FtsMatchOptions = {
   table: 'pc_assets_fts' | 'monitor_assets_fts' | 'audit_log_fts';
   rowIdColumn: string;
 };
 
-let ensured = false;
-let ensurePromise: Promise<void> | null = null;
+const ensuredKeys = new Set<FtsTableKey>();
+const ensurePromises = new Map<FtsTableKey, Promise<void>>();
 
 const CREATE_SQL: Record<FtsTableKey, string[]> = {
   pc: [
@@ -131,26 +131,29 @@ async function maybeBootstrapFtsTable(db: D1Database, key: FtsTableKey, table: s
   if (Number(sourceRow?.c || 0) > 0 && Number(ftsRow?.c || 0) === 0) await refillFtsTable(db, key);
 }
 
-export async function ensureSearchFtsTables(db: D1Database) {
-  if (ensured) return;
-  if (!ensurePromise) {
-    ensurePromise = (async () => {
-      await runSqlList(db, CREATE_SQL.pc);
-      await runSqlList(db, CREATE_SQL.monitor);
-      await runSqlList(db, CREATE_SQL.audit);
-      await maybeBootstrapFtsTable(db, 'pc', 'pc_assets_fts', 'pc_assets');
-      await maybeBootstrapFtsTable(db, 'monitor', 'monitor_assets_fts', 'monitor_assets');
-      await maybeBootstrapFtsTable(db, 'audit', 'audit_log_fts', 'audit_log');
-      ensured = true;
+export async function ensureSearchFtsTables(db: D1Database, keys: FtsTableKey[] = ['pc', 'monitor', 'audit']) {
+  const wanted = Array.from(new Set(Array.isArray(keys) ? keys : ['pc', 'monitor', 'audit'])).filter(Boolean) as FtsTableKey[];
+  if (!wanted.length) return;
+  await Promise.all(wanted.map(async (key) => {
+    if (ensuredKeys.has(key)) return;
+    const existing = ensurePromises.get(key);
+    if (existing) return existing;
+    const pending = (async () => {
+      await runSqlList(db, CREATE_SQL[key]);
+      if (key === 'pc') await maybeBootstrapFtsTable(db, 'pc', 'pc_assets_fts', 'pc_assets');
+      else if (key === 'monitor') await maybeBootstrapFtsTable(db, 'monitor', 'monitor_assets_fts', 'monitor_assets');
+      else await maybeBootstrapFtsTable(db, 'audit', 'audit_log_fts', 'audit_log');
+      ensuredKeys.add(key);
     })().finally(() => {
-      ensurePromise = null;
+      ensurePromises.delete(key);
     });
-  }
-  await ensurePromise;
+    ensurePromises.set(key, pending);
+    return pending;
+  }));
 }
 
 export async function rebuildSearchFtsTables(db: D1Database, keys: FtsTableKey[] = ['pc', 'monitor', 'audit']) {
-  await ensureSearchFtsTables(db);
+  await ensureSearchFtsTables(db, keys);
   const wanted = Array.from(new Set(keys));
   for (const key of wanted) {
     await refillFtsTable(db, key);
