@@ -69,8 +69,7 @@ function csvEscape(v: any) {
 }
 
 function toCsvText(headers: string[], rows: any[][]) {
-  return '﻿' + [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('
-');
+  return '﻿' + [headers.join(','), ...rows.map((row) => row.map(csvEscape).join(','))].join('\n');
 }
 
 function statusText(value: any) {
