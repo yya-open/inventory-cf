@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
-import { ensurePcSchema, must, optional, pcInNo, normalizeSerialNo } from './_pc';
-import { createPcAssetAndInRecord } from './services/asset-write';
+import { ensurePcSchema, must, optional, pcInNo } from './_pc';
+import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
@@ -45,9 +45,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
         const brand = must(it?.brand, '品牌', 120);
         await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
-        const serial_no = normalizeSerialNo(must(it?.serial_no, '序列号', 120));
+        const serial_no = normalizePcSerialNo(must(it?.serial_no, '序列号', 120));
         const model = must(it?.model, '型号', 160);
-        const snKey = normalizeSerialNo(serial_no);
+        const snKey = serial_no;
         if (seenSerial.has(snKey)) throw new Error(`序列号重复：${snKey}`);
         seenSerial.add(snKey);
 
@@ -56,11 +56,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         const disk_capacity = optional(it?.disk_capacity, 40);
         const memory_size = optional(it?.memory_size, 40);
         const remark = optional(it?.remark, 2000);
-
-        const exist = await env.DB.prepare('SELECT id FROM pc_assets WHERE UPPER(TRIM(serial_no))=?').bind(serial_no).first<any>();
-        if (exist?.id) {
-          throw new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）');
-        }
 
         const assetId = await createPcAssetAndInRecord({
           db: env.DB,

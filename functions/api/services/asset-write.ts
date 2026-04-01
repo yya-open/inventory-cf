@@ -158,26 +158,6 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
   await syncSystemDictionaryUsageCounters(db, ['department']);
 }
 
-
-function isSqliteConstraintError(error: any) {
-  const text = String(error?.message || error || '');
-  return text.includes('SQLITE_CONSTRAINT') || text.includes('constraint failed');
-}
-
-async function findPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
-  return db.prepare(`SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? ORDER BY id DESC LIMIT 1`).bind(String(serialNo || '').trim().toUpperCase()).first<any>();
-}
-
-async function getPcAssetHistorySummary(db: D1Database, assetId: number) {
-  const [i, o, r, s] = await Promise.all([
-    db.prepare('SELECT COUNT(1) AS c FROM pc_in WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(1) AS c FROM pc_out WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(1) AS c FROM pc_recycle WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(1) AS c FROM pc_scrap WHERE asset_id=?').bind(assetId).first<any>(),
-  ]);
-  return Number(i?.c || 0) + Number(o?.c || 0) + Number(r?.c || 0) + Number(s?.c || 0);
-}
-
 type CreatePcAssetArgs = {
   db: D1Database;
   inNo: string;
@@ -192,86 +172,111 @@ type CreatePcAssetArgs = {
   createdBy: string;
 };
 
+export function normalizePcSerialNo(value: string | null | undefined) {
+  return String(value || '').trim().toUpperCase();
+}
+
+async function getPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
+  return db.prepare(
+    `SELECT a.id, a.status, COALESCE(a.archived, 0) AS archived,
+            EXISTS(SELECT 1 FROM pc_in i WHERE i.asset_id=a.id) AS has_in,
+            EXISTS(SELECT 1 FROM pc_out o WHERE o.asset_id=a.id) AS has_out,
+            EXISTS(SELECT 1 FROM pc_recycle r WHERE r.asset_id=a.id) AS has_recycle,
+            EXISTS(SELECT 1 FROM pc_scrap s WHERE s.asset_id=a.id) AS has_scrap
+       FROM pc_assets a
+      WHERE UPPER(TRIM(a.serial_no))=?
+      ORDER BY a.id DESC
+      LIMIT 1`
+  ).bind(normalizePcSerialNo(serialNo)).first<any>();
+}
+
+async function createPcInRecord(db: D1Database, params: { inNo: string; assetId: number; brand: string; serialNo: string; model: string; manufactureDate: string; warrantyEnd?: string | null; diskCapacity?: string | null; memorySize?: string | null; remark?: string | null; createdBy: string; }) {
+  const { inNo, assetId, brand, serialNo, model, manufactureDate, warrantyEnd = null, diskCapacity = null, memorySize = null, remark = null, createdBy } = params;
+  await db.prepare(
+    `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by, created_at)
+     VALUES (?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+  ).bind(inNo, assetId, brand, serialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy).run();
+  const lastIn = await db.prepare(`SELECT id, created_at FROM pc_in WHERE in_no=?`).bind(inNo).first<any>();
+  await upsertPcLatestState(db, assetId, {
+    last_in_id: Number(lastIn?.id || 0) || null,
+    last_in_at: lastIn?.created_at || null,
+    current_employee_no: null,
+    current_employee_name: null,
+    current_department: null,
+  });
+}
+
 export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
   const { db, inNo, brand, serialNo, model, manufactureDate, warrantyEnd = null, diskCapacity = null, memorySize = null, remark = null, createdBy } = args;
-  const normalizedSerialNo = String(serialNo || '').trim().toUpperCase();
+  const normalizedSerialNo = normalizePcSerialNo(serialNo);
   const manufactureTs = pcDateTextToUnixTs(manufactureDate);
   const warrantyEndTs = pcDateTextToUnixTs(warrantyEnd);
-  const searchText = buildPcAssetSearchText({ brand, serial_no: normalizedSerialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize });
 
-  let assetId = 0;
-  let insertedFreshAsset = false;
-  let existing = await findPcAssetByNormalizedSerial(db, normalizedSerialNo);
+  const existing = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
   if (existing?.id) {
-    const historyCount = await getPcAssetHistorySummary(db, Number(existing.id));
-    if (historyCount > 0) {
+    const assetId = Number(existing.id || 0);
+    const hasHistory = Number(existing.has_in || 0) === 1 || Number(existing.has_out || 0) === 1 || Number(existing.has_recycle || 0) === 1 || Number(existing.has_scrap || 0) === 1;
+    if (hasHistory) {
       throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
     }
     await db.prepare(
       `UPDATE pc_assets
-       SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
-           disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', archived=0,
-           archived_at=NULL, archived_reason=NULL, archived_note=NULL, archived_by=NULL, updated_at=${sqlNowStored()}
-       WHERE id=?`
-    ).bind(brand, normalizedSerialNo, model, manufactureDate, warrantyEnd, manufactureTs, warrantyEndTs, diskCapacity, memorySize, remark, searchText, existing.id).run();
-    assetId = Number(existing.id);
-  } else {
-    try {
-      const ins = await db.prepare(
-        `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
-         VALUES (?,?,?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
-      ).bind(brand, normalizedSerialNo, model, manufactureDate, warrantyEnd, manufactureTs, warrantyEndTs, diskCapacity, memorySize, remark, searchText).run();
-      assetId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
-      insertedFreshAsset = assetId > 0;
-    } catch (error: any) {
-      if (!isSqliteConstraintError(error)) throw error;
-      existing = await findPcAssetByNormalizedSerial(db, normalizedSerialNo);
-      if (!existing?.id) {
-        throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
-      }
-      const historyCount = await getPcAssetHistorySummary(db, Number(existing.id));
-      if (historyCount > 0) {
-        throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
-      }
-      await db.prepare(
-        `UPDATE pc_assets
-         SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
-             disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', archived=0,
-             archived_at=NULL, archived_reason=NULL, archived_note=NULL, archived_by=NULL, updated_at=${sqlNowStored()}
-         WHERE id=?`
-      ).bind(brand, normalizedSerialNo, model, manufactureDate, warrantyEnd, manufactureTs, warrantyEndTs, diskCapacity, memorySize, remark, searchText, existing.id).run();
-      assetId = Number(existing.id);
-    }
+          SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
+              disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', archived=0,
+              archived_at=NULL, archived_reason=NULL, archived_note=NULL, archived_by=NULL, updated_at=${sqlNowStored()}
+        WHERE id=?`
+    ).bind(
+      brand,
+      normalizedSerialNo,
+      model,
+      manufactureDate,
+      warrantyEnd,
+      manufactureTs,
+      warrantyEndTs,
+      diskCapacity,
+      memorySize,
+      remark,
+      buildPcAssetSearchText({ brand, serial_no: normalizedSerialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize }),
+      assetId,
+    ).run();
+    await createPcInRecord(db, { inNo, assetId, brand, serialNo: normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy });
+    await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
+    return assetId;
   }
 
-  if (!assetId) {
-    const assetRow = await findPcAssetByNormalizedSerial(db, normalizedSerialNo);
-    assetId = Number(assetRow?.id || 0);
-  }
-  if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
-
+  let assetId = 0;
   try {
-    await db.prepare(
-      `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by, created_at)
-       VALUES (?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-    ).bind(inNo, assetId, brand, normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy).run();
-  } catch (error: any) {
-    if (insertedFreshAsset) {
-      const historyCount = await getPcAssetHistorySummary(db, assetId).catch(() => 1);
-      if (!historyCount) {
-        await db.prepare('DELETE FROM pc_assets WHERE id=?').bind(assetId).run().catch(() => {});
+    const ins = await db.prepare(
+      `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
+       VALUES (?,?,?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
+    ).bind(brand, normalizedSerialNo, model, manufactureDate, warrantyEnd, manufactureTs, warrantyEndTs, diskCapacity, memorySize, remark, buildPcAssetSearchText({ brand, serial_no: normalizedSerialNo, model, remark, disk_capacity: diskCapacity, memory_size: memorySize })).run();
+    const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
+    const assetRow = lastId
+      ? await db.prepare('SELECT id FROM pc_assets WHERE id=?').bind(lastId).first<any>()
+      : await db.prepare('SELECT id FROM pc_assets WHERE UPPER(TRIM(serial_no))=?').bind(normalizedSerialNo).first<any>();
+    assetId = Number(assetRow?.id || 0);
+    if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
+    await createPcInRecord(db, { inNo, assetId, brand, serialNo: normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy });
+    await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
+    return assetId;
+  } catch (e: any) {
+    const msg = String(e?.message || '');
+    if (msg.includes('SQLITE_CONSTRAINT')) {
+      const again = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
+      if (again?.id) {
+        const hasHistory = Number(again.has_in || 0) === 1 || Number(again.has_out || 0) === 1 || Number(again.has_recycle || 0) === 1 || Number(again.has_scrap || 0) === 1;
+        if (hasHistory) {
+          throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
+        }
       }
     }
-    if (isSqliteConstraintError(error)) {
-      throw Object.assign(new Error('入库单创建失败，请重试一次；若仍失败，请联系管理员检查是否存在重复提交'), { status: 400 });
+    if (assetId) {
+      await db.prepare('DELETE FROM pc_assets WHERE id=? AND NOT EXISTS (SELECT 1 FROM pc_in WHERE asset_id=?) AND NOT EXISTS (SELECT 1 FROM pc_out WHERE asset_id=?) AND NOT EXISTS (SELECT 1 FROM pc_recycle WHERE asset_id=?) AND NOT EXISTS (SELECT 1 FROM pc_scrap WHERE asset_id=?)')
+        .bind(assetId, assetId, assetId, assetId, assetId)
+        .run().catch(() => {});
     }
-    throw error;
+    throw e;
   }
-
-  const lastIn = await db.prepare(`SELECT id, created_at FROM pc_in WHERE in_no=?`).bind(inNo).first<any>();
-  await upsertPcLatestState(db, assetId, { last_in_id: Number(lastIn?.id || 0) || null, last_in_at: lastIn?.created_at || null, current_employee_no: null, current_employee_name: null, current_department: null });
-  await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
-  return assetId;
 }
 
 type ApplyPcOutArgs = {

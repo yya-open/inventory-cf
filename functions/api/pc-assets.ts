@@ -2,7 +2,7 @@ import { requireAuth, errorResponse } from '../_auth';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
-import { ensurePcSchemaIfAllowed, normalizeSerialNo } from './_pc';
+import { ensurePcSchemaIfAllowed } from './_pc';
 import {
   assertUnique,
   buildPcAssetQuery,
@@ -59,8 +59,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const payload = parsePcAssetInput(body);
     await assertPcBrandDictionaryValue(env.DB, payload.brand, '电脑品牌');
-    payload.serial_no = normalizeSerialNo(payload.serial_no);
-    await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE UPPER(TRIM(serial_no))=? AND id<>?', [payload.serial_no, id], '序列号已存在');
+    await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE serial_no=? AND id<>?', [payload.serial_no, id], '序列号已存在');
 
     await env.DB
       .prepare(pcAssetUpdateSql())
