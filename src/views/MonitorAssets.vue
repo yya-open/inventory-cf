@@ -1,6 +1,7 @@
 <template>
-  <div>
-    <MonitorAssetsToolbar
+  <div class="ledger-page ledger-page--monitor">
+    <section class="ledger-section ledger-section--toolbar">
+      <MonitorAssetsToolbar
       v-model:status="status"
       v-model:location-id="locationId"
       v-model:inventory-status="inventoryStatus"
@@ -22,7 +23,11 @@
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
       :has-active-batch="hasActiveInventoryBatch"
+      :density="density"
+      :saved-views="savedViews"
+      :active-view-name="activeViewName"
       @update:visible-columns="updateVisibleColumns"
+      @update:density="setDensity"
       @move-column="moveVisibleColumn"
       @search="reloadList"
       @reset="resetFilters"
@@ -40,17 +45,23 @@
       @batch-owner="openBatchOwnerDialog"
       @batch-archive="batchArchiveSelected"
       @batch-restore="batchRestoreSelected"
+      @save-view="handleSaveView"
+      @apply-view="handleApplyView"
+      @delete-view="handleDeleteView"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
       @open-create="openCreate"
       @toolbar-more="handleToolbarMore"
       @ensure-location-options="ensureLocationOptionsReady"
-    />
+      />
+    </section>
 
-    <MonitorAssetsTable
+    <section class="ledger-section ledger-section--table">
+      <MonitorAssetsTable
       :rows="rows"
-      :loading="loading"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -61,8 +72,10 @@
       :visible-columns="visibleColumns"
       :column-widths="columnWidths"
       :selected-ids="selectedIds"
+      :density="density"
       :show-inventory-column="hasActiveInventoryBatch"
       :enable-inventory-highlight="hasActiveInventoryBatch"
+      :has-filters="hasActiveFilters"
       @open-info="openInfo"
       @in="openIn"
       @out="openOut"
@@ -74,7 +87,9 @@
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFiltersForList(), value)"
       @size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
-    />
+      @reset-filters="resetFilters"
+      />
+    </section>
 
 
     <MonitorAssetFormDialog
@@ -190,12 +205,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
+import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -240,6 +256,10 @@ const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInve
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
+const hasActiveFilters = computed(() => {
+  const filters = currentFiltersForList();
+  return Boolean(filters.status || filters.locationId || filters.keyword || filters.inventoryStatus || filters.archiveMode !== 'active' || filters.archiveReason);
+});
 
 const {
   status,
@@ -252,6 +272,9 @@ const {
   columnOrder,
   visibleColumns,
   columnWidths,
+  density,
+  savedViews,
+  activeViewName,
   initialPageSize,
   monitorColumnOptions,
   currentFilters,
@@ -262,12 +285,36 @@ const {
   restoreDefaultColumns,
   moveVisibleColumn,
   updateColumnWidth,
+  setDensity,
+  saveCurrentView,
+  applySavedView,
+  deleteSavedView,
   runWithoutAutoSearch,
 } = useMonitorAssetViewState(() => {
-  const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  reload(filters);
+  void refreshLedgerData();
 });
+
+
+function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
+  ElNotification({ title, message, type, duration: 2600, offset: 72 });
+}
+
+function handleSaveView(name: string) {
+  const savedName = saveCurrentView(name);
+  if (!savedName) return ElMessage.warning('请先输入视图名称');
+  notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
+}
+
+function handleApplyView(name: string) {
+  if (!applySavedView(name)) return ElMessage.warning('视图不存在或已失效');
+  notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
+  reloadList();
+}
+
+function handleDeleteView(name: string) {
+  if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  notifyAction('视图已删除', `已删除“${name}”视图。`, 'warning');
+}
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -448,18 +495,19 @@ async function ensureLocationOptionsReady(force = false) {
   await loadLocations(force);
 }
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
   cacheNamespace: 'monitor-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
+  fetchPage: async (filters, currentPage, currentPageSize, fast, signal) => {
     try {
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     } catch (error: any) {
       await handleMaybeMissingSchema(error);
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     }
   },
+  fetchTotal: (filters, signal) => countMonitorAssets(filters, signal),
 });
 
 pageSize.value = initialPageSize;
@@ -614,7 +662,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -633,12 +681,58 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   }
 }
 
-const reloadList = () => {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
+  if (typeof window === 'undefined') {
+    void Promise.resolve().then(task);
+    return;
+  }
+  const runner = () => {
+    window.setTimeout(() => {
+      void task();
+    }, 80);
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => runner(), { timeout });
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    runner();
+  });
+}
+
+function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+  const snapshot = { ...initialFilters };
+  runWhenBrowserIdle(async () => {
+    void refreshInventorySummary(snapshot);
+    try {
+      await refreshInventoryBatch();
+    } catch {
+      return;
+    }
+    const nextFilters = currentFiltersForList();
+    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
+    if (!batchStateChanged) return;
+    await load(nextFilters, { keepPage: true, silent: true });
+    void refreshInventorySummary(nextFilters);
+  });
+}
+
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  void refreshInventoryBatch();
-  reload(filters);
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  if (options.keepPage) {
+    await load(filters, { keepPage: true, silent: options.silent });
+  } else {
+    await reload(filters, { silent: options.silent });
+  }
+  lastRefreshAt = Date.now();
+  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+}
+
+const reloadList = () => {
+  void refreshLedgerData();
 };
 
 function handleToolbarMore(command: string) {
@@ -647,11 +741,14 @@ function handleToolbarMore(command: string) {
 }
 
 function handleRowMore(command: string, row: MonitorAsset) {
+  if (command === 'in') return openIn(row);
+  if (command === 'out') return openOut(row);
   if (command === 'edit') return openEdit(row);
   if (command === 'qr') return openQr(row);
   if (command === 'audit') return openAuditHistory(row);
   if (command === 'return') return openReturn(row);
   if (command === 'transfer') return openTransfer(row);
+  if (command === 'restore') return restoreAsset(row);
   if (command === 'delete') return removeAsset(row);
 }
 
@@ -792,6 +889,7 @@ async function submitBatchStatus() {
       status: batchStatusValue.value,
     });
     ElMessage.success(result?.message || '批量修改成功');
+    notifyAction('批量状态已更新', `已处理 ${selectedCount.value} 台显示器的状态。`);
     batchStatusVisible.value = false;
     applyMonitorStatusPatch(extractAffectedIds(result), batchStatusValue.value);
     clearSelection();
@@ -814,6 +912,7 @@ async function submitBatchLocation() {
       location_id: batchLocationValue.value,
     });
     ElMessage.success(result?.message || '批量修改成功');
+    notifyAction('批量位置已更新', `已处理 ${selectedCount.value} 台显示器的位置。`);
     batchLocationVisible.value = false;
     applyMonitorLocationPatch(extractAffectedIds(result), batchLocationValue.value);
     clearSelection();
@@ -839,6 +938,7 @@ async function submitBatchOwner() {
       department: batchOwnerForm.value.department,
     });
     ElMessage.success(result?.message || '批量修改领用人成功');
+    notifyAction('批量领用人已更新', `已处理 ${selectedCount.value} 台显示器的领用信息。`);
     batchOwnerVisible.value = false;
     applyMonitorOwnerPatch(extractAffectedIds(result), batchOwnerForm.value);
     clearSelection();
@@ -860,6 +960,7 @@ async function batchRestoreSelected() {
       ids: selectedIds.value.map((id) => Number(id)),
     });
     ElMessage.success(result?.message || '批量恢复成功');
+    notifyAction('批量恢复完成', `已恢复 ${selectedCount.value} 台显示器。`, 'info');
     applyMonitorRestorePatch(extractAffectedIds(result));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
@@ -891,6 +992,7 @@ async function submitBatchArchive() {
       note: batchArchiveForm.value.note,
     });
     ElMessage.success(result?.message || '批量归档成功');
+    notifyAction('批量归档完成', `已归档 ${selectedCount.value} 台显示器。`, 'warning');
     batchArchiveVisible.value = false;
     applyMonitorArchivePatch(extractAffectedIds(result), batchArchiveForm.value);
     clearSelection();
@@ -1107,14 +1209,35 @@ async function openEdit(row: MonitorAsset) {
 
 async function saveAsset() {
   if (assetSaving.value) return;
+  const trim = (value: unknown) => String(value ?? '').trim();
+  const sizePattern = /^\d+(\.\d{1,2})?(\s*寸)?$/;
+  const payload = {
+    ...dlgAsset.form,
+    asset_code: trim(dlgAsset.form.asset_code),
+    sn: trim(dlgAsset.form.sn),
+    brand: trim(dlgAsset.form.brand),
+    model: trim(dlgAsset.form.model),
+    size_inch: trim(dlgAsset.form.size_inch),
+    remark: trim(dlgAsset.form.remark),
+    location_id: dlgAsset.form.location_id || '',
+  } as any;
+
+  if (!payload.asset_code) return ElMessage.warning('资产编号必填');
+  if (!payload.brand) return ElMessage.warning('品牌必填');
+  if (!payload.model) return ElMessage.warning('型号必填');
+  if (payload.size_inch && !sizePattern.test(payload.size_inch)) return ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
+
   assetSaving.value = true;
+  dlgAsset.form = { ...payload };
   try {
     if (dlgAsset.mode === 'create') {
-      await apiPost('/api/monitor-assets', dlgAsset.form);
+      await apiPost('/api/monitor-assets', payload);
       ElMessage.success('新增成功');
+      notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
     } else {
-      await apiPut('/api/monitor-assets', dlgAsset.form);
+      await apiPut('/api/monitor-assets', payload);
       ElMessage.success('保存成功');
+      notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
     }
     dlgAsset.show = false;
     await refreshCurrent(true, true);
@@ -1122,11 +1245,13 @@ async function saveAsset() {
     try {
       await handleMaybeMissingSchema(error);
       if (dlgAsset.mode === 'create') {
-        await apiPost('/api/monitor-assets', dlgAsset.form);
+        await apiPost('/api/monitor-assets', payload);
         ElMessage.success('新增成功');
+        notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
       } else {
-        await apiPut('/api/monitor-assets', dlgAsset.form);
+        await apiPut('/api/monitor-assets', payload);
         ElMessage.success('保存成功');
+        notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
       }
       dlgAsset.show = false;
       await refreshCurrent(true, true);
@@ -1587,7 +1712,7 @@ function resetFilters() {
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
-  reloadList();
+  void refreshLedgerData();
 }
 
 function setInventoryFilter(nextStatus: string) {
@@ -1615,29 +1740,14 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
-  const initialFilters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
-  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
-  await Promise.allSettled([
-    load(initialFilters, loadOptions),
-    refreshInventorySummary(initialFilters),
-    refreshInventoryBatch(),
-  ]);
-
-  const nextFilters = currentFiltersForList();
-  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
-  if (batchStateChanged) {
-    await Promise.allSettled([
-      load(nextFilters, loadOptions),
-      refreshInventorySummary(nextFilters),
-    ]);
-  }
-  lastRefreshAt = Date.now();
+  await refreshLedgerData(options);
 }
 
-onMounted(() => {
+onBeforeMount(() => {
   void hydrateViewData();
+});
+
+onMounted(() => {
   if (locationId.value) {
     void ensureLocationOptionsReady();
   }
@@ -1649,22 +1759,93 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
-  lastRefreshAt = Date.now();
   void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>
 
 <style scoped>
+.ledger-page {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 18px;
+}
+
+.ledger-page::before {
+  content: '';
+  position: absolute;
+  inset: -18px -18px auto;
+  height: 220px;
+  border-radius: 30px;
+  background:
+    radial-gradient(circle at top left, rgba(103, 194, 58, 0.11), transparent 36%),
+    radial-gradient(circle at top right, rgba(64, 158, 255, 0.14), transparent 34%),
+    linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0));
+  pointer-events: none;
+}
+
+.ledger-section {
+  position: relative;
+  z-index: 1;
+}
+
+.ledger-section--table::before {
+  content: '';
+  position: absolute;
+  inset: 12px 20px auto 20px;
+  height: 72px;
+  border-radius: 22px;
+  background: linear-gradient(180deg, rgba(64, 158, 255, 0.08), rgba(64, 158, 255, 0));
+  filter: blur(10px);
+  pointer-events: none;
+}
+
+:deep(.ledger-toolbar-card),
+:deep(.ledger-table-card) {
+  position: relative;
+  border: 1px solid rgba(148, 163, 184, 0.16);
+  border-radius: 28px;
+  overflow: hidden;
+  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 249, 255, 0.94) 100%);
+  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
+}
+
+:deep(.ledger-toolbar-card > .el-card__body),
+:deep(.ledger-table-card > .el-card__body) {
+  padding: 18px;
+}
+
+:deep(.ledger-toolbar-card::after),
+:deep(.ledger-table-card::after) {
+  content: '';
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
+}
+
 .batch-preview {
-  display:flex;
-  gap:8px;
-  flex-wrap:wrap;
-  margin-top:6px;
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-top: 6px;
 }
 
 .batch-help {
   color: #909399;
   font-size: 12px;
   padding-left: 4px;
+}
+
+@media (max-width: 768px) {
+  .ledger-page {
+    gap: 14px;
+  }
+
+  :deep(.ledger-toolbar-card > .el-card__body),
+  :deep(.ledger-table-card > .el-card__body) {
+    padding: 14px;
+  }
 }
 </style>

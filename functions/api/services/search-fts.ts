@@ -27,7 +27,8 @@ const CREATE_SQL: Record<FtsTableKey, string[]> = {
       INSERT INTO pc_assets_fts(rowid, serial_no, brand, model, remark, disk_capacity, memory_size, search_text_norm)
       VALUES (new.id, COALESCE(new.serial_no,''), COALESCE(new.brand,''), COALESCE(new.model,''), COALESCE(new.remark,''), COALESCE(new.disk_capacity,''), COALESCE(new.memory_size,''), COALESCE(new.search_text_norm,''));
     END`,
-    `CREATE TRIGGER IF NOT EXISTS pc_assets_fts_au AFTER UPDATE ON pc_assets BEGIN
+    `CREATE TRIGGER IF NOT EXISTS pc_assets_fts_au
+      AFTER UPDATE OF serial_no, brand, model, remark, disk_capacity, memory_size, search_text_norm ON pc_assets BEGIN
       DELETE FROM pc_assets_fts WHERE rowid = old.id;
       INSERT INTO pc_assets_fts(rowid, serial_no, brand, model, remark, disk_capacity, memory_size, search_text_norm)
       VALUES (new.id, COALESCE(new.serial_no,''), COALESCE(new.brand,''), COALESCE(new.model,''), COALESCE(new.remark,''), COALESCE(new.disk_capacity,''), COALESCE(new.memory_size,''), COALESCE(new.search_text_norm,''));
@@ -135,6 +136,13 @@ export async function ensureSearchFtsTables(db: D1Database) {
   if (ensured) return;
   if (!ensurePromise) {
     ensurePromise = (async () => {
+      // Recreate triggers to fix legacy pc_assets_fts_au definition.
+      // The old trigger fired on every UPDATE. pc_assets_ts_ai performs an internal UPDATE
+      // right after INSERT to compute *_ts columns, which could cause a duplicate FTS row insert
+      // depending on trigger execution order and surface as SQLITE_CONSTRAINT during pc_in.
+      await db.prepare('DROP TRIGGER IF EXISTS pc_assets_fts_ai').run().catch(() => {});
+      await db.prepare('DROP TRIGGER IF EXISTS pc_assets_fts_au').run().catch(() => {});
+      await db.prepare('DROP TRIGGER IF EXISTS pc_assets_fts_ad').run().catch(() => {});
       await runSqlList(db, CREATE_SQL.pc);
       await runSqlList(db, CREATE_SQL.monitor);
       await runSqlList(db, CREATE_SQL.audit);

@@ -6,14 +6,14 @@ export async function recalcMonitorAssets(db: D1Database, assetIds: number[]) {
   if (!ids.length) return;
 
   const q = `
-    SELECT t.*
-    FROM monitor_tx t
-    JOIN (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM monitor_tx
-      WHERE asset_id IN (${ids.map(() => "?").join(",")})
-      GROUP BY asset_id
-    ) x ON x.max_id = t.id
+    SELECT ranked.*
+    FROM (
+      SELECT t.*,
+             ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
+      FROM monitor_tx t
+      WHERE t.asset_id IN (${ids.map(() => "?").join(",")})
+    ) ranked
+    WHERE ranked.rn = 1
   `;
   const r = await db.prepare(q).bind(...ids).all<any>();
   const latest = new Map<number, any>();

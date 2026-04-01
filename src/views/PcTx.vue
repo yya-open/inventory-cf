@@ -1,6 +1,6 @@
 <template>
   <el-card class="ui-page-card">
-    <div class="ui-toolbar">
+    <div class="ui-toolbar ui-toolbar--ledger">
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">
@@ -62,6 +62,39 @@
               </el-button>
             </div>
           </div>
+
+          <div class="ui-toolbar-filter-bar">
+            <span class="ui-toolbar-filter-label">生效状态</span>
+            <div class="ui-toolbar-segmented" role="tablist" aria-label="生效状态筛选">
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ 'is-active': effectiveFilter === '' }"
+                :type="effectiveFilter === '' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('')"
+              >
+                全部记录
+              </el-button>
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ 'is-active': effectiveFilter === 'history' }"
+                :type="effectiveFilter === 'history' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('history')"
+              >
+                非当前生效
+              </el-button>
+              <el-button
+                class="ui-toolbar-segment"
+                :class="{ 'is-active': effectiveFilter === 'current' }"
+                :type="effectiveFilter === 'current' ? 'primary' : 'default'"
+                plain
+                @click="setEffectiveFilter('current')"
+              >
+                当前生效
+              </el-button>
+            </div>
+          </div>
         </div>
       </div>
 
@@ -120,9 +153,11 @@
       </div>
     </div>
 
-    <LazyMountBlock title="正在装载电脑明细…" min-height="420px">
+    <LazyMountBlock title="正在装载电脑明细…" min-height="420px" :delay="0" :idle="false" :viewport="false">
+      <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
       <el-table
-        v-loading="loading"
+        v-else
+        v-loading="refreshing || actionLoading"
         :data="rows"
         border
         row-key="__rowKey"
@@ -142,14 +177,9 @@
         </template>
       </el-table-column>
       <el-table-column
-        prop="tx_no"
-        label="单号"
-        width="210"
-      />
-      <el-table-column
         prop="type"
         label="类型"
-        width="110"
+        width="120"
       >
         <template #default="{row}">
           <el-tag
@@ -182,6 +212,9 @@
           >
             回收
           </el-tag>
+          <div v-if="row.is_current_effective" style="margin-top:8px">
+            <el-tag type="success" effect="plain" size="small">当前生效</el-tag>
+          </div>
         </template>
       </el-table-column>
 
@@ -226,12 +259,6 @@
         label="回收/归还日期"
         width="130"
       />
-      <el-table-column
-        prop="remark"
-        label="备注"
-        min-width="220"
-        show-overflow-tooltip
-      />
     </el-table>
 
     <div style="display:flex; justify-content:flex-end; margin-top:12px">
@@ -252,53 +279,124 @@
 
 <script setup lang="ts">
 import { ElUpload } from 'element-plus';
-import { ref, onMounted, computed } from "vue";
+import { ref, computed, onBeforeMount, onActivated } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { can, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
+import { usePagedAssetList } from "../composables/usePagedAssetList";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
+import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 
 const canOperator = computed(() => can("operator"));
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
-
-const rows = ref<any[]>([]);
+const actionLoading = ref(false);
 const selectedRows = ref<any[]>([]);
-const loading = ref(false);
-
-const page = ref(1);
-const pageSize = ref(50);
-const total = ref(0);
-
-// PERF: total 统计缓存（按筛选条件），避免每次翻页都重复 COUNT(*)。
-const totalCache = new Map<string, number>();
-let totalTimer: any = null;
-
-function filterKey() {
-  const t = type.value || "";
-  const k = keyword.value || "";
-  const d0 = dateRange.value?.[0] || "";
-  const d1 = dateRange.value?.[1] || "";
-  return `type=${t}&keyword=${k}&d0=${d0}&d1=${d1}`;
-}
-
 const type = ref<string>("");
 const keyword = ref<string>("");
 const dateRange = ref<[string, string] | null>(null);
+const effectiveFilter = ref<'' | 'current' | 'history'>('');
+const SOFT_REFRESH_TTL_MS = 20_000;
+let lastRefreshAt = 0;
+
+type PcTxFilters = {
+  type: string;
+  keyword: string;
+  dateFrom: string;
+  dateTo: string;
+  effective: '' | 'current' | 'history';
+};
+
+function currentFilters(): PcTxFilters {
+  return {
+    type: String(type.value || "").trim().toUpperCase(),
+    keyword: String(keyword.value || "").trim(),
+    dateFrom: String(dateRange.value?.[0] || "").trim(),
+    dateTo: String(dateRange.value?.[1] || "").trim(),
+    effective: effectiveFilter.value,
+  };
+}
+
+function filterKey(filters: PcTxFilters) {
+  return `type=${filters.type}&keyword=${filters.keyword}&d0=${filters.dateFrom}&d1=${filters.dateTo}&effective=${filters.effective}`;
+}
+
+function buildListParams(filters: PcTxFilters, withPage: boolean, pageNumber = page.value, size = pageSize.value) {
+  const params = new URLSearchParams();
+  if (filters.type) params.set("type", filters.type);
+  if (filters.keyword) params.set("keyword", filters.keyword);
+  if (filters.dateFrom) params.set("date_from", `${filters.dateFrom} 00:00:00`);
+  if (filters.dateTo) params.set("date_to", `${filters.dateTo} 23:59:59`);
+  if (filters.effective) params.set("effective", filters.effective);
+  if (withPage) {
+    params.set("page", String(pageNumber));
+    params.set("page_size", String(size));
+  }
+  return params;
+}
+
+const {
+  rows,
+  loading,
+  refreshing,
+  initialLoading,
+  page,
+  pageSize,
+  total,
+  load: loadPaged,
+  clearTotalCache,
+  invalidateCache,
+} = usePagedAssetList<PcTxFilters, any>({
+  cacheNamespace: "pc-tx",
+  cacheTtlMs: 60_000,
+  totalDebounceMs: 350,
+  createFilterKey: filterKey,
+  fetchPage: async ({ filters, page, pageSize, fast, signal }) => {
+    const params = buildListParams(filters, true, page, pageSize);
+    if (fast) params.set("fast", "1");
+    const r: any = await apiGet(`/api/pc-tx?${params.toString()}`, { signal });
+    return {
+      rows: (r.data || []).map((it: any) => ({ ...it, __rowKey: `${String(it.type || "").toUpperCase()}_${it.id}` })),
+      total: typeof r.total === "number" ? Number(r.total || 0) : null,
+    };
+  },
+  fetchTotal: async (filters, signal) => {
+    const params = buildListParams(filters, false);
+    const r: any = await apiGet(`/api/pc-tx-count?${params.toString()}`, { signal });
+    return Number(r.total || 0);
+  },
+});
+
+async function load(options: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
+  await loadPaged(currentFilters(), {
+    keepPage: options.keepPage ?? true,
+    silent: options.silent,
+    forceRefresh: options.forceRefresh,
+  });
+  lastRefreshAt = Date.now();
+}
 
 function onSearch() {
   page.value = 1;
-  load();
+  void load();
+}
+
+function setEffectiveFilter(value: '' | 'current' | 'history') {
+  if (effectiveFilter.value === value) return;
+  effectiveFilter.value = value;
+  onSearch();
 }
 
 function reset() {
   type.value = "";
   keyword.value = "";
   dateRange.value = null;
+  effectiveFilter.value = '';
   page.value = 1;
-  load();
+  clearTotalCache();
+  void load({ forceRefresh: true });
 }
 
 function formatBjTime(s?: string, row?: any) {
@@ -307,64 +405,14 @@ function formatBjTime(s?: string, row?: any) {
   try { return formatBeijingDateTime(v); } catch { return String(v); }
 }
 
-async function load() {
-  loading.value = true;
-  try {
-    const params = new URLSearchParams();
-    if (type.value) params.set("type", type.value);
-    if (keyword.value) params.set("keyword", keyword.value);
-    if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
-    if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
-    params.set("page", String(page.value));
-    params.set("page_size", String(pageSize.value));
-
-    // PERF: 首屏先走 fast=1 跳过 COUNT(*)，让表格尽快出数据；
-    // total 再异步拉取 /api/pc-tx-count 补齐（带缓存）。
-    params.set("fast", "1");
-
-    const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
-    rows.value = (r.data || []).map((it:any) => ({ ...it, __rowKey: `${String(it.type||"").toUpperCase()}_${it.id}` }));
-
-    const key = filterKey();
-    if (totalCache.has(key)) {
-      total.value = Number(totalCache.get(key) || 0);
-      return;
-    }
-
-    if (r.total === null || typeof r.total === "undefined") {
-      if (totalTimer) clearTimeout(totalTimer);
-      totalTimer = setTimeout(() => {
-        const params2 = new URLSearchParams();
-        if (type.value) params2.set("type", type.value);
-        if (keyword.value) params2.set("keyword", keyword.value);
-        if (dateRange.value?.[0]) params2.set("date_from", `${dateRange.value[0]} 00:00:00`);
-        if (dateRange.value?.[1]) params2.set("date_to", `${dateRange.value[1]} 23:59:59`);
-        apiGet(`/api/pc-tx-count?${params2.toString()}`)
-          .then((j: any) => {
-            const v = Number(j.total || 0);
-            totalCache.set(filterKey(), v);
-            total.value = v;
-          })
-          .catch(() => {});
-      }, 250);
-    } else {
-      const v = Number(r.total || 0);
-      totalCache.set(key, v);
-      total.value = v;
-    }
-  } catch (e: any) {
-    ElMessage.error(e?.message || "加载失败");
-  } finally {
-    loading.value = false;
-  }
+function onPageChange(nextPage: number) {
+  page.value = nextPage;
+  void load({ keepPage: true });
 }
-
-function onPageChange() {
-  load();
-}
-function onPageSizeChange() {
+function onPageSizeChange(nextPageSize: number) {
+  pageSize.value = nextPageSize;
   page.value = 1;
-  load();
+  void load({ keepPage: true });
 }
 
 
@@ -379,6 +427,7 @@ async function fetchAll() {
     if (keyword.value) params.set("keyword", keyword.value);
     if (dateRange.value?.[0]) params.set("date_from", `${dateRange.value[0]} 00:00:00`);
     if (dateRange.value?.[1]) params.set("date_to", `${dateRange.value[1]} 23:59:59`);
+    if (effectiveFilter.value) params.set("effective", effectiveFilter.value);
     params.set("page", String(p));
     params.set("page_size", "200");
     const r: any = await apiGet(`/api/pc-tx?${params.toString()}`);
@@ -393,7 +442,7 @@ async function fetchAll() {
 
 async function exportExcel() {
   try {
-    loading.value = true;
+    actionLoading.value = true;
     const all = (await fetchAll()).map((r: any) => ({
       ...r,
       created_at: formatBjTime(r.created_at),
@@ -421,7 +470,7 @@ async function exportExcel() {
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {
-    loading.value = false;
+    actionLoading.value = false;
   }
 }
 
@@ -569,7 +618,9 @@ async function onImportTxFile(uploadFile: any) {
       ElMessage.success(`导入完成：成功 ${okSum} 条`);
     }
 
-    await load();
+    invalidateCache();
+    clearTotalCache();
+    await load({ forceRefresh: true });
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
   }
@@ -594,21 +645,23 @@ async function deleteSelected() {
       confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "删除",
       inputValidator: (v: string) => (String(v || "").trim() === "删除" ? true : "需要输入「删除」"),
     });
-    loading.value = true;
+    actionLoading.value = true;
     const r:any = await apiPost("/api/pc-tx/delete", { entries, confirm: "删除" });
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
-    await load();
+    invalidateCache();
+    clearTotalCache();
+    await load({ forceRefresh: true });
   } catch (e:any) {
     if (e === "cancel" || e === "close") return;
     ElMessage.error(e?.message || "删除失败");
-  } finally { loading.value = false; }
+  } finally { actionLoading.value = false; }
 }
 
 async function clearPcTx() {
   if (!isAdmin.value) return;
   try {
-    const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1]);
+    const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1] || effectiveFilter.value);
     const action = await ElMessageBox.confirm(
       hasFilter ? "将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。" : "当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！",
       "清空电脑出入库明细",
@@ -620,7 +673,7 @@ async function clearPcTx() {
       confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: expected,
       inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
     });
-    loading.value = true;
+    actionLoading.value = true;
     const all = await fetchAll();
     const entries = buildDeleteEntries(all);
     if (!entries.length) { ElMessage.warning("没有可清空的记录"); return; }
@@ -632,12 +685,21 @@ async function clearPcTx() {
     }
     ElMessage.success(`已清空 ${deleted} 条记录`);
     selectedRows.value = [];
-    await load();
+    invalidateCache();
+    clearTotalCache();
+    await load({ forceRefresh: true });
   } catch (e:any) {
     if (e === "cancel" || e === "close") return;
     ElMessage.error(e?.message || "清空失败");
-  } finally { loading.value = false; }
+  } finally { actionLoading.value = false; }
 }
 
-onMounted(load);
+onBeforeMount(() => {
+  void load({ keepPage: true });
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  void load({ keepPage: true, silent: true });
+});
 </script>
