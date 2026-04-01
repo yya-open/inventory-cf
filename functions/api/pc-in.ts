@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
-import { ensurePcSchema, must, optional, pcInNo } from './_pc';
-import { createPcAssetAndInRecord, findExistingPcAssetBySerialNo, normalizePcSerialNo } from './services/asset-write';
+import { ensurePcSchema, must, optional, pcInNo, normalizePcSerialNo } from './_pc';
+import { createPcAssetAndInRecord } from './services/asset-write';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 
@@ -29,7 +29,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const memory_size = optional(body?.memory_size, 40);
     const remark = optional(body?.remark, 2000);
 
-    const exist = await findExistingPcAssetBySerialNo(env.DB, serial_no);
+    const exist = await env.DB.prepare("SELECT id, archived FROM pc_assets WHERE UPPER(TRIM(serial_no))=? LIMIT 1").bind(serial_no).first<any>();
     if (exist?.id) {
       return Response.json(
         { ok: false, message: '该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）' },

@@ -1,6 +1,6 @@
 import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
 import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
-import { must, optional } from '../_pc';
+import { must, optional, normalizePcSerialNo } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
@@ -387,7 +387,7 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
 export function parsePcAssetInput(body: any): PcAssetInput {
   return {
     brand: must(body?.brand, '品牌', 120),
-    serial_no: must(body?.serial_no, '序列号', 120),
+    serial_no: normalizePcSerialNo(must(body?.serial_no, '序列号', 120)),
     model: must(body?.model, '型号', 200),
     manufacture_date: optional(body?.manufacture_date, 20),
     warranty_end: optional(body?.warranty_end, 20),
