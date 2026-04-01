@@ -25,7 +25,6 @@ export type StockListQuery = PagedQuery & {
   orderBy: string;
   sort: string;
   keyword_mode: string;
-  fast: boolean;
 };
 
 export type TxListQuery = PagedQuery & {
@@ -39,7 +38,6 @@ export type TxListQuery = PagedQuery & {
   item_id: number | null;
   warehouse_id: number | null;
   keyword_mode: string;
-  fast: boolean;
 };
 
 export type WarningsListQuery = PagedQuery & {
@@ -51,7 +49,6 @@ export type WarningsListQuery = PagedQuery & {
   category: string;
   only_alert: boolean;
   keyword_mode: string;
-  fast: boolean;
 };
 
 export type ItemInput = {
@@ -95,7 +92,6 @@ export function buildItemsListQuery(url: URL): ItemsListQuery {
   };
   const sortCol = sortMap[sortByRaw] || 'i.id';
 
-  const fast = String(url.searchParams.get('fast') || '').trim() === '1';
   const kw = buildKeywordWhere(keyword, {
     numericId: 'i.id',
     exact: ['i.sku'],
@@ -186,7 +182,6 @@ export function buildStockListQuery(url: URL): StockListQuery {
   const keyword = normalizeKeyword(url.searchParams.get('keyword'));
   const warehouse_id = Number(url.searchParams.get('warehouse_id') || 1);
   const sort = normalizeKeyword(url.searchParams.get('sort')) || 'warning_first';
-  const fast = String(url.searchParams.get('fast') || '').trim() === '1';
   const kw = buildKeywordWhere(keyword, {
     numericId: 'i.id',
     exact: ['i.sku'],
@@ -211,7 +206,6 @@ export function buildStockListQuery(url: URL): StockListQuery {
     orderBy: orderMap[sort] || orderMap.warning_first,
     sort,
     keyword_mode: kw.mode,
-    fast,
   };
 }
 
@@ -297,7 +291,6 @@ export function buildTxListQuery(url: URL, options: { includeKeyword?: boolean }
     binds.push(toSql);
   }
 
-  const fast = String(url.searchParams.get('fast') || '').trim() === '1';
   const sortByRaw = normalizeKeyword(url.searchParams.get('sort_by')) || 'id';
   const sortDirRaw = normalizeKeyword(url.searchParams.get('sort_dir')).toLowerCase() || 'desc';
   const sortDir = normalizeSortDir(sortDirRaw);
@@ -324,7 +317,6 @@ export function buildTxListQuery(url: URL, options: { includeKeyword?: boolean }
     item_id,
     warehouse_id,
     keyword_mode,
-    fast,
   };
 }
 
@@ -389,7 +381,6 @@ export function buildWarningsQuery(url: URL): WarningsListQuery {
   const keyword = normalizeKeyword(url.searchParams.get('keyword'));
   const only_alert = (url.searchParams.get('only_alert') ?? '1') !== '0';
   const sort = normalizeKeyword(url.searchParams.get('sort')) || 'gap_desc';
-  const fast = String(url.searchParams.get('fast') || '').trim() === '1';
   const whereParts: string[] = ['i.enabled=1'];
   const binds: any[] = [];
   let keyword_mode = 'none';
@@ -425,7 +416,6 @@ export function buildWarningsQuery(url: URL): WarningsListQuery {
     category,
     only_alert,
     keyword_mode,
-    fast,
   };
 }
 

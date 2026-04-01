@@ -72,9 +72,8 @@
     </div>
 
     <el-card ref="logsSectionRef" shadow="never">
-      <LazyMountBlock title="正在装载电脑盘点记录…" min-height="360px" :delay="0" :idle="false" :viewport="false">
-        <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-        <el-table v-else v-loading="refreshing || loading" :data="rows" border style="width: 100%" @selection-change="onSelectionChange">
+      <LazyMountBlock title="正在装载电脑盘点记录…" min-height="360px">
+        <el-table v-loading="loading" :data="rows" border style="width: 100%" @selection-change="onSelectionChange">
           <el-table-column type="selection" width="45" />
           <el-table-column prop="created_at" label="时间" width="170" />
 
@@ -161,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, ref, watch } from 'vue';
+import { computed, nextTick, onMounted, onUnmounted, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiDownload, apiGet, apiPost } from '../api/client';
@@ -177,9 +176,6 @@ import type { AssetInventorySummary, InventoryIssueBreakdown, PcFilters } from '
 import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openPcLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
 import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
-import { usePagedAssetList } from '../composables/usePagedAssetList';
-import { scheduleOnIdle } from '../utils/idle';
-import LedgerTableSkeleton from '../components/assets/LedgerTableSkeleton.vue';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -217,11 +213,13 @@ const issueType = ref<string>('');
 const keyword = ref<string>('');
 const dateRange = ref<[string, string] | null>(null);
 
+const loading = ref(false);
+const rows = ref<any[]>([]);
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
 const selectedRows = ref<any[]>([]);
 const isAdmin = computed(() => can('admin'));
-const SOFT_REFRESH_TTL_MS = 20_000;
-let lastRefreshAt = 0;
-let cancelPanelRefresh: (() => void) | null = null;
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, applyPayload: applyInventoryBatchPayload } = useInventoryBatchStore('pc');
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
@@ -237,73 +235,26 @@ const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIs
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
 
-type PcInventoryLogFilters = {
-  action: string;
-  issueType: string;
-  keyword: string;
-  dateFrom: string;
-  dateTo: string;
-};
+const totalCache = new Map<string, number>();
+let totalTimer: any = null;
 
-function currentFilters(): PcInventoryLogFilters {
-  return {
-    action: String(action.value || '').trim().toUpperCase(),
-    issueType: String(issueType.value || '').trim().toUpperCase(),
-    keyword: String(keyword.value || '').trim(),
-    dateFrom: String(dateRange.value?.[0] || '').trim(),
-    dateTo: String(dateRange.value?.[1] || '').trim(),
-  };
+function filterKey() {
+  return [action.value || '', issueType.value || '', keyword.value || '', dateRange.value?.[0] || '', dateRange.value?.[1] || ''].join('|');
 }
 
-function filterKey(filters: PcInventoryLogFilters) {
-  return [filters.action || '', filters.issueType || '', filters.keyword || '', filters.dateFrom || '', filters.dateTo || ''].join('|');
-}
-
-function buildParams(filters: PcInventoryLogFilters, withPage: boolean, pageNumber = page.value, size = pageSize.value) {
+function buildParams(withPage: boolean) {
   const params = new URLSearchParams();
-  if (filters.action) params.set('action', filters.action);
-  if (filters.issueType) params.set('issue_type', filters.issueType);
-  if (filters.keyword) params.set('keyword', filters.keyword);
-  if (filters.dateFrom) params.set('date_from', filters.dateFrom);
-  if (filters.dateTo) params.set('date_to', filters.dateTo);
+  if (action.value) params.set('action', action.value);
+  if (issueType.value) params.set('issue_type', issueType.value);
+  if (keyword.value) params.set('keyword', keyword.value.trim());
+  if (dateRange.value?.[0]) params.set('date_from', dateRange.value[0]);
+  if (dateRange.value?.[1]) params.set('date_to', dateRange.value[1]);
   if (withPage) {
-    params.set('page', String(pageNumber));
-    params.set('page_size', String(size));
+    params.set('page', String(page.value));
+    params.set('page_size', String(pageSize.value));
   }
   return params;
 }
-
-const {
-  rows,
-  loading,
-  refreshing,
-  initialLoading,
-  page,
-  pageSize,
-  total,
-  load: loadPaged,
-  clearTotalCache,
-  invalidateCache,
-} = usePagedAssetList<PcInventoryLogFilters, any>({
-  cacheNamespace: 'pc-inventory-log',
-  cacheTtlMs: 45_000,
-  totalDebounceMs: 350,
-  createFilterKey: filterKey,
-  fetchPage: async ({ filters, page, pageSize, fast, signal }) => {
-    const params = buildParams(filters, true, page, pageSize);
-    if (fast) params.set('fast', '1');
-    const r: any = await apiGet(`/api/pc-inventory-log/list?${params.toString()}`, { signal });
-    return {
-      rows: Array.isArray(r?.data) ? r.data : [],
-      total: typeof r?.total === 'number' ? Number(r.total || 0) : null,
-    };
-  },
-  fetchTotal: async (filters, signal) => {
-    const params = buildParams(filters, false);
-    const j: any = await apiGet(`/api/pc-inventory-log-count?${params.toString()}`, { signal });
-    return Number(j?.total || 0);
-  },
-});
 
 function applyRouteFilters() {
   action.value = String(route.query.action || '').trim().toUpperCase();
@@ -315,30 +266,9 @@ function applyRouteFilters() {
   page.value = 1;
 }
 
-async function load(options: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
-  try {
-    await loadPaged(currentFilters(), {
-      keepPage: options.keepPage ?? true,
-      silent: options.silent,
-      forceRefresh: options.forceRefresh,
-    });
-    lastRefreshAt = Date.now();
-  } catch (e: any) {
-    ElMessage.error(e?.message || '加载失败');
-  }
-}
-
-function schedulePanelRefresh(timeout = 240) {
-  cancelPanelRefresh?.();
-  cancelPanelRefresh = scheduleOnIdle(() => {
-    void refreshInventoryBatchAndSummary();
-  }, timeout);
-}
-
 function onSearch() {
   page.value = 1;
-  void load();
-  schedulePanelRefresh();
+  load();
 }
 
 function reset() {
@@ -347,9 +277,45 @@ function reset() {
   keyword.value = '';
   dateRange.value = null;
   page.value = 1;
-  clearTotalCache();
-  void load({ forceRefresh: true });
-  schedulePanelRefresh();
+  load();
+}
+
+async function load() {
+  loading.value = true;
+  try {
+    const params = buildParams(true);
+    params.set('fast', '1');
+    const r: any = await apiGet(`/api/pc-inventory-log/list?${params.toString()}`);
+    rows.value = r.data || [];
+
+    const key = filterKey();
+    if (totalCache.has(key)) {
+      total.value = Number(totalCache.get(key) || 0);
+      return;
+    }
+
+    if (r.total === null || typeof r.total === 'undefined') {
+      if (totalTimer) clearTimeout(totalTimer);
+      totalTimer = setTimeout(() => {
+        const p2 = buildParams(false);
+        apiGet(`/api/pc-inventory-log-count?${p2.toString()}`)
+          .then((j: any) => {
+            const v = Number(j.total || 0);
+            totalCache.set(filterKey(), v);
+            total.value = v;
+          })
+          .catch(() => {});
+      }, 250);
+    } else {
+      const v = Number(r.total || 0);
+      totalCache.set(key, v);
+      total.value = v;
+    }
+  } catch (e: any) {
+    ElMessage.error(e?.message || '加载失败');
+  } finally {
+    loading.value = false;
+  }
 }
 
 async function loadPcIssueBreakdown() {
@@ -385,8 +351,8 @@ async function refreshInventoryBatchAndSummary() {
   }
 }
 
-function onPageChange() { void load({ keepPage: true }); }
-function onPageSizeChange() { page.value = 1; void load({ keepPage: true }); }
+function onPageChange() { load(); }
+function onPageSizeChange() { page.value = 1; load(); }
 function onSelectionChange(list: any[]) { selectedRows.value = list || []; }
 
 function buildIds(list: any[]) {
@@ -408,10 +374,8 @@ async function deleteSelected() {
     const r: any = await apiPost('/api/pc-inventory-log/delete', { ids, confirm: '删除' });
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
-    invalidateCache();
-    clearTotalCache();
-    await load({ forceRefresh: true });
-    await refreshInventoryBatchAndSummary();
+    totalCache.clear();
+    await Promise.all([load(), refreshInventoryBatchAndSummary()]);
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') return;
     ElMessage.error(e?.message || '删除失败');
@@ -434,10 +398,8 @@ async function deleteOne(row: any) {
     loading.value = true;
     const r: any = await apiPost('/api/pc-inventory-log/delete', { ids: [id], confirm: '删除' });
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
-    invalidateCache();
-    clearTotalCache();
-    await load({ forceRefresh: true });
-    await refreshInventoryBatchAndSummary();
+    totalCache.clear();
+    await Promise.all([load(), refreshInventoryBatchAndSummary()]);
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') return;
     ElMessage.error(e?.message || '删除失败');
@@ -448,7 +410,7 @@ async function deleteOne(row: any) {
 
 async function exportCsv() {
   try {
-    const p = buildParams(currentFilters(), false);
+    const p = buildParams(false);
     p.set('max', '50000');
     const stamp = new Date();
     const y = stamp.getFullYear();
@@ -491,10 +453,8 @@ async function confirmStartBatch(name: string) {
       ? `已自动清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
       : (result?.message || '已开启新一轮盘点');
     ElMessage.success(successMessage);
-    invalidateCache();
-    clearTotalCache();
-    await load({ forceRefresh: true });
-    await refreshInventoryBatchAndSummary();
+    totalCache.clear();
+    await Promise.all([load(), refreshInventoryBatchAndSummary()]);
   } catch (error: any) {
     ElMessage.error(error?.message || '开启盘点批次失败');
   } finally {
@@ -590,17 +550,12 @@ function handleIssue(row: any) {
 }
 watch(() => route.query, () => {
   applyRouteFilters();
-  void load();
-  schedulePanelRefresh();
+  load();
 }, { deep: true });
 
-onBeforeMount(() => {
-  applyRouteFilters();
-  void load({ keepPage: true });
-  schedulePanelRefresh(120);
-});
-
 onMounted(() => {
+  applyRouteFilters();
+  void Promise.all([load(), refreshInventoryBatchAndSummary()]);
   if (typeof window !== 'undefined') {
     snapshotPollTimer = window.setInterval(() => {
       if (!hasPendingSnapshotJob.value) return;
@@ -609,16 +564,7 @@ onMounted(() => {
   }
 });
 
-onActivated(() => {
-  if (Date.now() - lastRefreshAt >= SOFT_REFRESH_TTL_MS) {
-    void load({ keepPage: true, silent: true });
-  }
-  schedulePanelRefresh();
-});
-
 onUnmounted(() => {
-  cancelPanelRefresh?.();
-  cancelPanelRefresh = null;
   if (snapshotPollTimer != null && typeof window !== 'undefined') {
     window.clearInterval(snapshotPollTimer);
     snapshotPollTimer = null;

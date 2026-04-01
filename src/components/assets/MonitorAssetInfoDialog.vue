@@ -60,14 +60,11 @@
       </section>
 
       <section class="ledger-detail-card ledger-detail-card--full">
-        <div class="ledger-detail-card__title">上一位历史领用人</div>
-        <div class="ledger-detail-card__hint">仅展示该显示器资产上一条历史领用信息，方便回看最近一次交接轨迹。</div>
-        <dl class="ledger-detail-list">
-          <div><dt>姓名</dt><dd>{{ previousOwnerName }}</dd></div>
-          <div><dt>工号 / 部门</dt><dd>{{ previousOwnerMeta }}</dd></div>
-          <div><dt>最近领用时间</dt><dd>{{ previousOwnerAt }}</dd></div>
-        </dl>
+        <div class="ledger-detail-card__title">备注</div>
+        <div class="ledger-detail-card__content">{{ textOrDash(row?.remark, '暂无备注') }}</div>
       </section>
+
+      <AssetAuditSummaryPanel entity="monitor_assets" :entity-id="row?.id" module="MONITOR" :visible="visible" />
     </div>
 
     <template #footer>
@@ -81,6 +78,7 @@
 
 <script setup lang="ts">
 import { computed } from 'vue';
+import AssetAuditSummaryPanel from './AssetAuditSummaryPanel.vue';
 
 const props = defineProps<{
   visible: boolean;
@@ -100,12 +98,6 @@ const currentOwnerMeta = computed(() => {
   const parts = [props.row?.employee_no, props.row?.department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const previousOwnerName = computed(() => textOrDash(props.row?.previous_employee_name, '暂无历史领用人'));
-const previousOwnerMeta = computed(() => {
-  const parts = [props.row?.previous_employee_no, props.row?.previous_department].map((item) => String(item || '').trim()).filter(Boolean);
-  return parts.length ? parts.join(' · ') : '-';
-});
-const previousOwnerAt = computed(() => textOrDash(props.row?.previous_assigned_at, '暂无记录'));
 
 function textOrDash(value: unknown, fallback = '-') {
   const text = String(value ?? '').trim();

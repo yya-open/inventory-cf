@@ -240,63 +240,7 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
       s.last_config_date,
       s.last_recycle_date,
       s.last_out_at,
-      s.last_in_at,
-      (
-        SELECT o.employee_no
-        FROM pc_out o
-        WHERE o.asset_id = a.id
-          AND (COALESCE(o.employee_no, '') <> '' OR COALESCE(o.employee_name, '') <> '' OR COALESCE(o.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(o.employee_no, '') <> COALESCE(s.current_employee_no, '')
-            OR COALESCE(o.employee_name, '') <> COALESCE(s.current_employee_name, '')
-            OR COALESCE(o.department, '') <> COALESCE(s.current_department, '')
-          )
-        ORDER BY COALESCE(NULLIF(o.config_date, ''), o.created_at) DESC, o.created_at DESC, o.id DESC
-        LIMIT 1
-      ) AS previous_employee_no,
-      (
-        SELECT o.employee_name
-        FROM pc_out o
-        WHERE o.asset_id = a.id
-          AND (COALESCE(o.employee_no, '') <> '' OR COALESCE(o.employee_name, '') <> '' OR COALESCE(o.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(o.employee_no, '') <> COALESCE(s.current_employee_no, '')
-            OR COALESCE(o.employee_name, '') <> COALESCE(s.current_employee_name, '')
-            OR COALESCE(o.department, '') <> COALESCE(s.current_department, '')
-          )
-        ORDER BY COALESCE(NULLIF(o.config_date, ''), o.created_at) DESC, o.created_at DESC, o.id DESC
-        LIMIT 1
-      ) AS previous_employee_name,
-      (
-        SELECT o.department
-        FROM pc_out o
-        WHERE o.asset_id = a.id
-          AND (COALESCE(o.employee_no, '') <> '' OR COALESCE(o.employee_name, '') <> '' OR COALESCE(o.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(o.employee_no, '') <> COALESCE(s.current_employee_no, '')
-            OR COALESCE(o.employee_name, '') <> COALESCE(s.current_employee_name, '')
-            OR COALESCE(o.department, '') <> COALESCE(s.current_department, '')
-          )
-        ORDER BY COALESCE(NULLIF(o.config_date, ''), o.created_at) DESC, o.created_at DESC, o.id DESC
-        LIMIT 1
-      ) AS previous_department,
-      (
-        SELECT COALESCE(NULLIF(o.config_date, ''), o.created_at)
-        FROM pc_out o
-        WHERE o.asset_id = a.id
-          AND (COALESCE(o.employee_no, '') <> '' OR COALESCE(o.employee_name, '') <> '' OR COALESCE(o.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(o.employee_no, '') <> COALESCE(s.current_employee_no, '')
-            OR COALESCE(o.employee_name, '') <> COALESCE(s.current_employee_name, '')
-            OR COALESCE(o.department, '') <> COALESCE(s.current_department, '')
-          )
-        ORDER BY COALESCE(NULLIF(o.config_date, ''), o.created_at) DESC, o.created_at DESC, o.id DESC
-        LIMIT 1
-      ) AS previous_assigned_at
+      s.last_in_at
     FROM pc_assets a
     JOIN page_a p ON p.id = a.id
     LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
@@ -312,67 +256,7 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
     SELECT
       a.*,
       l.name AS location_name,
-      p.name AS parent_location_name,
-      (
-        SELECT t.employee_no
-        FROM monitor_tx t
-        WHERE t.asset_id = a.id
-          AND t.tx_type IN ('OUT', 'TRANSFER')
-          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-          )
-        ORDER BY t.created_at DESC, t.id DESC
-        LIMIT 1
-      ) AS previous_employee_no,
-      (
-        SELECT t.employee_name
-        FROM monitor_tx t
-        WHERE t.asset_id = a.id
-          AND t.tx_type IN ('OUT', 'TRANSFER')
-          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-          )
-        ORDER BY t.created_at DESC, t.id DESC
-        LIMIT 1
-      ) AS previous_employee_name,
-      (
-        SELECT t.department
-        FROM monitor_tx t
-        WHERE t.asset_id = a.id
-          AND t.tx_type IN ('OUT', 'TRANSFER')
-          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-          )
-        ORDER BY t.created_at DESC, t.id DESC
-        LIMIT 1
-      ) AS previous_department,
-      (
-        SELECT t.created_at
-        FROM monitor_tx t
-        WHERE t.asset_id = a.id
-          AND t.tx_type IN ('OUT', 'TRANSFER')
-          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-          AND (
-            a.status <> 'ASSIGNED'
-            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-          )
-        ORDER BY t.created_at DESC, t.id DESC
-        LIMIT 1
-      ) AS previous_assigned_at
+      p.name AS parent_location_name
     FROM monitor_assets a
     LEFT JOIN pc_locations l ON l.id = a.location_id
     LEFT JOIN pc_locations p ON p.id = l.parent_id

@@ -1,6 +1,8 @@
 <template>
   <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
-    <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
+    <div v-if="loading && !rows.length" class="ledger-table-skeleton">
+      <el-skeleton :rows="8" animated />
+    </div>
     <el-card v-else shadow="never" class="ledger-table-card">
       <el-table
       ref="tableRef"
@@ -182,7 +184,6 @@
 </template>
 <script setup lang="ts">
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
-import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
 import { computed, nextTick, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { ArrowDown } from '@element-plus/icons-vue';
@@ -190,7 +191,6 @@ import { inventoryIssueTypeText, inventoryStatusText } from '../../types/assets'
 const props = defineProps<{
   rows: Array<Record<string, any>>;
   loading: boolean;
-  initialLoading: boolean;
   total: number;
   page: number;
   pageSize: number;

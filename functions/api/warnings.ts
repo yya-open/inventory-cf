@@ -9,8 +9,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const query = buildWarningsQuery(new URL(request.url));
     query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '预警中心');
-    const rows = await listWarningsRows(env.DB, query);
-    const total = query.fast ? undefined : await countWarningsRows(env.DB, query);
+    const [total, rows] = await Promise.all([
+      countWarningsRows(env.DB, query),
+      listWarningsRows(env.DB, query),
+    ]);
 
     return Response.json({
       ok: true,
