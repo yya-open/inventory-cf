@@ -673,7 +673,12 @@ async function refreshInventoryBatch() {
   }
 }
 
-async function refreshInventorySummary(filters: MonitorFilters = currentFiltersForList()) {
+async function refreshInventorySummary(filters: MonitorFilters = currentFiltersForList(), options: { force?: boolean } = {}) {
+  const shouldLoad = options.force || hasActiveInventoryBatch.value || Boolean(filters.inventoryStatus);
+  if (!shouldLoad) {
+    inventorySummary.value = { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 };
+    return;
+  }
   try {
     inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters));
   } catch (error) {
@@ -703,7 +708,9 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
 function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
   const snapshot = { ...initialFilters };
   runWhenBrowserIdle(async () => {
-    void refreshInventorySummary(snapshot);
+    if (hadActiveBatch || snapshot.inventoryStatus) {
+      void refreshInventorySummary(snapshot);
+    }
     try {
       await refreshInventoryBatch();
     } catch {
@@ -714,7 +721,7 @@ function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch
       || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
     if (!batchStateChanged) return;
     await load(nextFilters, { keepPage: true, silent: true });
-    void refreshInventorySummary(nextFilters);
+    void refreshInventorySummary(nextFilters, { force: true });
   });
 }
 

@@ -250,29 +250,38 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
+let pcLedgerPrewarmStarted = false;
 
-function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], targetPath: string) {
   if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
+  if (pcLedgerPrewarmStarted) return;
+  const shouldPrewarm = targetPath.startsWith('/pc') || targetPath.startsWith('/system');
+  if (!shouldPrewarm) return;
+  pcLedgerPrewarmStarted = true;
   scheduleOnIdle(async () => {
     try {
+      const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+      const tasks: Promise<unknown>[] = [];
       if (!hasPrimedPagedListNamespace('pc-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-        const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
-        primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+        tasks.push(listPcAssets(defaultPcFilters, 1, pageSize, true).then((result) => {
+          primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+        }));
       }
       if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-        const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
-        primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+        tasks.push(listMonitorAssets(defaultMonitorFilters, 1, pageSize, true).then((result) => {
+          primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+        }));
       }
       if (!hasPrimedPagedListNamespace('system-settings')) {
-        await fetchSystemSettings();
-        markPagedListNamespacePrimed('system-settings');
+        tasks.push(fetchSystemSettings().then(() => {
+          markPagedListNamespacePrimed('system-settings');
+        }));
       }
+      await Promise.allSettled(tasks);
     } catch {
-      // ignore prewarm failures
+      pcLedgerPrewarmStarted = false;
     }
-  }, 300);
+  }, 800);
 }
 
 router.afterEach((to) => {
@@ -290,7 +299,7 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  prewarmPcLedgerData(auth.user);
+  prewarmPcLedgerData(auth.user, to.path);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
