@@ -1,38 +1,25 @@
 import { useAuth } from "../store/auth";
 
-
-type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
+type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials; cacheTtlMs?: number; skipCache?: boolean };
 type ApiError = Error & { status?: number; response?: any };
-type CachedGetEntry = { expiresAt: number; response?: any; pending?: Promise<any> };
+
+
+type CachedGetEntry = { expiresAt: number; value?: any; pending?: Promise<any> };
+const GET_CACHE_TTL_MS = 2_500;
 const getResponseCache = new Map<string, CachedGetEntry>();
 
-function clearGetResponseCache(prefix?: string) {
-  if (!prefix) {
+function buildRequestCacheKey(method: string, path: string, credentials: RequestCredentials) {
+  return `${method.toUpperCase()}::${credentials}::${path}`;
+}
+
+function invalidateApiGetCache(prefixes?: string[]) {
+  if (!prefixes?.length) {
     getResponseCache.clear();
     return;
   }
   for (const key of [...getResponseCache.keys()]) {
-    if (key === prefix || key.startsWith(prefix)) getResponseCache.delete(key);
+    if (prefixes.some((prefix) => key.includes(prefix))) getResponseCache.delete(key);
   }
-}
-
-function shouldCacheGet(path: string) {
-  const normalized = String(path || '');
-  return normalized.startsWith('/api/auth/me')
-    || normalized.startsWith('/api/system-settings')
-    || normalized.startsWith('/api/pc-locations')
-    || normalized.includes('-count?')
-    || normalized.includes('-summary?')
-    || normalized.startsWith('/api/stock?')
-    || normalized.startsWith('/api/warnings?');
-}
-
-function getCacheTtlMs(path: string) {
-  const normalized = String(path || '');
-  if (normalized.startsWith('/api/system-settings')) return 30_000;
-  if (normalized.startsWith('/api/pc-locations')) return 60_000;
-  if (normalized.startsWith('/api/auth/me')) return 10_000;
-  return 4_000;
 }
 
 function handleUnauthorized(message?: string): never {
@@ -63,33 +50,33 @@ function buildError(message: string, status: number, response: any): ApiError {
 }
 
 export async function apiRequestJson<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
-  const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
+  const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include", cacheTtlMs = GET_CACHE_TTL_MS, skipCache = false } = options;
   const method = String(init.method || 'GET').toUpperCase();
-  const canCache = method === 'GET' && !init.body && !('signal' in init) && shouldCacheGet(path) && !String(path || '').includes('force=1');
+  const headers = { ...(init.headers || {}) };
+  const cacheKey = buildRequestCacheKey(method, path, credentials);
+  const canCache = method === 'GET' && !skipCache && cacheTtlMs > 0;
+  const now = Date.now();
   if (canCache) {
-    const now = Date.now();
-    const cached = getResponseCache.get(path);
-    if (cached?.response !== undefined && cached.expiresAt > now) return cached.response as T;
+    const cached = getResponseCache.get(cacheKey);
+    if (cached?.value && cached.expiresAt > now) return cached.value as T;
     if (cached?.pending) return cached.pending as Promise<T>;
-    const pending = fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } }).then(async (r) => {
-      const j = await parseJson(r);
-      if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
-      if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
-      getResponseCache.set(path, { response: j, expiresAt: Date.now() + getCacheTtlMs(path) });
-      return j as T;
-    }).finally(() => {
-      const latest = getResponseCache.get(path);
-      if (latest?.pending) getResponseCache.delete(path);
-    });
-    getResponseCache.set(path, { expiresAt: 0, pending });
-    return pending;
   }
-  const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } });
-  const j = await parseJson(r);
-  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
-  if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
-  if (method !== 'GET') clearGetResponseCache('/api/');
-  return j as T;
+  const task = fetch(path, { credentials, ...init, headers }).then(async (r) => {
+    const j = await parseJson(r);
+    if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
+    if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
+    return j as T;
+  });
+  if (canCache) getResponseCache.set(cacheKey, { expiresAt: now + cacheTtlMs, pending: task });
+  try {
+    const result = await task;
+    if (canCache) getResponseCache.set(cacheKey, { expiresAt: Date.now() + cacheTtlMs, value: result });
+    else if (method !== 'GET') invalidateApiGetCache();
+    return result;
+  } catch (error) {
+    if (canCache) getResponseCache.delete(cacheKey);
+    throw error;
+  }
 }
 
 export const apiGet = <T>(path: string, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "GET", ...init });

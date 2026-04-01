@@ -8,11 +8,7 @@ export type UserDataScope = {
 };
 
 export const ASSET_WAREHOUSE_OPTIONS = ['配件仓', '电脑仓', '显示器仓'] as const;
-
-
-let userDataScopeColumnsReady = false;
-let userDataScopeColumnsInit: Promise<void> | null = null;
-
+let ensureUserDataScopeColumnsTask: Promise<void> | null = null;
 
 export function normalizeWarehouseScopeValue(value: any) {
   const raw = String(value || '').trim();
@@ -44,9 +40,8 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
 }
 
 export async function ensureUserDataScopeColumns(db: D1Database) {
-  if (userDataScopeColumnsReady) return;
-  if (userDataScopeColumnsInit) return userDataScopeColumnsInit;
-  userDataScopeColumnsInit = (async () => {
+  if (ensureUserDataScopeColumnsTask) return ensureUserDataScopeColumnsTask;
+  ensureUserDataScopeColumnsTask = (async () => {
     try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_type TEXT`).run(); } catch {}
     try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value TEXT`).run(); } catch {}
     try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value2 TEXT`).run(); } catch {}
@@ -56,9 +51,11 @@ export async function ensureUserDataScopeColumns(db: D1Database) {
       await db.prepare(`UPDATE users SET data_scope_value=NULL, data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all'))='all'`).run();
       await db.prepare(`UPDATE users SET data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all')) IN ('department','warehouse')`).run();
     } catch {}
-    userDataScopeColumnsReady = true;
-  })().finally(() => { userDataScopeColumnsInit = null; });
-  return userDataScopeColumnsInit;
+  })().catch((error) => {
+    ensureUserDataScopeColumnsTask = null;
+    throw error;
+  });
+  return ensureUserDataScopeColumnsTask;
 }
 
 export async function getUserDataScope(db: D1Database, userId: number) {

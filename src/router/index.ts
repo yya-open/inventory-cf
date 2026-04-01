@@ -250,38 +250,34 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
-let pcLedgerPrewarmStarted = false;
+const prewarmedAreas = new Set<string>();
 
-function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], targetPath: string) {
-  if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
-  if (pcLedgerPrewarmStarted) return;
-  const shouldPrewarm = targetPath.startsWith('/pc') || targetPath.startsWith('/system');
-  if (!shouldPrewarm) return;
-  pcLedgerPrewarmStarted = true;
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], area: 'pc' | 'system') {
+  if (!authUser || prewarmedAreas.has(area)) return;
+  if (area === 'pc' && !canAccessModuleArea(authUser, 'pc')) return;
+  if (area === 'system' && authUser.role !== 'admin') return;
+  prewarmedAreas.add(area);
   scheduleOnIdle(async () => {
     try {
       const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-      const tasks: Promise<unknown>[] = [];
-      if (!hasPrimedPagedListNamespace('pc-assets')) {
-        tasks.push(listPcAssets(defaultPcFilters, 1, pageSize, true).then((result) => {
+      if (area === 'pc') {
+        if (canAccessPcSection(authUser, 'pc') && !hasPrimedPagedListNamespace('pc-assets')) {
+          const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
           primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-        }));
-      }
-      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-        tasks.push(listMonitorAssets(defaultMonitorFilters, 1, pageSize, true).then((result) => {
+        }
+        if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+          const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
           primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-        }));
+        }
       }
-      if (!hasPrimedPagedListNamespace('system-settings')) {
-        tasks.push(fetchSystemSettings().then(() => {
-          markPagedListNamespacePrimed('system-settings');
-        }));
+      if (area === 'system' && !hasPrimedPagedListNamespace('system-settings')) {
+        await fetchSystemSettings();
+        markPagedListNamespacePrimed('system-settings');
       }
-      await Promise.allSettled(tasks);
     } catch {
-      pcLedgerPrewarmStarted = false;
+      prewarmedAreas.delete(area);
     }
-  }, 800);
+  }, area === 'system' ? 1200 : 600);
 }
 
 router.afterEach((to) => {
@@ -299,7 +295,8 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  prewarmPcLedgerData(auth.user, to.path);
+  if (to.path.startsWith('/pc')) prewarmPcLedgerData(auth.user, 'pc');
+  else if (to.path.startsWith('/system')) prewarmPcLedgerData(auth.user, 'system');
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {

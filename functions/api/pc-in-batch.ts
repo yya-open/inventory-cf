@@ -21,10 +21,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requireAuth(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    const url = new URL(request.url);
-    const timing = (env as any).__timing;
-    if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
-    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+    await ensurePcSchema(env.DB);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];

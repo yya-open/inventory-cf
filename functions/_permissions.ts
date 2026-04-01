@@ -83,21 +83,16 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
 
 export const ALL_PERMISSION_TEMPLATE_CODES = Object.keys(PERMISSION_TEMPLATES) as PermissionTemplateCode[];
 
-
-let permissionsSchemaReady = false;
-let permissionsSchemaInit: Promise<void> | null = null;
-let permissionTemplateColumnReady = false;
-let permissionTemplateColumnInit: Promise<void> | null = null;
-
 function nowSql() {
   return "datetime('now','+8 hours')";
 }
 
+let ensureUserPermissionsTableTask: Promise<void> | null = null;
+let ensureUserPermissionTemplateColumnTask: Promise<void> | null = null;
+
 export async function ensureUserPermissionsTable(db: D1Database) {
-  if (permissionsSchemaReady) return;
-  if (permissionsSchemaInit) return permissionsSchemaInit;
-  permissionsSchemaInit = (async () => {
-  await db.prepare(
+  if (ensureUserPermissionsTableTask) return ensureUserPermissionsTableTask;
+  ensureUserPermissionsTableTask = db.prepare(
     `CREATE TABLE IF NOT EXISTS user_permissions (
       user_id INTEGER NOT NULL,
       permission_code TEXT NOT NULL,
@@ -107,22 +102,24 @@ export async function ensureUserPermissionsTable(db: D1Database) {
       PRIMARY KEY (user_id, permission_code),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`
-  ).run();
-  permissionsSchemaReady = true;
-  })().finally(() => { permissionsSchemaInit = null; });
-  return permissionsSchemaInit;
+  ).run().then(() => undefined).catch((error) => {
+    ensureUserPermissionsTableTask = null;
+    throw error;
+  });
+  return ensureUserPermissionsTableTask;
 }
 
 export async function ensureUserPermissionTemplateColumn(db: D1Database) {
-  if (permissionTemplateColumnReady) return;
-  if (permissionTemplateColumnInit) return permissionTemplateColumnInit;
-  permissionTemplateColumnInit = (async () => {
+  if (ensureUserPermissionTemplateColumnTask) return ensureUserPermissionTemplateColumnTask;
+  ensureUserPermissionTemplateColumnTask = (async () => {
     try {
       await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
     } catch {}
-    permissionTemplateColumnReady = true;
-  })().finally(() => { permissionTemplateColumnInit = null; });
-  return permissionTemplateColumnInit;
+  })().catch((error) => {
+    ensureUserPermissionTemplateColumnTask = null;
+    throw error;
+  });
+  return ensureUserPermissionTemplateColumnTask;
 }
 
 export function roleDefaultPermission(role: string | null | undefined, code: PermissionCode) {

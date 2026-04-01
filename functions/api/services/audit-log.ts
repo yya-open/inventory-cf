@@ -1,6 +1,6 @@
 import { toSqlRange } from '../_date';
 import { buildKeywordWhere, buildNormalizedKeywordWhere } from '../_search';
-import { buildFtsKeywordWhere, ensureSearchFtsTable } from './search-fts';
+import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
 
 export type AuditModuleCode = 'STOCK' | 'STOCKTAKE' | 'ITEM' | 'USER' | 'AUDIT' | 'ADMIN' | 'PC' | 'MONITOR' | 'OTHER';
 
@@ -130,14 +130,14 @@ function getAuditOrderBy(filters: AuditListFilters) {
 }
 
 export async function countAuditRows(db: D1Database, filters: AuditListFilters) {
-  if (filters.keyword) await ensureSearchFtsTable(db, 'audit');
+  await ensureSearchFtsTables(db);
   const { where, binds } = buildAuditWhere(filters);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM audit_log a ${where}`).bind(...binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listAuditRows(db: D1Database, filters: AuditListFilters, options?: { limit?: number; offset?: number }) {
-  if (filters.keyword) await ensureSearchFtsTable(db, 'audit');
+  await ensureSearchFtsTables(db);
   const { where, binds } = buildAuditWhere(filters);
   const orderBy = getAuditOrderBy(filters);
   const limit = Number(options?.limit ?? filters.pageSize);

@@ -35,23 +35,13 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
 };
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
-
-const DICTIONARY_CACHE_TTL_MS = 30_000;
-let dictionarySchemaReady = false;
-let dictionarySchemaInit: Promise<void> | null = null;
-const bootstrapReadyKeys = new Set<SystemDictionaryKey>();
-const bootstrapPromises = new Map<SystemDictionaryKey, Promise<void>>();
-const enabledLabelsCache = new Map<SystemDictionaryKey, { expiresAt: number; labels?: string[]; pending?: Promise<string[]> }>();
-
-function invalidateDictionaryEnabledLabelsCache(key?: SystemDictionaryKey) {
-  if (key) {
-    enabledLabelsCache.delete(key);
-    return;
-  }
-  enabledLabelsCache.clear();
-}
+const ENABLED_LABELS_CACHE_TTL_MS = 30_000;
+let ensureSystemDictionaryTableTask: Promise<void> | null = null;
+const bootstrapDictionaryTasks = new Map<SystemDictionaryKey, Promise<void>>();
+const enabledDictionaryLabelCache = new Map<SystemDictionaryKey, { expiresAt: number; value: string[] }>();
 
 export function invalidateSystemDictionaryReferenceCache() {
+  enabledDictionaryLabelCache.clear();
   // 已升级为持久计数表 + dirty-key 延迟刷新；保留兼容导出。
 }
 
@@ -105,9 +95,8 @@ async function ensureLegacySystemSettingsTable(db: D1Database) {
 }
 
 export async function ensureSystemDictionaryTable(db: D1Database) {
-  if (dictionarySchemaReady) return;
-  if (dictionarySchemaInit) return dictionarySchemaInit;
-  dictionarySchemaInit = (async () => {
+  if (ensureSystemDictionaryTableTask) return ensureSystemDictionaryTableTask;
+  ensureSystemDictionaryTableTask = (async () => {
     await db.prepare(
       `CREATE TABLE IF NOT EXISTS system_dictionary_items (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -124,11 +113,11 @@ export async function ensureSystemDictionaryTable(db: D1Database) {
     ).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_sort ON system_dictionary_items(dictionary_key, sort_order, id)`).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_enabled ON system_dictionary_items(dictionary_key, enabled, sort_order, id)`).run();
-    dictionarySchemaReady = true;
-  })().finally(() => {
-    dictionarySchemaInit = null;
+  })().catch((error) => {
+    ensureSystemDictionaryTableTask = null;
+    throw error;
   });
-  return dictionarySchemaInit;
+  return ensureSystemDictionaryTableTask;
 }
 
 
@@ -210,29 +199,26 @@ async function readLegacyDictionaryValues(db: D1Database, key: SystemDictionaryK
 }
 
 async function bootstrapDictionaryIfNeeded(db: D1Database, key: SystemDictionaryKey) {
-  if (bootstrapReadyKeys.has(key)) return;
-  const existing = bootstrapPromises.get(key);
-  if (existing) return existing;
-  const pending = (async () => {
+  const existingTask = bootstrapDictionaryTasks.get(key);
+  if (existingTask) return existingTask;
+  const task = (async () => {
     await ensureSystemDictionaryTable(db);
     const row = await db.prepare(`SELECT COUNT(*) AS c FROM system_dictionary_items WHERE dictionary_key=?`).bind(key).first<any>();
-    if (Number(row?.c || 0) <= 0) {
-      const seed = await readLegacyDictionaryValues(db, key);
-      for (let i = 0; i < seed.length; i += 1) {
-        const label = normalizeLabel(seed[i]);
-        if (!label) continue;
-        await db.prepare(
-          `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
-           VALUES (?, ?, ?, ?, 1)`
-        ).bind(key, label, normalizeComparable(label), i + 1).run();
-      }
+    if (Number(row?.c || 0) > 0) return;
+    const seed = await readLegacyDictionaryValues(db, key);
+    for (let i = 0; i < seed.length; i += 1) {
+      const label = normalizeLabel(seed[i]);
+      if (!label) continue;
+      await db.prepare(
+        `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
+         VALUES (?, ?, ?, ?, 1)`
+      ).bind(key, label, normalizeComparable(label), i + 1).run();
     }
-    bootstrapReadyKeys.add(key);
   })().finally(() => {
-    bootstrapPromises.delete(key);
+    bootstrapDictionaryTasks.delete(key);
   });
-  bootstrapPromises.set(key, pending);
-  return pending;
+  bootstrapDictionaryTasks.set(key, task);
+  return task;
 }
 
 export async function bootstrapAllDictionaries(db: D1Database) {
@@ -474,28 +460,19 @@ export async function getSystemDictionaryVersion(db: D1Database, key?: SystemDic
 }
 
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {
-  const now = Date.now();
-  const cached = enabledLabelsCache.get(key);
-  if (cached?.labels && cached.expiresAt > now) return [...cached.labels];
-  if (cached?.pending) return cached.pending;
-  const pending = (async () => {
-    await bootstrapDictionaryIfNeeded(db, key);
-    const { results } = await db.prepare(
-      `SELECT label
-       FROM system_dictionary_items
-       WHERE dictionary_key=? AND enabled=1
-       ORDER BY sort_order ASC, id ASC`
-    ).bind(key).all<any>();
-    const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
-    const normalized = labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
-    enabledLabelsCache.set(key, { labels: normalized, expiresAt: Date.now() + DICTIONARY_CACHE_TTL_MS });
-    return [...normalized];
-  })().finally(() => {
-    const latest = enabledLabelsCache.get(key);
-    if (latest?.pending) enabledLabelsCache.delete(key);
-  });
-  enabledLabelsCache.set(key, { labels: cached?.labels, expiresAt: cached?.expiresAt || 0, pending });
-  return pending;
+  const cached = enabledDictionaryLabelCache.get(key);
+  if (cached && cached.expiresAt > Date.now()) return [...cached.value];
+  await bootstrapDictionaryIfNeeded(db, key);
+  const { results } = await db.prepare(
+    `SELECT label
+     FROM system_dictionary_items
+     WHERE dictionary_key=? AND enabled=1
+     ORDER BY sort_order ASC, id ASC`
+  ).bind(key).all<any>();
+  const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
+  const value = labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
+  enabledDictionaryLabelCache.set(key, { expiresAt: Date.now() + ENABLED_LABELS_CACHE_TTL_MS, value: [...value] });
+  return value;
 }
 
 export async function createSystemDictionaryItem(db: D1Database, input: Partial<SystemDictionaryItem>, updatedBy: string | null) {
@@ -602,7 +579,6 @@ export async function reorderSystemDictionaryItems(
       throw Object.assign(new Error('字典顺序已被其他管理员修改，请刷新后重试'), { status: 409 });
     }
   }
-  invalidateDictionaryEnabledLabelsCache(key);
   return listSystemDictionaryItems(db, key);
 }
 

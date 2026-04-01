@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
-import { ensurePcSchemaIfAllowed, must, optional, pcInNo } from './_pc';
+import { ensurePcSchema, must, optional, pcInNo } from './_pc';
 import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
@@ -10,10 +10,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requireAuth(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    const url = new URL(request.url);
-    const timing = (env as any).__timing;
-    if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
-    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+    await ensurePcSchema(env.DB);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const { no } = buildWriteNo('PCIN', pcInNo, body?.client_request_id);

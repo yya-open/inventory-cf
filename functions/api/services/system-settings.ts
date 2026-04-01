@@ -50,17 +50,13 @@ const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
 const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key) && key !== 'settings_updated_at');
 
 const SYSTEM_SETTINGS_CACHE_TTL_MS = 30_000;
-
-let systemSettingsSchemaReady = false;
-let systemSettingsSchemaInit: Promise<void> | null = null;
-let systemSettingsMetaSchemaReady = false;
-let systemSettingsMetaSchemaInit: Promise<void> | null = null;
 let systemSettingsCache: { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> } | null = null;
+let ensureSystemSettingsTableTask: Promise<void> | null = null;
+let ensureSystemSettingsMetaTableTask: Promise<void> | null = null;
 
 export async function ensureSystemSettingsTable(db: D1Database) {
-  if (systemSettingsSchemaReady) return;
-  if (systemSettingsSchemaInit) return systemSettingsSchemaInit;
-  systemSettingsSchemaInit = (async () => {
+  if (ensureSystemSettingsTableTask) return ensureSystemSettingsTableTask;
+  ensureSystemSettingsTableTask = (async () => {
     await db.prepare(
       `CREATE TABLE IF NOT EXISTS system_settings (
         key TEXT PRIMARY KEY,
@@ -70,17 +66,16 @@ export async function ensureSystemSettingsTable(db: D1Database) {
       )`
     ).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)`).run();
-    systemSettingsSchemaReady = true;
-  })().finally(() => {
-    systemSettingsSchemaInit = null;
+  })().catch((error) => {
+    ensureSystemSettingsTableTask = null;
+    throw error;
   });
-  return systemSettingsSchemaInit;
+  return ensureSystemSettingsTableTask;
 }
 
 export async function ensureSystemSettingsMetaTable(db: D1Database) {
-  if (systemSettingsMetaSchemaReady) return;
-  if (systemSettingsMetaSchemaInit) return systemSettingsMetaSchemaInit;
-  systemSettingsMetaSchemaInit = (async () => {
+  if (ensureSystemSettingsMetaTableTask) return ensureSystemSettingsMetaTableTask;
+  ensureSystemSettingsMetaTableTask = (async () => {
     await db.prepare(
       `CREATE TABLE IF NOT EXISTS system_settings_meta (
         id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -91,11 +86,11 @@ export async function ensureSystemSettingsMetaTable(db: D1Database) {
       )`
     ).run();
     await db.prepare(`INSERT OR IGNORE INTO system_settings_meta (id, version, settings_json) VALUES (1, 0, '{}')`).run();
-    systemSettingsMetaSchemaReady = true;
-  })().finally(() => {
-    systemSettingsMetaSchemaInit = null;
+  })().catch((error) => {
+    ensureSystemSettingsMetaTableTask = null;
+    throw error;
   });
-  return systemSettingsMetaSchemaInit;
+  return ensureSystemSettingsMetaTableTask;
 }
 
 function toBoolean(value: any, fallback: boolean) {

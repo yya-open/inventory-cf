@@ -176,36 +176,10 @@ export function normalizePcSerialNo(value: any) {
   return String(value || '').trim().toUpperCase();
 }
 
-async function listPcAssetsByNormalizedSerial(db: D1Database, serialNo: string) {
-  const normalized = normalizePcSerialNo(serialNo);
-  if (!normalized) return [] as any[];
-  const { results } = await db.prepare(`SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? ORDER BY id ASC`).bind(normalized).all<any>();
-  return results || [];
-}
-
 async function getPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
-  const rows = await listPcAssetsByNormalizedSerial(db, serialNo);
-  return rows[0] || null;
-}
-
-async function assertNoConflictingPcSerialRecords(db: D1Database, serialNo: string, preferredAssetId?: number | null) {
-  const rows = await listPcAssetsByNormalizedSerial(db, serialNo);
-  if (!rows.length) return null;
   const normalized = normalizePcSerialNo(serialNo);
-  const preferredId = Number(preferredAssetId || 0) || 0;
-  const candidates = preferredId ? rows.filter((row: any) => Number(row?.id || 0) !== preferredId) : rows;
-  for (const row of candidates) {
-    const assetId = Number(row?.id || 0);
-    if (!assetId) continue;
-    const counts = await getPcAssetHistoryCounts(db, assetId);
-    if (counts.pcIn > 0 || counts.pcOut > 0 || counts.pcRecycle > 0 || counts.pcScrap > 0) {
-      throw Object.assign(new Error(`序列号 ${normalized} 已被现有电脑台账占用，请勿重复入库`), { status: 400, code: 'PC_SERIAL_EXISTS', asset_id: assetId });
-    }
-  }
-  if (candidates.length > 1) {
-    throw Object.assign(new Error(`序列号 ${normalized} 存在多条重复台账，请先清理历史重复数据后再入库`), { status: 409, code: 'PC_SERIAL_DUPLICATED' });
-  }
-  return rows[0] || null;
+  if (!normalized) return null;
+  return db.prepare(`SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? ORDER BY id ASC LIMIT 1`).bind(normalized).first<any>();
 }
 
 async function getPcAssetHistoryCounts(db: D1Database, assetId: number) {
@@ -260,7 +234,6 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
 
   const existing = await getPcAssetByNormalizedSerial(db, serialNo);
   if (existing?.id) {
-    await assertNoConflictingPcSerialRecords(db, serialNo, Number(existing.id));
     const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
     if (counts.pcIn > 0) {
       throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
@@ -286,8 +259,6 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
     ).run();
     return Number(existing.id);
   }
-
-  await assertNoConflictingPcSerialRecords(db, serialNo);
 
   const ins = await db.prepare(
     `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
@@ -331,7 +302,6 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
       if (!isSqliteConstraintError(error)) throw error;
       const existing = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
       if (!existing?.id) throw error;
-      await assertNoConflictingPcSerialRecords(db, normalizedSerialNo, Number(existing.id));
       const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
       if (counts.pcIn > 0) {
         throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });

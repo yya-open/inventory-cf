@@ -21,21 +21,10 @@ async function assertDictionaryValue(
     if (options?.allowEmpty) return null;
     throw Object.assign(new Error(`${label}不能为空`), { status: 400 });
   }
-
-  const comparable = normalizeComparable(normalized);
-  const matched = await db.prepare(
-    `SELECT 1
-       FROM system_dictionary_items
-      WHERE dictionary_key=? AND enabled=1 AND normalized_label=?
-      LIMIT 1`
-  ).bind(key, comparable).first<any>().catch(() => null);
-
-  if (!matched) {
-    const labels = await getEnabledDictionaryLabels(db, key);
-    const allowed = new Set((labels || []).map((item) => normalizeComparable(item)).filter(Boolean));
-    if (!allowed.has(comparable)) {
-      throw Object.assign(new Error(`${label}未纳入系统字典，请先到系统配置中维护后再使用`), { status: 400 });
-    }
+  const labels = await getEnabledDictionaryLabels(db, key);
+  const allowed = new Set((labels || []).map((item) => normalizeComparable(item)).filter(Boolean));
+  if (!allowed.has(normalizeComparable(normalized))) {
+    throw Object.assign(new Error(`${label}未纳入系统字典，请先到系统配置中维护后再使用`), { status: 400 });
   }
   return normalized;
 }
