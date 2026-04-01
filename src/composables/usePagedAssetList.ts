@@ -273,7 +273,8 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       } else {
         const controller = new AbortController();
         pageController = controller;
-        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: true, signal: controller.signal })
+        const shouldInlineTotal = !initialized.value && !cached && !opts.keepPage && !opts.silent;
+        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: !shouldInlineTotal, signal: controller.signal })
           .finally(() => {
             const active = pageRequests.get(pageKey);
             if (active?.promise === request) pageRequests.delete(pageKey);
@@ -292,9 +293,12 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       initialized.value = true;
       if (!opts.keepPage) page.value = 1;
 
-      const knownTotal = typeof result.total === 'number'
+      const inferredTotal = typeof result.total === 'number'
         ? Number(result.total || 0)
-        : resolveKnownTotal(filterKey, total.value);
+        : (result.rows || []).length < effectivePageSize
+          ? (((Math.max(1, nextPage) - 1) * effectivePageSize) + Number((result.rows || []).length || 0))
+          : resolveKnownTotal(filterKey, total.value);
+      const knownTotal = inferredTotal;
 
       const entry = {
         rows: [...(result.rows || [])],
@@ -312,9 +316,16 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         return;
       }
       if (!options.fetchTotal) {
-        total.value = 0;
-        patchPageCacheTotal(cachePrefix, 0);
-        persistTotal(options, filterKey, 0);
+        total.value = knownTotal;
+        patchPageCacheTotal(cachePrefix, knownTotal);
+        persistTotal(options, filterKey, knownTotal);
+        return;
+      }
+      if (typeof result.total !== 'number' && (result.rows || []).length < effectivePageSize) {
+        total.value = knownTotal;
+        totalCache.set(filterKey, knownTotal);
+        patchPageCacheTotal(cachePrefix, knownTotal);
+        persistTotal(options, filterKey, knownTotal);
         return;
       }
 

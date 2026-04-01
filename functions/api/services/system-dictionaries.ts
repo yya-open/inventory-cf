@@ -36,6 +36,21 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
 
+const DICTIONARY_CACHE_TTL_MS = 30_000;
+let dictionarySchemaReady = false;
+let dictionarySchemaInit: Promise<void> | null = null;
+const bootstrapReadyKeys = new Set<SystemDictionaryKey>();
+const bootstrapPromises = new Map<SystemDictionaryKey, Promise<void>>();
+const enabledLabelsCache = new Map<SystemDictionaryKey, { expiresAt: number; labels?: string[]; pending?: Promise<string[]> }>();
+
+function invalidateDictionaryEnabledLabelsCache(key?: SystemDictionaryKey) {
+  if (key) {
+    enabledLabelsCache.delete(key);
+    return;
+  }
+  enabledLabelsCache.clear();
+}
+
 export function invalidateSystemDictionaryReferenceCache() {
   // 已升级为持久计数表 + dirty-key 延迟刷新；保留兼容导出。
 }
@@ -90,22 +105,30 @@ async function ensureLegacySystemSettingsTable(db: D1Database) {
 }
 
 export async function ensureSystemDictionaryTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS system_dictionary_items (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      dictionary_key TEXT NOT NULL,
-      label TEXT NOT NULL,
-      normalized_label TEXT NOT NULL,
-      sort_order INTEGER NOT NULL DEFAULT 0,
-      enabled INTEGER NOT NULL DEFAULT 1,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_by TEXT,
-      UNIQUE(dictionary_key, normalized_label)
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_sort ON system_dictionary_items(dictionary_key, sort_order, id)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_enabled ON system_dictionary_items(dictionary_key, enabled, sort_order, id)`).run();
+  if (dictionarySchemaReady) return;
+  if (dictionarySchemaInit) return dictionarySchemaInit;
+  dictionarySchemaInit = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS system_dictionary_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        dictionary_key TEXT NOT NULL,
+        label TEXT NOT NULL,
+        normalized_label TEXT NOT NULL,
+        sort_order INTEGER NOT NULL DEFAULT 0,
+        enabled INTEGER NOT NULL DEFAULT 1,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_by TEXT,
+        UNIQUE(dictionary_key, normalized_label)
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_sort ON system_dictionary_items(dictionary_key, sort_order, id)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_enabled ON system_dictionary_items(dictionary_key, enabled, sort_order, id)`).run();
+    dictionarySchemaReady = true;
+  })().finally(() => {
+    dictionarySchemaInit = null;
+  });
+  return dictionarySchemaInit;
 }
 
 
@@ -187,18 +210,29 @@ async function readLegacyDictionaryValues(db: D1Database, key: SystemDictionaryK
 }
 
 async function bootstrapDictionaryIfNeeded(db: D1Database, key: SystemDictionaryKey) {
-  await ensureSystemDictionaryTable(db);
-  const row = await db.prepare(`SELECT COUNT(*) AS c FROM system_dictionary_items WHERE dictionary_key=?`).bind(key).first<any>();
-  if (Number(row?.c || 0) > 0) return;
-  const seed = await readLegacyDictionaryValues(db, key);
-  for (let i = 0; i < seed.length; i += 1) {
-    const label = normalizeLabel(seed[i]);
-    if (!label) continue;
-    await db.prepare(
-      `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
-       VALUES (?, ?, ?, ?, 1)`
-    ).bind(key, label, normalizeComparable(label), i + 1).run();
-  }
+  if (bootstrapReadyKeys.has(key)) return;
+  const existing = bootstrapPromises.get(key);
+  if (existing) return existing;
+  const pending = (async () => {
+    await ensureSystemDictionaryTable(db);
+    const row = await db.prepare(`SELECT COUNT(*) AS c FROM system_dictionary_items WHERE dictionary_key=?`).bind(key).first<any>();
+    if (Number(row?.c || 0) <= 0) {
+      const seed = await readLegacyDictionaryValues(db, key);
+      for (let i = 0; i < seed.length; i += 1) {
+        const label = normalizeLabel(seed[i]);
+        if (!label) continue;
+        await db.prepare(
+          `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
+           VALUES (?, ?, ?, ?, 1)`
+        ).bind(key, label, normalizeComparable(label), i + 1).run();
+      }
+    }
+    bootstrapReadyKeys.add(key);
+  })().finally(() => {
+    bootstrapPromises.delete(key);
+  });
+  bootstrapPromises.set(key, pending);
+  return pending;
 }
 
 export async function bootstrapAllDictionaries(db: D1Database) {
@@ -440,15 +474,28 @@ export async function getSystemDictionaryVersion(db: D1Database, key?: SystemDic
 }
 
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {
-  await bootstrapDictionaryIfNeeded(db, key);
-  const { results } = await db.prepare(
-    `SELECT label
-     FROM system_dictionary_items
-     WHERE dictionary_key=? AND enabled=1
-     ORDER BY sort_order ASC, id ASC`
-  ).bind(key).all<any>();
-  const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
-  return labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
+  const now = Date.now();
+  const cached = enabledLabelsCache.get(key);
+  if (cached?.labels && cached.expiresAt > now) return [...cached.labels];
+  if (cached?.pending) return cached.pending;
+  const pending = (async () => {
+    await bootstrapDictionaryIfNeeded(db, key);
+    const { results } = await db.prepare(
+      `SELECT label
+       FROM system_dictionary_items
+       WHERE dictionary_key=? AND enabled=1
+       ORDER BY sort_order ASC, id ASC`
+    ).bind(key).all<any>();
+    const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
+    const normalized = labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
+    enabledLabelsCache.set(key, { labels: normalized, expiresAt: Date.now() + DICTIONARY_CACHE_TTL_MS });
+    return [...normalized];
+  })().finally(() => {
+    const latest = enabledLabelsCache.get(key);
+    if (latest?.pending) enabledLabelsCache.delete(key);
+  });
+  enabledLabelsCache.set(key, { labels: cached?.labels, expiresAt: cached?.expiresAt || 0, pending });
+  return pending;
 }
 
 export async function createSystemDictionaryItem(db: D1Database, input: Partial<SystemDictionaryItem>, updatedBy: string | null) {
@@ -555,6 +602,7 @@ export async function reorderSystemDictionaryItems(
       throw Object.assign(new Error('字典顺序已被其他管理员修改，请刷新后重试'), { status: 409 });
     }
   }
+  invalidateDictionaryEnabledLabelsCache(key);
   return listSystemDictionaryItems(db, key);
 }
 

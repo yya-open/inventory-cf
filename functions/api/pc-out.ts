@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import {
-  ensurePcSchema,
+  ensurePcSchemaIfAllowed,
   must,
   optional,
   pcOutNo,
@@ -17,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requireAuth(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
 
     const body = await request.json<any>().catch(() => ({} as any));
     const { no } = buildWriteNo('PCOUT', pcOutNo, body?.client_request_id);
