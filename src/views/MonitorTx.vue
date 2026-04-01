@@ -73,6 +73,39 @@
                 </el-button>
               </div>
             </div>
+
+            <div class="ui-toolbar-filter-bar">
+              <span class="ui-toolbar-filter-label">生效状态</span>
+              <div class="ui-toolbar-segmented" role="tablist" aria-label="生效状态筛选">
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ 'is-active': q.effective === '' }"
+                  :type="q.effective === '' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('')"
+                >
+                  全部记录
+                </el-button>
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ 'is-active': q.effective === 'history' }"
+                  :type="q.effective === 'history' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('history')"
+                >
+                  非当前生效
+                </el-button>
+                <el-button
+                  class="ui-toolbar-segment"
+                  :class="{ 'is-active': q.effective === 'current' }"
+                  :type="q.effective === 'current' ? 'primary' : 'default'"
+                  plain
+                  @click="setEffectiveFilter('current')"
+                >
+                  当前生效
+                </el-button>
+              </div>
+            </div>
           </div>
         </div>
 
@@ -89,7 +122,7 @@
                 v-if="can('admin')"
                 type="danger"
                 plain
-                :disabled="!selected.length"
+                :disabled="!selected.length || actionLoading"
                 @click="doDelete"
               >
                 删除
@@ -101,8 +134,10 @@
     </el-card>
 
     <el-card shadow="never">
+      <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
       <el-table
-        v-loading="loading"
+        v-else
+        v-loading="refreshing || actionLoading"
         :data="rows"
         size="small"
         border
@@ -119,10 +154,11 @@
         />
         <el-table-column
           label="动作"
-          width="100"
+          width="120"
         >
           <template #default="{ row }">
-            {{ typeText(row.tx_type) }}
+            <div>{{ typeText(row.tx_type) }}</div>
+            <el-tag v-if="row.is_current_effective" type="success" effect="plain" size="small" style="margin-top:6px">当前生效</el-tag>
           </template>
         </el-table-column>
         <el-table-column
@@ -131,34 +167,11 @@
           min-width="160"
         />
         <el-table-column
-          prop="sn"
-          label="SN"
-          min-width="140"
-        />
-        <el-table-column
           label="型号"
           min-width="200"
         >
           <template #default="{ row }">
             {{ [row.brand, row.model].filter(Boolean).join(' ') }}
-          </template>
-        </el-table-column>
-        <el-table-column
-          prop="size_inch"
-          label="尺寸"
-          width="90"
-        />
-        <el-table-column
-          label="位置"
-          min-width="220"
-        >
-          <template #default="{ row }">
-            <div v-if="row.from_location_name || row.to_location_name">
-              <span v-if="row.from_location_name">{{ locLabel(row.from_parent_location_name, row.from_location_name) }}</span>
-              <span v-if="row.from_location_name || row.to_location_name"> → </span>
-              <span v-if="row.to_location_name">{{ locLabel(row.to_parent_location_name, row.to_location_name) }}</span>
-            </div>
-            <span v-else>-</span>
           </template>
         </el-table-column>
         <el-table-column
@@ -170,11 +183,6 @@
             <span v-else>-</span>
           </template>
         </el-table-column>
-        <el-table-column
-          prop="department"
-          label="部门"
-          min-width="140"
-        />
         <el-table-column
           prop="remark"
           label="备注"
@@ -203,18 +211,68 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { onBeforeMount, onActivated, reactive, ref } from "vue";
+import { usePagedAssetList } from "../composables/usePagedAssetList";
+import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { can } from "../store/auth";
 
-const q = reactive({ type: "", keyword: "", dates: [] as any[] });
-const rows = ref<any[]>([]);
-const loading = ref(false);
-const page = ref(1);
-const pageSize = ref(50);
-const total = ref(0);
+const q = reactive({ type: "", keyword: "", dates: [] as any[], effective: '' as '' | 'current' | 'history' });
 const selected = ref<any[]>([]);
+const actionLoading = ref(false);
+const SOFT_REFRESH_TTL_MS = 20_000;
+let lastRefreshAt = 0;
+
+type MonitorTxFilters = {
+  type: string;
+  keyword: string;
+  dateFrom: string;
+  dateTo: string;
+  effective: '' | 'current' | 'history';
+};
+
+function currentFilters(): MonitorTxFilters {
+  return {
+    type: String(q.type || "").trim().toUpperCase(),
+    keyword: String(q.keyword || "").trim(),
+    dateFrom: String(q.dates?.[0] || "").trim(),
+    dateTo: String(q.dates?.[1] || "").trim(),
+    effective: q.effective,
+  };
+}
+
+const {
+  rows,
+  loading,
+  refreshing,
+  initialLoading,
+  page,
+  pageSize,
+  total,
+  load: loadPaged,
+  clearTotalCache,
+  invalidateCache,
+} = usePagedAssetList<MonitorTxFilters, any>({
+  cacheNamespace: "monitor-tx",
+  cacheTtlMs: 60_000,
+  totalDebounceMs: 350,
+  createFilterKey: (filters) => JSON.stringify(filters),
+  fetchPage: async ({ filters, page, pageSize, fast, signal }) => {
+    const params = buildParams(filters, true, page, pageSize);
+    if (fast) params.set("fast", "1");
+    const r = await apiGet<any>(`/api/monitor-tx?${params.toString()}`, { signal });
+    return {
+      rows: Array.isArray(r?.data) ? r.data : [],
+      total: typeof r?.total === 'number' ? Number(r.total || 0) : null,
+    };
+  },
+  fetchTotal: async (filters, signal) => {
+    const params = buildParams(filters, false);
+    const j = await apiGet<any>(`/api/monitor-tx-count?${params.toString()}`, { signal });
+    return Number(j?.data?.total || j?.total || 0);
+  },
+});
 
 function typeText(v: any) {
   const x = String(v || "");
@@ -227,49 +285,49 @@ function typeText(v: any) {
   return x || "-";
 }
 
-function locLabel(p: any, c: any) {
-  return [p, c].filter(Boolean).join("/");
-}
 
-function buildParams(fast: boolean) {
+function buildParams(filters: MonitorTxFilters, withPage: boolean, pageNumber = page.value, size = pageSize.value) {
   const params = new URLSearchParams();
-  if (fast) params.set("fast", "1");
-  params.set("page", String(page.value));
-  params.set("page_size", String(pageSize.value));
-  if (q.type) params.set("type", q.type);
-  if (q.keyword) params.set("keyword", q.keyword);
-  if (q.dates?.length === 2) {
-    params.set("date_from", q.dates[0]);
-    params.set("date_to", q.dates[1]);
+  if (withPage) {
+    params.set("page", String(pageNumber));
+    params.set("page_size", String(size));
   }
+  if (filters.type) params.set("type", filters.type);
+  if (filters.keyword) params.set("keyword", filters.keyword);
+  if (filters.dateFrom) params.set("date_from", filters.dateFrom);
+  if (filters.dateTo) params.set("date_to", filters.dateTo);
+  if (filters.effective) params.set("effective", filters.effective);
   return params;
 }
 
-async function loadList() {
-  loading.value = true;
-  try {
-    const p = buildParams(true);
-    const r = await apiGet<any>(`/api/monitor-tx?${p.toString()}`);
-    rows.value = r.data || [];
-    const c = await apiGet<any>(`/api/monitor-tx-count?${p.toString().replace('fast=1&', '')}`);
-    total.value = Number(c.data?.total || 0);
-  } finally {
-    loading.value = false;
-  }
+async function loadList(options: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
+  await loadPaged(currentFilters(), {
+    keepPage: options.keepPage ?? true,
+    silent: options.silent,
+    forceRefresh: options.forceRefresh,
+  });
+  lastRefreshAt = Date.now();
 }
 
 function reload() {
   page.value = 1;
-  loadList();
+  void loadList();
+}
+
+function setEffectiveFilter(value: '' | 'current' | 'history') {
+  if (q.effective === value) return;
+  q.effective = value;
+  reload();
 }
 
 function onPage(p: number) {
   page.value = p;
-  loadList();
+  void loadList({ keepPage: true });
 }
 function onSize(s: number) {
   pageSize.value = s;
-  reload();
+  page.value = 1;
+  void loadList({ keepPage: true });
 }
 
 function onSel(v: any[]) {
@@ -278,7 +336,7 @@ function onSel(v: any[]) {
 
 async function doExport() {
   try {
-    const p = buildParams(false);
+    const p = buildParams(currentFilters(), false);
     const fn = `显示器出入库明细_${new Date().toISOString().slice(0, 10)}.csv`;
     await apiDownload(`/api/monitor-tx/export?${p.toString()}`, fn);
   } catch (e: any) {
@@ -290,16 +348,28 @@ async function doDelete() {
   try {
     await ElMessageBox.confirm("删除后无法恢复，确认继续？需要输入二次确认。", "提示", { type: "warning" });
     const { value } = await ElMessageBox.prompt("请输入 删除 以确认", "二次确认", { inputPlaceholder: "删除" });
+    actionLoading.value = true;
     await apiPost<any>(`/api/monitor-tx/delete`, { entries: selected.value.map((x) => ({ id: x.id })), confirm: value });
     ElMessage.success("删除成功");
     selected.value = [];
-    await loadList();
+    invalidateCache();
+    clearTotalCache();
+    await loadList({ forceRefresh: true });
   } catch (e: any) {
     if (e?.message) ElMessage.error(e.message);
+  } finally {
+    actionLoading.value = false;
   }
 }
 
-onMounted(loadList);
+onBeforeMount(() => {
+  void loadList({ keepPage: true });
+});
+
+onActivated(() => {
+  if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  void loadList({ keepPage: true, silent: true });
+});
 </script>
 
 <style scoped>

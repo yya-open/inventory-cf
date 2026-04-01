@@ -16,8 +16,13 @@ export type UsePagedAssetListOptions<TFilters, TItem> = {
 type PageCacheEntry = { rows: any[]; total: number; timestamp: number };
 type InflightPageRequest = { controller: AbortController; promise: Promise<LoadResult<any>> };
 
+type PersistentPageCacheEntry = PageCacheEntry;
+
+type PersistentTotalEntry = { total: number; timestamp: number };
+
 const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
+const primedNamespaces = new Set<string>();
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -35,6 +40,95 @@ function getPageCacheKey(options: UsePagedAssetListOptions<any, any>, filterKey:
   return `${getFilterPrefix(options, filterKey)}::page=${page}::size=${pageSize}`;
 }
 
+function getPersistentPageCacheKey(options: UsePagedAssetListOptions<any, any>, filterKey: string, page: number, pageSize: number) {
+  return `inventory:paged-cache:${getPageCacheKey(options, filterKey, page, pageSize)}`;
+}
+
+function getPersistentFilterPrefix(options: UsePagedAssetListOptions<any, any>, filterKey: string) {
+  return `inventory:paged-cache:${getFilterPrefix(options, filterKey)}`;
+}
+
+function getPersistentNamespacePrefix(options: UsePagedAssetListOptions<any, any>) {
+  return `inventory:paged-cache:${getNamespace(options)}::`;
+}
+
+function getPersistentTotalKey(options: UsePagedAssetListOptions<any, any>, filterKey: string) {
+  return `inventory:paged-total:${getNamespace(options)}::${filterKey}`;
+}
+
+function canUseSessionStorage() {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+function readJsonFromSessionStorage<T>(key: string): T | null {
+  if (!canUseSessionStorage()) return null;
+  try {
+    const raw = window.sessionStorage.getItem(key);
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonToSessionStorage(key: string, value: unknown) {
+  if (!canUseSessionStorage()) return;
+  try {
+    window.sessionStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    // ignore storage quota / security errors
+  }
+}
+
+function removeSessionStorageByPrefix(prefix: string) {
+  if (!canUseSessionStorage()) return;
+  try {
+    const keys: string[] = [];
+    for (let index = 0; index < window.sessionStorage.length; index += 1) {
+      const key = window.sessionStorage.key(index);
+      if (key && key.startsWith(prefix)) keys.push(key);
+    }
+    keys.forEach((key) => window.sessionStorage.removeItem(key));
+  } catch {
+    // ignore
+  }
+}
+
+function readPersistentPageCache(options: UsePagedAssetListOptions<any, any>, filterKey: string, page: number, pageSize: number, ttlMs: number) {
+  const key = getPersistentPageCacheKey(options, filterKey, page, pageSize);
+  const cached = readJsonFromSessionStorage<PersistentPageCacheEntry>(key);
+  if (!cached) return null;
+  if (!Array.isArray(cached.rows)) return null;
+  if (Date.now() - Number(cached.timestamp || 0) > ttlMs) return null;
+  return {
+    rows: [...cached.rows],
+    total: Number(cached.total || 0),
+    timestamp: Number(cached.timestamp || 0),
+  } satisfies PageCacheEntry;
+}
+
+function persistPageCache(options: UsePagedAssetListOptions<any, any>, filterKey: string, page: number, pageSize: number, entry: PageCacheEntry) {
+  writeJsonToSessionStorage(getPersistentPageCacheKey(options, filterKey, page, pageSize), {
+    rows: [...(entry.rows || [])],
+    total: Number(entry.total || 0),
+    timestamp: Number(entry.timestamp || Date.now()),
+  } satisfies PersistentPageCacheEntry);
+}
+
+function readPersistentTotal(options: UsePagedAssetListOptions<any, any>, filterKey: string, ttlMs: number) {
+  const payload = readJsonFromSessionStorage<PersistentTotalEntry>(getPersistentTotalKey(options, filterKey));
+  if (!payload) return null;
+  if (Date.now() - Number(payload.timestamp || 0) > ttlMs) return null;
+  return Number(payload.total || 0);
+}
+
+function persistTotal(options: UsePagedAssetListOptions<any, any>, filterKey: string, value: number) {
+  writeJsonToSessionStorage(getPersistentTotalKey(options, filterKey), {
+    total: Number(value || 0),
+    timestamp: Date.now(),
+  } satisfies PersistentTotalEntry);
+}
+
 function clearPageCacheByPrefix(prefix: string) {
   for (const key of [...pageCache.keys()]) {
     if (key.startsWith(prefix)) pageCache.delete(key);
@@ -48,9 +142,40 @@ function patchPageCacheTotal(prefix: string, total: number) {
   }
 }
 
+export function markPagedListNamespacePrimed(namespace: string) {
+  primedNamespaces.add(String(namespace || 'paged-list'));
+}
+
+export function hasPrimedPagedListNamespace(namespace: string) {
+  return primedNamespaces.has(String(namespace || 'paged-list'));
+}
+
+export function primePagedListCache(namespace: string, filterKey: string, page: number, pageSize: number, payload: { rows: unknown[]; total?: number | null; timestamp?: number }) {
+  const normalizedNamespace = String(namespace || 'paged-list');
+  const normalizedFilterKey = String(filterKey || '');
+  const normalizedPage = Math.max(1, Number(page || 1) || 1);
+  const normalizedPageSize = Math.max(20, Number(pageSize || 50) || 50);
+  const total = typeof payload?.total === 'number' ? Number(payload.total || 0) : 0;
+  const timestamp = Number(payload?.timestamp || Date.now());
+  const entry: PageCacheEntry = {
+    rows: Array.isArray(payload?.rows) ? [...payload.rows] : [],
+    total,
+    timestamp,
+  };
+  const filterPrefix = `${normalizedNamespace}::${normalizedFilterKey}`;
+  const pageKey = `${filterPrefix}::page=${normalizedPage}::size=${normalizedPageSize}`;
+  pageCache.set(pageKey, entry);
+  persistPageCache({ cacheNamespace: normalizedNamespace } as UsePagedAssetListOptions<any, any>, normalizedFilterKey, normalizedPage, normalizedPageSize, entry);
+  persistTotal({ cacheNamespace: normalizedNamespace } as UsePagedAssetListOptions<any, any>, normalizedFilterKey, total);
+  markPagedListNamespacePrimed(normalizedNamespace);
+}
+
 export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOptions<TFilters, TItem>) {
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
+  const refreshing = ref(false);
+  const initialLoading = ref(true);
+  const initialized = ref(false);
   const page = ref(1);
   const maxPageSize = Math.max(20, Number(options.maxPageSize ?? 200) || 200);
   const clampPageSize = (value: number) => Math.min(maxPageSize, Math.max(20, Number(value || 50) || 50));
@@ -75,6 +200,30 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     totalController?.abort();
   }
 
+  function hydrateWarmCache(filterKey: string, nextPage: number, effectivePageSize: number, ttlMs: number) {
+    const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
+    const memoryCached = pageCache.get(pageKey) || null;
+    const persistentCached = readPersistentPageCache(options, filterKey, nextPage, effectivePageSize, ttlMs);
+    const cached = memoryCached || persistentCached;
+    if (!cached) return null;
+    rows.value = [...(cached.rows || [])] as TItem[];
+    if (Number.isFinite(cached.total)) {
+      total.value = Number(cached.total || 0);
+    }
+    initialized.value = true;
+    return cached;
+  }
+
+  function resolveKnownTotal(filterKey: string, fallback = 0) {
+    if (totalCache.has(filterKey)) return Number(totalCache.get(filterKey) || 0);
+    const persisted = readPersistentTotal(options, filterKey, Number(options.cacheTtlMs ?? 30_000) * 4);
+    if (persisted !== null) {
+      totalCache.set(filterKey, persisted);
+      return persisted;
+    }
+    return Number(fallback || 0);
+  }
+
   async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
     const currentSeq = ++requestSeq;
     const nextPage = opts.keepPage ? page.value : 1;
@@ -84,22 +233,30 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (effectivePageSize !== pageSize.value) pageSize.value = effectivePageSize;
     const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
     const ttlMs = Number(options.cacheTtlMs ?? 30_000);
-    const shouldShowLoading = !opts.silent || !rows.value.length;
-    const cached = pageCache.get(pageKey);
+    const cached = hydrateWarmCache(filterKey, nextPage, effectivePageSize, ttlMs);
 
+    if (cached && !opts.keepPage) page.value = 1;
     if (cached && !opts.forceRefresh && Date.now() - cached.timestamp < ttlMs) {
-      rows.value = [...(cached.rows || [])] as TItem[];
-      total.value = Number(cached.total || 0);
-      if (!opts.keepPage) page.value = 1;
-      if (!opts.silent) loading.value = false;
+      const warmTotal = resolveKnownTotal(filterKey, cached.total);
+      total.value = warmTotal;
+      if (!opts.silent) {
+        loading.value = false;
+        refreshing.value = false;
+        initialLoading.value = false;
+      }
       return;
     }
+
+    const hasWarmRows = Boolean(rows.value.length);
+    const shouldShowInitialLoading = !opts.silent && !initialized.value && !hasWarmRows;
 
     if (activePageRequestKey && activePageRequestKey !== pageKey) {
       pageController?.abort();
     }
 
-    if (shouldShowLoading) loading.value = true;
+    loading.value = !opts.silent;
+    initialLoading.value = shouldShowInitialLoading;
+    refreshing.value = !shouldShowInitialLoading && !opts.silent;
     activePageRequestKey = pageKey;
 
     try {
@@ -116,7 +273,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       } else {
         const controller = new AbortController();
         pageController = controller;
-        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: Boolean(options.fetchTotal), signal: controller.signal })
+        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: true, signal: controller.signal })
           .finally(() => {
             const active = pageRequests.get(pageKey);
             if (active?.promise === request) pageRequests.delete(pageKey);
@@ -132,30 +289,41 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       if (currentSeq !== requestSeq) return;
 
       rows.value = result.rows || [];
+      initialized.value = true;
       if (!opts.keepPage) page.value = 1;
 
-      pageCache.set(pageKey, {
+      const knownTotal = typeof result.total === 'number'
+        ? Number(result.total || 0)
+        : resolveKnownTotal(filterKey, total.value);
+
+      const entry = {
         rows: [...(result.rows || [])],
-        total: typeof result.total === 'number' ? Number(result.total || 0) : Number(total.value || 0),
+        total: knownTotal,
         timestamp: Date.now(),
-      });
+      } satisfies PageCacheEntry;
+      pageCache.set(pageKey, entry);
+      persistPageCache(options, filterKey, nextPage, effectivePageSize, entry);
 
       if (typeof result.total === 'number') {
         total.value = Number(result.total || 0);
         totalCache.set(filterKey, total.value);
+        persistTotal(options, filterKey, total.value);
         patchPageCacheTotal(cachePrefix, total.value);
         return;
       }
       if (!options.fetchTotal) {
         total.value = 0;
         patchPageCacheTotal(cachePrefix, 0);
+        persistTotal(options, filterKey, 0);
         return;
       }
-      if (totalCache.has(filterKey)) {
-        total.value = Number(totalCache.get(filterKey) || 0);
-        patchPageCacheTotal(cachePrefix, total.value);
-        return;
+
+      const cachedTotal = resolveKnownTotal(filterKey, knownTotal);
+      if (cachedTotal > 0 || totalCache.has(filterKey)) {
+        total.value = cachedTotal;
+        patchPageCacheTotal(cachePrefix, cachedTotal);
       }
+
       clearTotalTimer();
       totalController?.abort();
       totalController = new AbortController();
@@ -167,14 +335,26 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
           totalCache.set(filterKey, value);
           total.value = value;
           patchPageCacheTotal(cachePrefix, value);
+          persistTotal(options, filterKey, value);
+          const currentPageKey = getPageCacheKey(options, filterKey, page.value, pageSize.value);
+          const currentEntry = pageCache.get(currentPageKey);
+          if (currentEntry) {
+            const patchedEntry = { ...currentEntry, total: value, timestamp: currentEntry.timestamp };
+            pageCache.set(currentPageKey, patchedEntry);
+            persistPageCache(options, filterKey, page.value, pageSize.value, patchedEntry);
+          }
         } catch (error) {
           if (!isAbortError(error)) {
             // noop
           }
         }
-      }, options.totalDebounceMs ?? 250);
+      }, options.totalDebounceMs ?? 800);
     } finally {
-      if (currentSeq === requestSeq) loading.value = false;
+      if (currentSeq === requestSeq) {
+        loading.value = false;
+        refreshing.value = false;
+        initialLoading.value = false;
+      }
     }
   }
 
@@ -182,22 +362,31 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const invalidateTotal = (filters?: TFilters | string) => {
     if (typeof filters === 'undefined') {
       totalCache.clear();
+      removeSessionStorageByPrefix(`inventory:paged-total:${getNamespace(options)}::`);
       return;
     }
     const key = typeof filters === 'string' ? filters : options.createFilterKey(filters);
     totalCache.delete(key);
+    if (canUseSessionStorage()) window.sessionStorage.removeItem(getPersistentTotalKey(options, key));
   };
   const invalidateCache = (filters?: TFilters | string) => {
     if (typeof filters === 'undefined') {
       clearPageCacheByPrefix(`${getNamespace(options)}::`);
       totalCache.clear();
+      removeSessionStorageByPrefix(getPersistentNamespacePrefix(options));
+      removeSessionStorageByPrefix(`inventory:paged-total:${getNamespace(options)}::`);
       return;
     }
     const key = typeof filters === 'string' ? filters : options.createFilterKey(filters);
     clearPageCacheByPrefix(`${getFilterPrefix(options, key)}::`);
     totalCache.delete(key);
+    removeSessionStorageByPrefix(getPersistentFilterPrefix(options, key));
+    if (canUseSessionStorage()) window.sessionStorage.removeItem(getPersistentTotalKey(options, key));
   };
-  const clearTotalCache = () => totalCache.clear();
+  const clearTotalCache = () => {
+    totalCache.clear();
+    removeSessionStorageByPrefix(`inventory:paged-total:${getNamespace(options)}::`);
+  };
   const onPageChange = (filters: TFilters, nextPage: number) => {
     page.value = nextPage;
     return load(filters, { keepPage: true });
@@ -208,5 +397,5 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     return load(filters, { keepPage: true });
   };
 
-  return { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, invalidateCache, clearTotalCache };
+  return { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, clearTotalTimer, abortOngoing, invalidateTotal, invalidateCache, clearTotalCache };
 }

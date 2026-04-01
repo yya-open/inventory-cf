@@ -60,7 +60,8 @@
     <section class="ledger-section ledger-section--table">
       <MonitorAssetsTable
       :rows="rows"
-      :loading="loading"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -204,12 +205,13 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
+import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -289,9 +291,7 @@ const {
   deleteSavedView,
   runWithoutAutoSearch,
 } = useMonitorAssetViewState(() => {
-  const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  reload(filters);
+  void refreshLedgerData();
 });
 
 
@@ -495,18 +495,19 @@ async function ensureLocationOptionsReady(force = false) {
   await loadLocations(force);
 }
 
-const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
+const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<MonitorFilters, MonitorAsset>({
   cacheNamespace: 'monitor-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: async (filters, currentPage, currentPageSize, _fast, signal) => {
+  fetchPage: async (filters, currentPage, currentPageSize, fast, signal) => {
     try {
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     } catch (error: any) {
       await handleMaybeMissingSchema(error);
-      return await listMonitorAssets(filters, currentPage, currentPageSize, false, signal);
+      return await listMonitorAssets(filters, currentPage, currentPageSize, fast, signal);
     }
   },
+  fetchTotal: (filters, signal) => countMonitorAssets(filters, signal),
 });
 
 pageSize.value = initialPageSize;
@@ -661,7 +662,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -680,12 +681,58 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   }
 }
 
-const reloadList = () => {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
+  if (typeof window === 'undefined') {
+    void Promise.resolve().then(task);
+    return;
+  }
+  const runner = () => {
+    window.setTimeout(() => {
+      void task();
+    }, 80);
+  };
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => runner(), { timeout });
+    return;
+  }
+  window.requestAnimationFrame(() => {
+    runner();
+  });
+}
+
+function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+  const snapshot = { ...initialFilters };
+  runWhenBrowserIdle(async () => {
+    void refreshInventorySummary(snapshot);
+    try {
+      await refreshInventoryBatch();
+    } catch {
+      return;
+    }
+    const nextFilters = currentFiltersForList();
+    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
+    if (!batchStateChanged) return;
+    await load(nextFilters, { keepPage: true, silent: true });
+    void refreshInventorySummary(nextFilters);
+  });
+}
+
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  void refreshInventorySummary(filters);
-  void refreshInventoryBatch();
-  reload(filters);
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  if (options.keepPage) {
+    await load(filters, { keepPage: true, silent: options.silent });
+  } else {
+    await reload(filters, { silent: options.silent });
+  }
+  lastRefreshAt = Date.now();
+  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+}
+
+const reloadList = () => {
+  void refreshLedgerData();
 };
 
 function handleToolbarMore(command: string) {
@@ -1665,7 +1712,7 @@ function resetFilters() {
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
-  reloadList();
+  void refreshLedgerData();
 }
 
 function setInventoryFilter(nextStatus: string) {
@@ -1693,29 +1740,14 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
-  const initialFilters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
-  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
-  await Promise.allSettled([
-    load(initialFilters, loadOptions),
-    refreshInventorySummary(initialFilters),
-    refreshInventoryBatch(),
-  ]);
-
-  const nextFilters = currentFiltersForList();
-  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
-  if (batchStateChanged) {
-    await Promise.allSettled([
-      load(nextFilters, loadOptions),
-      refreshInventorySummary(nextFilters),
-    ]);
-  }
-  lastRefreshAt = Date.now();
+  await refreshLedgerData(options);
 }
 
-onMounted(() => {
+onBeforeMount(() => {
   void hydrateViewData();
+});
+
+onMounted(() => {
   if (locationId.value) {
     void ensureLocationOptionsReady();
   }
@@ -1727,7 +1759,6 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
-  lastRefreshAt = Date.now();
   void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>
