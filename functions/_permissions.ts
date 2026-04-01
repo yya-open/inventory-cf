@@ -87,12 +87,8 @@ function nowSql() {
   return "datetime('now','+8 hours')";
 }
 
-let ensureUserPermissionsTableTask: Promise<void> | null = null;
-let ensureUserPermissionTemplateColumnTask: Promise<void> | null = null;
-
 export async function ensureUserPermissionsTable(db: D1Database) {
-  if (ensureUserPermissionsTableTask) return ensureUserPermissionsTableTask;
-  ensureUserPermissionsTableTask = db.prepare(
+  await db.prepare(
     `CREATE TABLE IF NOT EXISTS user_permissions (
       user_id INTEGER NOT NULL,
       permission_code TEXT NOT NULL,
@@ -102,24 +98,13 @@ export async function ensureUserPermissionsTable(db: D1Database) {
       PRIMARY KEY (user_id, permission_code),
       FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
     )`
-  ).run().then(() => undefined).catch((error) => {
-    ensureUserPermissionsTableTask = null;
-    throw error;
-  });
-  return ensureUserPermissionsTableTask;
+  ).run();
 }
 
 export async function ensureUserPermissionTemplateColumn(db: D1Database) {
-  if (ensureUserPermissionTemplateColumnTask) return ensureUserPermissionTemplateColumnTask;
-  ensureUserPermissionTemplateColumnTask = (async () => {
-    try {
-      await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
-    } catch {}
-  })().catch((error) => {
-    ensureUserPermissionTemplateColumnTask = null;
-    throw error;
-  });
-  return ensureUserPermissionTemplateColumnTask;
+  try {
+    await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
+  } catch {}
 }
 
 export function roleDefaultPermission(role: string | null | undefined, code: PermissionCode) {

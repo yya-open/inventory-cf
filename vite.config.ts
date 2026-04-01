@@ -11,6 +11,10 @@ export default defineConfig({
       output: {
         manualChunks(id) {
           if (id.endsWith('/src/utils/excel.ts')) return 'excel-utils';
+          if (id.includes('/src/views/') || id.includes('/src/components/')) {
+            if (id.includes('/src/views/System') || id.includes('/src/components/system/')) return 'route-system';
+            if (id.includes('/src/views/Pc') || id.includes('/src/views/Monitor') || id.includes('/src/components/pc/') || id.includes('/src/components/monitor/')) return 'route-pc';
+          }
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('qrcode')) return 'qrcode';

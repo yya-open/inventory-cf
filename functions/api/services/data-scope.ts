@@ -8,7 +8,6 @@ export type UserDataScope = {
 };
 
 export const ASSET_WAREHOUSE_OPTIONS = ['配件仓', '电脑仓', '显示器仓'] as const;
-let ensureUserDataScopeColumnsTask: Promise<void> | null = null;
 
 export function normalizeWarehouseScopeValue(value: any) {
   const raw = String(value || '').trim();
@@ -40,22 +39,15 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
 }
 
 export async function ensureUserDataScopeColumns(db: D1Database) {
-  if (ensureUserDataScopeColumnsTask) return ensureUserDataScopeColumnsTask;
-  ensureUserDataScopeColumnsTask = (async () => {
-    try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_type TEXT`).run(); } catch {}
-    try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value TEXT`).run(); } catch {}
-    try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value2 TEXT`).run(); } catch {}
-    try { await db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)`).run(); } catch {}
-    try {
-      await db.prepare(`UPDATE users SET data_scope_type='all' WHERE COALESCE(TRIM(data_scope_type), '')=''`).run();
-      await db.prepare(`UPDATE users SET data_scope_value=NULL, data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all'))='all'`).run();
-      await db.prepare(`UPDATE users SET data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all')) IN ('department','warehouse')`).run();
-    } catch {}
-  })().catch((error) => {
-    ensureUserDataScopeColumnsTask = null;
-    throw error;
-  });
-  return ensureUserDataScopeColumnsTask;
+  try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_type TEXT`).run(); } catch {}
+  try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value TEXT`).run(); } catch {}
+  try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value2 TEXT`).run(); } catch {}
+  try { await db.prepare(`CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)`).run(); } catch {}
+  try {
+    await db.prepare(`UPDATE users SET data_scope_type='all' WHERE COALESCE(TRIM(data_scope_type), '')=''`).run();
+    await db.prepare(`UPDATE users SET data_scope_value=NULL, data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all'))='all'`).run();
+    await db.prepare(`UPDATE users SET data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all')) IN ('department','warehouse')`).run();
+  } catch {}
 }
 
 export async function getUserDataScope(db: D1Database, userId: number) {

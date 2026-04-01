@@ -311,21 +311,6 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         patchPageCacheTotal(cachePrefix, total.value);
         return;
       }
-      const inferredTotal = result.rows.length < effectivePageSize
-        ? ((nextPage - 1) * effectivePageSize) + result.rows.length
-        : null;
-
-      if (inferredTotal !== null) {
-        total.value = inferredTotal;
-        totalCache.set(filterKey, inferredTotal);
-        persistTotal(options, filterKey, inferredTotal);
-        patchPageCacheTotal(cachePrefix, inferredTotal);
-        const inferredEntry = { ...entry, total: inferredTotal } satisfies PageCacheEntry;
-        pageCache.set(pageKey, inferredEntry);
-        persistPageCache(options, filterKey, nextPage, effectivePageSize, inferredEntry);
-        return;
-      }
-
       if (!options.fetchTotal) {
         total.value = 0;
         patchPageCacheTotal(cachePrefix, 0);
