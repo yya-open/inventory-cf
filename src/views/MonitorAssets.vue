@@ -662,7 +662,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 60_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -681,7 +681,7 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   }
 }
 
-function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 3200) {
   if (typeof window === 'undefined') {
     void Promise.resolve().then(task);
     return;
@@ -702,8 +702,9 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
 
 function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
   const snapshot = { ...initialFilters };
+  const shouldLoadSummaryNow = Boolean(snapshot.inventoryStatus) || hadActiveBatch || Boolean(inventoryBatch.value.active);
   runWhenBrowserIdle(async () => {
-    void refreshInventorySummary(snapshot);
+    if (shouldLoadSummaryNow) void refreshInventorySummary(snapshot);
     try {
       await refreshInventoryBatch();
     } catch {
@@ -712,9 +713,12 @@ function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch
     const nextFilters = currentFiltersForList();
     const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
       || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
-    if (!batchStateChanged) return;
-    await load(nextFilters, { keepPage: true, silent: true });
-    void refreshInventorySummary(nextFilters);
+    if (batchStateChanged) {
+      await load(nextFilters, { keepPage: true, silent: true });
+    }
+    if (Boolean(nextFilters.inventoryStatus) || hasActiveInventoryBatch.value) {
+      void refreshInventorySummary(nextFilters);
+    }
   });
 }
 

@@ -51,30 +51,52 @@ const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSetti
 
 const SYSTEM_SETTINGS_CACHE_TTL_MS = 30_000;
 let systemSettingsCache: { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> } | null = null;
+const ensureSystemSettingsTableByDb = new WeakMap<D1Database, Promise<void>>();
+const ensureSystemSettingsMetaTableByDb = new WeakMap<D1Database, Promise<void>>();
 
 export async function ensureSystemSettingsTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS system_settings (
-      key TEXT PRIMARY KEY,
-      value_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_by TEXT
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)`).run();
+  let pending = ensureSystemSettingsTableByDb.get(db);
+  if (!pending) {
+    pending = (async () => {
+      await db.prepare(
+        `CREATE TABLE IF NOT EXISTS system_settings (
+          key TEXT PRIMARY KEY,
+          value_json TEXT NOT NULL,
+          updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+          updated_by TEXT
+        )`
+      ).run();
+      await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)`).run();
+    })().catch((error) => {
+      ensureSystemSettingsTableByDb.delete(db);
+      throw error;
+    });
+    ensureSystemSettingsTableByDb.set(db, pending);
+  }
+  await pending;
 }
 
 export async function ensureSystemSettingsMetaTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS system_settings_meta (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      version INTEGER NOT NULL DEFAULT 0,
-      settings_json TEXT NOT NULL DEFAULT '{}',
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_by TEXT
-    )`
-  ).run();
-  await db.prepare(`INSERT OR IGNORE INTO system_settings_meta (id, version, settings_json) VALUES (1, 0, '{}')`).run();
+  let pending = ensureSystemSettingsMetaTableByDb.get(db);
+  if (!pending) {
+    pending = (async () => {
+      await db.prepare(
+        `CREATE TABLE IF NOT EXISTS system_settings_meta (
+          id INTEGER PRIMARY KEY CHECK (id = 1),
+          version INTEGER NOT NULL DEFAULT 0,
+          settings_json TEXT NOT NULL DEFAULT '{}',
+          updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+          updated_by TEXT
+        )`
+      ).run();
+      await db.prepare(`INSERT OR IGNORE INTO system_settings_meta (id, version, settings_json) VALUES (1, 0, '{}')`).run();
+    })().catch((error) => {
+      ensureSystemSettingsMetaTableByDb.delete(db);
+      throw error;
+    });
+    ensureSystemSettingsMetaTableByDb.set(db, pending);
+  }
+  await pending;
 }
 
 function toBoolean(value: any, fallback: boolean) {

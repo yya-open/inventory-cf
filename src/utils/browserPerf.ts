@@ -1,6 +1,7 @@
-const SAMPLE_RATE = 0.35;
-const SLOW_ROUTE_MS = 1200;
+const SAMPLE_RATE = 0.2;
+const SLOW_ROUTE_MS = 1600;
 const MAX_BUFFER = 12;
+const AUTO_FLUSH_MIN_SIZE = 4;
 const STORAGE_KEY = 'inventory:browser-perf-buffer';
 
 type RoutePerfPayload = {
@@ -77,6 +78,17 @@ async function flushPayloads(payloads: PendingPerfPayload[]) {
 }
 
 let flushing = false;
+let flushTimer: ReturnType<typeof setTimeout> | null = null;
+
+function scheduleFlush(delayMs = 12_000) {
+  if (typeof window === 'undefined') return;
+  if (flushTimer) return;
+  flushTimer = window.setTimeout(() => {
+    flushTimer = null;
+    void flushBrowserPerfQueue();
+  }, Math.max(2_000, delayMs));
+}
+
 export async function flushBrowserPerfQueue() {
   if (flushing) return;
   const items = readBuffer();
@@ -99,5 +111,10 @@ export function trackRoutePerf(path: string, durationMs: number, fullPath?: stri
     duration_ms: Math.round(durationMs),
     ts: Date.now(),
   });
-  void flushBrowserPerfQueue();
+  const size = readBuffer().length;
+  if (durationMs >= SLOW_ROUTE_MS * 2 || size >= AUTO_FLUSH_MIN_SIZE) {
+    void flushBrowserPerfQueue();
+    return;
+  }
+  scheduleFlush();
 }

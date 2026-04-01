@@ -40,7 +40,7 @@ import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
 import { listPcAssets, listMonitorAssets } from "../api/assetLedgers";
-import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { getCachedSystemSettings } from "../api/systemSettings";
 import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed, primePagedListCache } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
@@ -256,43 +256,38 @@ const defaultMonitorFilters = { status: '', locationId: '', keyword: '', invento
 
 const warmedAreas = new Set<string>();
 
-function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
-  if (!authUser || !canAccessModuleArea(authUser, 'pc') || warmedAreas.has('pc')) return;
-  warmedAreas.add('pc');
+function prewarmPcLedgerData(area: 'pc-assets' | 'monitor-assets', authUser: ReturnType<typeof useAuth>["user"]) {
+  if (!authUser || !canAccessModuleArea(authUser, 'pc') || warmedAreas.has(area)) return;
+  warmedAreas.add(area);
   scheduleOnIdle(async () => {
     try {
-      if (!hasPrimedPagedListNamespace('pc-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+      const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+      if (area === 'pc-assets' && canAccessPcSection(authUser, 'pc') && !hasPrimedPagedListNamespace('pc-assets')) {
         const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
         primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
       }
-      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+      if (area === 'monitor-assets' && canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
         const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
         primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
       }
-      
     } catch {
       // ignore prewarm failures
     }
-  }, 300);
+  }, 2400);
 }
 
-
-function prewarmSystemData(authUser: ReturnType<typeof useAuth>["user"]) {
-  if (!authUser || authUser.role !== 'admin' || warmedAreas.has('system')) return;
-  warmedAreas.add('system');
+function prewarmSystemData(authUser: ReturnType<typeof useAuth>["user"], path: string) {
+  if (!authUser || authUser.role !== 'admin') return;
+  if (path !== '/system/performance' && path !== '/system/tools') return;
+  if (warmedAreas.has(`system:${path}`)) return;
+  warmedAreas.add(`system:${path}`);
   scheduleOnIdle(async () => {
     try {
-      if (!hasPrimedPagedListNamespace('system-settings')) {
-        await fetchSystemSettings();
-        markPagedListNamespacePrimed('system-settings');
-      }
       void flushBrowserPerfQueue();
     } catch {
       // ignore prewarm failures
     }
-  }, 800);
+  }, 4000);
 }
 
 router.afterEach((to) => {
@@ -310,8 +305,9 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  if (to.path.startsWith('/pc')) prewarmPcLedgerData(auth.user);
-  if (to.path.startsWith('/system')) prewarmSystemData(auth.user);
+  if (to.path === '/pc/assets') prewarmPcLedgerData('pc-assets', auth.user);
+  if (to.path === '/pc/monitors') prewarmPcLedgerData('monitor-assets', auth.user);
+  if (to.path.startsWith('/system')) prewarmSystemData(auth.user, to.path);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
