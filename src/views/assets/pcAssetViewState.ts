@@ -4,15 +4,14 @@ import { getCachedSystemSettings } from '../../api/systemSettings';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { createIdleDebounced } from '../../utils/idleDebounce';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../../utils/tableColumns';
-import { findLedgerSavedView, normalizeLedgerDensity, removeLedgerSavedView, sanitizeLedgerViewName, upsertLedgerSavedView, type LedgerSavedView, type LedgerTableDensity } from '../../utils/ledgerViewPrefs';
 
 const STORAGE_KEY = 'inventory:pc-assets:filters';
 export const PC_COLUMN_OPTIONS = [
   { value: 'computer', label: '电脑' },
   { value: 'inventory', label: '盘点状态' },
   { value: 'status', label: '状态' },
-  { value: 'owner', label: '当前领用人' },
   { value: 'config', label: '配置' },
+  { value: 'owner', label: '当前领用人' },
   { value: 'configDate', label: '配置日期' },
   { value: 'recycleDate', label: '回收日期' },
   { value: 'remark', label: '备注' },
@@ -41,14 +40,7 @@ type PersistedPcAssetViewState = {
   visibleColumns?: string[];
   columnOrder?: string[];
   columnWidths?: Record<string, number>;
-  density?: LedgerTableDensity;
-  savedViews?: LedgerSavedView[];
-  activeViewName?: string;
 };
-
-function clampPageSize(value: unknown) {
-  return Math.min(200, Math.max(20, Number(value || getCachedSystemSettings().ui_default_page_size || 50) || 50));
-}
 
 export function usePcAssetViewState(onAutoSearch: () => void) {
   const persistedState = readJsonStorage<PersistedPcAssetViewState>(STORAGE_KEY, {
@@ -62,9 +54,6 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     visibleColumns: PC_COLUMN_KEYS,
     columnOrder: PC_COLUMN_KEYS,
     columnWidths: {},
-    density: 'default',
-    savedViews: [],
-    activeViewName: 'default',
   });
 
   const status = ref(String(persistedState.status || ''));
@@ -90,11 +79,8 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   }
   const visibleColumns = ref(initialVisibleColumns);
   const columnWidths = ref(normalizeColumnWidths(persistedState.columnWidths, PC_COLUMN_KEYS));
-  const density = ref<LedgerTableDensity>(normalizeLedgerDensity(persistedState.density));
-  const savedViews = ref<LedgerSavedView[]>(Array.isArray(persistedState.savedViews) ? persistedState.savedViews : []);
-  const activeViewName = ref(sanitizeLedgerViewName(persistedState.activeViewName) || 'default');
 
-  const initialPageSize = clampPageSize(persistedState.pageSize);
+  const initialPageSize = Math.min(200, Math.max(20, Number(persistedState.pageSize || getCachedSystemSettings().ui_default_page_size || 50) || 50));
   const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 
   let suppressAutoSearch = false;
@@ -120,13 +106,10 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
       archiveMode: archiveMode.value,
       archiveReason: archiveReason.value || '',
-      pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
+      pageSize: Math.min(200, Math.max(20, Number(pageSizeRef?.value || initialPageSize || 50) || 50)),
       visibleColumns: visibleColumns.value,
       columnOrder: columnOrder.value,
       columnWidths: columnWidths.value,
-      density: density.value,
-      savedViews: savedViews.value,
-      activeViewName: activeViewName.value,
     });
   }
 
@@ -148,7 +131,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
 
   function bindPersistence(pageSize: Ref<number>) {
     pageSizeRef = pageSize;
-    watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths, density, savedViews, activeViewName], () => schedulePersistState(), { deep: true });
+    watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths], () => schedulePersistState());
     watch(keyword, (_value, oldValue) => {
       if (suppressAutoSearch || oldValue === undefined) return;
       scheduleKeywordSearch();
@@ -171,8 +154,6 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     columnOrder.value = [...PC_COLUMN_KEYS];
     visibleColumns.value = [...PC_COLUMN_KEYS];
     columnWidths.value = {};
-    density.value = 'default';
-    activeViewName.value = 'default';
   }
 
   function moveVisibleColumn(key: string, direction: 'up' | 'down') {
@@ -183,48 +164,6 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   function updateColumnWidth(payload: { key: string; width: number }) {
     if (!payload?.key) return;
     columnWidths.value = setColumnWidth(columnWidths.value, payload.key, payload.width);
-  }
-
-  function setDensity(nextDensity: LedgerTableDensity) {
-    density.value = normalizeLedgerDensity(nextDensity);
-  }
-
-  function saveCurrentView(name: string) {
-    const nextName = sanitizeLedgerViewName(name);
-    if (!nextName) return '';
-    savedViews.value = upsertLedgerSavedView(savedViews.value, {
-      name: nextName,
-      visibleColumns: [...visibleColumns.value],
-      columnOrder: [...columnOrder.value],
-      columnWidths: { ...columnWidths.value },
-      density: density.value,
-      pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
-      updatedAt: new Date().toISOString(),
-    });
-    activeViewName.value = nextName;
-    return nextName;
-  }
-
-  function applySavedView(name: string) {
-    const matched = findLedgerSavedView(savedViews.value, name);
-    if (!matched) return false;
-    columnOrder.value = normalizeColumnOrder(matched.columnOrder, PC_COLUMN_KEYS);
-    visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(matched.visibleColumns, PC_COLUMN_KEYS), columnOrder.value);
-    columnWidths.value = normalizeColumnWidths(matched.columnWidths, PC_COLUMN_KEYS);
-    density.value = normalizeLedgerDensity(matched.density);
-    if (pageSizeRef && matched.pageSize) pageSizeRef.value = clampPageSize(matched.pageSize);
-    activeViewName.value = matched.name;
-    return true;
-  }
-
-  function deleteSavedView(name: string) {
-    const normalized = sanitizeLedgerViewName(name);
-    if (!normalized) return false;
-    const nextViews = removeLedgerSavedView(savedViews.value, normalized);
-    if (nextViews.length === savedViews.value.length) return false;
-    savedViews.value = nextViews;
-    if (activeViewName.value === normalized) activeViewName.value = 'default';
-    return true;
   }
 
   function runWithoutAutoSearch(fn: () => void) {
@@ -252,9 +191,6 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     columnOrder,
     visibleColumns,
     columnWidths,
-    density,
-    savedViews,
-    activeViewName,
     initialPageSize,
     pcColumnOptions,
     currentFilters,
@@ -265,10 +201,6 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     restoreDefaultColumns,
     moveVisibleColumn,
     updateColumnWidth,
-    setDensity,
-    saveCurrentView,
-    applySavedView,
-    deleteSavedView,
     runWithoutAutoSearch,
   };
 }

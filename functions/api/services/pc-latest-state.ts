@@ -91,13 +91,13 @@ export async function rebuildPcLatestStateForAssets(db: D1Database, assetIds: Ar
        lr.recycle_date AS last_recycle_date
      FROM pc_assets a
      LEFT JOIN pc_out lo ON lo.id = (
-       SELECT id FROM pc_out WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
+       SELECT id FROM pc_out WHERE asset_id = a.id ORDER BY id DESC LIMIT 1
      )
      LEFT JOIN pc_in li ON li.id = (
-       SELECT id FROM pc_in WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
+       SELECT id FROM pc_in WHERE asset_id = a.id ORDER BY id DESC LIMIT 1
      )
      LEFT JOIN pc_recycle lr ON lr.id = (
-       SELECT id FROM pc_recycle WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
+       SELECT id FROM pc_recycle WHERE asset_id = a.id ORDER BY id DESC LIMIT 1
      )
      WHERE a.id IN (${placeholders})`
   ).bind(...ids).all<any>();

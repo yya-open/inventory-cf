@@ -254,48 +254,11 @@
               </template>
               <div>{{ opsAlert.detail }}</div>
             </el-alert>
-            <div v-if="showRouteSkeleton" class="app-page-skeleton" aria-hidden="true">
-              <div class="app-page-skeleton__toolbar">
-                <div class="app-page-skeleton__panel">
-                  <div class="app-page-skeleton__kicker" />
-                  <div class="app-page-skeleton__title" />
-                  <div class="app-page-skeleton__text" />
-                  <div class="app-page-skeleton__controls">
-                    <span class="app-page-skeleton__control app-page-skeleton__control--wide" />
-                    <span class="app-page-skeleton__control app-page-skeleton__control--mid" />
-                    <span class="app-page-skeleton__control app-page-skeleton__control--cta" />
-                    <span class="app-page-skeleton__control app-page-skeleton__control--short" />
-                  </div>
-                </div>
-                <div class="app-page-skeleton__panel app-page-skeleton__panel--side">
-                  <div class="app-page-skeleton__badge" />
-                  <div class="app-page-skeleton__title app-page-skeleton__title--short" />
-                  <div class="app-page-skeleton__text app-page-skeleton__text--short" />
-                  <div class="app-page-skeleton__button-row">
-                    <span class="app-page-skeleton__button app-page-skeleton__button--primary" />
-                    <span class="app-page-skeleton__button" />
-                    <span class="app-page-skeleton__button" />
-                  </div>
-                </div>
-              </div>
-              <div class="app-page-skeleton__table">
-                <div class="app-page-skeleton__table-head" />
-                <div v-for="index in 6" :key="index" class="app-page-skeleton__table-row">
-                  <span class="app-page-skeleton__cell app-page-skeleton__cell--short" />
-                  <span class="app-page-skeleton__cell app-page-skeleton__cell--wide" />
-                  <span class="app-page-skeleton__cell" />
-                  <span class="app-page-skeleton__cell" />
-                  <span class="app-page-skeleton__cell app-page-skeleton__cell--mid" />
-                </div>
-              </div>
-            </div>
-            <div class="page-wrap__content" :class="{ 'page-wrap__content--pending': showRouteSkeleton }">
-              <router-view v-slot="{ Component }">
-                <keep-alive :include="cachedViewNames" :max="16">
-                  <component :is="Component" />
-                </keep-alive>
-              </router-view>
-            </div>
+            <router-view v-slot="{ Component }">
+              <keep-alive :include="cachedViewNames" :max="8">
+                <component :is="Component" />
+              </keep-alive>
+            </router-view>
           </div>
         </el-main>
       </el-container>
@@ -345,7 +308,6 @@ import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, logout, useAuth } from "./store/auth";
-import { routePageSkeletonVisible } from "./router";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
 import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
@@ -368,7 +330,6 @@ const currentArea = computed(() => {
 });
 
 const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
-const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeletonVisible.value);
 
 const activeMenu = computed(() => route.path);
 
@@ -441,7 +402,7 @@ function doLogout() {
 }
 
 const showChange = ref(false);
-const cachedViewNames = ['StockQuery', 'TxList', 'Warnings', 'PcAssets', 'MonitorAssets', 'PcAgeWarnings', 'PcTx', 'MonitorTx', 'PcInventoryLogs', 'MonitorInventoryLogs'];
+const cachedViewNames = ['StockQuery', 'TxList', 'Warnings', 'PcAssets', 'MonitorAssets'];
 const needsSystemMeta = computed(() => ['/system/home', '/system/tools', '/system/release-check', '/system/dashboard'].includes(route.path));
 const schemaStatus = reactive<{ loaded: boolean; ok: boolean; message: string; required_version?: string; current_version?: string }>({ loaded: false, ok: true, message: '' });
 const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: string; detail: string }>({ visible: false, type: 'warning', title: '', detail: '' });

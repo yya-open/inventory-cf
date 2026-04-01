@@ -7,8 +7,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const user = await requireAuthWithDataScope(env, request, 'viewer');
     const query = buildStockListQuery(new URL(request.url));
     query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '库存查询');
-    const rows = await listStockRows(env.DB, query);
-    const total = query.fast ? undefined : await countStockRows(env.DB, query);
+    const [total, rows] = await Promise.all([
+      countStockRows(env.DB, query),
+      listStockRows(env.DB, query),
+    ]);
 
     return Response.json({
       ok: true,

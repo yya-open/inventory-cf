@@ -1,7 +1,6 @@
 <template>
-  <div class="ledger-page ledger-page--pc">
-    <section class="ledger-section ledger-section--toolbar">
-      <PcAssetsToolbar
+  <div>
+    <PcAssetsToolbar
       v-model:status="status"
       v-model:inventory-status="inventoryStatus"
       v-model:keyword="keyword"
@@ -21,11 +20,7 @@
       :archive-reason-options="archiveReasonOptions"
       :summary="inventorySummary"
       :has-active-batch="hasActiveInventoryBatch"
-      :density="density"
-      :saved-views="savedViews"
-      :active-view-name="activeViewName"
       @update:visible-columns="updateVisibleColumns"
-      @update:density="setDensity"
       @move-column="moveVisibleColumn"
       @search="onSearch"
       @set-inventory-filter="setInventoryFilter"
@@ -42,22 +37,16 @@
       @batch-owner="openBatchOwnerDialog"
       @batch-archive="batchArchiveSelected"
       @batch-restore="batchRestoreSelected"
-      @save-view="handleSaveView"
-      @apply-view="handleApplyView"
-      @delete-view="handleDeleteView"
       @restore-columns="restoreDefaultColumns"
       @init-qr="initQrKeys"
       @download-template="downloadAssetTemplate"
       @import-file="onImportAssetsFile"
-      />
-    </section>
+    />
 
-    <section class="ledger-section ledger-section--table">
-      <el-card shadow="never" class="ledger-table-card">
-        <PcAssetsTable
+    <el-card shadow="never">
+      <PcAssetsTable
       :rows="rows"
-      :loading="refreshing"
-      :initial-loading="initialLoading && !rows.length"
+      :loading="loading"
       :page="page"
       :page-size="pageSize"
       :total="total"
@@ -66,10 +55,8 @@
       :visible-columns="visibleColumns"
       :column-widths="columnWidths"
       :selected-ids="selectedIds"
-      :density="density"
       :show-inventory-column="hasActiveInventoryBatch"
       :enable-inventory-highlight="hasActiveInventoryBatch"
-      :has-filters="hasActiveFilters"
       @open-info="openInfo"
       @open-edit="openEdit"
       @open-qr="openQr"
@@ -80,10 +67,8 @@
       @column-resize="updateColumnWidth"
       @page-change="(value) => onPageChange(currentFiltersForList(), value)"
       @page-size-change="(value) => onPageSizeChange(currentFiltersForList(), value)"
-      @reset-filters="reset"
-        />
-      </el-card>
-    </section>
+      />
+    </el-card>
 
     <PcAssetEditDialog
       v-if="lazyEditDialog"
@@ -151,13 +136,12 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onActivated, ref } from 'vue';
+import { computed, defineAsyncComponent, onBeforeUnmount, onMounted, onActivated, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { countPcAssets, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
-import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
@@ -197,10 +181,6 @@ const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInve
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
-const hasActiveFilters = computed(() => {
-  const filters = currentFiltersForList();
-  return Boolean(filters.status || filters.keyword || filters.inventoryStatus || filters.archiveMode !== 'active' || filters.archiveReason);
-});
 
 const {
   status,
@@ -212,9 +192,6 @@ const {
   columnOrder,
   visibleColumns,
   columnWidths,
-  density,
-  savedViews,
-  activeViewName,
   initialPageSize,
   pcColumnOptions,
   currentFilters,
@@ -225,36 +202,12 @@ const {
   restoreDefaultColumns,
   moveVisibleColumn,
   updateColumnWidth,
-  setDensity,
-  saveCurrentView,
-  applySavedView,
-  deleteSavedView,
   runWithoutAutoSearch,
 } = usePcAssetViewState(() => {
-  void refreshLedgerData();
+  const filters = currentFiltersForList();
+  void refreshInventorySummary(filters);
+  reload(filters);
 });
-
-
-function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
-  ElNotification({ title, message, type, duration: 2600, offset: 72 });
-}
-
-function handleSaveView(name: string) {
-  const savedName = saveCurrentView(name);
-  if (!savedName) return ElMessage.warning('请先输入视图名称');
-  notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
-}
-
-function handleApplyView(name: string) {
-  if (!applySavedView(name)) return ElMessage.warning('视图不存在或已失效');
-  notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
-  onSearch();
-}
-
-function handleDeleteView(name: string) {
-  if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
-  notifyAction('视图已删除', `已删除“${name}”视图。`, 'warning');
-}
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
@@ -372,12 +325,11 @@ async function buildInlineQrSvg(link: string, size = 260) {
 }
 
 
-const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
+const { rows, loading, page, pageSize, total, load, reload, onPageChange, onPageSizeChange, fetchAll, invalidateTotal, invalidateCache } = useAssetLedgerPage<PcFilters, PcAsset>({
   cacheNamespace: 'pc-assets',
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
-  fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
-  fetchTotal: (filters, signal) => countPcAssets(filters, signal),
+  fetchPage: (filters, currentPage, currentPageSize, _fast, signal) => listPcAssets(filters, currentPage, currentPageSize, false, signal),
 });
 
 pageSize.value = initialPageSize;
@@ -541,7 +493,7 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
+    await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -560,58 +512,12 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
   }
 }
 
-function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
-  if (typeof window === 'undefined') {
-    void Promise.resolve().then(task);
-    return;
-  }
-  const runner = () => {
-    window.setTimeout(() => {
-      void task();
-    }, 80);
-  };
-  if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(() => runner(), { timeout });
-    return;
-  }
-  window.requestAnimationFrame(() => {
-    runner();
-  });
-}
-
-function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
-  const snapshot = { ...initialFilters };
-  runWhenBrowserIdle(async () => {
-    void refreshInventorySummary(snapshot);
-    try {
-      await refreshInventoryBatch();
-    } catch {
-      return;
-    }
-    const nextFilters = currentFiltersForList();
-    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
-    if (!batchStateChanged) return;
-    await load(nextFilters, { keepPage: true, silent: true });
-    void refreshInventorySummary(nextFilters);
-  });
-}
-
-async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
+const onSearch = () => {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
-  if (options.keepPage) {
-    await load(filters, { keepPage: true, silent: options.silent });
-  } else {
-    await reload(filters, { silent: options.silent });
-  }
-  lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
-}
-
-const onSearch = () => {
-  void refreshLedgerData();
+  void refreshInventorySummary(filters);
+  void refreshInventoryBatch();
+  reload(filters);
 };
 const reset = () => {
   runWithoutAutoSearch(() => {
@@ -622,7 +528,10 @@ const reset = () => {
     archiveMode.value = 'active';
     archiveReason.value = '';
   });
-  void refreshLedgerData();
+  clearKeywordTimer();
+  const filters = currentFiltersForList();
+  void refreshInventorySummary(filters);
+  reload(filters);
 };
 
 async function initQrKeys() {
@@ -933,32 +842,14 @@ function openInfo(row: PcAsset) {
 
 async function saveEdit() {
   const form = editForm.value || {};
-  const trim = (value: unknown) => String(value ?? '').trim();
-  const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  const payload = {
-    ...form,
-    brand: trim(form.brand),
-    model: trim(form.model),
-    serial_no: trim(form.serial_no),
-    manufacture_date: trim(form.manufacture_date),
-    warranty_end: trim(form.warranty_end),
-    disk_capacity: trim(form.disk_capacity),
-    memory_size: trim(form.memory_size),
-    remark: trim(form.remark),
-  };
-
-  if (!payload.brand) return ElMessage.warning('品牌必填');
-  if (!payload.model) return ElMessage.warning('型号必填');
-  if (!payload.serial_no) return ElMessage.warning('序列号必填');
-  if (payload.manufacture_date && !datePattern.test(payload.manufacture_date)) return ElMessage.warning('出厂时间格式需为 YYYY-MM-DD');
-  if (payload.warranty_end && !datePattern.test(payload.warranty_end)) return ElMessage.warning('保修到期格式需为 YYYY-MM-DD');
+  if (!String(form.brand || '').trim()) return ElMessage.warning('品牌必填');
+  if (!String(form.model || '').trim()) return ElMessage.warning('型号必填');
+  if (!String(form.serial_no || '').trim()) return ElMessage.warning('序列号必填');
 
   try {
     saving.value = true;
-    editForm.value = { ...payload };
-    await apiPut('/api/pc-assets', payload);
+    await apiPut('/api/pc-assets', form);
     ElMessage.success('修改成功');
-    notifyAction('电脑台账已更新', `已更新 ${payload.brand} ${payload.model}`.trim() || '电脑记录');
     editVisible.value = false;
     await refreshCurrent(true, true);
   } catch (error: any) {
@@ -1135,7 +1026,6 @@ async function submitBatchStatus() {
       status: batchStatusValue.value,
     });
     ElMessage.success(result?.message || '批量修改成功');
-    notifyAction('批量状态已更新', `已处理 ${selectedCount.value} 台电脑的状态。`);
     batchStatusVisible.value = false;
     applyPcStatusPatch(extractAffectedIds(result), batchStatusValue.value);
     clearSelection();
@@ -1161,7 +1051,6 @@ async function submitBatchOwner() {
       department: batchOwnerForm.value.department,
     });
     ElMessage.success(result?.message || '批量修改领用人成功');
-    notifyAction('批量领用人已更新', `已处理 ${selectedCount.value} 台电脑的领用信息。`);
     batchOwnerVisible.value = false;
     applyPcOwnerPatch(extractAffectedIds(result), batchOwnerForm.value);
     clearSelection();
@@ -1183,7 +1072,6 @@ async function batchRestoreSelected() {
       ids: selectedIds.value.map((id) => Number(id)),
     });
     ElMessage.success(result?.message || '批量恢复成功');
-    notifyAction('批量恢复完成', `已恢复 ${selectedCount.value} 台电脑。`, 'info');
     applyPcRestorePatch(extractAffectedIds(result));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
@@ -1215,7 +1103,6 @@ async function submitBatchArchive() {
       note: batchArchiveForm.value.note,
     });
     ElMessage.success(result?.message || '批量归档成功');
-    notifyAction('批量归档完成', `已归档 ${selectedCount.value} 台电脑。`, 'warning');
     batchArchiveVisible.value = false;
     applyPcArchivePatch(extractAffectedIds(result), batchArchiveForm.value);
     clearSelection();
@@ -1405,10 +1292,28 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
-  await refreshLedgerData(options);
+  const initialFilters = currentFiltersForList();
+  const hadActiveBatch = hasActiveInventoryBatch.value;
+  const loadOptions = { ...(options.keepPage ? { keepPage: true } : {}), ...(options.silent ? { silent: true } : {}) };
+  await Promise.allSettled([
+    load(initialFilters, loadOptions),
+    refreshInventorySummary(initialFilters),
+    refreshInventoryBatch(),
+  ]);
+
+  const nextFilters = currentFiltersForList();
+  const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
+    || nextFilters.inventoryStatus !== initialFilters.inventoryStatus;
+  if (batchStateChanged) {
+    await Promise.allSettled([
+      load(nextFilters, loadOptions),
+      refreshInventorySummary(nextFilters),
+    ]);
+  }
+  lastRefreshAt = Date.now();
 }
 
-onBeforeMount(() => {
+onMounted(() => {
   void hydrateViewData();
 });
 
@@ -1418,93 +1323,22 @@ onBeforeUnmount(() => {
 
 onActivated(() => {
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
+  lastRefreshAt = Date.now();
   void hydrateViewData({ keepPage: true, silent: true });
 });
 </script>
 
 <style scoped>
-.ledger-page {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-}
-
-.ledger-page::before {
-  content: '';
-  position: absolute;
-  inset: -18px -18px auto;
-  height: 220px;
-  border-radius: 30px;
-  background:
-    radial-gradient(circle at top left, rgba(64, 158, 255, 0.16), transparent 38%),
-    radial-gradient(circle at top right, rgba(24, 144, 255, 0.10), transparent 32%),
-    linear-gradient(180deg, rgba(248, 250, 255, 0.96), rgba(255, 255, 255, 0));
-  pointer-events: none;
-}
-
-.ledger-section {
-  position: relative;
-  z-index: 1;
-}
-
-.ledger-section--table::before {
-  content: '';
-  position: absolute;
-  inset: 12px 20px auto 20px;
-  height: 72px;
-  border-radius: 22px;
-  background: linear-gradient(180deg, rgba(64, 158, 255, 0.09), rgba(64, 158, 255, 0));
-  filter: blur(10px);
-  pointer-events: none;
-}
-
-:deep(.ledger-toolbar-card),
-:deep(.ledger-table-card) {
-  position: relative;
-  border: 1px solid rgba(148, 163, 184, 0.16);
-  border-radius: 28px;
-  overflow: hidden;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(246, 249, 255, 0.94) 100%);
-  box-shadow: 0 24px 60px rgba(15, 23, 42, 0.10);
-}
-
-:deep(.ledger-toolbar-card > .el-card__body),
-:deep(.ledger-table-card > .el-card__body) {
-  padding: 18px;
-}
-
-:deep(.ledger-toolbar-card::after),
-:deep(.ledger-table-card::after) {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.75);
-}
-
 .batch-preview {
-  display: flex;
-  gap: 8px;
-  flex-wrap: wrap;
-  margin-top: 6px;
+  display:flex;
+  gap:8px;
+  flex-wrap:wrap;
+  margin-top:6px;
 }
 
 .batch-help {
   color: #909399;
   font-size: 12px;
   padding-left: 4px;
-}
-
-@media (max-width: 768px) {
-  .ledger-page {
-    gap: 14px;
-  }
-
-  :deep(.ledger-toolbar-card > .el-card__body),
-  :deep(.ledger-table-card > .el-card__body) {
-    padding: 14px;
-  }
 }
 </style>

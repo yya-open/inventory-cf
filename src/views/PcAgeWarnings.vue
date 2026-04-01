@@ -1,6 +1,6 @@
 <template>
   <el-card class="ui-page-card">
-    <div class="ui-toolbar ui-toolbar--ledger">
+    <div class="ui-toolbar">
       <div class="ui-toolbar-main">
         <div class="ui-toolbar-block">
           <div class="ui-toolbar-title">
@@ -64,11 +64,8 @@
       </div>
     </div>
 
-    <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-
     <el-table
-      v-else
-      v-loading="refreshing"
+      v-loading="loading"
       :data="rows"
       border
       @selection-change="onSelectionChange"
@@ -135,14 +132,12 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onBeforeMount, onBeforeUnmount, onMounted } from 'vue';
+import { ref, onMounted } from 'vue';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost } from '../api/client';
 import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
 import { exportToXlsx } from '../utils/excel';
 import { usePagedAssetList } from '../composables/usePagedAssetList';
-import { scheduleOnIdle } from '../utils/idle';
-import LedgerTableSkeleton from '../components/assets/LedgerTableSkeleton.vue';
 
 type WarningFilters = {
   ageYears: number;
@@ -169,9 +164,6 @@ function currentFilters(): WarningFilters {
 const {
   rows,
   loading,
-  refreshing,
-  initialLoading,
-  initialized,
   page,
   pageSize,
   total,
@@ -326,22 +318,6 @@ async function createScrap() {
   }
 }
 
-let cancelSettingsSync: (() => void) | null = null;
-
-async function syncAgeYearsFromSettings() {
-  try {
-    const settings = await fetchSystemSettings();
-    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
-    if (nextYears === ageYears.value) return;
-    ageYears.value = nextYears;
-    page.value = 1;
-    clearTotalCache();
-    await reload(currentFilters(), { silent: true });
-  } catch {
-    // ignore and keep cached fallback
-  }
-}
-
 async function exportExcel(all: boolean) {
   const loadingRef = all ? exportingAll : exporting;
   try {
@@ -366,16 +342,18 @@ async function exportExcel(all: boolean) {
 }
 
 onMounted(async () => {
-  page.value = 1;
-  clearTotalCache();
   await reload(currentFilters());
-  cancelSettingsSync = scheduleOnIdle(() => {
-    void syncAgeYearsFromSettings();
-  }, 1200);
-});
-
-onBeforeUnmount(() => {
-  cancelSettingsSync?.();
-  cancelSettingsSync = null;
+  try {
+    const settings = await fetchSystemSettings();
+    const nextYears = Number(settings.pc_scrap_warning_years || ageYears.value || 5);
+    if (nextYears !== ageYears.value) {
+      ageYears.value = nextYears;
+      page.value = 1;
+      clearTotalCache();
+      await reload(currentFilters());
+    }
+  } catch {
+    // ignore and keep cached fallback
+  }
 });
 </script>
