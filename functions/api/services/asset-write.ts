@@ -176,18 +176,33 @@ export function normalizePcSerialNo(value: any) {
   return String(value || '').trim().toUpperCase();
 }
 
-async function listPcAssetsByNormalizedSerial(db: D1Database, serialNo: string) {
+async function getPcAssetsByNormalizedSerial(db: D1Database, serialNo: string) {
   const normalized = normalizePcSerialNo(serialNo);
   if (!normalized) return [] as any[];
   const { results } = await db.prepare(
     `SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? ORDER BY id ASC`
   ).bind(normalized).all<any>();
-  return (results || []) as any[];
+  return results || [];
 }
 
 async function getPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
-  const rows = await listPcAssetsByNormalizedSerial(db, serialNo);
+  const rows = await getPcAssetsByNormalizedSerial(db, serialNo);
   return rows[0] || null;
+}
+
+async function assertPcInboundSerialIsSafe(db: D1Database, serialNo: string) {
+  const rows = await getPcAssetsByNormalizedSerial(db, serialNo);
+  if (rows.length > 1) {
+    throw Object.assign(new Error('该序列号存在多条历史台账记录，请先清理重复数据后再入库'), { status: 400 });
+  }
+  const row = rows[0] || null;
+  if (row?.id) {
+    const counts = await getPcAssetHistoryCounts(db, Number(row.id));
+    if (counts.pcIn > 0) {
+      throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
+    }
+  }
+  return row;
 }
 
 async function getPcAssetHistoryCounts(db: D1Database, assetId: number) {
@@ -240,49 +255,27 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
     memory_size: payload.memorySize,
   });
 
-  const existingRows = await listPcAssetsByNormalizedSerial(db, serialNo);
-  if (existingRows.length > 1) {
-    throw Object.assign(
-      new Error('检测到历史重复序列号数据，请先在电脑台账中清理该序列号后再入库'),
-      { status: 400, code: 'PC_ASSET_DUPLICATE_NORMALIZED_SERIAL', details: { serial_no: serialNo, asset_ids: existingRows.map((row: any) => Number(row?.id || 0)).filter(Boolean) } }
-    );
-  }
-
-  const existing = existingRows[0] || null;
+  const existing = await assertPcInboundSerialIsSafe(db, serialNo);
   if (existing?.id) {
-    const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
-    if (counts.pcIn > 0) {
-      throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
-    }
-    try {
-      await db.prepare(
-        `UPDATE pc_assets
-         SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
-             disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', updated_at=${sqlNowStored()}
-         WHERE id=?`
-      ).bind(
-        payload.brand,
-        serialNo,
-        payload.model,
-        payload.manufactureDate,
-        payload.warrantyEnd ?? null,
-        manufactureTs,
-        warrantyEndTs,
-        payload.diskCapacity ?? null,
-        payload.memorySize ?? null,
-        payload.remark ?? null,
-        searchText,
-        existing.id,
-      ).run();
-    } catch (error: any) {
-      if (isSqliteConstraintError(error)) {
-        throw Object.assign(
-          new Error('该序列号与现有电脑台账冲突，请先在电脑台账中检查是否存在重复序列号或带空格/大小写差异的旧数据'),
-          { status: 400, cause: error }
-        );
-      }
-      throw error;
-    }
+    await db.prepare(
+      `UPDATE pc_assets
+       SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
+           disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', updated_at=${sqlNowStored()}
+       WHERE id=?`
+    ).bind(
+      payload.brand,
+      serialNo,
+      payload.model,
+      payload.manufactureDate,
+      payload.warrantyEnd ?? null,
+      manufactureTs,
+      warrantyEndTs,
+      payload.diskCapacity ?? null,
+      payload.memorySize ?? null,
+      payload.remark ?? null,
+      searchText,
+      existing.id,
+    ).run();
     return Number(existing.id);
   }
 
@@ -326,12 +319,8 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
       }
     } catch (error: any) {
       if (!isSqliteConstraintError(error)) throw error;
-      const existing = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
-      if (!existing?.id) throw error;
-      const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
-      if (counts.pcIn > 0) {
-        throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
-      }
+      const existing = await assertPcInboundSerialIsSafe(db, normalizedSerialNo);
+      if (!existing?.id) throw Object.assign(new Error('该序列号已存在或存在重复脏数据，请先清理后再入库'), { status: 400 });
       assetId = Number(existing.id);
       await db.prepare(
         `UPDATE pc_assets
