@@ -327,7 +327,7 @@ export function normalizeText(v: any, maxLen = 2000) {
   return s.length > maxLen ? s.slice(0, maxLen) : s;
 }
 
-export function normalizePcSerialNo(v: any, maxLen = 120) {
+export function normalizeSerialNo(v: any, maxLen = 120) {
   return normalizeText(v, maxLen).toUpperCase();
 }
 
@@ -365,12 +365,12 @@ export function pcRecycleNo() {
 
 export async function getPcAssetByIdOrSerial(db: D1Database, asset_id?: any, serial_no?: any) {
   const id = Number(asset_id);
-  const sn = normalizePcSerialNo(serial_no, 120);
+  const sn = normalizeSerialNo(serial_no, 120);
   if (id) {
     return db.prepare("SELECT * FROM pc_assets WHERE id=? AND COALESCE(archived,0)=0").bind(id).first<any>();
   }
   if (sn) {
-    return db.prepare("SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? AND COALESCE(archived,0)=0 LIMIT 1").bind(sn).first<any>();
+    return db.prepare("SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no))=? AND COALESCE(archived,0)=0").bind(sn).first<any>();
   }
   return null;
 }
