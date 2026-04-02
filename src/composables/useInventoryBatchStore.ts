@@ -33,7 +33,7 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
   const state = ensureStore(kind);
 
   async function refresh(options: { force?: boolean; silent?: boolean; ttlMs?: number } = {}) {
-    const ttlMs = Number(options.ttlMs ?? 10_000);
+    const ttlMs = Number(options.ttlMs ?? 5 * 60_000);
     const now = Date.now();
     const payload = state.payload.value;
     const hasData = Boolean(payload.active || payload.latest || (payload.recent || []).length);
@@ -42,7 +42,7 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
       return state.payload.value;
     }
     if (!options.silent) state.loading.value = true;
-    const request = fetchInventoryBatch(kind)
+    const request = fetchInventoryBatch(kind, { force: options.force })
       .then((next) => {
         state.payload.value = normalizeInventoryBatchPayload(next);
         state.error.value = null;

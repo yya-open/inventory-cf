@@ -589,23 +589,11 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   });
 }
 
-function scheduleAuxiliaryRefresh(initialFilters: PcFilters, options: { skipBatchRefresh?: boolean } = {}) {
+function scheduleAuxiliaryRefresh(initialFilters: PcFilters) {
   const snapshot = { ...initialFilters };
   const needSummary = shouldLoadInventorySummary(snapshot);
   runWhenBrowserIdle(async () => {
     if (needSummary) void refreshInventorySummary(snapshot);
-    if (options.skipBatchRefresh || (!needSummary && !hadActiveBatch && !snapshot.inventoryStatus)) return;
-    try {
-      await refreshInventoryBatch();
-    } catch {
-      return;
-    }
-    const nextFilters = currentFiltersForList();
-    const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
-      || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
-    if (!batchStateChanged) return;
-    await load(nextFilters, { keepPage: true, silent: true });
-    if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
   });
 }
 
@@ -618,7 +606,7 @@ async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean
     await reload(filters, { silent: options.silent });
   }
   lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters, { skipBatchRefresh: true });
+  scheduleAuxiliaryRefresh(filters);
 }
 
 const onSearch = () => {
@@ -1422,8 +1410,8 @@ async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean }
   runWhenBrowserIdle(async () => {
     try {
       await refreshInventoryBatch();
-      const filters = currentFiltersForList();
-      if (shouldLoadInventorySummary(filters)) void refreshInventorySummary(filters);
+      const nextFilters = currentFiltersForList();
+      if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
     } catch {}
   }, 1500);
 }

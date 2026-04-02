@@ -352,10 +352,12 @@ function reset() {
 }
 
 async function loadMonitorIssueBreakdown() {
-  const result: any = await apiGet('/api/monitor-inventory-log/dashboard');
+  const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
+  const result = await Promise.all(
+    codes.map((code) => apiGet(`/api/monitor-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
+  );
   const next = emptyInventoryIssueBreakdown();
-  const payload = result?.data?.byIssueType || {};
-  for (const code of Object.keys(next)) next[code as keyof typeof next] = Number(payload[code] || 0);
+  for (const [code, value] of result) next[code] = value;
   return next;
 }
 

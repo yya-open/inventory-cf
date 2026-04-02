@@ -1,37 +1,6 @@
 import { apiGet, apiPost } from './client';
 import type { InventoryIssueBreakdown } from '../types/assets';
 
-import { apiGet, apiPost } from './client';
-import type { InventoryIssueBreakdown } from '../types/assets';
-
-type CacheEntry<T> = { expiresAt: number; value?: T; pending?: Promise<T> };
-const batchCache = new Map<string, CacheEntry<any>>();
-const INVENTORY_BATCH_CLIENT_TTL_MS = 5 * 60_000;
-
-async function getWithCache<T>(key: string, ttlMs: number, loader: () => Promise<T>, force = false): Promise<T> {
-  const now = Date.now();
-  const hit = batchCache.get(key) as CacheEntry<T> | undefined;
-  if (!force && hit?.value !== undefined && hit.expiresAt > now) return hit.value;
-  if (!force && hit?.pending) return hit.pending;
-  const pending = loader().then((value) => {
-    batchCache.set(key, { value, expiresAt: Date.now() + ttlMs });
-    return value;
-  }).finally(() => {
-    const latest = batchCache.get(key) as CacheEntry<T> | undefined;
-    if (latest?.pending) latest.pending = undefined;
-  });
-  batchCache.set(key, { value: hit?.value, expiresAt: hit?.expiresAt || 0, pending });
-  return pending;
-}
-
-function invalidateInventoryBatchClientCache(kind?: InventoryBatchKind) {
-  if (kind) {
-    batchCache.delete(`inventory-batch:${kind}`);
-    return;
-  }
-  batchCache.clear();
-}
-
 export type InventoryBatchKind = 'pc' | 'monitor';
 export type InventoryBatchStatus = 'ACTIVE' | 'CLOSED';
 export type InventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
@@ -79,11 +48,49 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
   };
 }
 
-export async function fetchInventoryBatch(kind: InventoryBatchKind, options?: { force?: boolean }) {
-  return getWithCache(`inventory-batch:${kind}`, INVENTORY_BATCH_CLIENT_TTL_MS, async () => {
-    const result: any = await apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`);
-    return normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload);
-  }, Boolean(options?.force));
+const INVENTORY_BATCH_CLIENT_CACHE_TTL_MS = 5 * 60_000;
+const inventoryBatchClientCache = new Map<InventoryBatchKind, { expiresAt: number; value: InventoryBatchPayload }>();
+const inventoryBatchClientPending = new Map<InventoryBatchKind, Promise<InventoryBatchPayload>>();
+
+function readInventoryBatchClientCache(kind: InventoryBatchKind) {
+  const hit = inventoryBatchClientCache.get(kind);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    inventoryBatchClientCache.delete(kind);
+    return null;
+  }
+  return hit.value;
+}
+
+function writeInventoryBatchClientCache(kind: InventoryBatchKind, value: InventoryBatchPayload) {
+  inventoryBatchClientCache.set(kind, { expiresAt: Date.now() + INVENTORY_BATCH_CLIENT_CACHE_TTL_MS, value });
+  return value;
+}
+
+export function invalidateInventoryBatchClientCache(kind?: InventoryBatchKind | null) {
+  if (kind) {
+    inventoryBatchClientCache.delete(kind);
+    inventoryBatchClientPending.delete(kind);
+    return;
+  }
+  inventoryBatchClientCache.clear();
+  inventoryBatchClientPending.clear();
+}
+
+export async function fetchInventoryBatch(kind: InventoryBatchKind, options: { force?: boolean } = {}) {
+  if (!options.force) {
+    const cached = readInventoryBatchClientCache(kind);
+    if (cached) return cached;
+    const pending = inventoryBatchClientPending.get(kind);
+    if (pending) return pending;
+  }
+  const task = apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`)
+    .then((result: any) => writeInventoryBatchClientCache(kind, normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload)))
+    .finally(() => {
+      if (inventoryBatchClientPending.get(kind) === task) inventoryBatchClientPending.delete(kind);
+    });
+  inventoryBatchClientPending.set(kind, task);
+  return task;
 }
 
 export async function startInventoryBatch(kind: InventoryBatchKind, name: string, options: { clearPreviousLogs?: boolean } = {}) {

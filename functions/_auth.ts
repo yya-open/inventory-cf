@@ -21,7 +21,7 @@ export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
-const AUTH_USER_CACHE_TTL_MS = 30_000;
+const AUTH_USER_CACHE_TTL_MS = 5 * 60_000;
 type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; expiresAt: number };
 const authUserCache = new Map<number, CachedAuthUserRow>();
 

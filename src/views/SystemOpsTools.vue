@@ -336,7 +336,7 @@ function actionButtonText(action: string, fallback: string) {
 }
 
 async function loadRepairBase() {
-  const r:any = await apiGet('/api/system-tools?section=base');
+  const r:any = await apiGet('/api/system-tools');
   applySchema(r.data?.schema || {});
   applyDashboard(r.data?.dashboard || {});
   applyScan(r.data?.scan || {});
@@ -353,7 +353,7 @@ async function loadObservability() {
 }
 
 async function loadHealth() {
-  const r:any = await getSystemHealth();
+  const r:any = await getSystemHealth({ force: true });
   health.schema = r.data?.schema || { ok: true };
   health.metrics = r.data?.metrics || {};
   health.scan = r.data?.scan || null;
@@ -533,9 +533,15 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
 }
 
 async function loadRepairHistory() {
-  const r:any = await apiGet('/api/system-tools?section=history');
+  const r:any = await apiGet('/api/system-tools');
   repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
   loadedTabs.history = true;
+  if (!loadedTabs.repair) {
+    applySchema(r.data?.schema || {});
+    applyDashboard(r.data?.dashboard || {});
+    applyScan(r.data?.scan || {});
+    loadedTabs.repair = true;
+  }
 }
 
 async function cleanupJobs() {

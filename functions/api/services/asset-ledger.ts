@@ -4,7 +4,7 @@ import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
-export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; needsFts?: boolean };
+export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean };
 
 export type PcAssetInput = {
   brand: string;
@@ -148,7 +148,6 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
-    needsFts: Boolean(keyword),
   } satisfies QueryParts;
 }
 
@@ -213,18 +212,18 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: '',
-    needsFts: Boolean(keyword),
+    usesFts: Boolean(keyword),
   } satisfies QueryParts;
 }
 
-export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins' | 'needsFts'>) {
-  if (query.needsFts) await ensureSearchFtsTables(db);
+export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins' | 'usesFts'>) {
+  if (query.usesFts) await ensureSearchFtsTables(db);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.joins || ''} ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
-  if (query.needsFts) await ensureSearchFtsTables(db);
+  if (query.usesFts) await ensureSearchFtsTables(db);
   const sql = `
     WITH page_a AS (
       SELECT a.id
@@ -309,7 +308,7 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
 }
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
-  if (query.needsFts) await ensureSearchFtsTables(db);
+  if (query.usesFts) await ensureSearchFtsTables(db);
   const sql = `
     SELECT
       a.*,
