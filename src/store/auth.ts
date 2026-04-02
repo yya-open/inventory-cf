@@ -111,6 +111,12 @@ export async function loginWithCaptcha(username: string, password: string, turns
     throw e;
   }
 }
-export function logout() { apiPost('/api/auth/logout', {}).catch(() => {}); state.user = null; clearAuthCache(); }
+export async function logout() {
+  state.user = null;
+  clearAuthCache();
+  try {
+    await apiPost('/api/auth/logout', {});
+  } catch {}
+}
 export function can(min: Role) { return hasRole(state.user?.role, min); }
 export function canPerm(code: PermissionCode) { return hasPermission(state.user, code); }

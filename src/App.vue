@@ -450,10 +450,10 @@ function switchToSystem() {
   router.push("/system/home");
 }
 
-function doLogout() {
-  logout();
+async function doLogout() {
+  await logout();
   clearWarehouse();
-  router.replace("/login");
+  await router.replace('/login');
 }
 
 const showChange = ref(false);
