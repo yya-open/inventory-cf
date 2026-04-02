@@ -1,7 +1,8 @@
-import { buildAuthCookie, json, signJwt, errorResponse, getJwtTtlSeconds } from '../../_auth';
+import { buildAuthCookie, json, signJwt, errorResponse, getJwtTtlSeconds, invalidateCachedAuthUser } from '../../_auth';
 import { verifyPassword } from '../../_password';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
+import { invalidateCachedMe } from './me';
 import {
   bumpAuthFail,
   clampInt,
@@ -102,6 +103,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     await clearAuthFail(env.DB, ip, u);
+
+    invalidateCachedAuthUser(Number(row.id));
+    invalidateCachedMe(Number(row.id));
 
     const ttlSeconds = getJwtTtlSeconds(env as any);
     const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, ttlSeconds);

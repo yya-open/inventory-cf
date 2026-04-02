@@ -38,7 +38,7 @@ export async function apiRequestJson<T>(path: string, init: RequestInit = {}, op
   const requestEpoch = getAuthRequestEpoch();
   const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } });
   const j = await parseJson(r);
-  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch);
+  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
   if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
   return j as T;
 }
