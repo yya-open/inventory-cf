@@ -12,7 +12,7 @@
       </template>
 
       <el-alert
-        v-if="ops.problem_count || ops.failed_jobs || !ops.schema_ok"
+        v-if="opsLoaded && (ops.problem_count || ops.failed_jobs || !ops.schema_ok)"
         type="warning"
         :closable="false"
         show-icon
@@ -33,17 +33,21 @@
           <el-card shadow="never" style="border-radius: 12px; height: 100%">
             <div style="font-weight:700; margin-bottom: 8px">运维工具</div>
             <div style="color:#777; font-size: 12px; margin-bottom: 10px">自动巡检、修复中心、异步任务、健康检查</div>
-            <div style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px">
+            <div v-if="opsLoaded" style="display:flex; gap:8px; flex-wrap:wrap; margin-bottom: 10px">
               <el-tag :type="ops.schema_ok ? 'success' : 'danger'">{{ ops.schema_ok ? 'Schema 正常' : 'Schema 异常' }}</el-tag>
               <el-tag :type="ops.problem_count ? 'warning' : 'success'">待处理 {{ ops.problem_count }}</el-tag>
               <el-tag :type="ops.failed_jobs ? 'warning' : 'info'">失败任务 {{ ops.failed_jobs }}</el-tag>
             </div>
-            <div style="color:#999; font-size:12px; line-height:1.7; min-height:52px">
+            <div v-if="opsLoaded" style="color:#999; font-size:12px; line-height:1.7; min-height:52px">
               <div>最近巡检：{{ formatTime(ops.last_scan_at) || '-' }}</div>
               <div>最近演练：{{ formatTime(ops.last_backup_drill_at) || '-' }}</div>
               <div>演练闭环：{{ ops.open_backup_drill_issue_count || 0 }} 项待整改 / 逾期 {{ ops.overdue_backup_drill_issue_count || 0 }}</div>
             </div>
-            <el-button type="primary" plain size="small" @click="go('/system/tools')">打开</el-button>
+            <div v-else style="color:#999; font-size:12px; line-height:1.7; min-height:52px">系统摘要已延后加载，避免首屏额外请求占用。需要时可手动加载。</div>
+            <div style="display:flex; gap:8px; flex-wrap:wrap">
+              <el-button v-if="!opsLoaded" size="small" @click="loadOpsSummary({ force: true })">加载摘要</el-button>
+              <el-button type="primary" plain size="small" @click="go('/system/tools')">打开</el-button>
+            </div>
           </el-card>
         </el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" style="margin-top: 12px"><HomeCard title="发布前检查" desc="发布前统一确认数据库版本、巡检问题、失败任务与 5xx 情况" @open="go('/system/release-check')" /></el-col>
@@ -55,12 +59,11 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, onMounted, reactive, resolveComponent } from 'vue';
+import { computed, defineComponent, h, reactive, ref, resolveComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
-import { scheduleOnIdle } from '../utils/idle';
 import { getCachedResource } from '../utils/resourceCache';
 
 const HomeCard = defineComponent({
@@ -84,6 +87,7 @@ const canAccessParts = computed(() => canAccessModuleArea(auth.user, 'parts'));
 const canAccessPc = computed(() => canAccessModuleArea(auth.user, 'pc'));
 const go = (path: string) => router.push(path);
 const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '', open_backup_drill_issue_count: 0, overdue_backup_drill_issue_count: 0 });
+const opsLoaded = ref(false);
 const SYSTEM_HOME_OPS_CACHE_KEY = 'system-home::ops-summary';
 const SYSTEM_HOME_OPS_CACHE_TTL_MS = 3 * 60_000;
 function formatTime(v?: string | null) { return v ? String(v).replace('T', ' ').replace(/\.\d+Z?$/, '') : ''; }
@@ -112,12 +116,6 @@ async function loadOpsSummary(options: { force?: boolean } = {}) {
     };
   }, { ttlMs: SYSTEM_HOME_OPS_CACHE_TTL_MS, force: options.force });
   applyOpsSummary(payload);
+  opsLoaded.value = true;
 }
-
-onMounted(() => {
-  scheduleOnIdle(() => {
-    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-    void loadOpsSummary().catch(() => undefined);
-  }, 4500);
-});
 </script>

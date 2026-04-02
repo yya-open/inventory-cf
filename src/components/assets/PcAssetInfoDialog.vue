@@ -80,7 +80,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, reactive, watch } from 'vue';
+import { getPcAssetHistory } from '../../api/assetHistory';
 
 const props = defineProps<{ visible: boolean; row: Record<string, any> | null }>();
 
@@ -96,12 +97,40 @@ const currentOwnerMeta = computed(() => {
   const parts = [props.row?.last_employee_no, props.row?.last_department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const previousOwnerName = computed(() => textOrDash(props.row?.previous_employee_name, '暂无历史领用人'));
+const historyState = reactive<{ loading: boolean; loadedId: number; previous_employee_no?: string | null; previous_employee_name?: string | null; previous_department?: string | null; previous_assigned_at?: string | null }>({
+  loading: false,
+  loadedId: 0,
+  previous_employee_no: null,
+  previous_employee_name: null,
+  previous_department: null,
+  previous_assigned_at: null,
+});
+
+async function loadHistoryIfNeeded() {
+  const assetId = Number(props.row?.id || 0);
+  if (!props.visible || !assetId || historyState.loadedId === assetId || historyState.loading) return;
+  historyState.loading = true;
+  try {
+    const payload = await getPcAssetHistory(assetId);
+    historyState.loadedId = assetId;
+    historyState.previous_employee_no = payload?.previous_employee_no || null;
+    historyState.previous_employee_name = payload?.previous_employee_name || null;
+    historyState.previous_department = payload?.previous_department || null;
+    historyState.previous_assigned_at = payload?.previous_assigned_at || null;
+  } finally {
+    historyState.loading = false;
+  }
+}
+
+watch(() => [props.visible, props.row?.id], () => { void loadHistoryIfNeeded(); }, { immediate: true });
+
+const previousOwnerName = computed(() => historyState.loading && !historyState.loadedId ? '正在加载…' : textOrDash(historyState.previous_employee_name, '暂无历史领用人'));
 const previousOwnerMeta = computed(() => {
-  const parts = [props.row?.previous_employee_no, props.row?.previous_department].map((item) => String(item || '').trim()).filter(Boolean);
+  if (historyState.loading && !historyState.loadedId) return '正在加载…';
+  const parts = [historyState.previous_employee_no, historyState.previous_department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const previousOwnerAt = computed(() => textOrDash(props.row?.previous_assigned_at, '暂无记录'));
+const previousOwnerAt = computed(() => historyState.loading && !historyState.loadedId ? '正在加载…' : textOrDash(historyState.previous_assigned_at, '暂无记录'));
 
 function textOrDash(value: unknown, fallback = '-') {
   const text = String(value ?? '').trim();

@@ -105,7 +105,7 @@
           </div>
 
           <div class="toolbar-selection-row">
-            <template v-if="bulkWorkspaceVisible">
+            <template v-if="bulkWorkspaceMounted">
               <div class="toolbar-action-group">
                 <el-dropdown trigger="click" @command="handleBatchCommand">
                   <el-button type="primary" class="toolbar-primary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
@@ -329,6 +329,7 @@ const viewDraftName = ref('');
 const settingsVisible = ref(false);
 const bulkWorkspaceExpanded = ref(false);
 const bulkWorkspaceVisible = computed(() => bulkWorkspaceExpanded.value || props.selectedCount > 0 || props.exportBusy || props.importBusy || props.initQrBusy || props.batchBusy);
+const bulkWorkspaceMounted = computed(() => bulkWorkspaceVisible.value);
 
 const archiveModeOptions = [
   { label: '在用', value: 'active' },
