@@ -252,7 +252,7 @@ const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monit
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
-const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInventoryBatchStore('monitor');
+const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedMonitorColumnOptions = computed(() => hasActiveInventoryBatch.value ? monitorColumnOptions : monitorColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedMonitorVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
@@ -660,9 +660,11 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
   return { ...filters, inventoryStatus: '' };
 }
 
-async function refreshInventoryBatch() {
+const INVENTORY_BATCH_SOFT_TTL_MS = 5 * 60_000;
+
+async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
-    await refreshInventoryBatchStore({ silent: true, ttlMs: 60_000 });
+    await refreshInventoryBatchStore({ silent: true, force: options.force, ttlMs: INVENTORY_BATCH_SOFT_TTL_MS });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -708,7 +710,7 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   });
 }
 
-function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters) {
   const snapshot = { ...initialFilters };
   const needSummary = shouldLoadInventorySummary(snapshot);
   runWhenBrowserIdle(async () => {
@@ -731,14 +733,13 @@ function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters, hadActiveBatch
 async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
   if (options.keepPage) {
     await load(filters, { keepPage: true, silent: options.silent });
   } else {
     await reload(filters, { silent: options.silent });
   }
   lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+  scheduleAuxiliaryRefresh(filters);
 }
 
 const reloadList = () => {
@@ -1750,6 +1751,8 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
+  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
+  if (shouldRefreshBatch) await refreshInventoryBatch();
   await refreshLedgerData(options);
 }
 

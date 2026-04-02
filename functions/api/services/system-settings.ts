@@ -49,10 +49,12 @@ const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
 
 const SETTING_KEYS = (Object.keys(DEFAULT_SYSTEM_SETTINGS) as (keyof SystemSettings)[]).filter((key) => !DICTIONARY_SETTING_KEYS.includes(key) && key !== 'settings_updated_at');
 
-const SYSTEM_SETTINGS_CACHE_TTL_MS = 30_000;
+const SYSTEM_SETTINGS_CACHE_TTL_MS = 5 * 60_000;
 let systemSettingsCache: { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> } | null = null;
+let systemSettingsTablesReady = false;
+let systemSettingsTablesPending: Promise<void> | null = null;
 
-export async function ensureSystemSettingsTable(db: D1Database) {
+async function ensureSystemSettingsTableInner(db: D1Database) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS system_settings (
       key TEXT PRIMARY KEY,
@@ -64,7 +66,7 @@ export async function ensureSystemSettingsTable(db: D1Database) {
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_settings_updated_at ON system_settings(updated_at)`).run();
 }
 
-export async function ensureSystemSettingsMetaTable(db: D1Database) {
+async function ensureSystemSettingsMetaTableInner(db: D1Database) {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS system_settings_meta (
       id INTEGER PRIMARY KEY CHECK (id = 1),
@@ -75,6 +77,27 @@ export async function ensureSystemSettingsMetaTable(db: D1Database) {
     )`
   ).run();
   await db.prepare(`INSERT OR IGNORE INTO system_settings_meta (id, version, settings_json) VALUES (1, 0, '{}')`).run();
+}
+
+async function ensureSystemSettingsTables(db: D1Database) {
+  if (systemSettingsTablesReady) return;
+  if (systemSettingsTablesPending) return systemSettingsTablesPending;
+  systemSettingsTablesPending = (async () => {
+    await ensureSystemSettingsTableInner(db);
+    await ensureSystemSettingsMetaTableInner(db);
+    systemSettingsTablesReady = true;
+  })().finally(() => {
+    systemSettingsTablesPending = null;
+  });
+  return systemSettingsTablesPending;
+}
+
+export async function ensureSystemSettingsTable(db: D1Database) {
+  await ensureSystemSettingsTables(db);
+}
+
+export async function ensureSystemSettingsMetaTable(db: D1Database) {
+  await ensureSystemSettingsTables(db);
 }
 
 function toBoolean(value: any, fallback: boolean) {
@@ -168,7 +191,7 @@ async function getSettingsMetaRow(db: D1Database) {
 }
 
 async function readSystemSettings(db: D1Database): Promise<SystemSettings> {
-  await ensureSystemSettingsTable(db);
+  await ensureSystemSettingsTables(db);
   const meta = await getSettingsMetaRow(db);
   let patch: Record<string, any> = {};
   let latestUpdatedAt = normalizeVersion(meta?.updated_at);
@@ -215,8 +238,7 @@ export function invalidateSystemSettingsCache() {
 }
 
 export async function updateSystemSettings(db: D1Database, patch: Partial<SystemSettings>, updatedBy: string | null) {
-  await ensureSystemSettingsTable(db);
-  await ensureSystemSettingsMetaTable(db);
+  await ensureSystemSettingsTables(db);
   const expectedUpdatedAt = normalizeVersion(patch?.settings_updated_at);
   const currentMeta = await getSettingsMetaRow(db);
   const currentVersion = normalizeVersion(currentMeta?.updated_at);

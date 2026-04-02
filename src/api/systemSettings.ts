@@ -43,7 +43,7 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
 };
 
 const SETTINGS_CACHE_KEY = 'inventory:system-settings-cache';
-const SETTINGS_CLIENT_CACHE_TTL_MS = 30_000;
+const SETTINGS_CLIENT_CACHE_TTL_MS = 5 * 60_000;
 type SettingsCacheEntry = { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> };
 let settingsClientCache: SettingsCacheEntry | null = null;
 

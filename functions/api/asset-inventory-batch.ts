@@ -12,12 +12,46 @@ function parseKind(input: any): AssetInventoryKind {
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any };
 
+
+const INVENTORY_BATCH_CACHE_TTL_MS = 60_000;
+const inventoryBatchGetCache = new Map<string, { expiresAt: number; data: any }>();
+
+function inventoryBatchCacheKey(kind: AssetInventoryKind) {
+  return `batch:${kind}`;
+}
+
+function readInventoryBatchCache(kind: AssetInventoryKind) {
+  const entry = inventoryBatchGetCache.get(inventoryBatchCacheKey(kind));
+  if (!entry) return null;
+  if (entry.expiresAt <= Date.now()) {
+    inventoryBatchGetCache.delete(inventoryBatchCacheKey(kind));
+    return null;
+  }
+  return entry.data;
+}
+
+function writeInventoryBatchCache(kind: AssetInventoryKind, data: any) {
+  inventoryBatchGetCache.set(inventoryBatchCacheKey(kind), { expiresAt: Date.now() + INVENTORY_BATCH_CACHE_TTL_MS, data });
+  return data;
+}
+
+function invalidateInventoryBatchCache(kind?: AssetInventoryKind | null) {
+  if (kind) {
+    inventoryBatchGetCache.delete(inventoryBatchCacheKey(kind));
+    return;
+  }
+  inventoryBatchGetCache.clear();
+}
+
+
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     await requireAuth(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     const url = new URL(request.url);
     const kind = parseKind(url.searchParams.get('kind'));
+    const cached = readInventoryBatchCache(kind);
+    if (cached) return Response.json({ ok: true, data: cached });
     const [active, latest, recent] = await Promise.all([
       getActiveInventoryBatch(env.DB, kind),
       getLatestInventoryBatch(env.DB, kind),
@@ -26,7 +60,8 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const resolvedActive = active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
     const resolvedLatest = resolvedActive || latest;
     const resolvedRecent = (recent || []).filter((item) => !resolvedActive || Number(item?.id || 0) !== Number(resolvedActive?.id || 0));
-    return Response.json({ ok: true, data: { active: resolvedActive, latest: resolvedLatest, recent: resolvedRecent } });
+    const payload = writeInventoryBatchCache(kind, { active: resolvedActive, latest: resolvedLatest, recent: resolvedRecent });
+    return Response.json({ ok: true, data: payload });
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -41,6 +76,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     const action = String(body?.action || '').trim().toLowerCase();
 
     if (action === 'start') {
+      invalidateInventoryBatchCache(kind);
       const clearPreviousLogs = Boolean(body?.clear_previous_logs);
       const deletedLogs = clearPreviousLogs ? await clearInventoryLogsForNewBatch(env.DB, kind) : 0;
       const batch = await startInventoryBatch(env.DB, kind, body?.name, actor.username || null);
@@ -54,6 +90,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     }
 
     if (action === 'close') {
+      invalidateInventoryBatchCache(kind);
       if (!env.BACKUP_BUCKET) return Response.json({ ok: false, message: '未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。' }, { status: 500 });
       const batchId = Number(body?.id || 0) || null;
       const before = batchId ? null : await getActiveInventoryBatch(env.DB, kind);

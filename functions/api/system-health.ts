@@ -4,11 +4,30 @@ import { getSchemaStatus } from './services/schema-status';
 import { ensureRequestErrorLogTable, getAutoRepairScan, ensureAdminRepairHistoryTable } from './services/ops-tools';
 import { ensureAsyncJobsTable } from './services/async-jobs';
 
+
+const SYSTEM_HEALTH_CACHE_TTL_MS = 60_000;
+let systemHealthCache: { expiresAt: number; value?: any; pending?: Promise<any> } | null = null;
+
+function readSystemHealthCache() {
+  if (!systemHealthCache?.value) return null;
+  if (Number(systemHealthCache.expiresAt || 0) <= Date.now()) {
+    systemHealthCache = null;
+    return null;
+  }
+  return systemHealthCache.value;
+}
+
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     await requirePermission(env, request, 'ops_tools', 'admin');
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === '1';
+    if (!force) {
+      const cached = readSystemHealthCache();
+      if (cached) return json(true, cached);
+      if (systemHealthCache?.pending) return json(true, await systemHealthCache.pending);
+    }
     await Promise.all([ensureRequestErrorLogTable(env.DB), ensureAsyncJobsTable(env.DB), ensureAdminRepairHistoryTable(env.DB)]);
     const [schema, scan, pcAssets, latestState, counterRows, failedJobs, errors24h, lastRepair, lastDrill, openDrillIssues, overdueDrillIssues, latestMissing] = await Promise.all([
       getSchemaStatus(env.DB, { force }),
@@ -31,7 +50,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       Number(errors24h?.c || 0) > 0 ? 1 : 0,
       Number(openDrillIssues?.c || 0) > 0 ? 1 : 0,
     ].reduce((sum, item) => sum + item, 0);
-    return json(true, {
+    const payload = {
       schema,
       scan,
       metrics: {
@@ -60,7 +79,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         open_backup_drill_issue_count: Number(openDrillIssues?.c || 0),
         overdue_backup_drill_issue_count: Number(overdueDrillIssues?.c || 0),
       },
-    });
+    };
+    if (!force) {
+      systemHealthCache = { value: payload, expiresAt: Date.now() + SYSTEM_HEALTH_CACHE_TTL_MS };
+    } else {
+      systemHealthCache = null;
+    }
+    return json(true, payload);
   } catch (e: any) {
     return errorResponse(e);
   }

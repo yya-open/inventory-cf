@@ -193,7 +193,7 @@ const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_o
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
-const { payload: inventoryBatch, refresh: refreshInventoryBatchStore } = useInventoryBatchStore('pc');
+const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('pc');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
 const displayedPcColumnOptions = computed(() => hasActiveInventoryBatch.value ? pcColumnOptions : pcColumnOptions.filter((item) => item.value !== 'inventory'));
 const displayedPcVisibleColumns = computed(() => hasActiveInventoryBatch.value ? visibleColumns.value : visibleColumns.value.filter((item) => item !== 'inventory'));
@@ -539,9 +539,11 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
   return { ...filters, inventoryStatus: '' };
 }
 
-async function refreshInventoryBatch() {
+const INVENTORY_BATCH_SOFT_TTL_MS = 5 * 60_000;
+
+async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
-    await refreshInventoryBatchStore({ silent: true, ttlMs: 60_000 });
+    await refreshInventoryBatchStore({ silent: true, force: options.force, ttlMs: INVENTORY_BATCH_SOFT_TTL_MS });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -587,7 +589,7 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   });
 }
 
-function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
+function scheduleAuxiliaryRefresh(initialFilters: PcFilters) {
   const snapshot = { ...initialFilters };
   const needSummary = shouldLoadInventorySummary(snapshot);
   runWhenBrowserIdle(async () => {
@@ -610,14 +612,13 @@ function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = ha
 async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
-  const hadActiveBatch = hasActiveInventoryBatch.value;
   if (options.keepPage) {
     await load(filters, { keepPage: true, silent: options.silent });
   } else {
     await reload(filters, { silent: options.silent });
   }
   lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters, hadActiveBatch);
+  scheduleAuxiliaryRefresh(filters);
 }
 
 const onSearch = () => {
@@ -1415,6 +1416,8 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
+  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
+  if (shouldRefreshBatch) await refreshInventoryBatch();
   await refreshLedgerData(options);
 }
 
