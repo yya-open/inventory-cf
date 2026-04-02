@@ -1,4 +1,5 @@
 import { must, optional } from './_pc';
+import { assertDepartmentDictionaryValue } from './services/master-data';
 import { createMonitorMovementHandler } from './services/monitor-movement-api';
 
 export const onRequestPost = createMonitorMovementHandler({
@@ -9,6 +10,7 @@ export const onRequestPost = createMonitorMovementHandler({
     const employeeNo = must(body?.employee_no, '工号', 80);
     const employeeName = must(body?.employee_name, '姓名', 120);
     const department = must(body?.department, '部门', 120);
+    await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
     const isEmployed = optional(body?.is_employed, 20);
     const toLocationId = Number(body?.location_id || body?.to_location_id || 0) || null;
     const remark = optional(body?.remark, 1000);

@@ -8,7 +8,7 @@ import { bulkArchiveAssets, bulkRestoreAssets, bulkUpdatePcOwner, bulkUpdatePcSt
 import { bulkDeleteAssets } from './services/asset-bulk-delete';
 import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { assertArchiveReasonDictionaryValue } from './services/master-data';
+import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -225,6 +225,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
+      await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
       const result = await bulkUpdatePcOwner(env.DB, ids, owner);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);

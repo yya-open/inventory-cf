@@ -29,9 +29,13 @@ async function assertDictionaryValue(
   return normalized;
 }
 
-export async function assertDepartmentDictionaryValue(db: D1Database, value: any, label = '部门', options?: { allowEmpty?: boolean }) {
+export async function assertDepartmentDictionaryValue(_db: D1Database, value: any, label = '部门', options?: { allowEmpty?: boolean }) {
   const normalized = normalizeDepartmentScopeValue(value);
-  return assertDictionaryValue(db, 'department', normalized, label, { allowEmpty: options?.allowEmpty, normalizedValue: normalized });
+  if (!normalized) {
+    if (options?.allowEmpty) return null;
+    throw Object.assign(new Error(`${label}不能为空`), { status: 400 });
+  }
+  return normalized;
 }
 
 export async function assertWarehouseDictionaryValue(db: D1Database, value: any, label = '仓库', options?: { allowEmpty?: boolean }) {

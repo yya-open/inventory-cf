@@ -18,7 +18,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="品牌和归档原因已升级为独立字典表，支持启停、排序和引用统计；禁用后不再出现在下拉建议中，已有历史数据仍会保留。"
+        title="品牌、归档原因和仓域已升级为独立字典表，支持启停、排序和引用统计；禁用后不再出现在下拉建议中，已有历史数据仍会保留。部门改为自由输入，无需再维护部门字典。"
       />
 
       <div class="settings-summary">
@@ -230,14 +230,12 @@ const form = ref<SystemSettings>({ ...DEFAULT_SYSTEM_SETTINGS });
 const rowLoadingMap = ref<Record<number, boolean>>({});
 const reorderLoadingMap = ref<Record<SystemDictionaryKey, boolean>>({
   asset_archive_reason: false,
-  department: false,
   pc_brand: false,
   monitor_brand: false,
   asset_warehouse: false,
 });
 const reorderDirtyMap = ref<Record<SystemDictionaryKey, boolean>>({
   asset_archive_reason: false,
-  department: false,
   pc_brand: false,
   monitor_brand: false,
   asset_warehouse: false,
@@ -265,7 +263,7 @@ const dictionaryDefs: Array<{ key: SystemDictionaryKey; title: string; descripti
   { key: 'asset_warehouse', title: '资产仓域字典', description: '用于用户可见范围、看板口径与仓域治理配置。' },
 ];
 const createForm = ref<{ dictionary_key: SystemDictionaryKey; label: string; sort_order: number; enabled: 0 | 1 }>({
-  dictionary_key: 'asset_archive_reason',
+  dictionary_key: 'pc_brand',
   label: '',
   sort_order: 10,
   enabled: 1,
@@ -371,8 +369,7 @@ function syncFormDictionaryOptions() {
 function resetReorderState() {
   reorderDirtyMap.value = {
     asset_archive_reason: false,
-    department: false,
-    pc_brand: false,
+      pc_brand: false,
     monitor_brand: false,
     asset_warehouse: false,
   };

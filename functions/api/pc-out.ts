@@ -10,6 +10,7 @@ import {
   toAssetStatusAfterOut,
 } from './_pc';
 import { applyPcOut } from './services/asset-write';
+import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
@@ -27,6 +28,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     const employee_no = must(body?.employee_no, '员工工号', 60);
     const department = must(body?.department, '部门', 120);
+    await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
     const employee_name = must(body?.employee_name, '员工姓名', 120);
     const is_employed = optional(body?.is_employed, 40);
     const config_date = optional(body?.config_date, 40);

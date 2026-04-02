@@ -20,7 +20,6 @@ export type SystemDictionaryItem = {
 
 const DEFAULT_DICTIONARY_VALUES: Record<SystemDictionaryKey, string[]> = {
   asset_archive_reason: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
-  department: [],
   pc_brand: ['联想', '戴尔', '惠普', '华为', '苹果'],
   monitor_brand: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
   asset_warehouse: ['配件仓', '电脑仓', '显示器仓'],

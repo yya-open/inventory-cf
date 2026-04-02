@@ -91,7 +91,7 @@
           </div>
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'department' || form.data_scope_type === 'department_warehouse'" label="部门">
-          <el-input v-model="form.data_scope_value" placeholder="请输入部门" />
+          <el-input v-model="form.data_scope_value" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
           <el-select v-model="createWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
@@ -137,7 +137,7 @@
           </div>
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'department' || editDataScopeType === 'department_warehouse'" label="部门">
-          <el-input v-model="editDataScopeValue" placeholder="请输入部门" />
+          <el-input v-model="editDataScopeValue" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
           <el-select v-model="editWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
@@ -390,7 +390,6 @@ function applyCreateTemplate() {
 }
 
 async function ensureScopeDictionariesLoaded() {
-  if ((warehouseOptions.value?.length || 0) > 0) return;
   try {
     systemSettings.value = await fetchSystemSettings();
   } catch {}
@@ -411,7 +410,7 @@ async function createUser() {
   const pv = validatePassword(form.value.password);
   if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
   const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value, form.value.data_scope_value2);
-  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请选择部门范围');
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
   if ((normalizedScope.data_scope_type === 'warehouse' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value2 && normalizedScope.data_scope_type !== 'warehouse') return ElMessage.warning('请选择仓库范围');
   if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
@@ -446,7 +445,7 @@ function openEdit(row: Row) {
 async function saveEdit() {
   if (!editing.value) return;
   const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value, editDataScopeValue2.value);
-  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请选择部门范围');
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
   if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
   if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
