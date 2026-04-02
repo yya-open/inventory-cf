@@ -214,7 +214,7 @@ import { ElSegmented } from 'element-plus';
 import { onMounted, ref } from 'vue';
 import { scheduleOnIdle } from '../utils/idle';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/systemSettings';
+import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, markMonitorBrandDictionaryChanged, type SystemSettings } from '../api/systemSettings';
 import {
   createSystemDictionaryItem,
   deleteSystemDictionaryItem,

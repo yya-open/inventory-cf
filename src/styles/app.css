@@ -1260,3 +1260,15 @@ body {
     margin-bottom: 8px;
   }
 }
+
+.monitor-asset-form-dialog .el-dialog__header{padding:22px 24px 12px;border-bottom:1px solid #eef2f7}
+.monitor-asset-form-dialog .el-dialog__body{padding:0 24px 12px;max-height:70vh;overflow:auto}
+.monitor-asset-form-dialog .el-dialog__footer{padding:14px 24px 18px;border-top:1px solid #eef2f7}
+.monitor-asset-form-dialog__header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
+.monitor-asset-form-dialog__eyebrow{font-size:12px;letter-spacing:.12em;color:#98a2b3;font-weight:700}
+.monitor-asset-form-dialog__title{margin-top:4px;font-size:28px;font-weight:700;color:#101828}
+.monitor-asset-form-dialog__desc{margin-top:6px;font-size:13px;line-height:1.7;color:#667085}
+.monitor-asset-form-dialog__sticky-actions{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;gap:12px;padding:14px 0 10px;background:linear-gradient(180deg,#fff 85%,rgba(255,255,255,.92) 100%)}
+.monitor-asset-form-dialog__footer{display:flex;align-items:center;justify-content:space-between;gap:16px}
+.monitor-asset-form-dialog__hint{font-size:13px;color:#667085}
+.monitor-asset-form-dialog__footer-actions{display:flex;gap:12px}
