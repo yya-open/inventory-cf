@@ -1,9 +1,12 @@
-import { useAuth } from "../store/auth";
+import { getAuthRequestEpoch, useAuth } from "../store/auth";
 
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
 type ApiError = Error & { status?: number; response?: any };
 
-function handleUnauthorized(message?: string): never {
+function handleUnauthorized(message: string | undefined, requestEpoch?: number): never {
+  if (typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) {
+    throw new Error(message || "请求已过期");
+  }
   const auth = useAuth();
   auth.user = null as any;
   const path = window.location.pathname;
@@ -32,6 +35,7 @@ function buildError(message: string, status: number, response: any): ApiError {
 
 export async function apiRequestJson<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
+  const requestEpoch = getAuthRequestEpoch();
   const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } });
   const j = await parseJson(r);
   if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
@@ -66,10 +70,11 @@ export type ApiFetchedFile = {
 
 export async function apiFetchFile(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = 'include' } = options;
+  const requestEpoch = getAuthRequestEpoch();
   const r = await fetch(path, { method: 'GET', credentials, ...init });
   if (r.status === 401 && shouldHandleUnauthorized) {
     const j = await parseJson(r);
-    return handleUnauthorized(j?.message);
+    return handleUnauthorized(j?.message, requestEpoch);
   }
   if (!r.ok) {
     const j = await parseJson(r);

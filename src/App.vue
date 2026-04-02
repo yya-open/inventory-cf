@@ -453,7 +453,7 @@ function switchToSystem() {
 async function doLogout() {
   await logout();
   clearWarehouse();
-  await router.replace('/login');
+  router.replace("/login");
 }
 
 const showChange = ref(false);

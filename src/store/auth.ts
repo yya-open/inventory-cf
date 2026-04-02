@@ -13,6 +13,16 @@ const AUTH_CACHE_TTL_MS = 30 * 60_000;
 const AUTH_REFRESH_SOFT_TTL_MS = AUTH_CACHE_TTL_MS;
 let pendingFetchMe: Promise<User> | null = null;
 let authCacheTimestamp = 0;
+let authRequestEpoch = 0;
+
+export function getAuthRequestEpoch() {
+  return authRequestEpoch;
+}
+
+export function bumpAuthRequestEpoch() {
+  authRequestEpoch += 1;
+  return authRequestEpoch;
+}
 
 function getSessionStorage() {
   if (typeof window === 'undefined') return null;
@@ -81,6 +91,8 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
   }
   state.loading = true;
   const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
+    bumpAuthRequestEpoch();
+    bumpAuthRequestEpoch();
     state.user = r.data.user;
     writeAuthCache(r.data.user);
     return r.data.user;
@@ -100,6 +112,7 @@ export const login = (username: string, password: string) => loginWithCaptcha(us
 export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
   try {
     const r = await apiRequestJson<LoginResponse>("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, turnstile_token }) }, { handleUnauthorized: false });
+    bumpAuthRequestEpoch();
     state.user = r.data.user;
     writeAuthCache(r.data.user);
     return r.data.user;
@@ -112,6 +125,7 @@ export async function loginWithCaptcha(username: string, password: string, turns
   }
 }
 export async function logout() {
+  bumpAuthRequestEpoch();
   state.user = null;
   clearAuthCache();
   try {
