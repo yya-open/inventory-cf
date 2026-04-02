@@ -88,29 +88,33 @@ export const useAuth = () => state;
 export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean }) {
   const force = Boolean(options?.force);
   const handleUnauthorized = options?.handleUnauthorized !== false;
-  const requestEpoch = authRequestEpoch;
   if (!force) {
     const cached = state.user || hydrateAuthFromCache();
     if (cached) return cached;
     if (pendingFetchMe) return pendingFetchMe;
   }
   state.loading = true;
-  const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
-    if (!isAuthRequestEpochCurrent(requestEpoch)) return r.data.user;
-    bumpAuthRequestEpoch();
-    state.user = r.data.user;
-    writeAuthCache(r.data.user);
-    return r.data.user;
-  }).catch((e) => {
-    if (isAuthRequestEpochCurrent(requestEpoch)) {
-      state.user = null;
-      clearAuthCache();
-    }
-    throw e;
-  }).finally(() => {
-    state.loading = false;
-    pendingFetchMe = null;
-  });
+  const requestEpoch = getAuthRequestEpoch();
+  const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized })
+    .then((r) => {
+      if (!isAuthRequestEpochCurrent(requestEpoch)) {
+        return state.user || r.data.user;
+      }
+      state.user = r.data.user;
+      writeAuthCache(r.data.user);
+      return r.data.user;
+    })
+    .catch((e) => {
+      if (isAuthRequestEpochCurrent(requestEpoch)) {
+        state.user = null;
+        clearAuthCache();
+      }
+      throw e;
+    })
+    .finally(() => {
+      state.loading = false;
+      if (pendingFetchMe === task) pendingFetchMe = null;
+    });
   pendingFetchMe = task;
   return task;
 }

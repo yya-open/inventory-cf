@@ -1,0 +1,1 @@
+function s(t){const r=String(t??"").trim();return r.length<6?{ok:!1,msg:"密码长度需为 6-64 位，且必须同时包含字母和数字"}:r.length>64?{ok:!1,msg:"密码长度需为 6-64 位"}:/^(?=.*[A-Za-z])(?=.*\d).+$/.test(r)?{ok:!0,password:r}:{ok:!1,msg:"密码长度需为 6-64 位，且必须同时包含字母和数字"}}export{s as v};
