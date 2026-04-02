@@ -1,12 +1,14 @@
 <template>
   <el-drawer
     :model-value="visible"
-    class="ledger-drawer"
+    class="ledger-drawer ledger-drawer--monitor-form"
     size="660px"
     destroy-on-close
+    append-to-body
     show-close
     :close-on-click-modal="true"
     :close-on-press-escape="true"
+    @close="handleCancel"
     @update:model-value="emit('update:visible', $event)"
   >
     <template #header>
@@ -16,15 +18,14 @@
           <div class="ledger-drawer__title">{{ mode === 'create' ? '新增显示器台账' : '编辑显示器台账' }}</div>
           <div class="ledger-drawer__desc">把新增和编辑统一到抽屉表单里，字段分组、校验规则与详情页信息结构保持同一套后台规范。</div>
         </div>
-        <el-button class="ledger-drawer__header-close" circle plain @click="emit('update:visible', false)">×</el-button>
+        <div class="ledger-drawer__header-actions">
+          <el-button class="ledger-drawer__ghost-btn" :disabled="saving" @click="handleCancel">取消</el-button>
+          <el-button class="ledger-drawer__primary-btn" type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
+        </div>
       </div>
     </template>
 
     <div class="ledger-drawer__body">
-      <div class="ledger-drawer__sticky-actions">
-        <el-button :disabled="saving" @click="emit('update:visible', false)">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
-      </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="ledger-form-stack" status-icon scroll-to-error>
         <section class="ledger-form-section">
           <div class="ledger-form-section__head">
@@ -70,9 +71,12 @@
     </div>
 
     <template #footer>
-      <div class="ledger-drawer__footer">
-        <el-button :disabled="saving" @click="emit('update:visible', false)">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
+      <div class="ledger-drawer__footer ledger-drawer__footer--monitor-form">
+        <div class="ledger-drawer__footer-hint">{{ mode === 'create' ? '确认信息无误后再新增台账' : '保存后会立即刷新当前列表' }}</div>
+        <div class="ledger-drawer__footer-actions">
+          <el-button class="ledger-drawer__ghost-btn" :disabled="saving" @click="handleCancel">取消</el-button>
+          <el-button class="ledger-drawer__primary-btn" type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
+        </div>
       </div>
     </template>
   </el-drawer>
@@ -96,9 +100,16 @@ defineProps<{
 const emit = defineEmits<{
   'update:visible': [boolean];
   save: [];
+  cancel: [];
 }>();
 
 const formRef = ref<FormInstance>();
+
+function handleCancel() {
+  if (saving) return;
+  emit('cancel');
+  emit('update:visible', false);
+}
 
 const rules: FormRules = {
   asset_code: [

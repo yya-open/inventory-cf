@@ -101,6 +101,7 @@
       :saving="assetSaving"
       :brand-options="monitorBrandOptions"
       @save="saveAsset"
+      @cancel="closeAssetDialog"
     />
 
     <MonitorAssetInfoDialog
@@ -222,7 +223,7 @@ import { can } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
-import { getCachedSystemSettings } from '../api/systemSettings';
+import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
@@ -295,6 +296,10 @@ const {
   void refreshLedgerData();
 });
 
+
+onMounted(() => {
+  void refreshMonitorBrandOptions(true);
+});
 
 function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
   ElNotification({ title, message, type, duration: 2600, offset: 72 });
@@ -1176,8 +1181,20 @@ const dlgAsset = reactive({
   },
 });
 
+
+async function refreshMonitorBrandOptions(force = false) {
+  try {
+    systemSettings.value = await fetchSystemSettings(force ? { force: true } : undefined);
+  } catch {}
+}
+
+function closeAssetDialog() {
+  if (assetSaving.value) return;
+  dlgAsset.show = false;
+}
+
 async function openCreate() {
-  await ensureLocationOptionsReady();
+  await Promise.all([ensureLocationOptionsReady(), refreshMonitorBrandOptions(true)]);
   dlgAsset.mode = 'create';
   dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
   warmLazyDialog(lazyAssetDialog);
@@ -1191,7 +1208,7 @@ function openInfo(row: MonitorAsset) {
 }
 
 async function openEdit(row: MonitorAsset) {
-  await ensureLocationOptionsReady();
+  await Promise.all([ensureLocationOptionsReady(), refreshMonitorBrandOptions(true)]);
   dlgAsset.mode = 'edit';
   dlgAsset.form = {
     id: row.id,
