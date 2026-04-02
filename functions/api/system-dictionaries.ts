@@ -11,6 +11,7 @@ import {
   type SystemDictionaryKey,
 } from './services/system-dictionaries';
 import { updateSystemDictionaryItem } from './services/system-dictionaries';
+import { invalidateSystemSettingsCache } from './services/system-settings';
 import { requireConfirm } from '../_confirm';
 
 type Env = { DB: D1Database; JWT_SECRET?: string };
@@ -57,6 +58,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const user = await requireAuth(env, request, 'admin');
     const body = await request.json().catch(() => ({}));
     const item = await createSystemDictionaryItem(env.DB, body || {}, user.username || null);
+    invalidateSystemSettingsCache();
     await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_CREATE', 'system_dictionary_items', item.id, {
       dictionary_key: item.dictionary_key,
       label: item.label,
@@ -81,6 +83,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
         ? body.items.map((item: any) => ({ id: Number(item?.id || 0), updated_at: item?.updated_at || null })).filter((item: any) => item.id > 0)
         : [];
       const items = await reorderSystemDictionaryItems(env.DB, dictionaryKey, orderedItems, user.username || null);
+      invalidateSystemSettingsCache();
       await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_REORDER', 'system_dictionary_items', dictionaryKey, {
         dictionary_key: dictionaryKey,
         before: before.map((item) => ({ id: item.id, label: item.label, sort_order: item.sort_order })),
@@ -90,6 +93,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     }
     const before = await getSystemDictionaryItemById(env.DB, Number(body?.id || 0));
     const item = await updateSystemDictionaryItem(env.DB, body || {}, user.username || null);
+    invalidateSystemSettingsCache();
     await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_UPDATE', 'system_dictionary_items', item.id, {
       before,
       after: item,
@@ -106,6 +110,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     const body = await request.json().catch(() => ({}));
     requireConfirm(body, '删除', '二次确认不通过');
     const deleted = await deleteSystemDictionaryItem(env.DB, Number(body?.id || 0), body?.updated_at || null);
+    invalidateSystemSettingsCache();
     await logAudit(env.DB, request, user, 'SYSTEM_DICTIONARY_DELETE', 'system_dictionary_items', deleted.id, deleted);
     return json(true, deleted, '删除成功');
   } catch (e: any) {

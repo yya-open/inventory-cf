@@ -109,8 +109,8 @@ function writeDictionaryVersionCache(key: SystemDictionaryKey | undefined, versi
   });
 }
 
-function clearSystemDictionaryCaches(key?: SystemDictionaryKey) {
-  clearSystemDictionaryCaches(key);
+export function clearSystemDictionaryCaches(key?: SystemDictionaryKey) {
+  clearEnabledLabelsCache(key);
   if (key) {
     dictionaryListCache.delete(dictionaryCacheKey(key));
     dictionaryListPending.delete(dictionaryCacheKey(key));
@@ -606,6 +606,7 @@ export async function createSystemDictionaryItem(db: D1Database, input: Partial<
      VALUES (?, ?, ?, ?, ?, ?)`
   ).bind(key, label, normalized, sortOrder, enabled, updatedBy || null).run();
   const id = Number(result?.meta?.last_row_id || 0);
+  clearSystemDictionaryCaches(key);
   return getSystemDictionaryItemById(db, id);
 }
 
@@ -645,6 +646,8 @@ export async function updateSystemDictionaryItem(db: D1Database, input: Partial<
   if (Number((result as any)?.meta?.changes || 0) === 0) {
     throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
   }
+  clearSystemDictionaryCaches(key);
+  if (old.dictionary_key !== key) clearSystemDictionaryCaches(old.dictionary_key);
   return getSystemDictionaryItemById(db, id);
 }
 
@@ -692,6 +695,7 @@ export async function reorderSystemDictionaryItems(
       throw Object.assign(new Error('字典顺序已被其他管理员修改，请刷新后重试'), { status: 409 });
     }
   }
+  clearSystemDictionaryCaches(key);
   return listSystemDictionaryItems(db, key);
 }
 
@@ -707,6 +711,7 @@ export async function deleteSystemDictionaryItem(db: D1Database, id: number, exp
   if (Number((result as any)?.meta?.changes || 0) === 0) {
     throw Object.assign(new Error('字典项已被其他管理员修改，请刷新后重试'), { status: 409 });
   }
+  clearSystemDictionaryCaches(row.dictionary_key);
   return row;
 }
 
