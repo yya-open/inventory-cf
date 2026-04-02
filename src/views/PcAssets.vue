@@ -589,12 +589,12 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   });
 }
 
-function scheduleAuxiliaryRefresh(initialFilters: PcFilters) {
+function scheduleAuxiliaryRefresh(initialFilters: PcFilters, options: { skipBatchRefresh?: boolean } = {}) {
   const snapshot = { ...initialFilters };
   const needSummary = shouldLoadInventorySummary(snapshot);
   runWhenBrowserIdle(async () => {
     if (needSummary) void refreshInventorySummary(snapshot);
-    if (!needSummary && !hadActiveBatch && !snapshot.inventoryStatus) return;
+    if (options.skipBatchRefresh || (!needSummary && !hadActiveBatch && !snapshot.inventoryStatus)) return;
     try {
       await refreshInventoryBatch();
     } catch {
@@ -618,7 +618,7 @@ async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean
     await reload(filters, { silent: options.silent });
   }
   lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters);
+  scheduleAuxiliaryRefresh(filters, { skipBatchRefresh: true });
 }
 
 const onSearch = () => {
@@ -1417,8 +1417,15 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
-  if (shouldRefreshBatch) await refreshInventoryBatch();
   await refreshLedgerData(options);
+  if (!shouldRefreshBatch) return;
+  runWhenBrowserIdle(async () => {
+    try {
+      await refreshInventoryBatch();
+      const filters = currentFiltersForList();
+      if (shouldLoadInventorySummary(filters)) void refreshInventorySummary(filters);
+    } catch {}
+  }, 1500);
 }
 
 onBeforeMount(() => {

@@ -1,6 +1,37 @@
 import { apiGet, apiPost } from './client';
 import type { InventoryIssueBreakdown } from '../types/assets';
 
+import { apiGet, apiPost } from './client';
+import type { InventoryIssueBreakdown } from '../types/assets';
+
+type CacheEntry<T> = { expiresAt: number; value?: T; pending?: Promise<T> };
+const batchCache = new Map<string, CacheEntry<any>>();
+const INVENTORY_BATCH_CLIENT_TTL_MS = 5 * 60_000;
+
+async function getWithCache<T>(key: string, ttlMs: number, loader: () => Promise<T>, force = false): Promise<T> {
+  const now = Date.now();
+  const hit = batchCache.get(key) as CacheEntry<T> | undefined;
+  if (!force && hit?.value !== undefined && hit.expiresAt > now) return hit.value;
+  if (!force && hit?.pending) return hit.pending;
+  const pending = loader().then((value) => {
+    batchCache.set(key, { value, expiresAt: Date.now() + ttlMs });
+    return value;
+  }).finally(() => {
+    const latest = batchCache.get(key) as CacheEntry<T> | undefined;
+    if (latest?.pending) latest.pending = undefined;
+  });
+  batchCache.set(key, { value: hit?.value, expiresAt: hit?.expiresAt || 0, pending });
+  return pending;
+}
+
+function invalidateInventoryBatchClientCache(kind?: InventoryBatchKind) {
+  if (kind) {
+    batchCache.delete(`inventory-batch:${kind}`);
+    return;
+  }
+  batchCache.clear();
+}
+
 export type InventoryBatchKind = 'pc' | 'monitor';
 export type InventoryBatchStatus = 'ACTIVE' | 'CLOSED';
 export type InventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
@@ -48,9 +79,11 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
   };
 }
 
-export async function fetchInventoryBatch(kind: InventoryBatchKind) {
-  const result: any = await apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`);
-  return normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload);
+export async function fetchInventoryBatch(kind: InventoryBatchKind, options?: { force?: boolean }) {
+  return getWithCache(`inventory-batch:${kind}`, INVENTORY_BATCH_CLIENT_TTL_MS, async () => {
+    const result: any = await apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`);
+    return normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload);
+  }, Boolean(options?.force));
 }
 
 export async function startInventoryBatch(kind: InventoryBatchKind, name: string, options: { clearPreviousLogs?: boolean } = {}) {
@@ -60,6 +93,7 @@ export async function startInventoryBatch(kind: InventoryBatchKind, name: string
     name,
     clear_previous_logs: Boolean(options.clearPreviousLogs),
   });
+  invalidateInventoryBatchClientCache(kind);
   return result;
 }
 
@@ -69,6 +103,7 @@ export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number 
     kind,
     id: id || undefined,
   });
+  invalidateInventoryBatchClientCache(kind);
   return result;
 }
 

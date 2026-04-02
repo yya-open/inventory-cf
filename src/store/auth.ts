@@ -10,7 +10,7 @@ type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolea
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
 const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
 const AUTH_CACHE_TTL_MS = 5 * 60_000;
-const AUTH_REFRESH_SOFT_TTL_MS = 60_000;
+const AUTH_REFRESH_SOFT_TTL_MS = AUTH_CACHE_TTL_MS;
 let pendingFetchMe: Promise<User> | null = null;
 let authCacheTimestamp = 0;
 
