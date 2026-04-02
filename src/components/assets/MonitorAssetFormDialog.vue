@@ -4,17 +4,27 @@
     class="ledger-drawer"
     size="660px"
     destroy-on-close
+    show-close
+    :close-on-click-modal="true"
+    :close-on-press-escape="true"
     @update:model-value="emit('update:visible', $event)"
   >
     <template #header>
-      <div class="ledger-drawer__intro">
-        <div class="ledger-drawer__eyebrow">MONITOR ASSET</div>
-        <div class="ledger-drawer__title">{{ mode === 'create' ? '新增显示器台账' : '编辑显示器台账' }}</div>
-        <div class="ledger-drawer__desc">把新增和编辑统一到抽屉表单里，字段分组、校验规则与详情页信息结构保持同一套后台规范。</div>
+      <div class="ledger-drawer__header-row">
+        <div class="ledger-drawer__intro">
+          <div class="ledger-drawer__eyebrow">MONITOR ASSET</div>
+          <div class="ledger-drawer__title">{{ mode === 'create' ? '新增显示器台账' : '编辑显示器台账' }}</div>
+          <div class="ledger-drawer__desc">把新增和编辑统一到抽屉表单里，字段分组、校验规则与详情页信息结构保持同一套后台规范。</div>
+        </div>
+        <el-button class="ledger-drawer__header-close" circle plain @click="emit('update:visible', false)">×</el-button>
       </div>
     </template>
 
     <div class="ledger-drawer__body">
+      <div class="ledger-drawer__sticky-actions">
+        <el-button :disabled="saving" @click="emit('update:visible', false)">取消</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
+      </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="ledger-form-stack" status-icon scroll-to-error>
         <section class="ledger-form-section">
           <div class="ledger-form-section__head">
@@ -62,7 +72,7 @@
     <template #footer>
       <div class="ledger-drawer__footer">
         <el-button :disabled="saving" @click="emit('update:visible', false)">取消</el-button>
-        <el-button type="primary" :loading="saving" @click="handleSubmit">保存</el-button>
+        <el-button type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
       </div>
     </template>
   </el-drawer>

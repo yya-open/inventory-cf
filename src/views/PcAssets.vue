@@ -155,6 +155,7 @@ import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onActiv
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
+import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { countPcAssets, getPcAssetInventorySummary, listPcAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
@@ -990,7 +991,7 @@ async function removeAsset(row: PcAsset) {
       cancelButtonText: '取消',
     });
     batchBusy.value = true;
-    const result: any = await apiPost('/api/pc-assets-bulk', { action: 'delete', ids: [Number(row.id)] });
+    const result: any = await withDestructiveActionFeedback('正在删除电脑台账', () => apiPost('/api/pc-assets-bulk', { action: 'delete', ids: [Number(row.id)] }));
     if (Array.isArray(result?.success_items)) applyPcDeletePatch(result.success_items);
     clearSelection();
     await ensureLocalPatchedPageStable(true);

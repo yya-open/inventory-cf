@@ -665,6 +665,31 @@ body {
   gap: 12px;
 }
 
+.ledger-drawer__header-row {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ledger-drawer__header-close {
+  flex: 0 0 auto;
+  margin-top: 2px;
+}
+
+.ledger-drawer__sticky-actions {
+  position: sticky;
+  top: 0;
+  z-index: 2;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 0 0 8px;
+  margin-bottom: 4px;
+  background: linear-gradient(180deg, rgba(248, 250, 255, 0.95), rgba(255, 255, 255, 0.86));
+  backdrop-filter: blur(6px);
+}
+
 .ledger-form-section,
 .ledger-detail-card,
 .ledger-detail-hero {

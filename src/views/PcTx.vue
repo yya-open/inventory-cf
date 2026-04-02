@@ -283,6 +283,7 @@ import { ref, computed, onBeforeMount, onActivated } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, parseXlsx, downloadTemplate } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
+import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { can, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { usePagedAssetList } from "../composables/usePagedAssetList";
@@ -646,7 +647,7 @@ async function deleteSelected() {
       inputValidator: (v: string) => (String(v || "").trim() === "删除" ? true : "需要输入「删除」"),
     });
     actionLoading.value = true;
-    const r:any = await apiPost("/api/pc-tx/delete", { entries, confirm: "删除" });
+    const r:any = await withDestructiveActionFeedback("正在删除电脑出入库明细", () => apiPost("/api/pc-tx/delete", { entries, confirm: "删除" }));
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
     invalidateCache();
@@ -680,7 +681,7 @@ async function clearPcTx() {
     let deleted = 0;
     for (let i = 0; i < entries.length; i += 200) {
       const chunk = entries.slice(i, i + 200);
-      const r:any = await apiPost("/api/pc-tx/delete", { entries: chunk, confirm: "删除" });
+      const r:any = await withDestructiveActionFeedback("正在批量清空电脑出入库明细", () => apiPost("/api/pc-tx/delete", { entries: chunk, confirm: "删除" }));
       deleted += Number(r?.data?.deleted || 0);
     }
     ElMessage.success(`已清空 ${deleted} 条记录`);

@@ -216,6 +216,7 @@ import { usePagedAssetList } from "../composables/usePagedAssetList";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
+import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { can } from "../store/auth";
 
 const q = reactive({ type: "", keyword: "", dates: [] as any[], effective: '' as '' | 'current' | 'history' });
@@ -349,7 +350,7 @@ async function doDelete() {
     await ElMessageBox.confirm("删除后无法恢复，确认继续？需要输入二次确认。", "提示", { type: "warning" });
     const { value } = await ElMessageBox.prompt("请输入 删除 以确认", "二次确认", { inputPlaceholder: "删除" });
     actionLoading.value = true;
-    await apiPost<any>(`/api/monitor-tx/delete`, { entries: selected.value.map((x) => ({ id: x.id })), confirm: value });
+    await withDestructiveActionFeedback("正在删除显示器出入库明细", () => apiPost<any>(`/api/monitor-tx/delete`, { entries: selected.value.map((x) => ({ id: x.id })), confirm: value }));
     ElMessage.success("删除成功");
     selected.value = [];
     invalidateCache();
