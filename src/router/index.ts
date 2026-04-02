@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { ref } from "vue";
-const StockQuery = () => import("../views/StockQuery.vue");
+import StockQuery from "../views/StockQuery.vue";
 const StockIn = () => import("../views/StockIn.vue");
 const StockOut = () => import("../views/StockOut.vue");
-const TxList = () => import("../views/TxList.vue");
-const Warnings = () => import("../views/Warnings.vue");
+import TxList from "../views/TxList.vue";
+import Warnings from "../views/Warnings.vue";
 const BatchTx = () => import("../views/BatchTx.vue");
 const Stocktake = () => import("../views/Stocktake.vue");
 const Dashboard = () => import("../views/Dashboard.vue");
@@ -17,15 +17,15 @@ const BackupRestore = () => import("../views/BackupRestore.vue");
 const ImportItems = () => import("../views/ImportItems.vue");
 const PcOut = () => import("../views/PcOut.vue");
 const PcIn = () => import("../views/PcIn.vue");
-const PcTx = () => import("../views/PcTx.vue");
+import PcTx from "../views/PcTx.vue";
 const PcRecycle = () => import("../views/PcRecycle.vue");
-const PcAssets = () => import("../views/PcAssets.vue");
-const PcWarehouse = () => import("../views/PcWarehouse.vue");
-const PcAgeWarnings = () => import("../views/PcAgeWarnings.vue");
-const PcInventoryLogs = () => import("../views/PcInventoryLogs.vue");
-const MonitorInventoryLogs = () => import("../views/MonitorInventoryLogs.vue");
-const MonitorAssets = () => import("../views/MonitorAssets.vue");
-const MonitorTx = () => import("../views/MonitorTx.vue");
+import PcAssets from "../views/PcAssets.vue";
+import PcWarehouse from "../views/PcWarehouse.vue";
+import PcAgeWarnings from "../views/PcAgeWarnings.vue";
+import PcInventoryLogs from "../views/PcInventoryLogs.vue";
+import MonitorInventoryLogs from "../views/MonitorInventoryLogs.vue";
+import MonitorAssets from "../views/MonitorAssets.vue";
+import MonitorTx from "../views/MonitorTx.vue";
 const SystemHome = () => import("../views/SystemHome.vue");
 const SystemSettings = () => import("../views/SystemSettings.vue");
 const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
@@ -40,20 +40,17 @@ import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
 import { listPcAssets, listMonitorAssets } from "../api/assetLedgers";
-import { getCachedSystemSettings } from "../api/systemSettings";
+import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed, primePagedListCache } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
-import { flushBrowserPerfQueue, trackRoutePerf } from '../utils/browserPerf';
 
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
 let routePageSkeletonTimer: ReturnType<typeof setTimeout> | null = null;
 let firstRouteResolved = false;
-let routePerfStartedAt = 0;
 
 function startRoutePagePending() {
-  routePerfStartedAt = performance.now();
   routePagePending.value = true;
   if (routePageSkeletonTimer) {
     clearTimeout(routePageSkeletonTimer);
@@ -254,40 +251,28 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
-const warmedAreas = new Set<string>();
-
-function prewarmPcLedgerData(area: 'pc-assets' | 'monitor-assets', authUser: ReturnType<typeof useAuth>["user"]) {
-  if (!authUser || !canAccessModuleArea(authUser, 'pc') || warmedAreas.has(area)) return;
-  warmedAreas.add(area);
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
+  if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
   scheduleOnIdle(async () => {
     try {
-      const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-      if (area === 'pc-assets' && canAccessPcSection(authUser, 'pc') && !hasPrimedPagedListNamespace('pc-assets')) {
+      if (!hasPrimedPagedListNamespace('pc-assets')) {
+        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
         const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
         primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
       }
-      if (area === 'monitor-assets' && canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
         const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
         primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
+      }
+      if (!hasPrimedPagedListNamespace('system-settings')) {
+        await fetchSystemSettings();
+        markPagedListNamespacePrimed('system-settings');
       }
     } catch {
       // ignore prewarm failures
     }
-  }, 2400);
-}
-
-function prewarmSystemData(authUser: ReturnType<typeof useAuth>["user"], path: string) {
-  if (!authUser || authUser.role !== 'admin') return;
-  if (path !== '/system/performance' && path !== '/system/tools') return;
-  if (warmedAreas.has(`system:${path}`)) return;
-  warmedAreas.add(`system:${path}`);
-  scheduleOnIdle(async () => {
-    try {
-      void flushBrowserPerfQueue();
-    } catch {
-      // ignore prewarm failures
-    }
-  }, 4000);
+  }, 300);
 }
 
 router.afterEach((to) => {
@@ -305,9 +290,7 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  if (to.path === '/pc/assets') prewarmPcLedgerData('pc-assets', auth.user);
-  if (to.path === '/pc/monitors') prewarmPcLedgerData('monitor-assets', auth.user);
-  if (to.path.startsWith('/system')) prewarmSystemData(auth.user, to.path);
+  prewarmPcLedgerData(auth.user);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
@@ -360,12 +343,8 @@ router.afterEach((to) => {
 
   const selected = tasks
     .filter(([key, , enabled]) => enabled && key !== to.path)
-    .slice(0, 1);
+    .slice(0, 2);
   selected.forEach(([key, loader]) => prefetchChunk(key, loader));
-  requestAnimationFrame(() => {
-    const duration = Math.max(0, Math.round(performance.now() - routePerfStartedAt));
-    trackRoutePerf(to.path || to.fullPath, duration, to.fullPath);
-  });
 });
 
 

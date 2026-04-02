@@ -541,7 +541,7 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 
 async function refreshInventoryBatch() {
   try {
-    await refreshInventoryBatchStore({ silent: true, ttlMs: 60_000 });
+    await refreshInventoryBatchStore({ silent: true, ttlMs: 15_000 });
     if (!inventoryBatch.value.active && inventoryStatus.value) {
       runWithoutAutoSearch(() => {
         inventoryStatus.value = '';
@@ -560,7 +560,7 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
   }
 }
 
-function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 3200) {
+function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
   if (typeof window === 'undefined') {
     void Promise.resolve().then(task);
     return;
@@ -581,9 +581,8 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 3200) {
 
 function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = hasActiveInventoryBatch.value) {
   const snapshot = { ...initialFilters };
-  const shouldLoadSummaryNow = Boolean(snapshot.inventoryStatus) || hadActiveBatch || Boolean(inventoryBatch.value.active);
   runWhenBrowserIdle(async () => {
-    if (shouldLoadSummaryNow) void refreshInventorySummary(snapshot);
+    void refreshInventorySummary(snapshot);
     try {
       await refreshInventoryBatch();
     } catch {
@@ -592,12 +591,9 @@ function scheduleAuxiliaryRefresh(initialFilters: PcFilters, hadActiveBatch = ha
     const nextFilters = currentFiltersForList();
     const batchStateChanged = hadActiveBatch !== hasActiveInventoryBatch.value
       || nextFilters.inventoryStatus !== snapshot.inventoryStatus;
-    if (batchStateChanged) {
-      await load(nextFilters, { keepPage: true, silent: true });
-    }
-    if (Boolean(nextFilters.inventoryStatus) || hasActiveInventoryBatch.value) {
-      void refreshInventorySummary(nextFilters);
-    }
+    if (!batchStateChanged) return;
+    await load(nextFilters, { keepPage: true, silent: true });
+    void refreshInventorySummary(nextFilters);
   });
 }
 

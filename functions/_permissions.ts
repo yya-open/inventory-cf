@@ -87,45 +87,24 @@ function nowSql() {
   return "datetime('now','+8 hours')";
 }
 
-const ensurePermissionsTableByDb = new WeakMap<D1Database, Promise<void>>();
-const ensurePermissionTemplateColumnByDb = new WeakMap<D1Database, Promise<void>>();
-
 export async function ensureUserPermissionsTable(db: D1Database) {
-  let pending = ensurePermissionsTableByDb.get(db);
-  if (!pending) {
-    pending = db.prepare(
-      `CREATE TABLE IF NOT EXISTS user_permissions (
-        user_id INTEGER NOT NULL,
-        permission_code TEXT NOT NULL,
-        allowed INTEGER NOT NULL DEFAULT 1,
-        updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
-        updated_by TEXT,
-        PRIMARY KEY (user_id, permission_code),
-        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-      )`
-    ).run().then(() => undefined).catch((error) => {
-      ensurePermissionsTableByDb.delete(db);
-      throw error;
-    });
-    ensurePermissionsTableByDb.set(db, pending);
-  }
-  await pending;
+  await db.prepare(
+    `CREATE TABLE IF NOT EXISTS user_permissions (
+      user_id INTEGER NOT NULL,
+      permission_code TEXT NOT NULL,
+      allowed INTEGER NOT NULL DEFAULT 1,
+      updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
+      updated_by TEXT,
+      PRIMARY KEY (user_id, permission_code),
+      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )`
+  ).run();
 }
 
 export async function ensureUserPermissionTemplateColumn(db: D1Database) {
-  let pending = ensurePermissionTemplateColumnByDb.get(db);
-  if (!pending) {
-    pending = (async () => {
-      try {
-        await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
-      } catch {}
-    })().catch((error) => {
-      ensurePermissionTemplateColumnByDb.delete(db);
-      throw error;
-    });
-    ensurePermissionTemplateColumnByDb.set(db, pending);
-  }
-  await pending;
+  try {
+    await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
+  } catch {}
 }
 
 export function roleDefaultPermission(role: string | null | undefined, code: PermissionCode) {

@@ -84,14 +84,6 @@
       >
         导出CSV
       </el-button>
-      <el-button
-        v-if="isAdmin"
-        plain
-        :disabled="exportLoading"
-        @click="queueExport"
-      >
-        后台导出
-      </el-button>
 
       <el-button
         v-if="isAdmin"
@@ -379,22 +371,6 @@ function toCsvCell(v: any) {
   const s = String(v ?? "");
   const escaped = s.replace(/"/g, '""');
   return `"${escaped}"`;
-}
-
-async function queueExport() {
-  try {
-    exportLoading.value = true;
-    const params = buildListParams(currentFilters(), false);
-    params.set('max', '50000');
-    const request_json = Object.fromEntries(params.entries());
-    const r:any = await apiPost('/api/jobs', { job_type: 'TX_EXPORT', permission_scope: 'async_job_manage', request_json, retain_days: 7, max_retries: 1 });
-    const jobId = Number(r?.data?.id || 0);
-    ElMessage.success(jobId ? `后台导出任务已创建（#${jobId}），可在系统工具 / 异步任务下载结果` : '后台导出任务已创建，可在系统工具 / 异步任务下载结果');
-  } catch (e: any) {
-    ElMessage.error(e?.message || '创建后台导出任务失败');
-  } finally {
-    exportLoading.value = false;
-  }
 }
 
 async function doExport() {

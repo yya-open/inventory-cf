@@ -36,6 +36,34 @@ const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
 
 const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDictionaryKey[];
 
+const enabledLabelsCache = new Map<SystemDictionaryKey, { expiresAt: number; labels: string[] }>();
+const enabledLabelsPending = new Map<SystemDictionaryKey, Promise<string[]>>();
+const ENABLED_LABELS_TTL_MS = 60_000;
+
+function readEnabledLabelsCache(key: SystemDictionaryKey) {
+  const cached = enabledLabelsCache.get(key);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    enabledLabelsCache.delete(key);
+    return null;
+  }
+  return [...cached.labels];
+}
+
+function writeEnabledLabelsCache(key: SystemDictionaryKey, labels: string[]) {
+  enabledLabelsCache.set(key, { expiresAt: Date.now() + ENABLED_LABELS_TTL_MS, labels: [...labels] });
+}
+
+function clearEnabledLabelsCache(key?: SystemDictionaryKey) {
+  if (key) {
+    enabledLabelsCache.delete(key);
+    enabledLabelsPending.delete(key);
+    return;
+  }
+  enabledLabelsCache.clear();
+  enabledLabelsPending.clear();
+}
+
 export function invalidateSystemDictionaryReferenceCache() {
   // 已升级为持久计数表 + dirty-key 延迟刷新；保留兼容导出。
 }
@@ -440,15 +468,27 @@ export async function getSystemDictionaryVersion(db: D1Database, key?: SystemDic
 }
 
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {
-  await bootstrapDictionaryIfNeeded(db, key);
-  const { results } = await db.prepare(
-    `SELECT label
-     FROM system_dictionary_items
-     WHERE dictionary_key=? AND enabled=1
-     ORDER BY sort_order ASC, id ASC`
-  ).bind(key).all<any>();
-  const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
-  return labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
+  const cached = readEnabledLabelsCache(key);
+  if (cached) return cached;
+  const pending = enabledLabelsPending.get(key);
+  if (pending) return pending;
+  const task = (async () => {
+    await bootstrapDictionaryIfNeeded(db, key);
+    const { results } = await db.prepare(
+      `SELECT label
+       FROM system_dictionary_items
+       WHERE dictionary_key=? AND enabled=1
+       ORDER BY sort_order ASC, id ASC`
+    ).bind(key).all<any>();
+    const labels = (results || []).map((row: any) => normalizeLabel(row?.label)).filter(Boolean);
+    const finalLabels = labels.length ? labels : [...DEFAULT_DICTIONARY_VALUES[key]];
+    writeEnabledLabelsCache(key, finalLabels);
+    return finalLabels;
+  })().finally(() => {
+    enabledLabelsPending.delete(key);
+  });
+  enabledLabelsPending.set(key, task);
+  return task;
 }
 
 export async function createSystemDictionaryItem(db: D1Database, input: Partial<SystemDictionaryItem>, updatedBy: string | null) {

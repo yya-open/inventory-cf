@@ -60,6 +60,7 @@ import { useRouter } from 'vue-router';
 import { useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
+import { scheduleOnIdle } from '../utils/idle';
 
 const HomeCard = defineComponent({
   name: 'HomeCard',
@@ -97,5 +98,8 @@ async function loadOpsSummary() {
 
 onMounted(() => {
   loadOpsSummary().catch(() => undefined);
+  scheduleOnIdle(() => {
+    loadOpsSummary().catch(() => undefined);
+  }, 1200);
 });
 </script>

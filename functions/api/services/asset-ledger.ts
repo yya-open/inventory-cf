@@ -4,7 +4,7 @@ import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
-export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; ftsKeys?: ('pc'|'monitor'|'audit')[] };
+export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string };
 
 export type PcAssetInput = {
   brand: string;
@@ -148,7 +148,6 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
-    ftsKeys: keyword ? ['pc'] : [],
   } satisfies QueryParts;
 }
 
@@ -213,18 +212,17 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: '',
-    ftsKeys: keyword ? ['monitor'] : [],
   } satisfies QueryParts;
 }
 
-export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins' | 'ftsKeys'>) {
-  if (Array.isArray(query.ftsKeys) && query.ftsKeys.length) await ensureSearchFtsTables(db, query.ftsKeys);
+export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins'>) {
+  await ensureSearchFtsTables(db);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.joins || ''} ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
-  if (Array.isArray(query.ftsKeys) && query.ftsKeys.length) await ensureSearchFtsTables(db, query.ftsKeys);
+  await ensureSearchFtsTables(db);
   const sql = `
     WITH page_a AS (
       SELECT a.id
@@ -309,49 +307,78 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
 }
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
-  if (Array.isArray(query.ftsKeys) && query.ftsKeys.length) await ensureSearchFtsTables(db, query.ftsKeys);
+  await ensureSearchFtsTables(db);
   const sql = `
-    WITH page_a AS (
-      SELECT a.id
-      FROM monitor_assets a
-      ${query.where}
-      ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
-    ),
-    prev_tx AS (
-      SELECT
-        t.asset_id,
-        t.employee_no,
-        t.employee_name,
-        t.department,
-        t.created_at,
-        ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-      FROM monitor_tx t
-      JOIN page_a p ON p.id = t.asset_id
-      JOIN monitor_assets a ON a.id = t.asset_id
-      WHERE t.tx_type IN ('OUT', 'TRANSFER')
-        AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-        AND (
-          a.status <> 'ASSIGNED'
-          OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-          OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-          OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-        )
-    )
     SELECT
       a.*,
       l.name AS location_name,
       p.name AS parent_location_name,
-      prev.employee_no AS previous_employee_no,
-      prev.employee_name AS previous_employee_name,
-      prev.department AS previous_department,
-      prev.created_at AS previous_assigned_at
+      (
+        SELECT t.employee_no
+        FROM monitor_tx t
+        WHERE t.asset_id = a.id
+          AND t.tx_type IN ('OUT', 'TRANSFER')
+          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
+          AND (
+            a.status <> 'ASSIGNED'
+            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
+            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
+            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
+          )
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 1
+      ) AS previous_employee_no,
+      (
+        SELECT t.employee_name
+        FROM monitor_tx t
+        WHERE t.asset_id = a.id
+          AND t.tx_type IN ('OUT', 'TRANSFER')
+          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
+          AND (
+            a.status <> 'ASSIGNED'
+            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
+            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
+            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
+          )
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 1
+      ) AS previous_employee_name,
+      (
+        SELECT t.department
+        FROM monitor_tx t
+        WHERE t.asset_id = a.id
+          AND t.tx_type IN ('OUT', 'TRANSFER')
+          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
+          AND (
+            a.status <> 'ASSIGNED'
+            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
+            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
+            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
+          )
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 1
+      ) AS previous_department,
+      (
+        SELECT t.created_at
+        FROM monitor_tx t
+        WHERE t.asset_id = a.id
+          AND t.tx_type IN ('OUT', 'TRANSFER')
+          AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
+          AND (
+            a.status <> 'ASSIGNED'
+            OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
+            OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
+            OR COALESCE(t.department, '') <> COALESCE(a.department, '')
+          )
+        ORDER BY t.created_at DESC, t.id DESC
+        LIMIT 1
+      ) AS previous_assigned_at
     FROM monitor_assets a
-    JOIN page_a page ON page.id = a.id
     LEFT JOIN pc_locations l ON l.id = a.location_id
     LEFT JOIN pc_locations p ON p.id = l.parent_id
-    LEFT JOIN prev_tx prev ON prev.asset_id = a.id AND prev.rn = 1
+    ${query.where}
     ORDER BY a.id ASC
+    LIMIT ? OFFSET ?
   `;
   const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
   return result.results || [];
