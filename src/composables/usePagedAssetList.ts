@@ -142,6 +142,25 @@ function patchPageCacheTotal(prefix: string, total: number) {
   }
 }
 
+function inferTotalFromPageResult(page: number, pageSize: number, rowCount: number, knownTotal?: number | null) {
+  if (typeof knownTotal === 'number' && Number.isFinite(knownTotal) && knownTotal >= 0) return Number(knownTotal);
+  const safePage = Math.max(1, Number(page || 1) || 1);
+  const safePageSize = Math.max(1, Number(pageSize || 1) || 1);
+  const safeRowCount = Math.max(0, Number(rowCount || 0) || 0);
+  if (safePage === 1 && safeRowCount < safePageSize) return safeRowCount;
+  if (safeRowCount < safePageSize) return (safePage - 1) * safePageSize + safeRowCount;
+  return null;
+}
+
+function canPrefetchNextPage() {
+  if (typeof window === 'undefined') return false;
+  const connection = (navigator as any)?.connection;
+  if (connection?.saveData) return false;
+  const effectiveType = String(connection?.effectiveType || '').toLowerCase();
+  if (effectiveType.includes('2g') || effectiveType === 'slow-2g') return false;
+  return true;
+}
+
 export function markPagedListNamespacePrimed(namespace: string) {
   primedNamespaces.add(String(namespace || 'paged-list'));
 }
@@ -222,6 +241,49 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       return persisted;
     }
     return Number(fallback || 0);
+  }
+
+  function prefetchNextPage(filters: TFilters, filterKey: string, currentPage: number, currentPageSize: number, currentRows: TItem[]) {
+    if (!canPrefetchNextPage()) return;
+    if (!Array.isArray(currentRows) || currentRows.length < currentPageSize) return;
+    const nextPage = currentPage + 1;
+    const nextKey = getPageCacheKey(options, filterKey, nextPage, currentPageSize);
+    if (pageCache.has(nextKey) || pageRequests.has(nextKey)) return;
+    const run = () => {
+      const controller = new AbortController();
+      const request = options.fetchPage({ filters, page: nextPage, pageSize: currentPageSize, fast: true, signal: controller.signal })
+        .then((nextResult) => {
+          const inferredTotal = inferTotalFromPageResult(nextPage, currentPageSize, Array.isArray(nextResult?.rows) ? nextResult.rows.length : 0, typeof nextResult?.total === 'number' ? Number(nextResult.total || 0) : null);
+          const entry = {
+            rows: Array.isArray(nextResult?.rows) ? [...nextResult.rows] : [],
+            total: inferredTotal ?? resolveKnownTotal(filterKey, total.value),
+            timestamp: Date.now(),
+          } satisfies PageCacheEntry;
+          pageCache.set(nextKey, entry);
+          persistPageCache(options, filterKey, nextPage, currentPageSize, entry);
+          if (typeof nextResult?.total === 'number') {
+            const resolved = Number(nextResult.total || 0);
+            totalCache.set(filterKey, resolved);
+            persistTotal(options, filterKey, resolved);
+            patchPageCacheTotal(getFilterPrefix(options, filterKey), resolved);
+          } else if (typeof inferredTotal === 'number') {
+            totalCache.set(filterKey, inferredTotal);
+            persistTotal(options, filterKey, inferredTotal);
+            patchPageCacheTotal(getFilterPrefix(options, filterKey), inferredTotal);
+          }
+        })
+        .catch(() => undefined)
+        .finally(() => {
+          const active = pageRequests.get(nextKey);
+          if (active?.promise === request) pageRequests.delete(nextKey);
+        });
+      pageRequests.set(nextKey, { controller, promise: request as Promise<LoadResult<any>> });
+    };
+    if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
+      (window as any).requestIdleCallback(() => run(), { timeout: 1500 });
+    } else if (typeof window !== 'undefined') {
+      window.setTimeout(run, 300);
+    }
   }
 
   async function load(filters: TFilters, opts: { keepPage?: boolean; silent?: boolean; forceRefresh?: boolean } = {}) {
@@ -309,12 +371,30 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         totalCache.set(filterKey, total.value);
         persistTotal(options, filterKey, total.value);
         patchPageCacheTotal(cachePrefix, total.value);
+        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
         return;
       }
+
+      const inferredTotal = inferTotalFromPageResult(nextPage, effectivePageSize, rows.value.length, null);
+      if (typeof inferredTotal === 'number') {
+        total.value = inferredTotal;
+        totalCache.set(filterKey, inferredTotal);
+        persistTotal(options, filterKey, inferredTotal);
+        patchPageCacheTotal(cachePrefix, inferredTotal);
+        const currentEntry = pageCache.get(pageKey);
+        if (currentEntry) {
+          const patchedEntry = { ...currentEntry, total: inferredTotal, timestamp: currentEntry.timestamp };
+          pageCache.set(pageKey, patchedEntry);
+          persistPageCache(options, filterKey, nextPage, effectivePageSize, patchedEntry);
+        }
+        return;
+      }
+
       if (!options.fetchTotal) {
-        total.value = 0;
-        patchPageCacheTotal(cachePrefix, 0);
-        persistTotal(options, filterKey, 0);
+        total.value = resolveKnownTotal(filterKey, 0);
+        patchPageCacheTotal(cachePrefix, total.value);
+        persistTotal(options, filterKey, total.value);
+        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
         return;
       }
 
@@ -324,6 +404,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         patchPageCacheTotal(cachePrefix, cachedTotal);
       }
 
+      prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
       clearTotalTimer();
       totalController?.abort();
       totalController = new AbortController();

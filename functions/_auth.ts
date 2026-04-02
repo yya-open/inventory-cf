@@ -21,6 +21,33 @@ export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
+const AUTH_USER_CACHE_TTL_MS = 30_000;
+type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; expiresAt: number };
+const authUserCache = new Map<number, CachedAuthUserRow>();
+
+function readCachedAuthUserRow(userId: number) {
+  const hit = authUserCache.get(userId);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    authUserCache.delete(userId);
+    return null;
+  }
+  return hit;
+}
+
+function writeCachedAuthUserRow(row: Omit<CachedAuthUserRow, 'expiresAt'>) {
+  authUserCache.set(Number(row.id), { ...row, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
+  return row;
+}
+
+export function invalidateCachedAuthUser(userId?: number | null) {
+  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
+    authUserCache.delete(userId);
+    return;
+  }
+  authUserCache.clear();
+}
+
 function b64uEncode(bytes: Uint8Array) {
   let s = "";
   for (const b of bytes) s += String.fromCharCode(b);
@@ -156,21 +183,33 @@ async function requireAuthInternal(
   if (!payload?.sub) throw Object.assign(new Error("登录已过期"), { status: 401 });
 
   const userId = Number(payload.sub);
-  let u: any = null;
-  try {
-    u = await env.DB
-      .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
-      .bind(userId)
-      .first<any>();
-  } catch (e: any) {
-    if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
+  let u: any = readCachedAuthUserRow(userId);
+  if (!u) {
+    try {
       u = await env.DB
-        .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
+        .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
         .bind(userId)
         .first<any>();
-      if (u) u.token_version = 0;
-    } else {
-      throw e;
+    } catch (e: any) {
+      if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
+        u = await env.DB
+          .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
+          .bind(userId)
+          .first<any>();
+        if (u) u.token_version = 0;
+      } else {
+        throw e;
+      }
+    }
+    if (u) {
+      writeCachedAuthUserRow({
+        id: Number(u.id),
+        username: String(u.username || ''),
+        role: u.role as Role,
+        is_active: Number(u.is_active || 0),
+        must_change_password: Number(u.must_change_password || 0),
+        token_version: Number((u as any).token_version || 0),
+      });
     }
   }
   if (!u || Number(u.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });

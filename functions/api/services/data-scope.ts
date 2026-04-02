@@ -39,6 +39,31 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
 }
 
 let ensureUserDataScopeColumnsPromise: Promise<void> | null = null;
+const USER_DATA_SCOPE_CACHE_TTL_MS = 30_000;
+const userDataScopeCache = new Map<number, UserDataScope & { expiresAt: number }>();
+
+function readCachedUserDataScope(userId: number) {
+  const hit = userDataScopeCache.get(userId);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    userDataScopeCache.delete(userId);
+    return null;
+  }
+  return { data_scope_type: hit.data_scope_type, data_scope_value: hit.data_scope_value, data_scope_value2: hit.data_scope_value2 } as UserDataScope;
+}
+
+function writeCachedUserDataScope(userId: number, scope: UserDataScope) {
+  userDataScopeCache.set(userId, { ...scope, expiresAt: Date.now() + USER_DATA_SCOPE_CACHE_TTL_MS });
+  return scope;
+}
+
+export function invalidateUserDataScopeCache(userId?: number | null) {
+  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
+    userDataScopeCache.delete(userId);
+    return;
+  }
+  userDataScopeCache.clear();
+}
 
 export async function ensureUserDataScopeColumns(db: D1Database) {
   if (!ensureUserDataScopeColumnsPromise) {
@@ -61,15 +86,18 @@ export async function ensureUserDataScopeColumns(db: D1Database) {
 }
 
 export async function getUserDataScope(db: D1Database, userId: number) {
+  const cached = readCachedUserDataScope(userId);
+  if (cached) return cached;
   await ensureUserDataScopeColumns(db);
   const row = await db.prepare(`SELECT data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?`).bind(userId).first<any>();
-  return normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
+  return writeCachedUserDataScope(userId, normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2));
 }
 
 export async function setUserDataScope(db: D1Database, userId: number, type: string | null | undefined, value: string | null | undefined, value2?: string | null | undefined) {
   await ensureUserDataScopeColumns(db);
   const normalized = normalizeUserDataScope(type, value, value2);
   await db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(normalized.data_scope_type, normalized.data_scope_value, normalized.data_scope_value2, userId).run();
+  writeCachedUserDataScope(userId, normalized);
   return normalized;
 }
 

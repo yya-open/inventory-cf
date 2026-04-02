@@ -39,9 +39,8 @@ import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, 
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
-import { listPcAssets, listMonitorAssets } from "../api/assetLedgers";
-import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
-import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed, primePagedListCache } from "../composables/usePagedAssetList";
+import { fetchSystemSettings } from "../api/systemSettings";
+import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
@@ -256,29 +255,14 @@ const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archive
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
 function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], routePath: string) {
-  if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
-  const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
-  if (routePath === '/pc/assets' && !hasPrimedPagedListNamespace('pc-assets')) {
-    scheduleOnIdle(async () => {
-      try {
-        const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
-        primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-      } catch {}
-    }, 1800);
-  } else if (routePath === '/pc/monitors' && canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-    scheduleOnIdle(async () => {
-      try {
-        const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
-        primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-      } catch {}
-    }, 1800);
-  } else if (routePath.startsWith('/system') && routePath !== '/system/home' && !hasPrimedPagedListNamespace('system-settings')) {
+  if (!authUser) return;
+  if (routePath.startsWith('/system') && routePath !== '/system/home' && !hasPrimedPagedListNamespace('system-settings')) {
     scheduleOnIdle(async () => {
       try {
         await fetchSystemSettings();
         markPagedListNamespacePrimed('system-settings');
       } catch {}
-    }, 2200);
+    }, 2600);
   }
 }
 
