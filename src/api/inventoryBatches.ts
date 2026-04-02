@@ -48,7 +48,7 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
   };
 }
 
-const INVENTORY_BATCH_CLIENT_CACHE_TTL_MS = 5 * 60_000;
+const INVENTORY_BATCH_CLIENT_CACHE_TTL_MS = 15 * 60_000;
 const inventoryBatchClientCache = new Map<InventoryBatchKind, { expiresAt: number; value: InventoryBatchPayload }>();
 const inventoryBatchClientPending = new Map<InventoryBatchKind, Promise<InventoryBatchPayload>>();
 

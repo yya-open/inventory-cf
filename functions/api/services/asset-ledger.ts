@@ -224,6 +224,37 @@ export async function countByWhere(db: D1Database, tableWithAlias: string, query
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db);
+  if (query.fast) {
+    const sql = `
+      WITH page_a AS (
+        SELECT a.id
+        FROM pc_assets a
+        ${query.joins || ''}
+        ${query.where}
+        ORDER BY a.id ASC
+        LIMIT ? OFFSET ?
+      )
+      SELECT
+        a.*,
+        s.current_employee_no AS last_employee_no,
+        s.current_employee_name AS last_employee_name,
+        s.current_department AS last_department,
+        s.last_config_date,
+        s.last_recycle_date,
+        s.last_out_at,
+        s.last_in_at,
+        NULL AS previous_employee_no,
+        NULL AS previous_employee_name,
+        NULL AS previous_department,
+        NULL AS previous_assigned_at
+      FROM pc_assets a
+      JOIN page_a p ON p.id = a.id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
+      ORDER BY a.id ASC
+    `;
+    const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+    return result.results || [];
+  }
   const sql = `
     WITH page_a AS (
       SELECT a.id
@@ -309,6 +340,26 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db);
+  if (query.fast) {
+    const sql = `
+      SELECT
+        a.*,
+        l.name AS location_name,
+        p.name AS parent_location_name,
+        NULL AS previous_employee_no,
+        NULL AS previous_employee_name,
+        NULL AS previous_department,
+        NULL AS previous_assigned_at
+      FROM monitor_assets a
+      LEFT JOIN pc_locations l ON l.id = a.location_id
+      LEFT JOIN pc_locations p ON p.id = l.parent_id
+      ${query.where}
+      ORDER BY a.id ASC
+      LIMIT ? OFFSET ?
+    `;
+    const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+    return result.results || [];
+  }
   const sql = `
     SELECT
       a.*,

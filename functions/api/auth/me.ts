@@ -3,7 +3,7 @@ import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
 
 type MePayload = { user: any };
-const ME_CACHE_TTL_MS = 5 * 60_000;
+const ME_CACHE_TTL_MS = 30 * 60_000;
 const meCache = new Map<number, { expiresAt: number; payload: MePayload }>();
 
 function readCachedMe(userId: number) {

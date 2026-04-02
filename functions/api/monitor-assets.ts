@@ -25,6 +25,32 @@ import { requireAuthWithDataScope } from './services/data-scope';
 import { assertMonitorBrandDictionaryValue } from './services/master-data';
 import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
+const ASSET_LIST_CACHE_TTL_MS = 30_000;
+const assetListCache = new Map<string, { expiresAt: number; payload: any }>();
+
+function buildAssetListCacheKey(user: any, url: URL) {
+  return [String(user?.id || 0), String(user?.role || ''), String(user?.data_scope_type || ''), String(user?.data_scope_value || ''), String(user?.data_scope_value2 || ''), url.searchParams.toString()].join('::');
+}
+
+function readAssetListCache(key: string) {
+  const hit = assetListCache.get(key);
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    assetListCache.delete(key);
+    return null;
+  }
+  return hit.payload;
+}
+
+function writeAssetListCache(key: string, payload: any) {
+  assetListCache.set(key, { expiresAt: Date.now() + ASSET_LIST_CACHE_TTL_MS, payload });
+  return payload;
+}
+
+function invalidateAssetListCache() {
+  assetListCache.clear();
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const user = await requireAuthWithDataScope(env, request, 'viewer');
@@ -33,7 +59,15 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     await ensureSchemaTimed(env as any, 'schema', () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
     const query = buildMonitorAssetQuery(url, user);
-    return Response.json({ ok: true, ...(await listAssetPage(env.DB, env as any, 'monitor_assets a', query, listMonitorAssets)) });
+    const cacheable = query.fast && !query.usesFts;
+    const cacheKey = cacheable ? buildAssetListCacheKey(user, url) : '';
+    if (cacheable) {
+      const cached = readAssetListCache(cacheKey);
+      if (cached) return Response.json({ ok: true, ...cached });
+    }
+    const payload = await listAssetPage(env.DB, env as any, 'monitor_assets a', query, listMonitorAssets);
+    if (cacheable) writeAssetListCache(cacheKey, payload);
+    return Response.json({ ok: true, ...payload });
   } catch (error: any) {
     return errorResponse(error);
   }
@@ -58,6 +92,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .run();
 
     invalidateSystemDictionaryReferenceCache();
+    invalidateAssetListCache();
+    invalidateAssetListCache();
     await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
     const id = Number(result.meta.last_row_id || 0);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);

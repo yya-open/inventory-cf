@@ -13,7 +13,7 @@ function parseKind(input: any): AssetInventoryKind {
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any };
 
 
-const INVENTORY_BATCH_CACHE_TTL_MS = 60_000;
+const INVENTORY_BATCH_CACHE_TTL_MS = 5 * 60_000;
 const inventoryBatchGetCache = new Map<string, { expiresAt: number; data: any }>();
 
 function inventoryBatchCacheKey(kind: AssetInventoryKind) {
@@ -52,13 +52,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const kind = parseKind(url.searchParams.get('kind'));
     const cached = readInventoryBatchCache(kind);
     if (cached) return Response.json({ ok: true, data: cached });
-    const [active, latest, recent] = await Promise.all([
-      getActiveInventoryBatch(env.DB, kind),
+    const [latest, recent] = await Promise.all([
       getLatestInventoryBatch(env.DB, kind),
       listRecentInventoryBatches(env.DB, kind, 1),
     ]);
-    const resolvedActive = active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
-    const resolvedLatest = resolvedActive || latest;
+    const resolvedActive = String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null;
+    const resolvedLatest = latest || resolvedActive;
     const resolvedRecent = (recent || []).filter((item) => !resolvedActive || Number(item?.id || 0) !== Number(resolvedActive?.id || 0));
     const payload = writeInventoryBatchCache(kind, { active: resolvedActive, latest: resolvedLatest, recent: resolvedRecent });
     return Response.json({ ok: true, data: payload });
