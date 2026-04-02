@@ -35,7 +35,7 @@ const SystemDocs = () => import("../views/SystemDocs.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
-import { fetchMe, hydrateAuthFromCache, useAuth, can } from "../store/auth";
+import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
@@ -168,14 +168,18 @@ router.beforeEach(async (to) => {
   if (!auth.user) {
     const cached = hydrateAuthFromCache();
     if (cached) {
-      void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
-        auth.user = null;
-        const path = window.location.pathname;
-        if (path !== '/login') {
-          const redirect = encodeURIComponent(to.fullPath);
-          window.location.replace(`/login?redirect=${redirect}`);
-        }
-      });
+      if (shouldRefreshAuthInBackground()) {
+        scheduleOnIdle(() => {
+          void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
+            auth.user = null;
+            const path = window.location.pathname;
+            if (path !== '/login') {
+              const redirect = encodeURIComponent(to.fullPath);
+              window.location.replace(`/login?redirect=${redirect}`);
+            }
+          });
+        }, 1500);
+      }
     } else {
       try {
         await fetchMe({ force: true });
@@ -251,28 +255,31 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
-function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"]) {
+function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], routePath: string) {
   if (!authUser || !canAccessModuleArea(authUser, 'pc')) return;
-  scheduleOnIdle(async () => {
-    try {
-      if (!hasPrimedPagedListNamespace('pc-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+  const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+  if (routePath === '/pc/assets' && !hasPrimedPagedListNamespace('pc-assets')) {
+    scheduleOnIdle(async () => {
+      try {
         const result = await listPcAssets(defaultPcFilters, 1, pageSize, true);
         primePagedListCache('pc-assets', 'status=&keyword=&inventoryStatus=&archiveReason=&showArchived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-      }
-      if (canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
-        const pageSize = Number(getCachedSystemSettings().ui_default_page_size || 50) || 50;
+      } catch {}
+    }, 1800);
+  } else if (routePath === '/pc/monitors' && canAccessPcSection(authUser, 'monitor') && !hasPrimedPagedListNamespace('monitor-assets')) {
+    scheduleOnIdle(async () => {
+      try {
         const result = await listMonitorAssets(defaultMonitorFilters, 1, pageSize, true);
         primePagedListCache('monitor-assets', 'status=&location=&inventory=&keyword=&archive=&archived=0&archiveMode=active', 1, pageSize, { rows: result.rows || [], total: result.total ?? 0 });
-      }
-      if (!hasPrimedPagedListNamespace('system-settings')) {
+      } catch {}
+    }, 1800);
+  } else if (routePath.startsWith('/system') && routePath !== '/system/home' && !hasPrimedPagedListNamespace('system-settings')) {
+    scheduleOnIdle(async () => {
+      try {
         await fetchSystemSettings();
         markPagedListNamespacePrimed('system-settings');
-      }
-    } catch {
-      // ignore prewarm failures
-    }
-  }, 300);
+      } catch {}
+    }, 2200);
+  }
 }
 
 router.afterEach((to) => {
@@ -290,13 +297,12 @@ router.afterEach((to) => {
   const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
   const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
 
-  prewarmPcLedgerData(auth.user);
+  prewarmPcLedgerData(auth.user, to.path);
 
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
       add('/system/dashboard', Dashboard, canAdminAccess);
       add('/system/tools', SystemOpsTools, canAdminAccess);
-      add('/system/settings', SystemSettings, canAdminAccess);
     } else if (to.path === '/system/dashboard') {
       add('/system/tools', SystemOpsTools, canAdminAccess);
       add('/system/audit', AuditLog, canAdminAccess);
@@ -343,7 +349,7 @@ router.afterEach((to) => {
 
   const selected = tasks
     .filter(([key, , enabled]) => enabled && key !== to.path)
-    .slice(0, 2);
+    .slice(0, 1);
   selected.forEach(([key, loader]) => prefetchChunk(key, loader));
 });
 

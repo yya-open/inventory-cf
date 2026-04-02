@@ -9,8 +9,10 @@ export type User = { id: number; username: string; role: Role; must_change_passw
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
 const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
-const AUTH_CACHE_TTL_MS = 30_000;
+const AUTH_CACHE_TTL_MS = 5 * 60_000;
+const AUTH_REFRESH_SOFT_TTL_MS = 60_000;
 let pendingFetchMe: Promise<User> | null = null;
+let authCacheTimestamp = 0;
 
 function getSessionStorage() {
   if (typeof window === 'undefined') return null;
@@ -25,10 +27,12 @@ function writeAuthCache(user: User | null) {
   const storage = getSessionStorage();
   if (!storage) return;
   if (!user) {
+    authCacheTimestamp = 0;
     storage.removeItem(AUTH_CACHE_KEY);
     return;
   }
-  storage.setItem(AUTH_CACHE_KEY, JSON.stringify({ user, ts: Date.now() }));
+  authCacheTimestamp = Date.now();
+  storage.setItem(AUTH_CACHE_KEY, JSON.stringify({ user, ts: authCacheTimestamp }));
 }
 
 function readAuthCache(maxAgeMs = AUTH_CACHE_TTL_MS): User | null {
@@ -40,6 +44,7 @@ function readAuthCache(maxAgeMs = AUTH_CACHE_TTL_MS): User | null {
     const parsed = JSON.parse(raw) as { user?: User; ts?: number };
     if (!parsed?.user || typeof parsed.ts !== 'number') return null;
     if (Date.now() - parsed.ts > maxAgeMs) return null;
+    authCacheTimestamp = parsed.ts;
     return parsed.user;
   } catch {
     return null;
@@ -50,6 +55,14 @@ export function hydrateAuthFromCache(maxAgeMs = AUTH_CACHE_TTL_MS) {
   const cached = readAuthCache(maxAgeMs);
   if (cached) state.user = cached;
   return cached;
+}
+
+export function getAuthCacheAgeMs() {
+  return authCacheTimestamp ? Date.now() - authCacheTimestamp : Number.POSITIVE_INFINITY;
+}
+
+export function shouldRefreshAuthInBackground() {
+  return getAuthCacheAgeMs() >= AUTH_REFRESH_SOFT_TTL_MS;
 }
 
 function clearAuthCache() {

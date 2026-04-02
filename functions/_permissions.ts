@@ -87,24 +87,43 @@ function nowSql() {
   return "datetime('now','+8 hours')";
 }
 
+let ensureUserPermissionsTablePromise: Promise<void> | null = null;
+let ensureUserPermissionTemplateColumnPromise: Promise<void> | null = null;
+
 export async function ensureUserPermissionsTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS user_permissions (
-      user_id INTEGER NOT NULL,
-      permission_code TEXT NOT NULL,
-      allowed INTEGER NOT NULL DEFAULT 1,
-      updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
-      updated_by TEXT,
-      PRIMARY KEY (user_id, permission_code),
-      FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-    )`
-  ).run();
+  if (!ensureUserPermissionsTablePromise) {
+    ensureUserPermissionsTablePromise = (async () => {
+      await db.prepare(
+        `CREATE TABLE IF NOT EXISTS user_permissions (
+          user_id INTEGER NOT NULL,
+          permission_code TEXT NOT NULL,
+          allowed INTEGER NOT NULL DEFAULT 1,
+          updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
+          updated_by TEXT,
+          PRIMARY KEY (user_id, permission_code),
+          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+        )`
+      ).run();
+    })().catch((error) => {
+      ensureUserPermissionsTablePromise = null;
+      throw error;
+    });
+  }
+  await ensureUserPermissionsTablePromise;
 }
 
 export async function ensureUserPermissionTemplateColumn(db: D1Database) {
-  try {
-    await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
-  } catch {}
+  if (!ensureUserPermissionTemplateColumnPromise) {
+    ensureUserPermissionTemplateColumnPromise = (async () => {
+      try {
+        await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
+      } catch {}
+    })().catch((error) => {
+      ensureUserPermissionTemplateColumnPromise = null;
+      throw error;
+    });
+  }
+  await ensureUserPermissionTemplateColumnPromise;
 }
 
 export function roleDefaultPermission(role: string | null | undefined, code: PermissionCode) {
