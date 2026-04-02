@@ -176,7 +176,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       await requirePermission(env, request, 'asset_purge', 'admin');
       const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
       invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason', 'department']);
+      await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
       await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
         brand: asset.brand,
         serial_no: asset.serial_no,
@@ -220,7 +220,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     await deleteAssetRow(env.DB, 'pc', id);
     invalidateSystemDictionaryReferenceCache();
-    await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason', 'department']);
+    await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
     await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,

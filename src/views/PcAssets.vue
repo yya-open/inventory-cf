@@ -128,7 +128,6 @@
       :loading="batchBusy"
       :form="batchOwnerForm"
       :preview="batchOwnerPreview"
-      :department-options="departmentOptions"
       @submit="submitBatchOwner"
     />
     <PcAssetBatchArchiveDialog
@@ -189,7 +188,6 @@ const isAdmin = computed(() => can('admin'));
 const router = useRouter();
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
-const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');

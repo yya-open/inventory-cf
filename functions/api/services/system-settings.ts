@@ -8,7 +8,6 @@ export type SystemSettings = {
   asset_allow_physical_delete: boolean;
   pc_scrap_warning_years: number;
   asset_archive_reason_options: string[];
-  dictionary_department_options: string[];
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
   dictionary_asset_warehouse_options: string[];
@@ -26,7 +25,6 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   asset_allow_physical_delete: true,
   pc_scrap_warning_years: 5,
   asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
-  dictionary_department_options: [],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
   dictionary_asset_warehouse_options: ['配件仓', '电脑仓', '显示器仓'],
@@ -41,7 +39,6 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
 
 const DICTIONARY_SETTING_KEYS: (keyof SystemSettings)[] = [
   'asset_archive_reason_options',
-  'dictionary_department_options',
   'dictionary_pc_brand_options',
   'dictionary_monitor_brand_options',
   'dictionary_asset_warehouse_options',
@@ -145,7 +142,6 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     asset_allow_physical_delete: toBoolean(source.asset_allow_physical_delete, DEFAULT_SYSTEM_SETTINGS.asset_allow_physical_delete),
     pc_scrap_warning_years: toInt(source.pc_scrap_warning_years, DEFAULT_SYSTEM_SETTINGS.pc_scrap_warning_years, 1, 5),
     asset_archive_reason_options: toStringArray(source.asset_archive_reason_options, DEFAULT_SYSTEM_SETTINGS.asset_archive_reason_options),
-    dictionary_department_options: toStringArray(source.dictionary_department_options, DEFAULT_SYSTEM_SETTINGS.dictionary_department_options),
     dictionary_pc_brand_options: toStringArray(source.dictionary_pc_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_pc_brand_options),
     dictionary_monitor_brand_options: toStringArray(source.dictionary_monitor_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_monitor_brand_options),
     dictionary_asset_warehouse_options: toStringArray(source.dictionary_asset_warehouse_options, DEFAULT_SYSTEM_SETTINGS.dictionary_asset_warehouse_options),
@@ -210,7 +206,6 @@ async function readSystemSettings(db: D1Database): Promise<SystemSettings> {
     latestUpdatedAt = legacy.latestUpdatedAt || latestUpdatedAt;
   }
   patch.asset_archive_reason_options = await getEnabledDictionaryLabels(db, 'asset_archive_reason');
-  patch.dictionary_department_options = await getEnabledDictionaryLabels(db, 'department');
   patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
   patch.dictionary_monitor_brand_options = await getEnabledDictionaryLabels(db, 'monitor_brand');
   patch.dictionary_asset_warehouse_options = await getEnabledDictionaryLabels(db, 'asset_warehouse');

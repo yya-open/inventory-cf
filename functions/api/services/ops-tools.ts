@@ -327,7 +327,7 @@ async function scanDictionaryCounters(db: D1Database): Promise<RepairScanItem> {
   }
 
   const diffs: any[] = [];
-  for (const key of ['pc_brand', 'monitor_brand', 'asset_archive_reason', 'department']) {
+  for (const key of ['pc_brand', 'monitor_brand', 'asset_archive_reason']) {
     const expectedMap = expected[key] || {};
     const actualMap = actual[key] || {};
     const labels = new Set([...Object.keys(expectedMap), ...Object.keys(actualMap)]);

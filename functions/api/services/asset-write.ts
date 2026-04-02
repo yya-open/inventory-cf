@@ -155,7 +155,7 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
     ),
     db.prepare(updateSqlByType[type].sql).bind(...updateSqlByType[type].binds),
   ]);
-  await syncSystemDictionaryUsageCounters(db, ['department']);
+  await syncSystemDictionaryUsageCounters(db, []);
 }
 
 type CreatePcAssetArgs = {
@@ -414,7 +414,7 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
      SET last_recycle_id=NULL, last_recycle_date=NULL, updated_at=${sqlNowStored()}
      WHERE asset_id=?`
   ).bind(asset.id).run();
-  await syncSystemDictionaryUsageCounters(db, ['department']);
+  await syncSystemDictionaryUsageCounters(db, []);
 }
 
 type ApplyPcRecycleArgs = {
@@ -462,7 +462,7 @@ export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
     current_employee_name: null,
     current_department: null,
   });
-  await syncSystemDictionaryUsageCounters(db, ['department']);
+  await syncSystemDictionaryUsageCounters(db, []);
   return statusAfter;
 }
 
@@ -513,5 +513,5 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
       current_department: null,
     });
   }
-  await syncSystemDictionaryUsageCounters(db, ['department']);
+  await syncSystemDictionaryUsageCounters(db, []);
 }

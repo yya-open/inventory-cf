@@ -18,7 +18,7 @@
         type="info"
         :closable="false"
         show-icon
-        title="品牌 / 部门 / 归档原因已升级为独立字典表，支持启停、排序和引用统计；禁用后不再出现在下拉建议中，已有历史数据仍会保留。"
+        title="品牌和归档原因已升级为独立字典表，支持启停、排序和引用统计；禁用后不再出现在下拉建议中，已有历史数据仍会保留。"
       />
 
       <div class="settings-summary">
@@ -37,10 +37,6 @@
         <div class="summary-item">
           <div class="summary-label">归档原因</div>
           <div class="summary-value">{{ activeCount('asset_archive_reason') }}</div>
-        </div>
-        <div class="summary-item">
-          <div class="summary-label">部门字典</div>
-          <div class="summary-value">{{ activeCount('department') }}</div>
         </div>
       </div>
 
@@ -253,7 +249,6 @@ const dragState = ref<{ key: SystemDictionaryKey | null; fromIndex: number; from
 });
 const dictionaries = ref<Record<SystemDictionaryKey, SystemDictionaryItem[]>>({
   asset_archive_reason: [],
-  department: [],
   pc_brand: [],
   monitor_brand: [],
   asset_warehouse: [],
@@ -265,13 +260,12 @@ const scanModeOptions = [
 ];
 const dictionaryDefs: Array<{ key: SystemDictionaryKey; title: string; description: string }> = [
   { key: 'asset_archive_reason', title: '归档原因字典', description: '用于台账归档原因筛选和批量归档弹窗。' },
-  { key: 'department', title: '部门字典', description: '用于电脑 / 显示器领用部门下拉建议。' },
   { key: 'pc_brand', title: '电脑品牌字典', description: '用于电脑台账新增、编辑与筛选时的品牌建议。' },
   { key: 'monitor_brand', title: '显示器品牌字典', description: '用于显示器台账新增、编辑与筛选时的品牌建议。' },
   { key: 'asset_warehouse', title: '资产仓域字典', description: '用于用户可见范围、看板口径与仓域治理配置。' },
 ];
 const createForm = ref<{ dictionary_key: SystemDictionaryKey; label: string; sort_order: number; enabled: 0 | 1 }>({
-  dictionary_key: 'department',
+  dictionary_key: 'asset_archive_reason',
   label: '',
   sort_order: 10,
   enabled: 1,
@@ -280,7 +274,6 @@ const createForm = ref<{ dictionary_key: SystemDictionaryKey; label: string; sor
 function normalizeGrouped(grouped?: Partial<Record<SystemDictionaryKey, SystemDictionaryItem[]>>) {
   return {
     asset_archive_reason: [...(grouped?.asset_archive_reason || [])],
-    department: [...(grouped?.department || [])],
     pc_brand: [...(grouped?.pc_brand || [])],
     monitor_brand: [...(grouped?.monitor_brand || [])],
     asset_warehouse: [...(grouped?.asset_warehouse || [])],
@@ -369,7 +362,6 @@ function syncFormDictionaryOptions() {
   form.value = {
     ...form.value,
     asset_archive_reason_options: sortDictionaryList(dictionaryRows('asset_archive_reason')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
-    dictionary_department_options: sortDictionaryList(dictionaryRows('department')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
     dictionary_pc_brand_options: sortDictionaryList(dictionaryRows('pc_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
     dictionary_monitor_brand_options: sortDictionaryList(dictionaryRows('monitor_brand')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),
     dictionary_asset_warehouse_options: sortDictionaryList(dictionaryRows('asset_warehouse')).filter((item) => Number(item.enabled || 0) === 1).map((item) => String(item.label || '').trim()).filter(Boolean),

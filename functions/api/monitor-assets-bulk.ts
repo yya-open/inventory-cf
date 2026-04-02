@@ -15,7 +15,7 @@ import {
 import { bulkDeleteAssets } from './services/asset-bulk-delete';
 import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
+import { assertArchiveReasonDictionaryValue } from './services/master-data';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -34,7 +34,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       await assertArchiveReasonDictionaryValue(env.DB, meta.reason, '归档原因');
       const result = await bulkArchiveAssets(env.DB, 'monitor', ids, meta.reason, meta.note || null, user.username || null);
       invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -57,7 +57,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (action === 'restore') {
       const result = await bulkRestoreAssets(env.DB, 'monitor', ids);
       invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_RESTORE_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -172,7 +172,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       });
       if (result.processed) {
         invalidateSystemDictionaryReferenceCache();
-        await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
+        await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
       }
       for (const item of result.successes) {
         if (item.action === 'archive') {
@@ -241,10 +241,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
-      await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
       const result = await bulkUpdateMonitorOwner(env.DB, ids, owner);
       invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason','department']);
+      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_OWNER_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,

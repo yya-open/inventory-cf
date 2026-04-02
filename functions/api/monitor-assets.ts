@@ -184,7 +184,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       await requirePermission(env, request, 'asset_purge', 'admin');
       const purgeSummary = await purgeArchivedAsset(env.DB, 'monitor', id);
       invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
+      await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', id, {
         asset_code: asset.asset_code,
         brand: asset.brand,
@@ -218,7 +218,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     await deleteAssetRow(env.DB, 'monitor', id);
     invalidateSystemDictionaryReferenceCache();
-    await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason', 'department']);
+    await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, { asset_code: asset.asset_code });
     return Response.json({ ok: true, message: '删除成功' });
   } catch (error: any) {

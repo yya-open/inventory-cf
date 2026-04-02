@@ -8,9 +8,7 @@
         <el-input v-model="form.employee_no" placeholder="可选" />
       </el-form-item>
       <el-form-item label="部门">
-        <el-select v-model="form.department" filterable allow-create default-first-option clearable style="width:100%" placeholder="可选">
-          <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
-        </el-select>
+        <el-input v-model="form.department" placeholder="可选" />
       </el-form-item>
       <div class="batch-preview">
         <el-tag>已选 {{ preview.total }} 台</el-tag>
@@ -40,7 +38,6 @@ const props = defineProps<{
   loading: boolean;
   form: { employee_name: string; employee_no: string; department: string };
   preview: { total: number; eligible: number; unassigned?: number; archived?: number; sameOwner?: number };
-  departmentOptions: string[];
 }>();
 
 const visibleModel = computed({

@@ -91,9 +91,7 @@
           </div>
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'department' || form.data_scope_type === 'department_warehouse'" label="部门">
-          <el-select v-model="form.data_scope_value" filterable clearable style="width:100%" placeholder="请选择部门">
-            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          <el-input v-model="form.data_scope_value" placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
           <el-select v-model="createWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
@@ -139,9 +137,7 @@
           </div>
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'department' || editDataScopeType === 'department_warehouse'" label="部门">
-          <el-select v-model="editDataScopeValue" filterable clearable style="width:100%" placeholder="请选择部门">
-            <el-option v-for="item in departmentOptions" :key="item" :label="item" :value="item" />
-          </el-select>
+          <el-input v-model="editDataScopeValue" placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
           <el-select v-model="editWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
@@ -269,7 +265,6 @@ const previewTargetPath = ref('');
 const previewRouteResult = computed(() => (scopePreview.value?.route_checks || []).find((item:any) => item.path === previewTargetPath.value) || null);
 
 const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
-const departmentOptions = computed(() => systemSettings.value.dictionary_department_options || []);
 const warehouseOptions = computed(() => systemSettings.value.dictionary_asset_warehouse_options || []);
 const createWarehouseScopeValue = computed({
   get: () => form.value.data_scope_type === 'warehouse' ? form.value.data_scope_value : form.value.data_scope_value2,
@@ -395,7 +390,7 @@ function applyCreateTemplate() {
 }
 
 async function ensureScopeDictionariesLoaded() {
-  if ((departmentOptions.value?.length || 0) > 0 && (warehouseOptions.value?.length || 0) > 0) return;
+  if ((warehouseOptions.value?.length || 0) > 0) return;
   try {
     systemSettings.value = await fetchSystemSettings();
   } catch {}

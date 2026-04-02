@@ -6,16 +6,14 @@ import { validatePassword } from "../_password_policy";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
 import { getUserDataScope, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
-import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
+import { assertWarehouseDictionaryValue } from './services/master-data';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
 async function assertScopeDictionaryConstraints(db: D1Database, type: any, value: any, value2: any) {
   const scope = normalizeUserDataScope(type, value, value2);
-  if (scope.data_scope_type === 'department') await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
   if (scope.data_scope_type === 'warehouse') await assertWarehouseDictionaryValue(db, scope.data_scope_value, '仓库范围');
   if (scope.data_scope_type === 'department_warehouse') {
-    await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
     await assertWarehouseDictionaryValue(db, scope.data_scope_value2, '仓库范围');
   }
   return scope;

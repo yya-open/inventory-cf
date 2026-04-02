@@ -1,9 +1,9 @@
 import { sqlNowStored } from '../_time';
 import { ensurePcLatestStateTable } from './pc-latest-state';
 
-export type SystemDictionaryKey = 'asset_archive_reason' | 'department' | 'pc_brand' | 'monitor_brand' | 'asset_warehouse';
+export type SystemDictionaryKey = 'asset_archive_reason' | 'pc_brand' | 'monitor_brand' | 'asset_warehouse';
 
-type LegacySettingKey = 'asset_archive_reason_options' | 'dictionary_department_options' | 'dictionary_pc_brand_options' | 'dictionary_monitor_brand_options' | 'dictionary_asset_warehouse_options';
+type LegacySettingKey = 'asset_archive_reason_options' | 'dictionary_pc_brand_options' | 'dictionary_monitor_brand_options' | 'dictionary_asset_warehouse_options';
 
 export type SystemDictionaryItem = {
   id: number;
@@ -28,7 +28,6 @@ const DEFAULT_DICTIONARY_VALUES: Record<SystemDictionaryKey, string[]> = {
 
 const LEGACY_SETTING_KEYS: Record<SystemDictionaryKey, LegacySettingKey> = {
   asset_archive_reason: 'asset_archive_reason_options',
-  department: 'dictionary_department_options',
   pc_brand: 'dictionary_pc_brand_options',
   monitor_brand: 'dictionary_monitor_brand_options',
   asset_warehouse: 'dictionary_asset_warehouse_options',
@@ -718,7 +717,6 @@ export async function deleteSystemDictionaryItem(db: D1Database, id: number, exp
 export function groupDictionaryItems(items: SystemDictionaryItem[]) {
   return {
     asset_archive_reason: items.filter((item) => item.dictionary_key === 'asset_archive_reason'),
-    department: items.filter((item) => item.dictionary_key === 'department'),
     pc_brand: items.filter((item) => item.dictionary_key === 'pc_brand'),
     monitor_brand: items.filter((item) => item.dictionary_key === 'monitor_brand'),
     asset_warehouse: items.filter((item) => item.dictionary_key === 'asset_warehouse'),
