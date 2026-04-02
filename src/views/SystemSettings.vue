@@ -212,6 +212,7 @@
 <script setup lang="ts">
 import { ElSegmented } from 'element-plus';
 import { onMounted, ref } from 'vue';
+import { scheduleOnIdle } from '../utils/idle';
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, type SystemSettings } from '../api/systemSettings';
 import {
@@ -225,6 +226,7 @@ import {
 } from '../api/systemDictionaries';
 
 const loading = ref(false);
+const dictionariesLoading = ref(false);
 const saving = ref(false);
 const creating = ref(false);
 const createDialogVisible = ref(false);
@@ -396,15 +398,29 @@ async function loadDictionariesOnly() {
   syncFormDictionaryOptions();
 }
 
-async function reload() {
+async function reload(options: { force?: boolean } = {}) {
   loading.value = true;
   try {
-    await Promise.all([loadSettingsOnly(), loadDictionariesOnly()]);
+    form.value = await fetchSystemSettings({ force: options.force });
   } catch (e: any) {
     ElMessage.error(e?.message || '加载配置失败');
   } finally {
     loading.value = false;
   }
+  const loadDicts = async () => {
+    dictionariesLoading.value = true;
+    try {
+      const data = await fetchSystemDictionaries(undefined, { force: options.force });
+      dictionaries.value = normalizeGrouped(data?.grouped);
+      resetReorderState();
+      syncFormDictionaryOptions();
+    } catch (e: any) {
+      ElMessage.error(e?.message || '加载字典失败');
+    } finally {
+      dictionariesLoading.value = false;
+    }
+  };
+  scheduleOnIdle(() => { void loadDicts(); }, 600);
 }
 
 async function save() {
@@ -536,7 +552,7 @@ async function removeDictionary(row: SystemDictionaryItem) {
   }
 }
 
-onMounted(reload);
+onMounted(() => { reload(); });
 </script>
 
 <style scoped>

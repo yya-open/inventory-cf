@@ -39,8 +39,6 @@ import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, 
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
-import { fetchSystemSettings } from "../api/systemSettings";
-import { hasPrimedPagedListNamespace, markPagedListNamespacePrimed } from "../composables/usePagedAssetList";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
 
@@ -254,16 +252,7 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
-function prewarmPcLedgerData(authUser: ReturnType<typeof useAuth>["user"], routePath: string) {
-  if (!authUser) return;
-  if (routePath.startsWith('/system') && routePath !== '/system/home' && !hasPrimedPagedListNamespace('system-settings')) {
-    scheduleOnIdle(async () => {
-      try {
-        await fetchSystemSettings();
-        markPagedListNamespacePrimed('system-settings');
-      } catch {}
-    }, 2600);
-  }
+function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _routePath: string) {
 }
 
 router.afterEach((to) => {

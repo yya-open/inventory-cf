@@ -39,6 +39,13 @@ const ALL_DICTIONARY_KEYS = Object.keys(DEFAULT_DICTIONARY_VALUES) as SystemDict
 const enabledLabelsCache = new Map<SystemDictionaryKey, { expiresAt: number; labels: string[] }>();
 const enabledLabelsPending = new Map<SystemDictionaryKey, Promise<string[]>>();
 const ENABLED_LABELS_TTL_MS = 60_000;
+const SYSTEM_DICTIONARY_LIST_CACHE_TTL_MS = 5 * 60_000;
+const dictionaryListCache = new Map<string, { expiresAt: number; items: SystemDictionaryItem[] }>();
+const dictionaryListPending = new Map<string, Promise<SystemDictionaryItem[]>>();
+const dictionaryVersionCache = new Map<string, { expiresAt: number; version: string }>();
+const dictionaryVersionPending = new Map<string, Promise<string>>();
+let bootstrapAllPromise: Promise<void> | null = null;
+const bootstrapKeyPromises = new Map<SystemDictionaryKey, Promise<void>>();
 
 function readEnabledLabelsCache(key: SystemDictionaryKey) {
   const cached = enabledLabelsCache.get(key);
@@ -62,6 +69,58 @@ function clearEnabledLabelsCache(key?: SystemDictionaryKey) {
   }
   enabledLabelsCache.clear();
   enabledLabelsPending.clear();
+}
+
+function dictionaryCacheKey(key?: SystemDictionaryKey) {
+  return key || '__all__';
+}
+
+function readDictionaryListCache(key?: SystemDictionaryKey) {
+  const hit = dictionaryListCache.get(dictionaryCacheKey(key));
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    dictionaryListCache.delete(dictionaryCacheKey(key));
+    return null;
+  }
+  return hit.items.map((item) => ({ ...item }));
+}
+
+function writeDictionaryListCache(key: SystemDictionaryKey | undefined, items: SystemDictionaryItem[]) {
+  dictionaryListCache.set(dictionaryCacheKey(key), {
+    expiresAt: Date.now() + SYSTEM_DICTIONARY_LIST_CACHE_TTL_MS,
+    items: items.map((item) => ({ ...item })),
+  });
+}
+
+function readDictionaryVersionCache(key?: SystemDictionaryKey) {
+  const hit = dictionaryVersionCache.get(dictionaryCacheKey(key));
+  if (!hit) return null;
+  if (hit.expiresAt <= Date.now()) {
+    dictionaryVersionCache.delete(dictionaryCacheKey(key));
+    return null;
+  }
+  return hit.version;
+}
+
+function writeDictionaryVersionCache(key: SystemDictionaryKey | undefined, version: string) {
+  dictionaryVersionCache.set(dictionaryCacheKey(key), {
+    expiresAt: Date.now() + SYSTEM_DICTIONARY_LIST_CACHE_TTL_MS,
+    version,
+  });
+}
+
+function clearSystemDictionaryCaches(key?: SystemDictionaryKey) {
+  clearSystemDictionaryCaches(key);
+  if (key) {
+    dictionaryListCache.delete(dictionaryCacheKey(key));
+    dictionaryListPending.delete(dictionaryCacheKey(key));
+    dictionaryVersionCache.delete(dictionaryCacheKey(key));
+    dictionaryVersionPending.delete(dictionaryCacheKey(key));
+  }
+  dictionaryListCache.delete(dictionaryCacheKey(undefined));
+  dictionaryListPending.delete(dictionaryCacheKey(undefined));
+  dictionaryVersionCache.delete(dictionaryCacheKey(undefined));
+  dictionaryVersionPending.delete(dictionaryCacheKey(undefined));
 }
 
 export function invalidateSystemDictionaryReferenceCache() {
@@ -215,24 +274,36 @@ async function readLegacyDictionaryValues(db: D1Database, key: SystemDictionaryK
 }
 
 async function bootstrapDictionaryIfNeeded(db: D1Database, key: SystemDictionaryKey) {
-  await ensureSystemDictionaryTable(db);
-  const row = await db.prepare(`SELECT COUNT(*) AS c FROM system_dictionary_items WHERE dictionary_key=?`).bind(key).first<any>();
-  if (Number(row?.c || 0) > 0) return;
-  const seed = await readLegacyDictionaryValues(db, key);
-  for (let i = 0; i < seed.length; i += 1) {
-    const label = normalizeLabel(seed[i]);
-    if (!label) continue;
-    await db.prepare(
-      `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
-       VALUES (?, ?, ?, ?, 1)`
-    ).bind(key, label, normalizeComparable(label), i + 1).run();
-  }
+  const existing = bootstrapKeyPromises.get(key);
+  if (existing) return existing;
+  const task = (async () => {
+    await ensureSystemDictionaryTable(db);
+    const row = await db.prepare(`SELECT COUNT(*) AS c FROM system_dictionary_items WHERE dictionary_key=?`).bind(key).first<any>();
+    if (Number(row?.c || 0) > 0) return;
+    const seed = await readLegacyDictionaryValues(db, key);
+    for (let i = 0; i < seed.length; i += 1) {
+      const label = normalizeLabel(seed[i]);
+      if (!label) continue;
+      await db.prepare(
+        `INSERT OR IGNORE INTO system_dictionary_items (dictionary_key, label, normalized_label, sort_order, enabled)
+         VALUES (?, ?, ?, ?, 1)`
+      ).bind(key, label, normalizeComparable(label), i + 1).run();
+    }
+  })().finally(() => {
+    if (bootstrapKeyPromises.get(key) === task) bootstrapKeyPromises.delete(key);
+  });
+  bootstrapKeyPromises.set(key, task);
+  return task;
 }
 
 export async function bootstrapAllDictionaries(db: D1Database) {
-  for (const key of ALL_DICTIONARY_KEYS) {
-    await bootstrapDictionaryIfNeeded(db, key);
-  }
+  if (bootstrapAllPromise) return bootstrapAllPromise;
+  bootstrapAllPromise = (async () => {
+    await Promise.all(ALL_DICTIONARY_KEYS.map((key) => bootstrapDictionaryIfNeeded(db, key)));
+  })().finally(() => {
+    bootstrapAllPromise = null;
+  });
+  return bootstrapAllPromise;
 }
 
 type ReferenceCountMap = Partial<Record<SystemDictionaryKey, Record<string, number>>>;
@@ -428,43 +499,69 @@ function normalizeRow(row: any, reference_count = 0): SystemDictionaryItem {
 }
 
 export async function listSystemDictionaryItems(db: D1Database, key?: SystemDictionaryKey) {
-  if (key) await bootstrapDictionaryIfNeeded(db, key);
-  else await bootstrapAllDictionaries(db);
-  const binds = key ? [key] : [];
-  const where = key ? `WHERE dictionary_key=?` : '';
-  const { results } = await db.prepare(
-    `SELECT id, dictionary_key, label, normalized_label, sort_order, enabled, created_at, updated_at, updated_by
-     FROM system_dictionary_items
-     ${where}
-     ORDER BY dictionary_key ASC, sort_order ASC, id ASC`
-  ).bind(...binds).all<any>();
-  const rows = results || [];
-  const keys = Array.from(new Set(rows.map((row: any) => String(row?.dictionary_key || '') as SystemDictionaryKey)));
-  const referenceCounts = await loadReferenceCounts(db, keys);
-  return rows.map((row: any) => {
-    const dictionaryKey = String(row?.dictionary_key || '') as SystemDictionaryKey;
-    const label = normalizeLabel(row?.label);
-    const referenceCount = Number(referenceCounts[dictionaryKey]?.[label] || 0);
-    return normalizeRow(row, referenceCount);
+  const cacheKey = dictionaryCacheKey(key);
+  const cached = readDictionaryListCache(key);
+  if (cached) return cached;
+  const pending = dictionaryListPending.get(cacheKey);
+  if (pending) return pending;
+  const task = (async () => {
+    if (key) await bootstrapDictionaryIfNeeded(db, key);
+    else await bootstrapAllDictionaries(db);
+    const binds = key ? [key] : [];
+    const where = key ? `WHERE dictionary_key=?` : '';
+    const { results } = await db.prepare(
+      `SELECT id, dictionary_key, label, normalized_label, sort_order, enabled, created_at, updated_at, updated_by
+       FROM system_dictionary_items
+       ${where}
+       ORDER BY dictionary_key ASC, sort_order ASC, id ASC`
+    ).bind(...binds).all<any>();
+    const rows = results || [];
+    const keys = Array.from(new Set(rows.map((row: any) => String(row?.dictionary_key || '') as SystemDictionaryKey)));
+    const referenceCounts = await loadReferenceCounts(db, keys);
+    const items = rows.map((row: any) => {
+      const dictionaryKey = String(row?.dictionary_key || '') as SystemDictionaryKey;
+      const label = normalizeLabel(row?.label);
+      const referenceCount = Number(referenceCounts[dictionaryKey]?.[label] || 0);
+      return normalizeRow(row, referenceCount);
+    });
+    writeDictionaryListCache(key, items);
+    return items;
+  })().finally(() => {
+    dictionaryListPending.delete(cacheKey);
   });
+  dictionaryListPending.set(cacheKey, task);
+  return task;
 }
 
 export async function getSystemDictionaryVersion(db: D1Database, key?: SystemDictionaryKey) {
-  if (key) await bootstrapDictionaryIfNeeded(db, key);
-  else await bootstrapAllDictionaries(db);
-  const binds = key ? [key] : [];
-  const where = key ? 'WHERE dictionary_key=?' : '';
-  const row = await db.prepare(
-    `SELECT COUNT(*) AS item_count,
-            COALESCE(SUM(enabled), 0) AS enabled_count,
-            COALESCE(MAX(updated_at), '') AS latest_updated_at
-       FROM system_dictionary_items
-       ${where}`
-  ).bind(...binds).first<any>();
-  const itemCount = Number(row?.item_count || 0);
-  const enabledCount = Number(row?.enabled_count || 0);
-  const latestUpdatedAt = String(row?.latest_updated_at || '').trim() || '0';
-  return `dict:${key || 'all'}:${itemCount}:${enabledCount}:${latestUpdatedAt}`;
+  const cacheKey = dictionaryCacheKey(key);
+  const cached = readDictionaryVersionCache(key);
+  if (cached) return cached;
+  const pending = dictionaryVersionPending.get(cacheKey);
+  if (pending) return pending;
+  const task = (async () => {
+    if (key) await bootstrapDictionaryIfNeeded(db, key);
+    else await bootstrapAllDictionaries(db);
+    const binds = key ? [key] : [];
+    const where = key ? 'WHERE dictionary_key=?' : '';
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS item_count,
+              COALESCE(SUM(enabled), 0) AS enabled_count,
+              COALESCE(MAX(updated_at), '') AS latest_updated_at
+         FROM system_dictionary_items
+         ${where}`
+    ).bind(...binds).first<any>();
+    const itemCount = Number(row?.item_count || 0);
+    const enabledCount = Number(row?.enabled_count || 0);
+    const latestUpdatedAt = String(row?.latest_updated_at || '').trim() || '0';
+    const version = `dict:${key || 'all'}:${itemCount}:${enabledCount}:${latestUpdatedAt}`;
+    writeDictionaryVersionCache(key, version);
+    return version;
+  })().finally(() => {
+    dictionaryVersionPending.delete(cacheKey);
+  });
+  dictionaryVersionPending.set(cacheKey, task);
+  return task;
 }
 
 export async function getEnabledDictionaryLabels(db: D1Database, key: SystemDictionaryKey) {

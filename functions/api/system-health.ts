@@ -5,7 +5,7 @@ import { ensureRequestErrorLogTable, getAutoRepairScan, ensureAdminRepairHistory
 import { ensureAsyncJobsTable } from './services/async-jobs';
 
 
-const SYSTEM_HEALTH_CACHE_TTL_MS = 60_000;
+const SYSTEM_HEALTH_CACHE_TTL_MS = 180_000;
 let systemHealthCache: { expiresAt: number; value?: any; pending?: Promise<any> } | null = null;
 
 function readSystemHealthCache() {

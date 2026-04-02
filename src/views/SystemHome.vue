@@ -97,6 +97,8 @@ async function loadOpsSummary() {
 }
 
 onMounted(() => {
-  loadOpsSummary().catch(() => undefined);
+  scheduleOnIdle(() => {
+    void loadOpsSummary().catch(() => undefined);
+  }, 1800);
 });
 </script>
