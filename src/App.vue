@@ -6,13 +6,25 @@
   <div
     v-else
     class="app-root"
+    :style="{ '--sidebar-width': sidebarCollapsed ? '0px' : '220px' }"
   >
     <div class="app-bg" />
-    <el-container class="app-layout">
-      <el-aside
-        width="220px"
-        class="app-aside"
+    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': sidebarCollapsed }">
+      <button
+        class="app-aside-toggle"
+        type="button"
+        :aria-label="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+        :title="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+        @click="toggleSidebar"
       >
+        {{ sidebarCollapsed ? '›' : '‹' }}
+      </button>
+      <el-aside
+        :width="sidebarCollapsed ? '0px' : '220px'"
+        class="app-aside"
+        :class="{ 'app-aside--collapsed': sidebarCollapsed }"
+      >
+        <div class="app-aside__inner">
         <div style="padding: 14px; font-weight: 700">
           出入库管理
         </div>
@@ -171,6 +183,7 @@
 
         <div style="padding: 12px; color: #999; font-size: 12px">
           当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? (canAccessPcLedger && canAccessMonitorLedger ? "电脑/显示器仓" : (canAccessPcLedger ? "电脑仓" : "显示器仓")) : "配件仓") }}
+        </div>
         </div>
       </el-aside>
 
@@ -370,6 +383,9 @@ const currentArea = computed(() => {
 const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
 const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeletonVisible.value);
 
+const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
+const sidebarCollapsed = ref(false);
+
 const activeMenu = computed(() => route.path);
 
 const title = computed(() => {
@@ -449,11 +465,24 @@ const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: 
 let removeGlobalTableScrollEnhancer: (() => void) | null = null;
 onMounted(() => {
   removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
+  try {
+    sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+  } catch {}
 });
 onBeforeUnmount(() => {
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
 });
+
+watch(sidebarCollapsed, (value) => {
+  try {
+    localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
+  } catch {}
+});
+
+function toggleSidebar() {
+  sidebarCollapsed.value = !sidebarCollapsed.value;
+}
 
 async function loadSchemaStatus() {
   if (!auth.user || simpleLayout.value || !needsSystemMeta.value) {

@@ -352,11 +352,13 @@ function reset() {
 }
 
 async function loadMonitorIssueBreakdown() {
-  const result: any = await apiGet('/api/monitor-inventory-log/dashboard');
-  return {
-    ...emptyInventoryIssueBreakdown(),
-    ...(result?.data || {}),
-  };
+  const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
+  const result = await Promise.all(
+    codes.map((code) => apiGet(`/api/monitor-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
+  );
+  const next = emptyInventoryIssueBreakdown();
+  for (const [code, value] of result) next[code] = value;
+  return next;
 }
 
 async function refreshInventoryBatchAndSummary() {

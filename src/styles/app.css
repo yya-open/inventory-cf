@@ -1092,3 +1092,57 @@ body {
     flex-direction: column;
   }
 }
+
+
+.app-layout {
+  position: relative;
+}
+
+.app-aside {
+  position: relative;
+  overflow: hidden;
+  transition: width 0.22s ease, opacity 0.22s ease, box-shadow 0.22s ease;
+}
+
+.app-aside__inner {
+  width: 220px;
+  min-width: 220px;
+  height: 100%;
+  overflow-y: auto;
+  overflow-x: hidden;
+}
+
+.app-aside--collapsed {
+  min-width: 0 !important;
+  opacity: 0;
+  box-shadow: none;
+}
+
+.app-aside--collapsed .app-aside__inner {
+  pointer-events: none;
+}
+
+.app-aside-toggle {
+  position: absolute;
+  top: 16px;
+  left: calc(var(--sidebar-width, 220px) + 8px);
+  z-index: 30;
+  width: 28px;
+  height: 28px;
+  border: 1px solid rgba(15, 23, 42, 0.08);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.96);
+  color: #475569;
+  box-shadow: 0 8px 20px rgba(15, 23, 42, 0.12);
+  cursor: pointer;
+  transition: left 0.22s ease, transform 0.16s ease, box-shadow 0.16s ease;
+}
+
+.app-aside-toggle:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
+}
+
+.app-layout--sidebar-collapsed .app-aside-toggle {
+  left: 8px;
+}
