@@ -1234,10 +1234,10 @@ async function batchDeleteSelected() {
     const archivedCount = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
     await confirmBatchRisk('批量删除确认', buildBulkDeleteConfirmTip('电脑', selectedCount.value, archivedCount));
     batchBusy.value = true;
-    const result: any = await apiPost('/api/pc-assets-bulk', {
+    const result: any = await withDestructiveActionFeedback('正在批量删除电脑台账', () => apiPost('/api/pc-assets-bulk', {
       action: 'delete',
       ids: selectedIds.value.map((id) => Number(id)),
-    });
+    }));
     const summary = summarizeBulkDeleteResult('电脑', result);
     if (summary.processed) clearSelection();
     if (summary.level === 'success') ElMessage.success(summary.message);

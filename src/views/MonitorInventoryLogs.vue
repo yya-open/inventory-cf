@@ -163,6 +163,7 @@
 import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { apiDownload, apiGet, apiPost } from '../api/client';
 import { can } from '../store/auth';
 import LazyMountBlock from '../components/LazyMountBlock.vue';
@@ -404,7 +405,7 @@ async function deleteSelected() {
       inputValidator: (v: string) => (String(v || '').trim() === '删除' ? true : '需要输入「删除」'),
     });
     loading.value = true;
-    const r: any = await apiPost('/api/monitor-inventory-log/delete', { ids, confirm: '删除' });
+    const r: any = await withDestructiveActionFeedback('正在批量删除显示器盘点记录', () => apiPost('/api/monitor-inventory-log/delete', { ids, confirm: '删除' }));
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
     invalidateCache();

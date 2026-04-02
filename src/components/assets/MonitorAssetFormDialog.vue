@@ -18,14 +18,17 @@
           <div class="ledger-drawer__title">{{ mode === 'create' ? '新增显示器台账' : '编辑显示器台账' }}</div>
           <div class="ledger-drawer__desc">把新增和编辑统一到抽屉表单里，字段分组、校验规则与详情页信息结构保持同一套后台规范。</div>
         </div>
-        <div class="ledger-drawer__header-actions">
-          <el-button class="ledger-drawer__ghost-btn" :disabled="saving" @click="handleCancel">取消</el-button>
-          <el-button class="ledger-drawer__primary-btn" type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
-        </div>
       </div>
     </template>
 
     <div class="ledger-drawer__body">
+      <div class="ledger-drawer__sticky-actions ledger-drawer__sticky-actions--monitor-form">
+        <div class="ledger-drawer__sticky-hint">{{ mode === 'create' ? '填写完成后点击确定新增' : '编辑完成后点击确定保存' }}</div>
+        <div class="ledger-drawer__footer-actions">
+          <el-button class="ledger-drawer__ghost-btn ledger-drawer__ghost-btn--strong" :disabled="saving" @click="handleCancel">取消</el-button>
+          <el-button class="ledger-drawer__primary-btn ledger-drawer__primary-btn--strong" type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
+        </div>
+      </div>
       <el-form ref="formRef" :model="form" :rules="rules" label-position="top" class="ledger-form-stack" status-icon scroll-to-error>
         <section class="ledger-form-section">
           <div class="ledger-form-section__head">
@@ -69,16 +72,6 @@
         </section>
       </el-form>
     </div>
-
-    <template #footer>
-      <div class="ledger-drawer__footer ledger-drawer__footer--monitor-form">
-        <div class="ledger-drawer__footer-hint">{{ mode === 'create' ? '确认信息无误后再新增台账' : '保存后会立即刷新当前列表' }}</div>
-        <div class="ledger-drawer__footer-actions">
-          <el-button class="ledger-drawer__ghost-btn" :disabled="saving" @click="handleCancel">取消</el-button>
-          <el-button class="ledger-drawer__primary-btn" type="primary" :loading="saving" @click="handleSubmit">{{ mode === 'create' ? '确定新增' : '确定保存' }}</el-button>
-        </div>
-      </div>
-    </template>
   </el-drawer>
 </template>
 

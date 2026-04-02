@@ -223,7 +223,7 @@ import { can } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
-import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
+import { fetchSystemSettings, getCachedSystemSettings, markMonitorBrandSettingsApplied, shouldRefreshMonitorBrandSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
@@ -298,7 +298,7 @@ const {
 
 
 onMounted(() => {
-  void refreshMonitorBrandOptions(true);
+  void initMonitorBrandOptions();
 });
 
 function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
@@ -1016,10 +1016,10 @@ async function batchDeleteSelected() {
     const archivedCount = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
     await confirmBatchRisk('批量删除确认', buildBulkDeleteConfirmTip('显示器', selectedCount.value, archivedCount));
     batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
+    const result: any = await withDestructiveActionFeedback('正在批量删除显示器台账', () => apiPost('/api/monitor-assets-bulk', {
       action: 'delete',
       ids: selectedIds.value.map((id) => Number(id)),
-    });
+    }));
     const summary = summarizeBulkDeleteResult('显示器', result);
     if (summary.processed) clearSelection();
     if (summary.level === 'success') ElMessage.success(summary.message);
@@ -1185,7 +1185,20 @@ const dlgAsset = reactive({
 async function refreshMonitorBrandOptions(force = false) {
   try {
     systemSettings.value = await fetchSystemSettings(force ? { force: true } : undefined);
+    if (force) markMonitorBrandSettingsApplied();
   } catch {}
+}
+
+async function initMonitorBrandOptions() {
+  const hasCachedBrands = Array.isArray(systemSettings.value?.dictionary_monitor_brand_options) && systemSettings.value.dictionary_monitor_brand_options.length > 0;
+  const shouldForce = shouldRefreshMonitorBrandSettings();
+  if (shouldForce) {
+    await refreshMonitorBrandOptions(true);
+    return;
+  }
+  if (!hasCachedBrands) {
+    await refreshMonitorBrandOptions(false);
+  }
 }
 
 function closeAssetDialog() {
@@ -1194,7 +1207,8 @@ function closeAssetDialog() {
 }
 
 async function openCreate() {
-  await Promise.all([ensureLocationOptionsReady(), refreshMonitorBrandOptions(true)]);
+  await ensureLocationOptionsReady();
+  if (!monitorBrandOptions.value.length) void refreshMonitorBrandOptions(true);
   dlgAsset.mode = 'create';
   dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
   warmLazyDialog(lazyAssetDialog);
@@ -1208,7 +1222,8 @@ function openInfo(row: MonitorAsset) {
 }
 
 async function openEdit(row: MonitorAsset) {
-  await Promise.all([ensureLocationOptionsReady(), refreshMonitorBrandOptions(true)]);
+  await ensureLocationOptionsReady();
+  if (!monitorBrandOptions.value.length) void refreshMonitorBrandOptions(true);
   dlgAsset.mode = 'edit';
   dlgAsset.form = {
     id: row.id,

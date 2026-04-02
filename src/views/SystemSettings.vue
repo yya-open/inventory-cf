@@ -457,6 +457,7 @@ async function submitCreate() {
       enabled: createForm.value.enabled,
     });
     upsertDictionaryRow(created);
+    if (created?.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     createDialogVisible.value = false;
     ElMessage.success('字典项已新增');
   } catch (e: any) {
@@ -472,6 +473,7 @@ async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
   try {
     const response = await reorderSystemDictionaryItems(key, dictionaryRows(key).map((item) => ({ id: item.id, sort_order: item.sort_order, updated_at: item.updated_at } as any)));
     replaceDictionaryRows(key, response?.grouped?.[key] || dictionaryRows(key), false);
+    if (key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     markReorderDirty(key, false);
     if (!quiet) ElMessage.success('排序已保存');
     return true;
@@ -501,6 +503,7 @@ async function saveDictionary(row: SystemDictionaryItem) {
       updated_at: row.updated_at,
     });
     upsertDictionaryRow(saved);
+    if (saved?.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     ElMessage.success('字典项已保存');
   } catch (e: any) {
     ElMessage.error(e?.message || '保存失败');
@@ -544,6 +547,7 @@ async function removeDictionary(row: SystemDictionaryItem) {
   try {
     await deleteSystemDictionaryItem(row.id, row.updated_at);
     removeLocalDictionaryRow(row);
+    if (row.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     ElMessage.success('字典项已删除');
   } catch (e: any) {
     ElMessage.error(e?.message || '删除失败');

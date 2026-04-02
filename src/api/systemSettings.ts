@@ -47,6 +47,36 @@ const SETTINGS_CLIENT_CACHE_TTL_MS = 5 * 60_000;
 type SettingsCacheEntry = { expiresAt: number; value?: SystemSettings; pending?: Promise<SystemSettings> };
 let settingsClientCache: SettingsCacheEntry | null = null;
 
+const MONITOR_BRAND_DICT_REFRESH_KEY = 'inventory:monitor-brand-dict-refresh';
+const MONITOR_BRAND_DICT_APPLIED_KEY = 'inventory:monitor-brand-dict-refresh-applied';
+
+function readStorageValue(key: string) {
+  try {
+    return localStorage.getItem(key) || '';
+  } catch {
+    return '';
+  }
+}
+
+function writeStorageValue(key: string, value: string) {
+  try {
+    localStorage.setItem(key, value);
+  } catch {}
+}
+
+export function markMonitorBrandDictionaryChanged() {
+  writeStorageValue(MONITOR_BRAND_DICT_REFRESH_KEY, String(Date.now()));
+}
+
+export function shouldRefreshMonitorBrandSettings() {
+  return readStorageValue(MONITOR_BRAND_DICT_REFRESH_KEY) !== readStorageValue(MONITOR_BRAND_DICT_APPLIED_KEY);
+}
+
+export function markMonitorBrandSettingsApplied() {
+  const marker = readStorageValue(MONITOR_BRAND_DICT_REFRESH_KEY) || String(Date.now());
+  writeStorageValue(MONITOR_BRAND_DICT_APPLIED_KEY, marker);
+}
+
 export function mergeSystemSettings(input?: Partial<SystemSettings> | null): SystemSettings {
   return {
     ...DEFAULT_SYSTEM_SETTINGS,
