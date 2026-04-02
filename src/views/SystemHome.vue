@@ -61,6 +61,7 @@ import { useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
 import { scheduleOnIdle } from '../utils/idle';
+import { getCachedResource } from '../utils/resourceCache';
 
 const HomeCard = defineComponent({
   name: 'HomeCard',
@@ -83,22 +84,40 @@ const canAccessParts = computed(() => canAccessModuleArea(auth.user, 'parts'));
 const canAccessPc = computed(() => canAccessModuleArea(auth.user, 'pc'));
 const go = (path: string) => router.push(path);
 const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '', open_backup_drill_issue_count: 0, overdue_backup_drill_issue_count: 0 });
+const SYSTEM_HOME_OPS_CACHE_KEY = 'system-home::ops-summary';
+const SYSTEM_HOME_OPS_CACHE_TTL_MS = 3 * 60_000;
 function formatTime(v?: string | null) { return v ? String(v).replace('T', ' ').replace(/\.\d+Z?$/, '') : ''; }
 
-async function loadOpsSummary() {
-  const r:any = await getSystemHealth();
-  ops.schema_ok = !!r.data?.schema?.ok;
-  ops.problem_count = Number(r.data?.scan?.total_problem_count || 0);
-  ops.failed_jobs = Number(r.data?.metrics?.failed_async_jobs || 0);
-  ops.last_scan_at = r.data?.scan?.last_scanned_at || '';
-  ops.last_backup_drill_at = r.data?.metrics?.last_backup_drill_at || '';
-  ops.open_backup_drill_issue_count = Number(r.data?.metrics?.open_backup_drill_issue_count || 0);
-  ops.overdue_backup_drill_issue_count = Number(r.data?.metrics?.overdue_backup_drill_issue_count || 0);
+function applyOpsSummary(data: any) {
+  ops.schema_ok = !!data?.schema_ok;
+  ops.problem_count = Number(data?.problem_count || 0);
+  ops.failed_jobs = Number(data?.failed_jobs || 0);
+  ops.last_scan_at = data?.last_scan_at || '';
+  ops.last_backup_drill_at = data?.last_backup_drill_at || '';
+  ops.open_backup_drill_issue_count = Number(data?.open_backup_drill_issue_count || 0);
+  ops.overdue_backup_drill_issue_count = Number(data?.overdue_backup_drill_issue_count || 0);
+}
+
+async function loadOpsSummary(options: { force?: boolean } = {}) {
+  const payload = await getCachedResource(SYSTEM_HOME_OPS_CACHE_KEY, async () => {
+    const r:any = await getSystemHealth();
+    return {
+      schema_ok: !!r.data?.schema?.ok,
+      problem_count: Number(r.data?.scan?.total_problem_count || 0),
+      failed_jobs: Number(r.data?.metrics?.failed_async_jobs || 0),
+      last_scan_at: r.data?.scan?.last_scanned_at || '',
+      last_backup_drill_at: r.data?.metrics?.last_backup_drill_at || '',
+      open_backup_drill_issue_count: Number(r.data?.metrics?.open_backup_drill_issue_count || 0),
+      overdue_backup_drill_issue_count: Number(r.data?.metrics?.overdue_backup_drill_issue_count || 0),
+    };
+  }, { ttlMs: SYSTEM_HOME_OPS_CACHE_TTL_MS, force: options.force });
+  applyOpsSummary(payload);
 }
 
 onMounted(() => {
   scheduleOnIdle(() => {
+    if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
     void loadOpsSummary().catch(() => undefined);
-  }, 1800);
+  }, 4500);
 });
 </script>

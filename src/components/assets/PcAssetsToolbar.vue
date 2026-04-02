@@ -105,50 +105,55 @@
           </div>
 
           <div class="toolbar-selection-row">
-            <div class="toolbar-action-group">
-              <el-dropdown trigger="click" @command="handleBatchCommand">
-                <el-button type="primary" class="toolbar-primary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
-                  批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
-                </el-button>
-                <template #dropdown>
-                  <el-dropdown-menu>
-                    <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
-                    <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
-                    <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
-                    <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
-                  </el-dropdown-menu>
-                </template>
-              </el-dropdown>
-
-              <el-button class="toolbar-secondary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="emit('export-selected')">
-                导出选中
-              </el-button>
-
-              <div class="toolbar-minor-group">
-                <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
-
-                <el-dropdown trigger="click" @command="handleMoreCommand">
-                  <el-button class="toolbar-soft-btn" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">
-                    更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+            <template v-if="bulkWorkspaceVisible">
+              <div class="toolbar-action-group">
+                <el-dropdown trigger="click" @command="handleBatchCommand">
+                  <el-button type="primary" class="toolbar-primary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
+                    批量操作<el-icon class="el-icon--right"><ArrowDown /></el-icon>
                   </el-button>
                   <template #dropdown>
                     <el-dropdown-menu>
-                      <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
-                      <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
-                      <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
-                      <el-dropdown-item command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
-                      <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
-                      <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
+                      <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
+                      <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
+                      <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
+                      <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
+                      <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
+                      <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
+                      <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
+                      <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
-              </div>
-            </div>
 
+                <el-button class="toolbar-secondary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="emit('export-selected')">
+                  导出选中
+                </el-button>
+
+                <div class="toolbar-minor-group">
+                  <el-button link class="toolbar-link-button" :disabled="selectedCount === 0 || batchBusy" @click="emit('clear-selection')">清空已选</el-button>
+
+                  <el-dropdown trigger="click" @command="handleMoreCommand">
+                    <el-button class="toolbar-soft-btn" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">
+                      更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
+                    </el-button>
+                    <template #dropdown>
+                      <el-dropdown-menu>
+                        <el-dropdown-item command="table-settings">表格设置</el-dropdown-item>
+                        <el-dropdown-item command="export" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出Excel</el-dropdown-item>
+                        <el-dropdown-item v-if="showArchived" command="export-archive" :disabled="exportBusy || importBusy || initQrBusy || batchBusy">导出归档记录</el-dropdown-item>
+                        <el-dropdown-item command="init-qr" :disabled="initQrBusy || batchBusy">初始化二维码Key</el-dropdown-item>
+                        <el-dropdown-item command="download-template" :disabled="importBusy || batchBusy">下载导入模板</el-dropdown-item>
+                        <el-dropdown-item command="import" :disabled="importBusy || exportBusy || initQrBusy || batchBusy">Excel导入</el-dropdown-item>
+                      </el-dropdown-menu>
+                    </template>
+                  </el-dropdown>
+                </div>
+              </div>
+            </template>
+            <div v-else class="toolbar-lazy-actions-placeholder">
+              <span class="toolbar-subtle">批量工具默认按需展开，减少首屏渲染与无关交互。</span>
+              <el-button class="toolbar-soft-btn" @click="bulkWorkspaceExpanded = true">展开工具</el-button>
+            </div>
             <el-upload
               ref="importUploadRef"
               class="toolbar-upload-hidden"
@@ -322,6 +327,8 @@ const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${pr
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 const viewDraftName = ref('');
 const settingsVisible = ref(false);
+const bulkWorkspaceExpanded = ref(false);
+const bulkWorkspaceVisible = computed(() => bulkWorkspaceExpanded.value || props.selectedCount > 0 || props.exportBusy || props.importBusy || props.initQrBusy || props.batchBusy);
 
 const archiveModeOptions = [
   { label: '在用', value: 'active' },
@@ -942,3 +949,19 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 </style>
+.toolbar-lazy-actions-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 2px 0;
+}
+
+@media (max-width: 768px) {
+  .toolbar-lazy-actions-placeholder {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+}

@@ -8,6 +8,7 @@ type QueryValue = string | number | null | undefined | false;
 
 
 const LEDGER_CACHE_TTL_MS = 8_000;
+const SUMMARY_CACHE_TTL_MS = 60_000;
 const LOCATION_CACHE_TTL_MS = 60_000;
 
 function summaryCacheKey(kind: 'pc' | 'monitor', params: Record<string, QueryValue>) {
@@ -119,7 +120,7 @@ export async function getPcAssetInventorySummary(filters: PcFilters, signal?: Ab
   return getCachedResource(summaryCacheKey('pc', params), async () => {
     const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString(params)}`, { signal });
     return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
-  }, { ttlMs: LEDGER_CACHE_TTL_MS });
+  }, { ttlMs: SUMMARY_CACHE_TTL_MS });
 }
 
 export async function getMonitorAssetInventorySummary(filters: MonitorFilters, signal?: AbortSignal) {
@@ -134,5 +135,5 @@ export async function getMonitorAssetInventorySummary(filters: MonitorFilters, s
   return getCachedResource(summaryCacheKey('monitor', params), async () => {
     const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString(params)}`, { signal });
     return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
-  }, { ttlMs: LEDGER_CACHE_TTL_MS });
+  }, { ttlMs: SUMMARY_CACHE_TTL_MS });
 }
