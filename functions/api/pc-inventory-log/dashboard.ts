@@ -1,36 +1,36 @@
-import { errorResponse, json } from '../../_auth';
-import { requirePermission } from '../../_permissions';
+import { requireAuth, errorResponse } from '../../_auth';
+import { ensurePcSchemaIfAllowed } from '../_pc';
 
 const ISSUE_CODES = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
 
-type IssueCode = (typeof ISSUE_CODES)[number];
-
-function emptyBreakdown(): Record<IssueCode, number> {
-  return {
-    NOT_FOUND: 0,
-    WRONG_LOCATION: 0,
-    WRONG_QR: 0,
-    WRONG_STATUS: 0,
-    MISSING: 0,
-    OTHER: 0,
-  };
-}
-
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, 'stocktake_apply', 'viewer');
-    const rows = await env.DB.prepare(`
-      SELECT issue_type, COUNT(*) AS total
+    await requireAuth(env, request, 'viewer');
+    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+
+    const url = new URL(request.url);
+    const t = (env as any).__timing;
+    if (t?.measure) await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+
+    const sql = `
+      SELECT issue_type, COUNT(*) AS c
       FROM pc_inventory_log
       WHERE action='ISSUE'
       GROUP BY issue_type
-    `).all<any>();
-    const breakdown = emptyBreakdown();
-    for (const row of Array.isArray(rows?.results) ? rows.results : []) {
-      const code = String(row?.issue_type || '').toUpperCase() as IssueCode;
-      if (Object.prototype.hasOwnProperty.call(breakdown, code)) breakdown[code] = Number(row?.total || 0);
+    `;
+
+    const rows = t?.measure
+      ? await t.measure('query', async () => env.DB.prepare(sql).all<any>())
+      : await env.DB.prepare(sql).all<any>();
+
+    const byIssueType: Record<string, number> = Object.fromEntries(ISSUE_CODES.map((code) => [code, 0]));
+    for (const row of rows?.results || []) {
+      const key = String((row as any)?.issue_type || '').trim().toUpperCase();
+      if (key) byIssueType[key] = Number((row as any)?.c || 0);
     }
-    return json(true, breakdown);
+
+    return Response.json({ ok: true, data: { byIssueType } });
   } catch (e: any) {
     return errorResponse(e);
   }
