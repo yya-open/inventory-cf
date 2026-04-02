@@ -3,12 +3,20 @@ import { getAuthRequestEpoch, useAuth } from "../store/auth";
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
 type ApiError = Error & { status?: number; response?: any };
 
+function clearClientAuthCache() {
+  if (typeof window === "undefined") return;
+  try {
+    window.sessionStorage.removeItem("inventory:auth-user-cache");
+  } catch {}
+}
+
 function handleUnauthorized(message: string | undefined, requestEpoch?: number): never {
   if (typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) {
     throw new Error(message || "请求已过期");
   }
   const auth = useAuth();
   auth.user = null as any;
+  clearClientAuthCache();
   const path = window.location.pathname;
   if (path !== "/login") {
     const redirect = encodeURIComponent(path + window.location.search + window.location.hash);
@@ -38,7 +46,7 @@ export async function apiRequestJson<T>(path: string, init: RequestInit = {}, op
   const requestEpoch = getAuthRequestEpoch();
   const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } });
   const j = await parseJson(r);
-  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
+  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch);
   if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
   return j as T;
 }
