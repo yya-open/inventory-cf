@@ -24,6 +24,10 @@ export function bumpAuthRequestEpoch() {
   return authRequestEpoch;
 }
 
+export function isAuthRequestEpochCurrent(epoch: number) {
+  return epoch === authRequestEpoch;
+}
+
 function getSessionStorage() {
   if (typeof window === 'undefined') return null;
   try {
@@ -84,6 +88,7 @@ export const useAuth = () => state;
 export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean }) {
   const force = Boolean(options?.force);
   const handleUnauthorized = options?.handleUnauthorized !== false;
+  const requestEpoch = authRequestEpoch;
   if (!force) {
     const cached = state.user || hydrateAuthFromCache();
     if (cached) return cached;
@@ -91,14 +96,16 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
   }
   state.loading = true;
   const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
-    bumpAuthRequestEpoch();
+    if (!isAuthRequestEpochCurrent(requestEpoch)) return r.data.user;
     bumpAuthRequestEpoch();
     state.user = r.data.user;
     writeAuthCache(r.data.user);
     return r.data.user;
   }).catch((e) => {
-    state.user = null;
-    clearAuthCache();
+    if (isAuthRequestEpochCurrent(requestEpoch)) {
+      state.user = null;
+      clearAuthCache();
+    }
     throw e;
   }).finally(() => {
     state.loading = false;

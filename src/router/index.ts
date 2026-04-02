@@ -35,7 +35,7 @@ const SystemDocs = () => import("../views/SystemDocs.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
-import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can } from "../store/auth";
+import { fetchMe, getAuthRequestEpoch, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
@@ -166,8 +166,10 @@ router.beforeEach(async (to) => {
     const cached = hydrateAuthFromCache();
     if (cached) {
       if (shouldRefreshAuthInBackground()) {
+        const refreshEpoch = getAuthRequestEpoch();
         scheduleOnIdle(() => {
           void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
+            if (refreshEpoch !== getAuthRequestEpoch()) return;
             auth.user = null;
             const path = window.location.pathname;
             if (path !== '/login') {

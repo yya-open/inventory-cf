@@ -3,20 +3,12 @@ import { getAuthRequestEpoch, useAuth } from "../store/auth";
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
 type ApiError = Error & { status?: number; response?: any };
 
-function clearClientAuthCache() {
-  if (typeof window === "undefined") return;
-  try {
-    window.sessionStorage.removeItem("inventory:auth-user-cache");
-  } catch {}
-}
-
 function handleUnauthorized(message: string | undefined, requestEpoch?: number): never {
   if (typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) {
     throw new Error(message || "请求已过期");
   }
   const auth = useAuth();
   auth.user = null as any;
-  clearClientAuthCache();
   const path = window.location.pathname;
   if (path !== "/login") {
     const redirect = encodeURIComponent(path + window.location.search + window.location.hash);
