@@ -353,13 +353,11 @@ function reset() {
 }
 
 async function loadPcIssueBreakdown() {
-  const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
-  const result = await Promise.all(
-    codes.map((code) => apiGet(`/api/pc-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
-  );
-  const next = emptyInventoryIssueBreakdown();
-  for (const [code, value] of result) next[code] = value;
-  return next;
+  const result: any = await apiGet('/api/pc-inventory-log/dashboard');
+  return {
+    ...emptyInventoryIssueBreakdown(),
+    ...(result?.data || {}),
+  };
 }
 
 async function refreshInventoryBatchAndSummary() {

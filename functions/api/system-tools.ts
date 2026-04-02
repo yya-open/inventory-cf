@@ -20,6 +20,23 @@ import { logAudit } from './_audit';
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
     await requirePermission(env, request, 'ops_tools', 'admin');
+    const section = String(new URL(request.url).searchParams.get('section') || 'all').toLowerCase();
+    if (section === 'base') {
+      const [schema, dashboard, scan] = await Promise.all([
+        getSchemaStatus(env.DB),
+        loadOpsDashboard(env.DB),
+        getAutoRepairScan(env.DB),
+      ]);
+      return json(true, { schema, dashboard, scan });
+    }
+    if (section === 'history') {
+      const history = await listRepairHistory(env.DB, 20);
+      return json(true, { history });
+    }
+    if (section === 'jobs') {
+      const jobs = await listAsyncJobs(env.DB, { limit: 20, days: 7 }, env.BACKUP_BUCKET);
+      return json(true, { jobs });
+    }
     const [schema, dashboard, jobs, scan, history] = await Promise.all([
       getSchemaStatus(env.DB),
       loadOpsDashboard(env.DB),

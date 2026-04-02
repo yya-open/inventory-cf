@@ -336,7 +336,7 @@ function actionButtonText(action: string, fallback: string) {
 }
 
 async function loadRepairBase() {
-  const r:any = await apiGet('/api/system-tools');
+  const r:any = await apiGet('/api/system-tools?section=base');
   applySchema(r.data?.schema || {});
   applyDashboard(r.data?.dashboard || {});
   applyScan(r.data?.scan || {});
@@ -352,8 +352,8 @@ async function loadObservability() {
   loadedTabs.obs = true;
 }
 
-async function loadHealth() {
-  const r:any = await getSystemHealth({ force: true });
+async function loadHealth(force = false) {
+  const r:any = await getSystemHealth(force ? { force: true } : undefined);
   health.schema = r.data?.schema || { ok: true };
   health.metrics = r.data?.metrics || {};
   health.scan = r.data?.scan || null;
@@ -379,7 +379,7 @@ async function ensureTabLoaded(name: string, force = false) {
     return;
   }
   if (target === 'health') {
-    if (force || !loadedTabs.health) await loadHealth();
+    if (force || !loadedTabs.health) await loadHealth(force);
     return;
   }
 }
@@ -414,7 +414,7 @@ async function scanAll() {
     applyScan(r.data || {});
     dashboard.repair_problem_count = Number(r.data?.total_problem_count || 0);
     ElMessage.success(r.message || '扫描完成');
-    await loadHealth();
+    await loadHealth(true);
   } finally {
     scanning.value = false;
   }
@@ -444,7 +444,7 @@ async function runRepair(action: string) {
     lastRepair.value = r.message || '修复完成';
     if (r.data?.after_scan || r.data?.after) applyScan(r.data.after_scan || r.data.after);
     else await scanAll();
-    await Promise.all([loadRepairBase(), loadHealth(), loadedTabs.jobs ? loadJobs() : Promise.resolve(), loadedTabs.history ? loadRepairHistory() : Promise.resolve()]);
+    await Promise.all([loadRepairBase(), loadHealth(true), loadedTabs.jobs ? loadJobs() : Promise.resolve(), loadedTabs.history ? loadRepairHistory() : Promise.resolve()]);
     ElMessage.success(r.message || '修复完成');
   } finally {
     running.value = '';
@@ -533,7 +533,7 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
 }
 
 async function loadRepairHistory() {
-  const r:any = await apiGet('/api/system-tools');
+  const r:any = await apiGet('/api/system-tools?section=history');
   repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
   loadedTabs.history = true;
   if (!loadedTabs.repair) {
