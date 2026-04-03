@@ -1,10 +1,11 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { requirePermission } from "../_permissions";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { resetAssetQr } from "./services/asset-qr";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "admin");
+    await requirePermission(env, request, 'qr_reset', 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     const url = new URL(request.url);

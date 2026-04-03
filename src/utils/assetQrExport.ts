@@ -12,8 +12,11 @@ export type ExportToXlsxFn = (options: {
   rows: Array<Record<string, any>>;
 }) => void;
 
-export type DownloadQrCardsHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>) => Promise<void>;
-export type DownloadQrSheetHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>) => Promise<void>;
+export type AssetQrExportProgress = { stage: string; current: number; total: number; detail?: string };
+export type AssetQrExportProgressCallback = (progress: AssetQrExportProgress) => void;
+
+export type DownloadQrCardsHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
+export type DownloadQrSheetHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
 
 export type ExcelUtilsModule = {
   exportToXlsx: ExportToXlsxFn;
@@ -76,12 +79,17 @@ export async function buildAssetQrPrintRecords<T>(options: {
   getId: (row: T) => number | string;
   fetchBulkLinks: (ids: Array<number | string>) => Promise<AssetQrLinkRow[]>;
   mapPrintRecord: (row: T, url: string) => AssetQrPrintRecord | null;
+  onProgress?: AssetQrExportProgressCallback;
 }) {
+  options.onProgress?.({ stage: '获取二维码链接', current: 0, total: Math.max(1, options.rows.length), detail: '正在批量获取二维码链接…' });
   const qrLinkMap = await fetchAssetQrLinkMap(options);
   const records: AssetQrPrintRecord[] = [];
-  for (const row of options.rows) {
+  const total = Math.max(1, options.rows.length);
+  for (let index = 0; index < options.rows.length; index += 1) {
+    const row = options.rows[index];
     const record = options.mapPrintRecord(row, qrLinkMap.get(Number(options.getId(row))) || '');
     if (record?.url) records.push(record);
+    options.onProgress?.({ stage: '整理导出数据', current: index + 1, total, detail: `已整理 ${index + 1} / ${total} 条记录` });
   }
   return records;
 }
@@ -96,14 +104,15 @@ export async function exportAssetQrPrintLocal<T>(options: {
   filename: string;
   title: string;
   template?: Partial<QrPrintTemplate>;
+  onProgress?: AssetQrExportProgressCallback;
 }) {
-  const records = await buildAssetQrPrintRecords(options);
+  const records = await buildAssetQrPrintRecords({ ...options, onProgress: options.onProgress });
   if (!records.length) return { count: 0, empty: true as const };
   const qrCardUtils = await options.loadQrCardUtils();
   if (options.mode === 'cards') {
-    await qrCardUtils.downloadQrCardsHtml(options.filename, options.title, records, options.template);
+    await qrCardUtils.downloadQrCardsHtml(options.filename, options.title, records, options.template, options.onProgress);
   } else {
-    await qrCardUtils.downloadQrSheetHtml(options.filename, options.title, records, options.template);
+    await qrCardUtils.downloadQrSheetHtml(options.filename, options.title, records, options.template, options.onProgress);
   }
   return { count: records.length, empty: false as const };
 }

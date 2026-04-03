@@ -67,6 +67,8 @@
       :page-size="pageSize"
       :can-operator="canOperator"
       :is-admin="isAdmin"
+      :can-export="canQrExport"
+      :can-reset="canQrReset"
       :status-text="assetStatusText"
       :location-text="locationText"
       :visible-columns="visibleColumns"
@@ -133,6 +135,8 @@
       :link="qrLink"
       :data-url="qrDataUrl"
       :is-admin="isAdmin"
+      :can-export="canQrExport"
+      :can-reset="canQrReset"
       :status-text="assetStatusText"
       @download-qr="downloadQr"
       @download-label="downloadLabel"
@@ -198,8 +202,17 @@
     <QrPrintTemplateDialog
       v-model:visible="qrTemplateVisible"
       :kind="qrTemplateKind"
+      scope="monitor"
       kind-label="显示器"
       @submit="submitQrPrintTemplate"
+    />
+    <QrExportProgressDialog
+      :visible="qrExportProgress.visible"
+      :title="qrExportProgress.title"
+      :stage="qrExportProgress.stage"
+      :completed="qrExportProgress.current"
+      :total="qrExportProgress.total"
+      :detail="qrExportProgress.detail"
     />
 
   </div>
@@ -219,7 +232,7 @@ import { exportAssetQrLinksWorkbook, exportAssetQrPrintLocal } from '../utils/as
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
-import { can } from '../store/auth';
+import { can, canPerm } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
@@ -227,7 +240,9 @@ import { fetchSystemSettings, getCachedSystemSettings, markMonitorBrandSettingsA
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
+import QrExportProgressDialog from '../components/assets/QrExportProgressDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
+import type { AssetQrExportProgress } from '../utils/assetQrExport';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
@@ -246,11 +261,14 @@ const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../com
 const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
+const canQrExport = computed(() => canPerm('qr_export'));
+const canQrReset = computed(() => canPerm('qr_reset'));
 const router = useRouter();
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const qrTemplateVisible = ref(false);
+const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; current: number; total: number; detail: string }>({ visible: false, title: '', stage: '', current: 0, total: 1, detail: '' });
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const qrTemplateAction = ref<'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet'>('batch-cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
@@ -300,6 +318,26 @@ const {
 onMounted(() => {
   void initMonitorBrandOptions();
 });
+
+
+function startQrExportProgress(title: string) {
+  qrExportProgress.value = { visible: true, title, stage: '准备中', current: 0, total: 1, detail: '正在准备导出…' };
+}
+
+function updateQrExportProgress(progress: AssetQrExportProgress) {
+  qrExportProgress.value = {
+    ...qrExportProgress.value,
+    visible: true,
+    stage: progress.stage,
+    current: progress.current,
+    total: Math.max(1, progress.total),
+    detail: progress.detail || '',
+  };
+}
+
+function finishQrExportProgress() {
+  qrExportProgress.value = { ...qrExportProgress.value, visible: false };
+}
 
 function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
   ElNotification({ title, message, type, duration: 2600, offset: 72 });
@@ -819,11 +857,13 @@ async function exportSelectedQrLinks() {
 async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
+    startQrExportProgress('正在导出二维码标签');
     await exportSelectedQrCardsLocal(template);
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
     exportBusy.value = false;
+    finishQrExportProgress();
   }
 }
 
@@ -1035,6 +1075,7 @@ async function exportSelectedRows() {
     ElMessage.error(error?.message || '导出失败');
   } finally {
     exportBusy.value = false;
+    finishQrExportProgress();
   }
 }
 
@@ -1485,6 +1526,7 @@ async function exportSingleMonitorQrSheet(template?: Partial<QrPrintTemplate>) {
     filename: `显示器二维码_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
     title: '显示器二维码',
     template,
+    onProgress: updateQrExportProgress,
   });
   if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
   ElMessage.success('二维码打印页已导出，可直接打印');
@@ -1502,6 +1544,7 @@ async function exportSingleMonitorQrCard(template?: Partial<QrPrintTemplate>) {
     filename: `显示器标签_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
     title: '显示器标签',
     template,
+    onProgress: updateQrExportProgress,
   });
   if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
   ElMessage.success('标签打印页已导出，可直接打印');
@@ -1518,6 +1561,7 @@ async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
     filename: `显示器二维码图版_${selectedRows.value.length}条`,
     title: '显示器二维码图版',
     template,
+    onProgress: updateQrExportProgress,
   });
   if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
   ElMessage.success('二维码图版打印页已导出，可直接打印');
@@ -1534,12 +1578,14 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
     filename: `显示器二维码卡片_${selectedRows.value.length}条`,
     title: '显示器二维码卡片',
     template,
+    onProgress: updateQrExportProgress,
   });
   if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
   ElMessage.success('二维码卡片已导出，可直接打印');
 }
 
 function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: 'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet') {
+  if (!canQrExport.value) return ElMessage.warning('当前账号没有二维码/标签导出权限');
   const nextAction = action || (kind === 'cards' ? 'batch-cards' : 'batch-sheet');
   if (nextAction.startsWith('batch') && !selectedCount.value) return ElMessage.warning('请先勾选显示器');
   if (nextAction.startsWith('single') && !qrRow.value?.id) return ElMessage.warning('请先打开要导出的二维码');
@@ -1567,6 +1613,7 @@ async function submitQrPrintTemplate(template: QrPrintTemplate) {
 async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
+    startQrExportProgress('正在导出二维码图版');
     await exportSelectedQrSheetLocal(template);
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码图版失败');
@@ -1643,6 +1690,7 @@ const openQrInNewTab = () => {
 };
 
 async function resetQr() {
+  if (!canQrReset.value) return ElMessage.warning('当前账号没有重置二维码权限');
   try {
     const id = Number(qrRow.value?.id || 0);
     if (!id) return;

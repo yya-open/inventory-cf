@@ -7,6 +7,7 @@ import {
   type QrPrintTemplate,
   type QrPrintTemplateKind,
 } from './qrPrintTemplate';
+import type { AssetQrExportProgressCallback } from './assetQrExport';
 
 export type QrCardRecord = {
   title: string;
@@ -105,14 +106,19 @@ function buildMetrics(template: QrPrintTemplate): LayoutMetrics {
   };
 }
 
-async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number): Promise<QrCardPreparedRecord[]> {
+async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, onProgress?: AssetQrExportProgressCallback): Promise<QrCardPreparedRecord[]> {
   const width = Math.max(256, Math.min(1600, Math.round(qrPixelSize * 2.4)));
-  return Promise.all(
-    records.map(async (record) => ({
+  const prepared: QrCardPreparedRecord[] = [];
+  const total = Math.max(1, records.length);
+  for (let index = 0; index < records.length; index += 1) {
+    const record = records[index];
+    prepared.push({
       ...record,
       dataUrl: await QRCode.toDataURL(record.url, { width, margin: 1, errorCorrectionLevel: 'Q' }),
-    }))
-  );
+    });
+    onProgress?.({ stage: '生成二维码图片', current: index + 1, total, detail: `已生成 ${index + 1} / ${total} 张二维码` });
+  }
+  return prepared;
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
@@ -163,6 +169,39 @@ function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number)
   return lines;
 }
 
+
+function trimTextToWidth(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
+  const raw = String(text || '');
+  if (!raw) return '';
+  let output = raw;
+  while (output && ctx.measureText(`${output}…`).width > maxWidth) {
+    output = output.slice(0, -1);
+  }
+  return output ? `${output}…` : '…';
+}
+
+function normalizeRecordText(value: string | undefined, fallback = '-') {
+  const text = String(value || '').replace(/\s+/g, ' ').trim();
+  return text || fallback;
+}
+
+function sanitizeCardRecord(card: QrCardPreparedRecord, template: QrPrintTemplate) {
+  const title = template.content_mode === 'qr_only' ? '' : normalizeRecordText(card.title, '未命名资产');
+  const subtitle = template.content_mode === 'qr_only' ? '' : normalizeRecordText(card.subtitle || '', '');
+  const meta = Array.isArray(card.meta)
+    ? card.meta
+        .map((item) => ({ label: normalizeRecordText(item?.label || '', ''), value: normalizeRecordText(item?.value || '', '-') }))
+        .filter((item) => item.label)
+        .slice(0, Math.max(0, template.meta_count))
+    : [];
+  return {
+    ...card,
+    title,
+    subtitle,
+    meta,
+  };
+}
+
 function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, baseFontPx: number, maxLines: number, minFontPx = 10, bold = false) {
   let fontPx = Math.max(minFontPx, baseFontPx);
   while (fontPx > minFontPx) {
@@ -172,7 +211,11 @@ function fitText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number, 
     fontPx -= 1;
   }
   ctx.font = `${bold ? 'bold ' : ''}${minFontPx}px -apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif`;
-  return { lines: wrapText(ctx, text, maxWidth).slice(0, maxLines), fontPx: minFontPx };
+  const lines = wrapText(ctx, text, maxWidth);
+  if (lines.length <= maxLines) return { lines, fontPx: minFontPx };
+  const sliced = lines.slice(0, maxLines);
+  sliced[sliced.length - 1] = trimTextToWidth(ctx, sliced[sliced.length - 1], maxWidth);
+  return { lines: sliced, fontPx: minFontPx };
 }
 
 function drawTextBlock(ctx: CanvasRenderingContext2D, x: number, y: number, maxWidth: number, block: TextBlock) {
@@ -193,28 +236,29 @@ function buildTextBlocks(
   textWidth: number,
   compact: boolean,
 ) {
+  const safeCard = sanitizeCardRecord(card, template);
   const blocks: TextBlock[] = [];
   const titleFont = compact ? 18 : 22;
   const subtitleFont = compact ? 13 : 16;
   const metaFont = compact ? 12 : 14;
   const linkFont = compact ? 11 : 12;
 
-  if (template.show_title && card.title) {
-    const fitted = fitText(ctx, card.title, textWidth, titleFont, compact ? 2 : 3, 11, true);
+  if (template.show_title && safeCard.title) {
+    const fitted = fitText(ctx, safeCard.title, textWidth, titleFont, compact ? 2 : 3, 11, true);
     blocks.push({ lines: fitted.lines, fontPx: fitted.fontPx, color: '#111827', bold: true, lineHeight: Math.round(fitted.fontPx * 1.15) });
   }
-  if (template.show_subtitle && card.subtitle) {
-    const fitted = fitText(ctx, card.subtitle, textWidth, subtitleFont, 2, 10, false);
+  if (template.show_subtitle && safeCard.subtitle) {
+    const fitted = fitText(ctx, safeCard.subtitle, textWidth, subtitleFont, 2, 10, false);
     blocks.push({ lines: fitted.lines, fontPx: fitted.fontPx, color: '#4b5563', lineHeight: Math.round(fitted.fontPx * 1.2) });
   }
-  if (template.show_meta && Array.isArray(card.meta) && card.meta.length && template.meta_count > 0) {
-    (card.meta || []).slice(0, template.meta_count).forEach((item) => {
+  if (template.show_meta && Array.isArray(safeCard.meta) && safeCard.meta.length && template.meta_count > 0) {
+    safeCard.meta.slice(0, template.meta_count).forEach((item) => {
       const fitted = fitText(ctx, `${item.label}：${item.value}`, textWidth, metaFont, 1, 9, false);
       blocks.push({ lines: fitted.lines, fontPx: fitted.fontPx, color: '#374151', lineHeight: Math.round(fitted.fontPx * 1.25) });
     });
   }
-  if (template.show_link && card.url) {
-    const fitted = fitText(ctx, card.url, textWidth, linkFont, compact ? 1 : 2, 8, false);
+  if (template.show_link && safeCard.url) {
+    const fitted = fitText(ctx, safeCard.url, textWidth, linkFont, compact ? 1 : 2, 8, false);
     blocks.push({ lines: fitted.lines, fontPx: fitted.fontPx, color: '#6b7280', lineHeight: Math.round(fitted.fontPx * 1.15) });
   }
   if (kind === 'sheet' && template.content_mode === 'qr_only') return [];
@@ -321,16 +365,17 @@ async function drawCardCell(
   });
 }
 
-async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
+async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
   const template = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
   const metrics = buildMetrics(template);
-  const cards = await prepareQrCards(records, metrics.qrSizePx);
+  const cards = await prepareQrCards(records, metrics.qrSizePx, onProgress);
   if (!cards.length) return [] as DownloadFile[];
   const perPage = Math.max(1, template.cols * template.rows);
   const pages = chunkRecords(cards, perPage);
   const output: DownloadFile[] = [];
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
+    onProgress?.({ stage: '绘制打印页面', current: pageIndex, total: Math.max(1, pages.length), detail: `正在渲染第 ${pageIndex + 1} / ${pages.length} 页` });
     const pageCards = pages[pageIndex];
     const canvas = document.createElement('canvas');
     canvas.width = metrics.pageWidthPx;
@@ -355,31 +400,35 @@ async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, reco
       name: pages.length > 1 ? `第${pageIndex + 1}页.png` : `${title}.png`,
       blob: await canvasToBlob(canvas),
     });
+    onProgress?.({ stage: '绘制打印页面', current: pageIndex + 1, total: Math.max(1, pages.length), detail: `已完成第 ${pageIndex + 1} / ${pages.length} 页` });
   }
   return output;
 }
 
-async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
-  const files = await renderQrPagesAsPng(kind, title, records, inputTemplate);
+async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  const files = await renderQrPagesAsPng(kind, title, records, inputTemplate, onProgress);
   if (!files.length) return;
   if (files.length === 1) {
+    onProgress?.({ stage: '下载文件', current: 1, total: 1, detail: '正在下载 PNG 图片…' });
     downloadBlob(`${filename}.png`, files[0].blob);
     return;
   }
+  onProgress?.({ stage: '打包 ZIP', current: 0, total: Math.max(1, files.length), detail: `正在打包 ${files.length} 张 PNG 图片…` });
   const zip = new JSZip();
-  files.forEach((file) => zip.file(file.name, file.blob));
+  files.forEach((file, index) => { zip.file(file.name, file.blob); onProgress?.({ stage: '打包 ZIP', current: index + 1, total: Math.max(1, files.length), detail: `已加入 ${index + 1} / ${files.length} 张图片` }); });
   const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  onProgress?.({ stage: '下载文件', current: 1, total: 1, detail: '正在下载 ZIP 压缩包…' });
   downloadBlob(`${filename}.zip`, zipBlob);
 }
 
-export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>) {
-  await downloadQrPagesAsPng('cards', filename.replace(/\.html$/i, ''), title, records, template);
+export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  await downloadQrPagesAsPng('cards', filename.replace(/\.html$/i, ''), title, records, template, onProgress);
 }
 
-export async function downloadQrSheetHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>) {
-  await downloadQrPagesAsPng('sheet', filename.replace(/\.html$/i, ''), title, records, template);
+export async function downloadQrSheetHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  await downloadQrPagesAsPng('sheet', filename.replace(/\.html$/i, ''), title, records, template, onProgress);
 }
 
-export async function downloadQrCardsPng(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>) {
-  await downloadQrPagesAsPng('cards', filename, title, records, template);
+export async function downloadQrCardsPng(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  await downloadQrPagesAsPng('cards', filename, title, records, template, onProgress);
 }

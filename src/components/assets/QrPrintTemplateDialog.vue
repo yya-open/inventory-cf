@@ -15,6 +15,10 @@
           </el-select>
           <el-button :disabled="!selectedPresetId" @click="removeSelectedPreset">删除预设</el-button>
           <el-button @click="restoreDefaults">恢复默认</el-button>
+          <el-button @click="exportCurrentTemplate">导出当前模板</el-button>
+          <el-button @click="exportPresetBundle">导出预设包</el-button>
+          <el-button @click="triggerImport">导入模板</el-button>
+          <input ref="importInputRef" type="file" accept="application/json,.json" class="template-import-input" @change="handleImportFile" />
         </div>
 
         <el-form label-width="96px" class="template-form">
@@ -129,9 +133,15 @@
           <div class="preview-line">页头：{{ form.show_page_header ? '显示' : '隐藏' }}</div>
           <div class="preview-line">内容模板：{{ contentModeLabelMap[form.content_mode] }}</div>
           <div class="preview-line">显示：{{ contentSummary }}</div>
+          <div class="preview-line">预览比例：1 : {{ previewScaleRatio }}</div>
         </div>
+        <div v-if="validationWarnings.length" class="preview-card preview-warning-card">
+          <div class="preview-title">内容防错提示</div>
+          <div v-for="item in validationWarnings" :key="item" class="preview-warning-line">{{ item }}</div>
+        </div>
+        <div class="preview-scale-tip">以下预览按真实毫米比例缩放，长文字导出时会自动缩字并在超出时截断。</div>
         <div class="preview-page" :style="previewPageStyle">
-          <div v-if="form.show_page_header" class="preview-header">{{ kind === 'cards' ? '打印标签页' : '打印图版页' }}</div>
+          <div v-if="form.show_page_header" class="preview-header" :style="previewHeaderStyle">{{ kind === 'cards' ? '打印标签页' : '打印图版页' }}</div>
           <div class="preview-grid" :style="previewGridStyle">
             <div v-for="index in form.cols * form.rows" :key="index" class="preview-cell" :class="{ vertical: previewVertical }">
               <div class="preview-qr" :style="previewQrStyle"></div>
@@ -166,26 +176,34 @@ import {
   createDefaultQrPrintTemplate,
   deleteQrPrintPreset,
   estimateQrCellSize,
+  exportQrPrintTemplate,
+  exportQrPrintTemplateBundle,
   getDefaultQrPrintTemplate,
+  getLastUsedQrPrintTemplate,
   getQrLabelPreset,
   listQrLabelPresets,
+  importQrPrintTemplateFile,
   listSavedQrPrintPresets,
   normalizeQrPrintTemplate,
   resolveQrPaperDimensions,
   saveQrPrintPreset,
   setDefaultQrPrintTemplate,
+  setLastUsedQrPrintTemplate,
   type QrLabelPresetKey,
   type QrPrintContentMode,
   type QrPrintTemplate,
   type QrPrintTemplateKind,
+  type QrPrintTemplateScope,
 } from '../../utils/qrPrintTemplate';
 
 const props = withDefaults(defineProps<{
   visible: boolean;
   kind: QrPrintTemplateKind;
   kindLabel?: string;
+  scope?: 'generic' | 'pc' | 'monitor';
 }>(), {
   kindLabel: '二维码',
+  scope: 'generic',
 });
 
 const emit = defineEmits<{
@@ -196,19 +214,74 @@ const emit = defineEmits<{
 const visible = computed(() => props.visible);
 const kind = computed(() => props.kind);
 const kindLabel = computed(() => props.kindLabel);
-const form = ref<QrPrintTemplate>(createDefaultQrPrintTemplate(props.kind));
+const scope = computed(() => props.scope as QrPrintTemplateScope);
+const form = ref<QrPrintTemplate>(getDefaultQrPrintTemplate(props.kind, props.scope));
 const presets = ref<Array<{ id: string; name: string; template: QrPrintTemplate }>>([]);
 const selectedPresetId = ref('');
 const presetName = ref('');
 const labelPresets = listQrLabelPresets();
+const importInputRef = ref<HTMLInputElement | null>(null);
+
+function downloadJsonFile(data: unknown, filename: string) {
+  const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement('a');
+  link.href = url;
+  link.download = filename;
+  document.body.appendChild(link);
+  link.click();
+  link.remove();
+  URL.revokeObjectURL(url);
+}
+
+function buildExportFilename(mode: 'template' | 'bundle') {
+  const scopeLabel = scope.value === 'monitor' ? '显示器' : scope.value === 'pc' ? '电脑' : '通用';
+  const kindLabelText = kind.value === 'cards' ? '标签模板' : '图版模板';
+  return `inventory_${scopeLabel}_${kindLabelText}_${mode}_${new Date().toISOString().slice(0, 10)}.json`;
+}
+
+function exportCurrentTemplate() {
+  downloadJsonFile(exportQrPrintTemplate(props.kind, form.value, props.scope), buildExportFilename('template'));
+  ElMessage.success('当前模板已导出');
+}
+
+function exportPresetBundle() {
+  downloadJsonFile(exportQrPrintTemplateBundle(props.kind, props.scope), buildExportFilename('bundle'));
+  ElMessage.success('模板预设包已导出');
+}
+
+function triggerImport() {
+  importInputRef.value?.click();
+}
+
+async function handleImportFile(event: Event) {
+  const input = event.target as HTMLInputElement | null;
+  const file = input?.files?.[0];
+  if (!file) return;
+  try {
+    const text = await file.text();
+    const payload = JSON.parse(text);
+    const result = importQrPrintTemplateFile(props.kind, payload, props.scope);
+    patchForm(result.template);
+    presets.value = listSavedQrPrintPresets(props.kind, props.scope);
+    const messages = ['模板已导入'];
+    if (result.importedDefault) messages.push('默认模板已更新');
+    if (result.importedPresetCount) messages.push(`已导入 ${result.importedPresetCount} 个预设`);
+    ElMessage.success(messages.join('，'));
+  } catch (error: any) {
+    ElMessage.error(error?.message || '导入模板失败');
+  } finally {
+    if (input) input.value = '';
+  }
+}
 
 function patchForm(next: QrPrintTemplate) {
   form.value = normalizeQrPrintTemplate(props.kind, { ...next });
 }
 
 function refreshState() {
-  patchForm(getDefaultQrPrintTemplate(props.kind));
-  presets.value = listSavedQrPrintPresets(props.kind);
+  patchForm(getLastUsedQrPrintTemplate(props.kind, props.scope) || getDefaultQrPrintTemplate(props.kind, props.scope));
+  presets.value = listSavedQrPrintPresets(props.kind, props.scope);
   selectedPresetId.value = '';
   presetName.value = '';
 }
@@ -224,11 +297,11 @@ function applySelectedPreset() {
 }
 
 function restoreDefaults() {
-  patchForm(createDefaultQrPrintTemplate(props.kind));
+  patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
 }
 
 function applyStandardPreset() {
-  patchForm(createDefaultQrPrintTemplate(props.kind));
+  patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
 }
 
 function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
@@ -239,14 +312,14 @@ function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
 watch(() => form.value.label_preset, (presetKey, prevKey) => {
   if (!visible.value || presetKey === prevKey) return;
   if (presetKey === 'none') {
-    if (prevKey !== 'none') patchForm(createDefaultQrPrintTemplate(props.kind));
+    if (prevKey !== 'none') patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
     return;
   }
   patchForm(applyQrLabelPreset(props.kind, presetKey as Exclude<QrLabelPresetKey, 'none'>, form.value));
 });
 
 watch(() => props.kind, (nextKind) => {
-  patchForm(createDefaultQrPrintTemplate(nextKind));
+  patchForm(getDefaultQrPrintTemplate(nextKind, props.scope));
 });
 
 
@@ -258,16 +331,16 @@ async function removeSelectedPreset() {
   } catch {
     return;
   }
-  deleteQrPrintPreset(props.kind, preset.id);
+  deleteQrPrintPreset(props.kind, preset.id, props.scope);
   ElMessage.success('预设已删除');
   refreshState();
 }
 
 function saveCurrentPreset() {
   try {
-    const entry = saveQrPrintPreset(props.kind, presetName.value, form.value);
+    const entry = saveQrPrintPreset(props.kind, presetName.value, form.value, props.scope);
     ElMessage.success(`已保存预设：${entry.name}`);
-    presets.value = listSavedQrPrintPresets(props.kind);
+    presets.value = listSavedQrPrintPresets(props.kind, props.scope);
     selectedPresetId.value = entry.id;
     presetName.value = '';
   } catch (error: any) {
@@ -276,13 +349,14 @@ function saveCurrentPreset() {
 }
 
 function setAsDefaultOnly() {
-  setDefaultQrPrintTemplate(props.kind, form.value);
+  setDefaultQrPrintTemplate(props.kind, form.value, props.scope);
   ElMessage.success('已设为默认模板');
 }
 
 function submit(setDefault: boolean) {
   const normalized = normalizeQrPrintTemplate(props.kind, form.value);
-  if (setDefault) setDefaultQrPrintTemplate(props.kind, normalized);
+  setLastUsedQrPrintTemplate(props.kind, normalized, props.scope);
+  if (setDefault) setDefaultQrPrintTemplate(props.kind, normalized, props.scope);
   emit('submit', normalized);
   emit('update:visible', false);
 }
@@ -311,31 +385,63 @@ const contentSummary = computed(() => {
   return parts.length ? parts.join(' / ') : '仅二维码';
 });
 
+
+const previewScale = computed(() => {
+  const { widthMm, heightMm } = resolveQrPaperDimensions(form.value);
+  const maxWidthPx = 280;
+  const maxHeightPx = 260;
+  return Math.min(maxWidthPx / Math.max(1, widthMm), maxHeightPx / Math.max(1, heightMm));
+});
+
+const previewScaleRatio = computed(() => {
+  const ratio = 1 / Math.max(0.01, previewScale.value);
+  return ratio.toFixed(ratio >= 10 ? 0 : 1);
+});
+
+const validationWarnings = computed(() => {
+  const warnings: string[] = [];
+  const { widthMm, heightMm } = cellEstimate.value;
+  const qrMm = form.value.qr_size_mm;
+  const smallLabel = !!activeLabelPreset.value && (activeLabelPreset.value.widthMm <= 50 || activeLabelPreset.value.heightMm <= 30);
+  if (qrMm < 20) warnings.push('二维码小于 20 mm，部分标签机或扫码枪可能识别不稳。');
+  if (form.value.content_mode === 'detail' && widthMm < 42) warnings.push('当前单块区域较窄，明细版可能过密，建议改用“二维码+型号+SN”。');
+  if (form.value.show_meta && form.value.meta_count >= 3 && heightMm < 34) warnings.push('元信息行数偏多，导出时会自动缩字，仍建议减少到 1-2 行。');
+  if (smallLabel && form.value.content_mode === 'detail') warnings.push('小尺寸标签更适合“仅二维码”或“二维码+型号+SN”。');
+  if (form.value.margin_left_mm + form.value.margin_right_mm >= Math.max(6, cellEstimate.value.pageWidthMm * 0.3)) warnings.push('左右边距占比偏大，可适当减小边距提升可用面积。');
+  if (form.value.label_preset !== 'none' && form.value.show_link) warnings.push('标签机模板已自动隐藏底部链接，以避免文字过密。');
+  return warnings;
+});
+
 const previewVertical = computed(() => form.value.label_preset !== 'none' || kind.value === 'sheet');
 
 const previewPageStyle = computed(() => {
   const { widthMm, heightMm } = resolveQrPaperDimensions(form.value);
-  const ratio = widthMm / heightMm;
-  const heightPx = 260;
-  const widthPx = Math.max(170, Math.min(320, Math.round(heightPx * ratio)));
+  const scale = previewScale.value;
   return {
-    width: `${widthPx}px`,
-    height: `${heightPx}px`,
-    paddingTop: `${Math.max(6, form.value.margin_top_mm * 2)}px`,
-    paddingRight: `${Math.max(6, form.value.margin_right_mm * 2)}px`,
-    paddingBottom: `${Math.max(6, form.value.margin_bottom_mm * 2)}px`,
-    paddingLeft: `${Math.max(6, form.value.margin_left_mm * 2)}px`,
+    width: `${Math.round(widthMm * scale)}px`,
+    height: `${Math.round(heightMm * scale)}px`,
+    paddingTop: `${Math.max(4, Math.round(form.value.margin_top_mm * scale))}px`,
+    paddingRight: `${Math.max(4, Math.round(form.value.margin_right_mm * scale))}px`,
+    paddingBottom: `${Math.max(4, Math.round(form.value.margin_bottom_mm * scale))}px`,
+    paddingLeft: `${Math.max(4, Math.round(form.value.margin_left_mm * scale))}px`,
   };
 });
+
+const previewHeaderStyle = computed(() => ({
+  minHeight: `${Math.max(20, Math.round(10 * previewScale.value))}px`,
+  padding: `${Math.max(4, Math.round(3 * previewScale.value))}px ${Math.max(6, Math.round(4 * previewScale.value))}px`,
+  fontSize: `${Math.max(10, Math.round(2.8 * previewScale.value))}px`,
+}));
 
 const previewGridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${form.value.cols}, minmax(0, 1fr))`,
   gridTemplateRows: `repeat(${form.value.rows}, minmax(0, 1fr))`,
-  gap: `${Math.max(4, Math.round((form.value.gap_x_mm + form.value.gap_y_mm) * 1.2))}px`,
+  gap: `${Math.max(2, Math.round(Math.max(form.value.gap_x_mm, form.value.gap_y_mm) * previewScale.value))}px`,
+  padding: `${Math.max(6, Math.round(2 * previewScale.value))}px`,
 }));
 
 const previewQrStyle = computed(() => {
-  const size = Math.max(20, Math.min(84, form.value.qr_size_mm * 1.5));
+  const size = Math.max(14, Math.round(form.value.qr_size_mm * previewScale.value));
   return { width: `${size}px`, height: `${size}px` };
 });
 </script>
@@ -343,6 +449,7 @@ const previewQrStyle = computed(() => {
 <style scoped>
 .print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
 .preset-toolbar,.preset-save-row,.toggle-row,.label-preset-row,.choice-button-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.template-import-input{display:none}
 .template-form{margin-top:14px}
 .template-form :deep(.el-form-item){margin-bottom:12px;min-width:0}
 .template-form :deep(.el-form-item__content){min-width:0}
@@ -360,9 +467,12 @@ const previewQrStyle = computed(() => {
 .preview-card{border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:14px}
 .preview-title{font-size:14px;font-weight:800;margin-bottom:10px;color:#111827}
 .preview-line{font-size:12px;line-height:1.6;color:#475569}
+.preview-warning-card{background:#fff7ed;border-color:#fdba74}
+.preview-warning-line{font-size:12px;line-height:1.6;color:#9a3412}
+.preview-scale-tip{font-size:12px;line-height:1.5;color:#64748b}
 .preview-page{border:1px solid #dbe3f0;border-radius:16px;background:linear-gradient(180deg,#ffffff,#f8fafc);box-shadow:0 12px 28px rgba(15,23,42,.08);overflow:hidden;display:flex;flex-direction:column}
 .preview-header{font-size:12px;font-weight:700;color:#475569;padding:8px 10px;border-bottom:1px solid #eef2f7}
-.preview-grid{flex:1;display:grid;padding:10px}
+.preview-grid{flex:1;display:grid;align-content:start}
 .preview-cell{border:1px solid #dbe3f0;border-radius:10px;background:#fff;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:8px;min-height:0;overflow:hidden}
 .preview-cell.vertical{grid-template-columns:1fr;justify-items:center;text-align:center}
 .preview-qr{border-radius:8px;background:repeating-linear-gradient(45deg,#111827 0,#111827 4px,#fff 4px,#fff 8px)}

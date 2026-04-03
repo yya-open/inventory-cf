@@ -5,7 +5,9 @@ export type PermissionCode =
   | 'bulk_operation'
   | 'stocktake_apply'
   | 'ops_tools'
-  | 'async_job_manage';
+  | 'async_job_manage'
+  | 'qr_export'
+  | 'qr_reset';
 
 export type PermissionTemplateCode = 'admin_full' | 'admin_ops' | 'operator_plus' | 'auditor' | 'readonly';
 
@@ -17,6 +19,8 @@ export const PERMISSION_LABEL: Record<PermissionCode, string> = {
   stocktake_apply: '应用盘点',
   ops_tools: '运维工具',
   async_job_manage: '异步任务中心',
+  qr_export: '二维码/标签导出',
+  qr_reset: '二维码重置',
 };
 
 export const PERMISSION_TEMPLATE_LABEL: Record<PermissionTemplateCode, string> = {
@@ -36,6 +40,8 @@ export const PERMISSION_TEMPLATE_DEFAULTS: Record<PermissionTemplateCode, Record
     stocktake_apply: true,
     ops_tools: true,
     async_job_manage: true,
+    qr_export: true,
+    qr_reset: true,
   },
   admin_ops: {
     system_settings_write: false,
@@ -45,6 +51,8 @@ export const PERMISSION_TEMPLATE_DEFAULTS: Record<PermissionTemplateCode, Record
     stocktake_apply: true,
     ops_tools: true,
     async_job_manage: true,
+    qr_export: true,
+    qr_reset: true,
   },
   operator_plus: {
     system_settings_write: false,
@@ -54,6 +62,8 @@ export const PERMISSION_TEMPLATE_DEFAULTS: Record<PermissionTemplateCode, Record
     stocktake_apply: false,
     ops_tools: false,
     async_job_manage: false,
+    qr_export: true,
+    qr_reset: false,
   },
   auditor: {
     system_settings_write: false,
@@ -63,6 +73,8 @@ export const PERMISSION_TEMPLATE_DEFAULTS: Record<PermissionTemplateCode, Record
     stocktake_apply: false,
     ops_tools: false,
     async_job_manage: false,
+    qr_export: false,
+    qr_reset: false,
   },
   readonly: {
     system_settings_write: false,
@@ -72,6 +84,8 @@ export const PERMISSION_TEMPLATE_DEFAULTS: Record<PermissionTemplateCode, Record
     stocktake_apply: false,
     ops_tools: false,
     async_job_manage: false,
+    qr_export: false,
+    qr_reset: false,
   },
 };
 

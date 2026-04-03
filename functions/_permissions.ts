@@ -129,7 +129,7 @@ export async function ensureUserPermissionTemplateColumn(db: D1Database) {
 export function roleDefaultPermission(role: string | null | undefined, code: PermissionCode) {
   const r = String(role || '').trim();
   if (r === 'admin') return true;
-  if (r === 'operator') return ['bulk_operation'].includes(code);
+  if (r === 'operator') return ['bulk_operation', 'qr_export'].includes(code);
   return false;
 }
 
