@@ -3,6 +3,9 @@ import App from './App.vue';
 import router from './router';
 import { installElementPlus } from './plugins/element-plus';
 import './styles/app.css';
+import { startBuildVersionWatcher } from './utils/appVersion';
+
+startBuildVersionWatcher();
 
 const app = createApp(App);
 installElementPlus(app);

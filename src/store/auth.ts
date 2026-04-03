@@ -9,14 +9,36 @@ export type User = { id: number; username: string; role: Role; must_change_passw
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
 const state = reactive<{ user: User | null; loading: boolean }>({ user: null, loading: false });
 const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
+const AUTH_SESSION_KEY = 'inventory:auth-session-key';
 const AUTH_CACHE_TTL_MS = 30 * 60_000;
 const AUTH_REFRESH_SOFT_TTL_MS = AUTH_CACHE_TTL_MS;
 let pendingFetchMe: Promise<User> | null = null;
 let authCacheTimestamp = 0;
 let authRequestEpoch = 0;
+let authSessionKey = '';
 
 export function getAuthRequestEpoch() {
   return authRequestEpoch;
+}
+
+function ensureSessionKey() {
+  if (authSessionKey) return authSessionKey;
+  const storage = getSessionStorage();
+  const existing = storage?.getItem(AUTH_SESSION_KEY) || '';
+  authSessionKey = existing || `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  if (storage) storage.setItem(AUTH_SESSION_KEY, authSessionKey);
+  return authSessionKey;
+}
+
+function rotateSessionKey() {
+  const storage = getSessionStorage();
+  authSessionKey = `${Date.now()}_${Math.random().toString(36).slice(2, 10)}`;
+  if (storage) storage.setItem(AUTH_SESSION_KEY, authSessionKey);
+  return authSessionKey;
+}
+
+export function getAuthSessionKey() {
+  return ensureSessionKey();
 }
 
 export function bumpAuthRequestEpoch() {
@@ -79,6 +101,20 @@ function clearAuthCache() {
   writeAuthCache(null);
 }
 
+function applyAuthorizedUser(user: User, sessionKey?: string) {
+  if (sessionKey && sessionKey !== getAuthSessionKey()) return false;
+  state.user = user;
+  writeAuthCache(user);
+  return true;
+}
+
+function applyLoggedOutState(sessionKey?: string) {
+  if (sessionKey && sessionKey !== getAuthSessionKey()) return false;
+  state.user = null;
+  clearAuthCache();
+  return true;
+}
+
 export const useAuth = () => state;
 
 export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean }) {
@@ -89,20 +125,22 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
     if (cached) return cached;
     if (pendingFetchMe) return pendingFetchMe;
   }
+  const requestEpoch = getAuthRequestEpoch();
+  const sessionKey = getAuthSessionKey();
   state.loading = true;
   const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
+    if (requestEpoch !== getAuthRequestEpoch() || sessionKey !== getAuthSessionKey()) return useAuth().user as User;
     bumpAuthRequestEpoch();
-    bumpAuthRequestEpoch();
-    state.user = r.data.user;
-    writeAuthCache(r.data.user);
+    applyAuthorizedUser(r.data.user, sessionKey);
     return r.data.user;
   }).catch((e) => {
-    state.user = null;
-    clearAuthCache();
+    if (requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey()) {
+      applyLoggedOutState(sessionKey);
+    }
     throw e;
   }).finally(() => {
     state.loading = false;
-    pendingFetchMe = null;
+    if (pendingFetchMe === task) pendingFetchMe = null;
   });
   pendingFetchMe = task;
   return task;
@@ -111,10 +149,10 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
 export const login = (username: string, password: string) => loginWithCaptcha(username, password);
 export async function loginWithCaptcha(username: string, password: string, turnstile_token?: string) {
   try {
+    rotateSessionKey();
     const r = await apiRequestJson<LoginResponse>("/api/auth/login", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ username, password, turnstile_token }) }, { handleUnauthorized: false });
     bumpAuthRequestEpoch();
-    state.user = r.data.user;
-    writeAuthCache(r.data.user);
+    applyAuthorizedUser(r.data.user, getAuthSessionKey());
     return r.data.user;
   } catch (e: any) {
     const response = e?.response;
@@ -126,8 +164,8 @@ export async function loginWithCaptcha(username: string, password: string, turns
 }
 export async function logout() {
   bumpAuthRequestEpoch();
-  state.user = null;
-  clearAuthCache();
+  rotateSessionKey();
+  applyLoggedOutState(getAuthSessionKey());
   try {
     await apiPost('/api/auth/logout', {});
   } catch {}

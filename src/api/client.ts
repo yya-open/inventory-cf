@@ -1,10 +1,10 @@
-import { getAuthRequestEpoch, useAuth } from "../store/auth";
+import { getAuthRequestEpoch, getAuthSessionKey, useAuth } from "../store/auth";
 
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
 type ApiError = Error & { status?: number; response?: any };
 
-function handleUnauthorized(message: string | undefined, requestEpoch?: number): never {
-  if (typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) {
+function handleUnauthorized(message: string | undefined, requestEpoch?: number, sessionKey?: string): never {
+  if ((typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) || (typeof sessionKey === 'string' && sessionKey && sessionKey !== getAuthSessionKey())) {
     throw new Error(message || "请求已过期");
   }
   const auth = useAuth();
@@ -36,9 +36,10 @@ function buildError(message: string, status: number, response: any): ApiError {
 export async function apiRequestJson<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
   const requestEpoch = getAuthRequestEpoch();
-  const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}) } });
+  const sessionKey = getAuthSessionKey();
+  const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
   const j = await parseJson(r);
-  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message);
+  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch, sessionKey);
   if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
   return j as T;
 }
@@ -71,10 +72,11 @@ export type ApiFetchedFile = {
 export async function apiFetchFile(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = 'include' } = options;
   const requestEpoch = getAuthRequestEpoch();
-  const r = await fetch(path, { method: 'GET', credentials, ...init });
+  const sessionKey = getAuthSessionKey();
+  const r = await fetch(path, { method: 'GET', credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
   if (r.status === 401 && shouldHandleUnauthorized) {
     const j = await parseJson(r);
-    return handleUnauthorized(j?.message, requestEpoch);
+    return handleUnauthorized(j?.message, requestEpoch, sessionKey);
   }
   if (!r.ok) {
     const j = await parseJson(r);

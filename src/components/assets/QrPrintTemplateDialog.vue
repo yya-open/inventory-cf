@@ -65,13 +65,32 @@
           <div class="form-grid two-col">
             <el-form-item label="输出 DPI">
               <div class="choice-button-row">
-                <el-button :type="form.output_dpi === 203 ? 'primary' : 'default'" @click="form.output_dpi = 203">203 DPI</el-button>
-                <el-button :type="form.output_dpi === 300 ? 'primary' : 'default'" @click="form.output_dpi = 300">300 DPI</el-button>
+                <el-button :type="form.output_dpi === 203 ? 'primary' : 'default'" @click="applyPrinterProfileByDpi(203)">203 DPI</el-button>
+                <el-button :type="form.output_dpi === 300 ? 'primary' : 'default'" @click="applyPrinterProfileByDpi(300)">300 DPI</el-button>
               </div>
             </el-form-item>
             <el-form-item label="页面头部">
               <el-switch v-model="form.show_page_header" :disabled="form.label_preset !== 'none'" inline-prompt active-text="显示" inactive-text="隐藏" />
             </el-form-item>
+          </div>
+
+
+          <div class="section-title">打印机适配</div>
+          <el-form-item label="机型预设">
+            <div class="choice-button-row content-mode-group">
+              <el-button
+                v-for="item in printerProfiles"
+                :key="item.key"
+                :type="form.printer_profile === item.key ? 'primary' : 'default'"
+                @click="applyPrinterProfile(item.key)"
+              >
+                {{ item.name }}
+              </el-button>
+            </div>
+          </el-form-item>
+          <div class="label-preset-help">
+            <div class="hint-line">当前打印机：{{ activePrinterProfile.name }}</div>
+            <div class="hint-line">{{ activePrinterProfile.description }} · 二维码留白 {{ form.qr_margin_modules }} 模块 · 安全边距 {{ form.safe_padding_mm }} mm</div>
           </div>
 
           <div class="section-title">边距</div>
@@ -127,6 +146,7 @@
           <div class="preview-line">{{ kindLabel }}：{{ kind === 'cards' ? '二维码标签' : '二维码图版' }}</div>
           <div class="preview-line">纸张：{{ paperLabel }}</div>
           <div class="preview-line">输出：{{ form.output_dpi }} DPI</div>
+          <div class="preview-line">打印机：{{ activePrinterProfile.name }}</div>
           <div class="preview-line">每页：{{ form.cols }} 列 × {{ form.rows }} 行 = {{ form.cols * form.rows }} 个</div>
           <div class="preview-line">单块区域约：{{ cellEstimate.widthMm }} × {{ cellEstimate.heightMm }} mm</div>
           <div class="preview-line">二维码：{{ form.qr_size_mm }} mm</div>
@@ -173,6 +193,7 @@ import { computed, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../../utils/el-services';
 import {
   applyQrLabelPreset,
+  applyQrPrinterProfile,
   createDefaultQrPrintTemplate,
   deleteQrPrintPreset,
   estimateQrCellSize,
@@ -181,7 +202,9 @@ import {
   getDefaultQrPrintTemplate,
   getLastUsedQrPrintTemplate,
   getQrLabelPreset,
+  getQrPrinterProfile,
   listQrLabelPresets,
+  listQrPrinterProfiles,
   importQrPrintTemplateFile,
   listSavedQrPrintPresets,
   normalizeQrPrintTemplate,
@@ -190,6 +213,7 @@ import {
   setDefaultQrPrintTemplate,
   setLastUsedQrPrintTemplate,
   type QrLabelPresetKey,
+  type QrPrinterProfileKey,
   type QrPrintContentMode,
   type QrPrintTemplate,
   type QrPrintTemplateKind,
@@ -220,6 +244,7 @@ const presets = ref<Array<{ id: string; name: string; template: QrPrintTemplate 
 const selectedPresetId = ref('');
 const presetName = ref('');
 const labelPresets = listQrLabelPresets();
+const printerProfiles = listQrPrinterProfiles();
 const importInputRef = ref<HTMLInputElement | null>(null);
 
 function downloadJsonFile(data: unknown, filename: string) {
@@ -309,6 +334,16 @@ function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
   patchForm(next);
 }
 
+function applyPrinterProfile(profileKey: QrPrinterProfileKey) {
+  patchForm(applyQrPrinterProfile(props.kind, profileKey, form.value));
+}
+
+function applyPrinterProfileByDpi(dpi: 203 | 300) {
+  const current = getQrPrinterProfile(form.value.printer_profile);
+  const match = printerProfiles.find((item) => item.dpi === dpi && (item.key === current.key || item.key.startsWith(dpi === 203 ? 'gprinter' : 'generic'))) || printerProfiles.find((item) => item.dpi === dpi) || current;
+  applyPrinterProfile(match.key);
+}
+
 watch(() => form.value.label_preset, (presetKey, prevKey) => {
   if (!visible.value || presetKey === prevKey) return;
   if (presetKey === 'none') {
@@ -369,6 +404,7 @@ const contentModeLabelMap: Record<QrPrintContentMode, string> = {
 };
 
 const activeLabelPreset = computed(() => getQrLabelPreset(form.value.label_preset));
+const activePrinterProfile = computed(() => getQrPrinterProfile(form.value.printer_profile));
 const cellEstimate = computed(() => estimateQrCellSize(form.value));
 const paperLabel = computed(() => {
   const { pageWidthMm, pageHeightMm } = cellEstimate.value;
@@ -408,6 +444,9 @@ const validationWarnings = computed(() => {
   if (form.value.show_meta && form.value.meta_count >= 3 && heightMm < 34) warnings.push('元信息行数偏多，导出时会自动缩字，仍建议减少到 1-2 行。');
   if (smallLabel && form.value.content_mode === 'detail') warnings.push('小尺寸标签更适合“仅二维码”或“二维码+型号+SN”。');
   if (form.value.margin_left_mm + form.value.margin_right_mm >= Math.max(6, cellEstimate.value.pageWidthMm * 0.3)) warnings.push('左右边距占比偏大，可适当减小边距提升可用面积。');
+  if (form.value.output_dpi === 203 && form.value.qr_size_mm < 22) warnings.push('203 DPI 机型建议二维码至少 22 mm，以提升扫码稳定性。');
+  if (form.value.qr_margin_modules < 2) warnings.push('二维码留白过小，标签切边后可能影响扫码，建议至少 2 模块。');
+  if (form.value.safe_padding_mm < 1.2 && form.value.label_preset !== 'none') warnings.push('标签机安全边距偏小，建议至少 1.2 mm。');
   if (form.value.label_preset !== 'none' && form.value.show_link) warnings.push('标签机模板已自动隐藏底部链接，以避免文字过密。');
   return warnings;
 });

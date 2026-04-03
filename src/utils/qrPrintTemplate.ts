@@ -7,6 +7,7 @@ export type QrOrientation = 'portrait' | 'landscape';
 export type QrPrintContentMode = 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
 export type QrPrintDpi = 203 | 300;
 export type QrLabelPresetKey = 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+export type QrPrinterProfileKey = 'generic_300' | 'brother_300' | 'deli_203' | 'gprinter_203';
 
 export type QrPrintTemplate = {
   kind: QrPrintTemplateKind;
@@ -32,6 +33,9 @@ export type QrPrintTemplate = {
   meta_count: number;
   output_dpi: QrPrintDpi;
   label_preset: QrLabelPresetKey;
+  printer_profile: QrPrinterProfileKey;
+  qr_margin_modules: number;
+  safe_padding_mm: number;
 };
 
 type SavedPreset = {
@@ -72,8 +76,26 @@ export type QrLabelPreset = {
   description: string;
 };
 
-const STORAGE_KEY = 'inventory:qr-print-templates:v4';
-const LEGACY_STORAGE_KEY = 'inventory:qr-print-templates:v3';
+
+export type QrPrinterProfile = {
+  key: QrPrinterProfileKey;
+  name: string;
+  dpi: QrPrintDpi;
+  marginModules: number;
+  safePaddingMm: number;
+  description: string;
+};
+
+const STORAGE_KEY = 'inventory:qr-print-templates:v5';
+const LEGACY_STORAGE_KEY = 'inventory:qr-print-templates:v4';
+
+
+const PRINTER_PROFILES: QrPrinterProfile[] = [
+  { key: 'generic_300', name: '通用高精度 / 300 DPI', dpi: 300, marginModules: 2, safePaddingMm: 1.2, description: '适合大多数 300 DPI 标签打印机，二维码留白更稳。' },
+  { key: 'brother_300', name: '兄弟标签机 / 300 DPI', dpi: 300, marginModules: 2, safePaddingMm: 1.4, description: '适合兄弟常见机型，边距略放宽，减少切边风险。' },
+  { key: 'deli_203', name: '得力标签机 / 203 DPI', dpi: 203, marginModules: 3, safePaddingMm: 1.6, description: '203 DPI 机型建议更大的二维码留白和安全边距。' },
+  { key: 'gprinter_203', name: '佳博 / 热敏 203 DPI', dpi: 203, marginModules: 3, safePaddingMm: 1.8, description: '适合常见热敏 203 DPI，提升条码切边与糊边容错。' },
+];
 
 const LABEL_PRESETS: QrLabelPreset[] = [
   { key: '40x30', name: '40 × 30 mm', widthMm: 40, heightMm: 30, recommendedDpi: 300, recommendedQrMm: 18, description: '小号标签，适合仅二维码或短文本' },
@@ -94,6 +116,10 @@ function normalizeLabelPresetKey(value: unknown): QrLabelPresetKey {
 
 function normalizeDpi(value: unknown): QrPrintDpi {
   return Number(value) === 203 ? 203 : 300;
+}
+
+function normalizePrinterProfileKey(value: unknown): QrPrinterProfileKey {
+  return PRINTER_PROFILES.some((item) => item.key === value) ? value as QrPrinterProfileKey : 'generic_300';
 }
 
 
@@ -119,6 +145,14 @@ function createFallbackStore(): StoreState {
 
 export function listQrLabelPresets() {
   return LABEL_PRESETS.slice();
+}
+
+export function listQrPrinterProfiles() {
+  return PRINTER_PROFILES.slice();
+}
+
+export function getQrPrinterProfile(key: QrPrinterProfileKey | string | null | undefined) {
+  return PRINTER_PROFILES.find((item) => item.key === key) || PRINTER_PROFILES[0];
 }
 
 export function getQrLabelPreset(key: QrLabelPresetKey | string | null | undefined) {
@@ -151,6 +185,9 @@ function buildStandardTemplate(kind: QrPrintTemplateKind): QrPrintTemplate {
       meta_count: 3,
       output_dpi: 300,
       label_preset: 'none',
+      printer_profile: 'generic_300',
+      qr_margin_modules: 2,
+      safe_padding_mm: 1.2,
     };
   }
   return {
@@ -177,11 +214,15 @@ function buildStandardTemplate(kind: QrPrintTemplateKind): QrPrintTemplate {
     meta_count: 4,
     output_dpi: 300,
     label_preset: 'none',
+    printer_profile: 'generic_300',
+    qr_margin_modules: 2,
+    safe_padding_mm: 1.2,
   };
 }
 
 export function createLabelPrinterTemplate(kind: QrPrintTemplateKind, presetKey: Exclude<QrLabelPresetKey, 'none'> = '60x40'): QrPrintTemplate {
   const preset = getQrLabelPreset(presetKey) || LABEL_PRESETS[2];
+  const profile = getQrPrinterProfile(preset.recommendedDpi === 203 ? 'gprinter_203' : 'generic_300');
   const isSmall = preset.widthMm <= 50 || preset.heightMm <= 30;
   return {
     kind,
@@ -189,10 +230,10 @@ export function createLabelPrinterTemplate(kind: QrPrintTemplateKind, presetKey:
     orientation: 'landscape',
     custom_width_mm: preset.widthMm,
     custom_height_mm: preset.heightMm,
-    margin_top_mm: 1.2,
-    margin_right_mm: 1.2,
-    margin_bottom_mm: 1.2,
-    margin_left_mm: 1.2,
+    margin_top_mm: profile.safePaddingMm,
+    margin_right_mm: profile.safePaddingMm,
+    margin_bottom_mm: profile.safePaddingMm,
+    margin_left_mm: profile.safePaddingMm,
     cols: 1,
     rows: 1,
     gap_x_mm: 0,
@@ -205,8 +246,11 @@ export function createLabelPrinterTemplate(kind: QrPrintTemplateKind, presetKey:
     show_link: false,
     show_page_header: false,
     meta_count: isSmall ? 0 : 2,
-    output_dpi: preset.recommendedDpi,
+    output_dpi: profile.dpi,
     label_preset: preset.key,
+    printer_profile: profile.key,
+    qr_margin_modules: profile.marginModules,
+    safe_padding_mm: profile.safePaddingMm,
   };
 }
 
@@ -231,6 +275,27 @@ export function applyQrLabelPreset(kind: QrPrintTemplateKind, presetKey: Exclude
   template.label_preset = preset.key;
   template.output_dpi = normalizeDpi(template.output_dpi || preset.recommendedDpi);
   return normalizeQrPrintTemplate(kind, template);
+}
+
+export function applyQrPrinterProfile(kind: QrPrintTemplateKind, profileKey: QrPrinterProfileKey, base?: Partial<QrPrintTemplate> | null): QrPrintTemplate {
+  const profile = getQrPrinterProfile(profileKey);
+  const template = normalizeQrPrintTemplate(kind, { ...(base || {}), printer_profile: profile.key, output_dpi: profile.dpi, qr_margin_modules: profile.marginModules, safe_padding_mm: profile.safePaddingMm });
+  const padding = Math.max(profile.safePaddingMm, template.label_preset === 'none' ? 1.2 : profile.safePaddingMm);
+  template.output_dpi = profile.dpi;
+  template.printer_profile = profile.key;
+  template.qr_margin_modules = profile.marginModules;
+  template.safe_padding_mm = padding;
+  const printerProfile = getQrPrinterProfile(template.printer_profile);
+  template.output_dpi = printerProfile.dpi;
+  template.qr_margin_modules = Math.max(1, template.qr_margin_modules || printerProfile.marginModules);
+  template.safe_padding_mm = Math.max(0.8, template.safe_padding_mm || printerProfile.safePaddingMm);
+  if (template.label_preset !== 'none') {
+    template.margin_top_mm = Math.max(template.margin_top_mm, padding);
+    template.margin_right_mm = Math.max(template.margin_right_mm, padding);
+    template.margin_bottom_mm = Math.max(template.margin_bottom_mm, padding);
+    template.margin_left_mm = Math.max(template.margin_left_mm, padding);
+  }
+  return template;
 }
 
 export function normalizeQrPrintTemplate(kind: QrPrintTemplateKind, input: Partial<QrPrintTemplate> | null | undefined): QrPrintTemplate {
@@ -263,7 +328,14 @@ export function normalizeQrPrintTemplate(kind: QrPrintTemplateKind, input: Parti
     meta_count: Math.trunc(clamp(Number(input?.meta_count ?? fallback.meta_count), 0, 6)),
     output_dpi: normalizeDpi(input?.output_dpi ?? fallback.output_dpi),
     label_preset: presetKey,
+    printer_profile: normalizePrinterProfileKey((input as any)?.printer_profile ?? (fallback as any).printer_profile),
+    qr_margin_modules: Math.trunc(clamp(Number((input as any)?.qr_margin_modules ?? (fallback as any).qr_margin_modules ?? 2), 1, 4)),
+    safe_padding_mm: clamp(Number((input as any)?.safe_padding_mm ?? (fallback as any).safe_padding_mm ?? 1.2), 0.8, 4),
   };
+  const printerProfile = getQrPrinterProfile(template.printer_profile);
+  template.output_dpi = printerProfile.dpi;
+  template.qr_margin_modules = Math.max(1, template.qr_margin_modules || printerProfile.marginModules);
+  template.safe_padding_mm = Math.max(0.8, template.safe_padding_mm || printerProfile.safePaddingMm);
   if (template.label_preset !== 'none') {
     const preset = getQrLabelPreset(template.label_preset);
     if (preset) {

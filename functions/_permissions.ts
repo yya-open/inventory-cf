@@ -7,7 +7,9 @@ export type PermissionCode =
   | 'bulk_operation'
   | 'stocktake_apply'
   | 'ops_tools'
-  | 'async_job_manage';
+  | 'async_job_manage'
+  | 'qr_export'
+  | 'qr_reset';
 
 export type PermissionTemplateCode = 'admin_full' | 'admin_ops' | 'operator_plus' | 'auditor' | 'readonly';
 
@@ -19,6 +21,8 @@ export const ALL_PERMISSION_CODES: PermissionCode[] = [
   'stocktake_apply',
   'ops_tools',
   'async_job_manage',
+  'qr_export',
+  'qr_reset',
 ];
 
 export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: string; role_hint: 'admin'|'operator'|'viewer'; permissions: Record<PermissionCode, boolean> }> = {
@@ -38,6 +42,8 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
       stocktake_apply: true,
       ops_tools: true,
       async_job_manage: true,
+      qr_export: true,
+      qr_reset: true,
     },
   },
   operator_plus: {
@@ -51,6 +57,8 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
       stocktake_apply: false,
       ops_tools: false,
       async_job_manage: false,
+      qr_export: true,
+      qr_reset: false,
     },
   },
   auditor: {
@@ -64,6 +72,8 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
       stocktake_apply: false,
       ops_tools: false,
       async_job_manage: false,
+      qr_export: false,
+      qr_reset: false,
     },
   },
   readonly: {
@@ -77,6 +87,8 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
       stocktake_apply: false,
       ops_tools: false,
       async_job_manage: false,
+      qr_export: false,
+      qr_reset: false,
     },
   },
 };

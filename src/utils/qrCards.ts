@@ -100,13 +100,13 @@ function buildMetrics(template: QrPrintTemplate): LayoutMetrics {
     cellWidthPx,
     cellHeightPx,
     qrSizePx: mmToPx(template.qr_size_mm, pxPerMm),
-    paddingPx: Math.max(6, mmToPx(template.label_preset === 'none' ? 2.6 : 1.2, pxPerMm)),
+    paddingPx: Math.max(6, mmToPx(template.label_preset === 'none' ? Math.max(2.6, template.safe_padding_mm || 1.2) : Math.max(1.2, template.safe_padding_mm || 1.2), pxPerMm)),
     radiusPx: Math.max(8, mmToPx(template.label_preset === 'none' ? 2.4 : 1.6, pxPerMm)),
     borderPx: Math.max(1, Math.round(pxPerMm * 0.2)),
   };
 }
 
-async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, onProgress?: AssetQrExportProgressCallback): Promise<QrCardPreparedRecord[]> {
+async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, template: QrPrintTemplate, onProgress?: AssetQrExportProgressCallback): Promise<QrCardPreparedRecord[]> {
   const width = Math.max(256, Math.min(1600, Math.round(qrPixelSize * 2.4)));
   const prepared: QrCardPreparedRecord[] = [];
   const total = Math.max(1, records.length);
@@ -114,7 +114,7 @@ async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, onPr
     const record = records[index];
     prepared.push({
       ...record,
-      dataUrl: await QRCode.toDataURL(record.url, { width, margin: 1, errorCorrectionLevel: 'Q' }),
+      dataUrl: await QRCode.toDataURL(record.url, { width, margin: Math.max(1, Math.trunc(template.qr_margin_modules || 2)), errorCorrectionLevel: template.output_dpi === 203 ? 'H' : 'Q' }),
     });
     onProgress?.({ stage: '生成二维码图片', current: index + 1, total, detail: `已生成 ${index + 1} / ${total} 张二维码` });
   }
@@ -368,7 +368,7 @@ async function drawCardCell(
 async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
   const template = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
   const metrics = buildMetrics(template);
-  const cards = await prepareQrCards(records, metrics.qrSizePx, onProgress);
+  const cards = await prepareQrCards(records, metrics.qrSizePx, template, onProgress);
   if (!cards.length) return [] as DownloadFile[];
   const perPage = Math.max(1, template.cols * template.rows);
   const pages = chunkRecords(cards, perPage);
@@ -383,6 +383,7 @@ async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, reco
     const ctx = canvas.getContext('2d');
     if (!ctx) throw new Error('无法创建绘图上下文');
 
+    ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = '#ffffff';
     ctx.fillRect(0, 0, canvas.width, canvas.height);
     drawHeader(ctx, title, pageIndex, pages.length, pageCards.length, metrics);
