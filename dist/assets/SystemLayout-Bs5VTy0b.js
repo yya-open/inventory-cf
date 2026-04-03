@@ -1,0 +1,1 @@
+import{_ as o,k as t,a as r,c}from"./index-BhWhsWnV.js";import"./excel-utils-puM1fYsQ.js";import"./qrcode-BK0OYQ52.js";const n={};function s(_,a){const e=t("router-view");return r(),c(e)}const f=o(n,[["render",s]]);export{f as default};

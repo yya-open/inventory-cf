@@ -202,8 +202,12 @@ const selectedPresetId = ref('');
 const presetName = ref('');
 const labelPresets = listQrLabelPresets();
 
+function patchForm(next: QrPrintTemplate) {
+  form.value = normalizeQrPrintTemplate(props.kind, { ...next });
+}
+
 function refreshState() {
-  form.value = normalizeQrPrintTemplate(props.kind, getDefaultQrPrintTemplate(props.kind));
+  patchForm(getDefaultQrPrintTemplate(props.kind));
   presets.value = listSavedQrPrintPresets(props.kind);
   selectedPresetId.value = '';
   presetName.value = '';
@@ -216,20 +220,35 @@ watch(() => [props.visible, props.kind] as const, ([nextVisible]) => {
 function applySelectedPreset() {
   const preset = presets.value.find((item) => item.id === selectedPresetId.value);
   if (!preset) return;
-  form.value = normalizeQrPrintTemplate(props.kind, preset.template);
+  patchForm(preset.template);
 }
 
 function restoreDefaults() {
-  form.value = createDefaultQrPrintTemplate(props.kind);
+  patchForm(createDefaultQrPrintTemplate(props.kind));
 }
 
 function applyStandardPreset() {
-  form.value = createDefaultQrPrintTemplate(props.kind);
+  patchForm(createDefaultQrPrintTemplate(props.kind));
 }
 
 function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
-  form.value = applyQrLabelPreset(props.kind, presetKey, form.value);
+  const next = applyQrLabelPreset(props.kind, presetKey, { ...form.value, label_preset: presetKey });
+  patchForm(next);
 }
+
+watch(() => form.value.label_preset, (presetKey, prevKey) => {
+  if (!visible.value || presetKey === prevKey) return;
+  if (presetKey === 'none') {
+    if (prevKey !== 'none') patchForm(createDefaultQrPrintTemplate(props.kind));
+    return;
+  }
+  patchForm(applyQrLabelPreset(props.kind, presetKey as Exclude<QrLabelPresetKey, 'none'>, form.value));
+});
+
+watch(() => props.kind, (nextKind) => {
+  patchForm(createDefaultQrPrintTemplate(nextKind));
+});
+
 
 async function removeSelectedPreset() {
   const preset = presets.value.find((item) => item.id === selectedPresetId.value);
