@@ -881,6 +881,11 @@ body {
 }
 
 @media (max-width: 900px) {
+  .app-aside,
+  .app-aside-toggle {
+    display: none !important;
+  }
+
   .ledger-form-grid,
   .ledger-detail-grid,
   .ledger-detail-list {
@@ -1348,6 +1353,34 @@ body {
 
 .app-mobile-drawer .el-drawer__body {
   padding: 0;
+  background: #ffffff;
+}
+
+.app-mobile-drawer .el-drawer {
+  background: #ffffff;
+}
+
+.app-mobile-drawer__header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 14px 8px;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.06);
+  background: #ffffff;
+  position: sticky;
+  top: 0;
+  z-index: 2;
+}
+
+.app-mobile-drawer__title {
+  font-size: 16px;
+  font-weight: 700;
+  color: #0f172a;
+}
+
+.app-mobile-drawer__close {
+  flex: 0 0 auto;
 }
 
 @media (max-width: 900px) {

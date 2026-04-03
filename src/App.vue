@@ -43,12 +43,18 @@
       </el-aside>
 
       <el-drawer
+        v-if="isMobile"
         v-model="mobileSidebarVisible"
         direction="ltr"
         size="82%"
         :with-header="false"
+        :append-to-body="true"
         class="app-mobile-drawer"
       >
+        <div class="app-mobile-drawer__header">
+          <div class="app-mobile-drawer__title">导航菜单</div>
+          <el-button circle plain class="app-mobile-drawer__close" @click="mobileSidebarVisible = false">×</el-button>
+        </div>
         <AppSidebarMenu
           :is-system="isSystem"
           :active-menu="activeMenu"
