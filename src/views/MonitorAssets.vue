@@ -215,7 +215,7 @@ import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets 
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
-import { createAssetQrExportJob, exportAssetQrLinksWorkbook, exportAssetQrPrintLocal, formatAssetQrJobCreatedMessage } from '../utils/assetQrExport';
+import { exportAssetQrLinksWorkbook, exportAssetQrPrintLocal } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
@@ -819,17 +819,7 @@ async function exportSelectedQrLinks() {
 async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
-    if (!isAdmin.value) {
-      await exportSelectedQrCardsLocal(template);
-      return;
-    }
-    const result = await createAssetQrExportJob({
-      rows: selectedRows.value,
-      getId: (row) => Number(row.id),
-      jobType: 'MONITOR_QR_CARDS_EXPORT',
-      template,
-    });
-    ElMessage.success(formatAssetQrJobCreatedMessage(result, '二维码卡片打印页'));
+    await exportSelectedQrCardsLocal(template);
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码卡片失败');
   } finally {
@@ -1577,17 +1567,7 @@ async function submitQrPrintTemplate(template: QrPrintTemplate) {
 async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>) {
   try {
     exportBusy.value = true;
-    if (!isAdmin.value) {
-      await exportSelectedQrSheetLocal(template);
-      return;
-    }
-    const result = await createAssetQrExportJob({
-      rows: selectedRows.value,
-      getId: (row) => Number(row.id),
-      jobType: 'MONITOR_QR_SHEET_EXPORT',
-      template,
-    });
-    ElMessage.success(formatAssetQrJobCreatedMessage(result, '二维码图版打印页'));
+    await exportSelectedQrSheetLocal(template);
   } catch (error: any) {
     ElMessage.error(error?.message || '导出二维码图版失败');
   } finally {

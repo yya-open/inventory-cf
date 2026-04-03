@@ -1,3 +1,4 @@
+import JSZip from 'jszip';
 import QRCode from 'qrcode';
 import { createDefaultQrPrintTemplate, normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qrPrintTemplate';
 
@@ -181,9 +182,9 @@ function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: n
   ctx.closePath();
 }
 
-async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
+async function renderQrPagesAsPng(kind: QrPrintTemplateKind, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
   const cards = await prepareQrCards(records);
-  if (!cards.length) return;
+  if (!cards.length) return [] as Array<{ name: string; blob: Blob }>;
   const template = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
   const vars = buildLayoutVars(kind, template);
   const perPage = Math.max(1, template.cols * template.rows);
@@ -193,10 +194,8 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
   const marginLeftPx = mmToPx(template.margin_left_mm);
   const marginRightPx = mmToPx(template.margin_right_mm);
   const marginTopPx = mmToPx(template.margin_top_mm);
-  const marginBottomPx = mmToPx(template.margin_bottom_mm);
   const headerHeightPx = mmToPx(14);
   const pageInnerWidthPx = Math.max(200, pageWidthPx - marginLeftPx - marginRightPx);
-  const pageInnerHeightPx = Math.max(200, pageHeightPx - marginTopPx - marginBottomPx);
   const gridTopPx = marginTopPx + headerHeightPx;
   const gapXPx = mmToPx(template.gap_x_mm);
   const gapYPx = mmToPx(template.gap_y_mm);
@@ -208,6 +207,7 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
   const qrPaddingPx = mmToPx(1.2);
   const borderPx = Math.max(1, Math.round(PX_PER_MM * 0.3));
   const qrColumnWidthPx = Math.max(qrSizePx + qrPaddingPx * 2, Math.round(mmToPx(vars.qrColumnWidth)));
+  const output: Array<{ name: string; blob: Blob }> = [];
 
   for (let pageIndex = 0; pageIndex < pages.length; pageIndex += 1) {
     const pageCards = pages[pageIndex];
@@ -319,15 +319,26 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
       }
     }
 
-    const pageNo = pages.length > 1 ? `_第${pageIndex + 1}页` : '';
-    const dataUrl = canvas.toDataURL('image/png');
-    const link = document.createElement('a');
-    link.href = dataUrl;
-    link.download = `${filename}${pageNo}.png`;
-    document.body.appendChild(link);
-    link.click();
-    document.body.removeChild(link);
+    const blob = await canvasToBlob(canvas);
+    output.push({
+      name: pages.length > 1 ? `第${pageIndex + 1}页.png` : `${title}.png`,
+      blob,
+    });
   }
+  return output;
+}
+
+async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string, title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
+  const files = await renderQrPagesAsPng(kind, title, records, inputTemplate);
+  if (!files.length) return;
+  if (files.length === 1) {
+    downloadBlob(`${filename}.png`, files[0].blob);
+    return;
+  }
+  const zip = new JSZip();
+  files.forEach((file) => zip.file(file.name, file.blob));
+  const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
+  downloadBlob(`${filename}.zip`, zipBlob);
 }
 
 export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>) {
@@ -336,6 +347,15 @@ export async function downloadQrCardsHtml(filename: string, title: string, recor
 
 export async function downloadQrSheetHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>) {
   await downloadQrPagesAsPng('sheet', filename.replace(/\.html$/i, ''), title, records, template);
+}
+
+function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
+  return new Promise((resolve, reject) => {
+    canvas.toBlob((blob) => {
+      if (blob) resolve(blob);
+      else reject(new Error('二维码图片导出失败'));
+    }, 'image/png');
+  });
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
