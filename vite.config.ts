@@ -14,26 +14,7 @@ export default defineConfig({
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('qrcode')) return 'qrcode';
-          if (id.includes('@element-plus/icons-vue')) return 'element-plus-icons';
-          if (id.includes('element-plus')) return 'element-plus';
-          if (
-            id.includes('@vueuse/core') ||
-            id.includes('@floating-ui/') ||
-            id.includes('@sxzz/popperjs-es') ||
-            id.includes('@ctrl/tinycolor') ||
-            id.includes('async-validator') ||
-            id.includes('dayjs') ||
-            id.includes('lodash') ||
-            id.includes('lodash-es') ||
-            id.includes('lodash-unified') ||
-            id.includes('memoize-one') ||
-            id.includes('normalize-wheel-es') ||
-            id.includes('vue-component-type-helpers')
-          ) {
-            return 'element-plus';
-          }
-          if (id.includes('vue-router') || id.includes('/vue/')) return 'vue-vendor';
-          return 'vendor';
+          return undefined;
         },
       },
     },
