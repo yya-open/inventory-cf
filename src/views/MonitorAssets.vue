@@ -269,6 +269,7 @@ const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_r
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; current: number; total: number; detail: string }>({ visible: false, title: '', stage: '', current: 0, total: 1, detail: '' });
+let qrExportProgressAutoCloseTimer: number | null = null;
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
 const qrTemplateAction = ref<'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet'>('batch-cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
@@ -320,11 +321,20 @@ onMounted(() => {
 });
 
 
+function clearQrExportProgressAutoCloseTimer() {
+  if (qrExportProgressAutoCloseTimer != null) {
+    window.clearTimeout(qrExportProgressAutoCloseTimer);
+    qrExportProgressAutoCloseTimer = null;
+  }
+}
+
 function startQrExportProgress(title: string) {
+  clearQrExportProgressAutoCloseTimer();
   qrExportProgress.value = { visible: true, title, stage: '准备中', current: 0, total: 1, detail: '正在准备导出…' };
 }
 
 function updateQrExportProgress(progress: AssetQrExportProgress) {
+  clearQrExportProgressAutoCloseTimer();
   qrExportProgress.value = {
     ...qrExportProgress.value,
     visible: true,
@@ -333,9 +343,16 @@ function updateQrExportProgress(progress: AssetQrExportProgress) {
     total: Math.max(1, progress.total),
     detail: progress.detail || '',
   };
+  if (progress.stage === '下载文件' && progress.current >= Math.max(1, progress.total)) {
+    qrExportProgressAutoCloseTimer = window.setTimeout(() => {
+      qrExportProgress.value = { ...qrExportProgress.value, visible: false };
+      qrExportProgressAutoCloseTimer = null;
+    }, 600);
+  }
 }
 
 function finishQrExportProgress() {
+  clearQrExportProgressAutoCloseTimer();
   qrExportProgress.value = { ...qrExportProgress.value, visible: false };
 }
 
@@ -1596,11 +1613,21 @@ function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: 'batch-cards' |
 
 async function submitQrPrintTemplate(template: QrPrintTemplate) {
   if (qrTemplateAction.value === 'single-cards') {
-    await exportSingleMonitorQrCard(template);
+    try {
+      startQrExportProgress('正在导出二维码标签');
+      await exportSingleMonitorQrCard(template);
+    } finally {
+      finishQrExportProgress();
+    }
     return;
   }
   if (qrTemplateAction.value === 'single-sheet') {
-    await exportSingleMonitorQrSheet(template);
+    try {
+      startQrExportProgress('正在导出二维码图版');
+      await exportSingleMonitorQrSheet(template);
+    } finally {
+      finishQrExportProgress();
+    }
     return;
   }
   if (qrTemplateKind.value === 'cards') {
@@ -1878,6 +1905,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  clearQrExportProgressAutoCloseTimer();
   cleanupViewState();
 });
 
