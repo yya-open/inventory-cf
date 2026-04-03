@@ -197,7 +197,7 @@ export function applyQrLabelPreset(kind: QrPrintTemplateKind, presetKey: Exclude
 
 export function normalizeQrPrintTemplate(kind: QrPrintTemplateKind, input: Partial<QrPrintTemplate> | null | undefined): QrPrintTemplate {
   const presetKey = normalizeLabelPresetKey(input?.label_preset);
-  const fallback = presetKey !== 'none' ? applyQrLabelPreset(kind, presetKey) : createDefaultQrPrintTemplate(kind);
+  const fallback = presetKey !== 'none' ? createLabelPrinterTemplate(kind, presetKey) : createDefaultQrPrintTemplate(kind);
   const paperSize = input?.paper_size === 'A5' || input?.paper_size === 'custom' ? input.paper_size : fallback.paper_size;
   const orientation = input?.orientation === 'portrait' ? 'portrait' : fallback.orientation;
   const contentMode = input?.content_mode === 'qr_only' || input?.content_mode === 'model_sn' || input?.content_mode === 'model_asset' ? input.content_mode : fallback.content_mode;
