@@ -46,10 +46,10 @@
               </el-select>
             </el-form-item>
             <el-form-item label="方向">
-              <el-radio-group v-model="form.orientation" :disabled="form.label_preset !== 'none'">
-                <el-radio-button label="portrait">纵向</el-radio-button>
-                <el-radio-button label="landscape">横向</el-radio-button>
-              </el-radio-group>
+              <div class="choice-button-row">
+                <el-button :type="form.orientation === 'portrait' ? 'primary' : 'default'" :disabled="form.label_preset !== 'none'" @click="form.orientation = 'portrait'">纵向</el-button>
+                <el-button :type="form.orientation === 'landscape' ? 'primary' : 'default'" :disabled="form.label_preset !== 'none'" @click="form.orientation = 'landscape'">横向</el-button>
+              </div>
             </el-form-item>
           </div>
 
@@ -60,10 +60,10 @@
 
           <div class="form-grid two-col">
             <el-form-item label="输出 DPI">
-              <el-radio-group v-model="form.output_dpi">
-                <el-radio-button :label="203">203 DPI</el-radio-button>
-                <el-radio-button :label="300">300 DPI</el-radio-button>
-              </el-radio-group>
+              <div class="choice-button-row">
+                <el-button :type="form.output_dpi === 203 ? 'primary' : 'default'" @click="form.output_dpi = 203">203 DPI</el-button>
+                <el-button :type="form.output_dpi === 300 ? 'primary' : 'default'" @click="form.output_dpi = 300">300 DPI</el-button>
+              </div>
             </el-form-item>
             <el-form-item label="页面头部">
               <el-switch v-model="form.show_page_header" :disabled="form.label_preset !== 'none'" inline-prompt active-text="显示" inactive-text="隐藏" />
@@ -93,12 +93,12 @@
 
           <div class="section-title">内容模板</div>
           <el-form-item label="模板">
-            <el-radio-group v-model="form.content_mode" class="content-mode-group">
-              <el-radio-button label="detail">明细版</el-radio-button>
-              <el-radio-button label="qr_only">仅二维码</el-radio-button>
-              <el-radio-button label="model_sn">二维码+型号+SN</el-radio-button>
-              <el-radio-button label="model_asset">二维码+型号+资产编号</el-radio-button>
-            </el-radio-group>
+            <div class="choice-button-row content-mode-group">
+              <el-button :type="form.content_mode === 'detail' ? 'primary' : 'default'" @click="form.content_mode = 'detail'">明细版</el-button>
+              <el-button :type="form.content_mode === 'qr_only' ? 'primary' : 'default'" @click="form.content_mode = 'qr_only'">仅二维码</el-button>
+              <el-button :type="form.content_mode === 'model_sn' ? 'primary' : 'default'" @click="form.content_mode = 'model_sn'">二维码+型号+SN</el-button>
+              <el-button :type="form.content_mode === 'model_asset' ? 'primary' : 'default'" @click="form.content_mode = 'model_asset'">二维码+型号+资产编号</el-button>
+            </div>
           </el-form-item>
 
           <div class="section-title">显示内容</div>
@@ -342,7 +342,7 @@ const previewQrStyle = computed(() => {
 
 <style scoped>
 .print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
-.preset-toolbar,.preset-save-row,.toggle-row,.label-preset-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.preset-toolbar,.preset-save-row,.toggle-row,.label-preset-row,.choice-button-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .template-form{margin-top:14px}
 .template-form :deep(.el-form-item){margin-bottom:12px;min-width:0}
 .template-form :deep(.el-form-item__content){min-width:0}
