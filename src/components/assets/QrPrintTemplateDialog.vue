@@ -17,26 +17,57 @@
           <el-button @click="restoreDefaults">恢复默认</el-button>
         </div>
 
-        <el-form label-width="92px" class="template-form">
+        <el-form label-width="96px" class="template-form">
+          <div class="section-title">标签机预设</div>
+          <div class="label-preset-row">
+            <el-button :type="form.label_preset === 'none' ? 'primary' : 'default'" @click="applyStandardPreset">普通纸张</el-button>
+            <el-button
+              v-for="item in labelPresets"
+              :key="item.key"
+              :type="form.label_preset === item.key ? 'primary' : 'default'"
+              @click="applyLabelPreset(item.key)"
+            >
+              {{ item.name }}
+            </el-button>
+          </div>
+          <div class="label-preset-help">
+            <div class="hint-line">当前模式：{{ form.label_preset === 'none' ? '普通页面打印' : '标签机单张输出' }}</div>
+            <div v-if="activeLabelPreset" class="hint-line">
+              推荐：{{ activeLabelPreset.description }} · 默认 {{ activeLabelPreset.recommendedDpi }} DPI
+            </div>
+          </div>
+
           <div class="form-grid two-col">
             <el-form-item label="纸张">
-              <el-select v-model="form.paper_size">
+              <el-select v-model="form.paper_size" :disabled="form.label_preset !== 'none'">
                 <el-option label="A4" value="A4" />
                 <el-option label="A5" value="A5" />
                 <el-option label="自定义" value="custom" />
               </el-select>
             </el-form-item>
             <el-form-item label="方向">
-              <el-radio-group v-model="form.orientation">
+              <el-radio-group v-model="form.orientation" :disabled="form.label_preset !== 'none'">
                 <el-radio-button label="portrait">纵向</el-radio-button>
                 <el-radio-button label="landscape">横向</el-radio-button>
               </el-radio-group>
             </el-form-item>
           </div>
 
-          <div v-if="form.paper_size === 'custom'" class="form-grid two-col">
-            <el-form-item label="宽度(mm)"><el-input-number v-model="form.custom_width_mm" :min="40" :max="500" :step="1" /></el-form-item>
-            <el-form-item label="高度(mm)"><el-input-number v-model="form.custom_height_mm" :min="40" :max="500" :step="1" /></el-form-item>
+          <div class="form-grid two-col">
+            <el-form-item label="宽度(mm)"><el-input-number v-model="form.custom_width_mm" :min="20" :max="500" :step="1" :disabled="form.paper_size !== 'custom' || form.label_preset !== 'none'" /></el-form-item>
+            <el-form-item label="高度(mm)"><el-input-number v-model="form.custom_height_mm" :min="20" :max="500" :step="1" :disabled="form.paper_size !== 'custom' || form.label_preset !== 'none'" /></el-form-item>
+          </div>
+
+          <div class="form-grid two-col">
+            <el-form-item label="输出 DPI">
+              <el-radio-group v-model="form.output_dpi">
+                <el-radio-button :label="203">203 DPI</el-radio-button>
+                <el-radio-button :label="300">300 DPI</el-radio-button>
+              </el-radio-group>
+            </el-form-item>
+            <el-form-item label="页面头部">
+              <el-switch v-model="form.show_page_header" :disabled="form.label_preset !== 'none'" inline-prompt active-text="显示" inactive-text="隐藏" />
+            </el-form-item>
           </div>
 
           <div class="section-title">边距</div>
@@ -49,14 +80,14 @@
 
           <div class="section-title">排版</div>
           <div class="form-grid four-col compact">
-            <el-form-item label="列数"><el-input-number v-model="form.cols" :min="1" :max="8" :step="1" /></el-form-item>
-            <el-form-item label="行数"><el-input-number v-model="form.rows" :min="1" :max="10" :step="1" /></el-form-item>
-            <el-form-item label="横间距"><el-input-number v-model="form.gap_x_mm" :min="0" :max="30" :step="0.5" /></el-form-item>
-            <el-form-item label="纵间距"><el-input-number v-model="form.gap_y_mm" :min="0" :max="30" :step="0.5" /></el-form-item>
+            <el-form-item label="列数"><el-input-number v-model="form.cols" :min="1" :max="8" :step="1" :disabled="form.label_preset !== 'none'" /></el-form-item>
+            <el-form-item label="行数"><el-input-number v-model="form.rows" :min="1" :max="10" :step="1" :disabled="form.label_preset !== 'none'" /></el-form-item>
+            <el-form-item label="横间距"><el-input-number v-model="form.gap_x_mm" :min="0" :max="30" :step="0.5" :disabled="form.label_preset !== 'none'" /></el-form-item>
+            <el-form-item label="纵间距"><el-input-number v-model="form.gap_y_mm" :min="0" :max="30" :step="0.5" :disabled="form.label_preset !== 'none'" /></el-form-item>
           </div>
 
           <div class="form-grid two-col">
-            <el-form-item label="二维码(mm)"><el-input-number v-model="form.qr_size_mm" :min="10" :max="80" :step="1" /></el-form-item>
+            <el-form-item label="二维码(mm)"><el-input-number v-model="form.qr_size_mm" :min="8" :max="80" :step="1" /></el-form-item>
             <el-form-item label="元信息行数"><el-input-number v-model="form.meta_count" :min="0" :max="6" :step="1" :disabled="!form.show_meta" /></el-form-item>
           </div>
 
@@ -75,12 +106,12 @@
             <el-checkbox v-model="form.show_title">显示标题</el-checkbox>
             <el-checkbox v-model="form.show_subtitle">显示副标题</el-checkbox>
             <el-checkbox v-model="form.show_meta">显示元信息</el-checkbox>
-            <el-checkbox v-model="form.show_link" :disabled="kind === 'sheet'">显示底部链接</el-checkbox>
+            <el-checkbox v-model="form.show_link" :disabled="kind === 'sheet' || form.label_preset !== 'none'">显示底部链接</el-checkbox>
           </div>
 
           <div class="section-title">保存预设</div>
           <div class="preset-save-row">
-            <el-input v-model="presetName" placeholder="例如：A4 横向 2x3 标签纸" clearable />
+            <el-input v-model="presetName" placeholder="例如：60x40 标签机 / 电脑标签" clearable />
             <el-button @click="saveCurrentPreset">保存为预设</el-button>
           </div>
         </el-form>
@@ -89,26 +120,26 @@
       <aside class="print-template-preview">
         <div class="preview-card">
           <div class="preview-title">预览摘要</div>
-          <div class="preview-line">{{ kindLabel }}：{{ kind === 'cards' ? '二维码卡片' : '二维码图版' }}</div>
+          <div class="preview-line">{{ kindLabel }}：{{ kind === 'cards' ? '二维码标签' : '二维码图版' }}</div>
           <div class="preview-line">纸张：{{ paperLabel }}</div>
-          <div class="preview-line">方向：{{ form.orientation === 'landscape' ? '横向' : '纵向' }}</div>
+          <div class="preview-line">输出：{{ form.output_dpi }} DPI</div>
           <div class="preview-line">每页：{{ form.cols }} 列 × {{ form.rows }} 行 = {{ form.cols * form.rows }} 个</div>
           <div class="preview-line">单块区域约：{{ cellEstimate.widthMm }} × {{ cellEstimate.heightMm }} mm</div>
           <div class="preview-line">二维码：{{ form.qr_size_mm }} mm</div>
-          <div class="preview-line">边距：上{{ form.margin_top_mm }} / 右{{ form.margin_right_mm }} / 下{{ form.margin_bottom_mm }} / 左{{ form.margin_left_mm }} mm</div>
+          <div class="preview-line">页头：{{ form.show_page_header ? '显示' : '隐藏' }}</div>
           <div class="preview-line">内容模板：{{ contentModeLabelMap[form.content_mode] }}</div>
           <div class="preview-line">显示：{{ contentSummary }}</div>
         </div>
         <div class="preview-page" :style="previewPageStyle">
-          <div class="preview-header">{{ kind === 'cards' ? '打印卡片页' : '打印图版页' }}</div>
+          <div v-if="form.show_page_header" class="preview-header">{{ kind === 'cards' ? '打印标签页' : '打印图版页' }}</div>
           <div class="preview-grid" :style="previewGridStyle">
-            <div v-for="index in form.cols * form.rows" :key="index" class="preview-cell">
+            <div v-for="index in form.cols * form.rows" :key="index" class="preview-cell" :class="{ vertical: previewVertical }">
               <div class="preview-qr" :style="previewQrStyle"></div>
-              <div class="preview-text">
+              <div v-if="form.content_mode !== 'qr_only'" class="preview-text">
                 <div v-if="form.show_title" class="preview-text-line strong"></div>
                 <div v-if="form.show_subtitle" class="preview-text-line"></div>
                 <div v-if="form.show_meta" v-for="metaIndex in Math.max(1, form.meta_count)" :key="metaIndex" class="preview-text-line light"></div>
-                <div v-if="form.show_link && kind === 'cards'" class="preview-text-line tiny"></div>
+                <div v-if="form.show_link && kind === 'cards' && form.label_preset === 'none'" class="preview-text-line tiny"></div>
               </div>
             </div>
           </div>
@@ -131,15 +162,19 @@
 import { computed, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../../utils/el-services';
 import {
+  applyQrLabelPreset,
   createDefaultQrPrintTemplate,
   deleteQrPrintPreset,
   estimateQrCellSize,
   getDefaultQrPrintTemplate,
+  getQrLabelPreset,
+  listQrLabelPresets,
   listSavedQrPrintPresets,
   normalizeQrPrintTemplate,
   resolveQrPaperDimensions,
   saveQrPrintPreset,
   setDefaultQrPrintTemplate,
+  type QrLabelPresetKey,
   type QrPrintContentMode,
   type QrPrintTemplate,
   type QrPrintTemplateKind,
@@ -165,6 +200,7 @@ const form = ref<QrPrintTemplate>(createDefaultQrPrintTemplate(props.kind));
 const presets = ref<Array<{ id: string; name: string; template: QrPrintTemplate }>>([]);
 const selectedPresetId = ref('');
 const presetName = ref('');
+const labelPresets = listQrLabelPresets();
 
 function refreshState() {
   form.value = normalizeQrPrintTemplate(props.kind, getDefaultQrPrintTemplate(props.kind));
@@ -173,8 +209,8 @@ function refreshState() {
   presetName.value = '';
 }
 
-watch(() => [props.visible, props.kind] as const, ([visible]) => {
-  if (visible) refreshState();
+watch(() => [props.visible, props.kind] as const, ([nextVisible]) => {
+  if (nextVisible) refreshState();
 }, { immediate: true });
 
 function applySelectedPreset() {
@@ -185,6 +221,14 @@ function applySelectedPreset() {
 
 function restoreDefaults() {
   form.value = createDefaultQrPrintTemplate(props.kind);
+}
+
+function applyStandardPreset() {
+  form.value = createDefaultQrPrintTemplate(props.kind);
+}
+
+function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
+  form.value = applyQrLabelPreset(props.kind, presetKey, form.value);
 }
 
 async function removeSelectedPreset() {
@@ -224,7 +268,6 @@ function submit(setDefault: boolean) {
   emit('update:visible', false);
 }
 
-
 const contentModeLabelMap: Record<QrPrintContentMode, string> = {
   detail: '明细版',
   qr_only: '仅二维码',
@@ -232,9 +275,11 @@ const contentModeLabelMap: Record<QrPrintContentMode, string> = {
   model_asset: '二维码+型号+资产编号',
 };
 
+const activeLabelPreset = computed(() => getQrLabelPreset(form.value.label_preset));
 const cellEstimate = computed(() => estimateQrCellSize(form.value));
 const paperLabel = computed(() => {
   const { pageWidthMm, pageHeightMm } = cellEstimate.value;
+  if (activeLabelPreset.value) return `${activeLabelPreset.value.name} 标签`; 
   if (form.value.paper_size === 'custom') return `自定义 ${pageWidthMm} × ${pageHeightMm} mm`;
   return `${form.value.paper_size} ${pageWidthMm} × ${pageHeightMm} mm`;
 });
@@ -243,40 +288,42 @@ const contentSummary = computed(() => {
   if (form.value.show_title) parts.push('标题');
   if (form.value.show_subtitle) parts.push('副标题');
   if (form.value.show_meta) parts.push(`元信息${form.value.meta_count}行`);
-  if (form.value.show_link && props.kind === 'cards') parts.push('链接');
+  if (form.value.show_link && props.kind === 'cards' && form.value.label_preset === 'none') parts.push('链接');
   return parts.length ? parts.join(' / ') : '仅二维码';
 });
+
+const previewVertical = computed(() => form.value.label_preset !== 'none' || kind.value === 'sheet');
 
 const previewPageStyle = computed(() => {
   const { widthMm, heightMm } = resolveQrPaperDimensions(form.value);
   const ratio = widthMm / heightMm;
   const heightPx = 260;
-  const widthPx = Math.max(170, Math.min(280, Math.round(heightPx * ratio)));
+  const widthPx = Math.max(170, Math.min(320, Math.round(heightPx * ratio)));
   return {
     width: `${widthPx}px`,
     height: `${heightPx}px`,
-    paddingTop: `${Math.max(4, form.value.margin_top_mm)}px`,
-    paddingRight: `${Math.max(4, form.value.margin_right_mm)}px`,
-    paddingBottom: `${Math.max(4, form.value.margin_bottom_mm)}px`,
-    paddingLeft: `${Math.max(4, form.value.margin_left_mm)}px`,
+    paddingTop: `${Math.max(6, form.value.margin_top_mm * 2)}px`,
+    paddingRight: `${Math.max(6, form.value.margin_right_mm * 2)}px`,
+    paddingBottom: `${Math.max(6, form.value.margin_bottom_mm * 2)}px`,
+    paddingLeft: `${Math.max(6, form.value.margin_left_mm * 2)}px`,
   };
 });
 
 const previewGridStyle = computed(() => ({
   gridTemplateColumns: `repeat(${form.value.cols}, minmax(0, 1fr))`,
   gridTemplateRows: `repeat(${form.value.rows}, minmax(0, 1fr))`,
-  gap: `${Math.max(4, Math.round((form.value.gap_x_mm + form.value.gap_y_mm) / 2 * 1.4))}px`,
+  gap: `${Math.max(4, Math.round((form.value.gap_x_mm + form.value.gap_y_mm) * 1.2))}px`,
 }));
 
 const previewQrStyle = computed(() => {
-  const size = Math.max(20, Math.min(56, form.value.qr_size_mm * 1.2));
+  const size = Math.max(20, Math.min(84, form.value.qr_size_mm * 1.5));
   return { width: `${size}px`, height: `${size}px` };
 });
 </script>
 
 <style scoped>
-.print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 280px;gap:18px;align-items:start}
-.preset-toolbar,.preset-save-row,.toggle-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
+.print-template-layout{display:grid;grid-template-columns:minmax(0,1fr) 300px;gap:18px;align-items:start}
+.preset-toolbar,.preset-save-row,.toggle-row,.label-preset-row{display:flex;gap:10px;align-items:center;flex-wrap:wrap}
 .template-form{margin-top:14px}
 .template-form :deep(.el-form-item){margin-bottom:12px;min-width:0}
 .template-form :deep(.el-form-item__content){min-width:0}
@@ -288,6 +335,8 @@ const previewQrStyle = computed(() => {
 .two-col{grid-template-columns:repeat(2,minmax(0,1fr))}
 .four-col{grid-template-columns:repeat(2,minmax(0,1fr))}
 .compact :deep(.el-form-item){margin-bottom:10px}
+.label-preset-help{display:grid;gap:4px;margin:-2px 0 12px}
+.hint-line{font-size:12px;color:#64748b}
 .print-template-preview{display:flex;flex-direction:column;gap:14px;position:sticky;top:0}
 .preview-card{border:1px solid #e5e7eb;border-radius:14px;background:#f8fafc;padding:14px}
 .preview-title{font-size:14px;font-weight:800;margin-bottom:10px;color:#111827}
@@ -296,8 +345,10 @@ const previewQrStyle = computed(() => {
 .preview-header{font-size:12px;font-weight:700;color:#475569;padding:8px 10px;border-bottom:1px solid #eef2f7}
 .preview-grid{flex:1;display:grid;padding:10px}
 .preview-cell{border:1px solid #dbe3f0;border-radius:10px;background:#fff;display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:8px;min-height:0;overflow:hidden}
+.preview-cell.vertical{grid-template-columns:1fr;justify-items:center;text-align:center}
 .preview-qr{border-radius:8px;background:repeating-linear-gradient(45deg,#111827 0,#111827 4px,#fff 4px,#fff 8px)}
-.preview-text{display:grid;gap:4px;min-width:0}
+.preview-text{display:grid;gap:4px;min-width:0;width:100%}
+.preview-cell.vertical .preview-text{justify-items:center}
 .preview-text-line{height:7px;border-radius:999px;background:#cbd5e1}
 .preview-text-line.strong{width:78%;height:9px;background:#94a3b8}
 .preview-text-line.light{width:92%;opacity:.8}
