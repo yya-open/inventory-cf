@@ -26,13 +26,13 @@ import PcInventoryLogs from "../views/PcInventoryLogs.vue";
 import MonitorInventoryLogs from "../views/MonitorInventoryLogs.vue";
 import MonitorAssets from "../views/MonitorAssets.vue";
 import MonitorTx from "../views/MonitorTx.vue";
-const SystemHome = () => import("../views/SystemHome.vue");
-const SystemSettings = () => import("../views/SystemSettings.vue");
-const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
-const SystemPerformance = () => import("../views/SystemPerformance.vue");
-const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
-const SystemDocs = () => import("../views/SystemDocs.vue");
-const SystemLayout = () => import("../views/SystemLayout.vue");
+import SystemHome from "../views/SystemHome.vue";
+import SystemSettings from "../views/SystemSettings.vue";
+import SystemOpsTools from "../views/SystemOpsTools.vue";
+import SystemPerformance from "../views/SystemPerformance.vue";
+import SystemReleaseCheck from "../views/SystemReleaseCheck.vue";
+import SystemDocs from "../views/SystemDocs.vue";
+import SystemLayout from "../views/SystemLayout.vue";
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can } from "../store/auth";
@@ -275,16 +275,10 @@ router.afterEach((to) => {
   if (to.path.startsWith('/system')) {
     if (to.path === '/system/home') {
       add('/system/dashboard', Dashboard, canAdminAccess);
-      add('/system/tools', SystemOpsTools, canAdminAccess);
     } else if (to.path === '/system/dashboard') {
-      add('/system/tools', SystemOpsTools, canAdminAccess);
       add('/system/audit', AuditLog, canAdminAccess);
     } else if (to.path === '/system/tools') {
-      add('/system/release-check', SystemReleaseCheck, canAdminAccess);
-      add('/system/performance', SystemPerformance, canAdminAccess);
     } else {
-      add('/system/tools', SystemOpsTools, canAdminAccess);
-      add('/system/home', SystemHome, canAdminAccess);
     }
   } else if (to.path.startsWith('/pc')) {
     if (to.path === '/pc/assets') {
@@ -327,6 +321,30 @@ router.afterEach((to) => {
 });
 
 
-router.onError(() => {
+const dynamicImportRecoveryKey = "__inventory_dynamic_import_reload__";
+
+router.onError((error, to) => {
   finishRoutePagePending();
+  const message = error instanceof Error ? error.message : String(error ?? '');
+  const isDynamicImportError = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module/i.test(message);
+  if (!isDynamicImportError || typeof window === 'undefined') return;
+  try {
+    const lastFailedPath = sessionStorage.getItem(dynamicImportRecoveryKey);
+    if (lastFailedPath === to.fullPath) {
+      sessionStorage.removeItem(dynamicImportRecoveryKey);
+      return;
+    }
+    sessionStorage.setItem(dynamicImportRecoveryKey, to.fullPath);
+  } catch {}
+  const target = to?.fullPath || window.location.pathname || '/';
+  window.location.replace(target);
+});
+
+router.afterEach((to) => {
+  try {
+    if (typeof window !== 'undefined') {
+      const lastFailedPath = sessionStorage.getItem(dynamicImportRecoveryKey);
+      if (lastFailedPath === to.fullPath) sessionStorage.removeItem(dynamicImportRecoveryKey);
+    }
+  } catch {}
 });
