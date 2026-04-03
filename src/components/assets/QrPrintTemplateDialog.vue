@@ -60,6 +60,16 @@
             <el-form-item label="元信息行数"><el-input-number v-model="form.meta_count" :min="0" :max="6" :step="1" :disabled="!form.show_meta" /></el-form-item>
           </div>
 
+          <div class="section-title">内容模板</div>
+          <el-form-item label="模板">
+            <el-radio-group v-model="form.content_mode" class="content-mode-group">
+              <el-radio-button label="detail">明细版</el-radio-button>
+              <el-radio-button label="qr_only">仅二维码</el-radio-button>
+              <el-radio-button label="model_sn">二维码+型号+SN</el-radio-button>
+              <el-radio-button label="model_asset">二维码+型号+资产编号</el-radio-button>
+            </el-radio-group>
+          </el-form-item>
+
           <div class="section-title">显示内容</div>
           <div class="toggle-row">
             <el-checkbox v-model="form.show_title">显示标题</el-checkbox>
@@ -86,7 +96,8 @@
           <div class="preview-line">单块区域约：{{ cellEstimate.widthMm }} × {{ cellEstimate.heightMm }} mm</div>
           <div class="preview-line">二维码：{{ form.qr_size_mm }} mm</div>
           <div class="preview-line">边距：上{{ form.margin_top_mm }} / 右{{ form.margin_right_mm }} / 下{{ form.margin_bottom_mm }} / 左{{ form.margin_left_mm }} mm</div>
-          <div class="preview-line">内容：{{ contentSummary }}</div>
+          <div class="preview-line">内容模板：{{ contentModeLabelMap[form.content_mode] }}</div>
+          <div class="preview-line">显示：{{ contentSummary }}</div>
         </div>
         <div class="preview-page" :style="previewPageStyle">
           <div class="preview-header">{{ kind === 'cards' ? '打印卡片页' : '打印图版页' }}</div>
@@ -129,6 +140,7 @@ import {
   resolveQrPaperDimensions,
   saveQrPrintPreset,
   setDefaultQrPrintTemplate,
+  type QrPrintContentMode,
   type QrPrintTemplate,
   type QrPrintTemplateKind,
 } from '../../utils/qrPrintTemplate';
@@ -211,6 +223,14 @@ function submit(setDefault: boolean) {
   emit('submit', normalized);
   emit('update:visible', false);
 }
+
+
+const contentModeLabelMap: Record<QrPrintContentMode, string> = {
+  detail: '明细版',
+  qr_only: '仅二维码',
+  model_sn: '二维码+型号+SN',
+  model_asset: '二维码+型号+资产编号',
+};
 
 const cellEstimate = computed(() => estimateQrCellSize(form.value));
 const paperLabel = computed(() => {

@@ -82,7 +82,7 @@ function renderCardsPage(pageTitle: string, cards: QrCardPreparedRecord[], pageI
         <article class="qr-card">
           <div class="qr-box"><img src="${record.dataUrl}" alt="QR" /></div>
           <div class="card-content">
-            ${template.show_title ? `<div class="card-title">${escapeHtml(record.title)}</div>` : ''}
+            ${template.show_title && record.title ? `<div class="card-title">${escapeHtml(record.title)}</div>` : ''}
             ${template.show_subtitle && record.subtitle ? `<div class="card-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
             ${template.show_meta && record.meta?.length ? `<div class="meta">${renderCardMeta(record.meta, template.meta_count)}</div>` : ''}
             ${template.show_link ? `<div class="link">${escapeHtml(record.url)}</div>` : ''}
@@ -104,7 +104,7 @@ function renderSheetPage(pageTitle: string, cards: QrCardPreparedRecord[], pageI
         <article class="sheet-item">
           <div class="sheet-qr"><img src="${record.dataUrl}" alt="QR" /></div>
           <div class="sheet-text">
-            ${template.show_title ? `<div class="sheet-title">${escapeHtml(record.title)}</div>` : ''}
+            ${template.show_title && record.title ? `<div class="sheet-title">${escapeHtml(record.title)}</div>` : ''}
             ${template.show_subtitle && record.subtitle ? `<div class="sheet-subtitle">${escapeHtml(record.subtitle)}</div>` : ''}
             ${template.show_meta && record.meta?.length ? `<div class="sheet-meta">${renderCardMeta(record.meta, template.meta_count)}</div>` : ''}
             ${template.show_link ? `<div class="sheet-link">${escapeHtml(record.url)}</div>` : ''}

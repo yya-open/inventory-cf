@@ -134,7 +134,8 @@
       :data-url="qrDataUrl"
       :is-admin="isAdmin"
       :status-text="assetStatusText"
-      @download="downloadQr"
+      @download-qr="downloadQr"
+      @download-label="downloadLabel"
       @open-link="openQrInNewTab"
       @copy-link="copyQrLink"
       @reset="resetQr"
@@ -251,6 +252,7 @@ const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_r
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+const qrTemplateAction = ref<'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet'>('batch-cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -1438,26 +1440,90 @@ function monitorQrVersionOf(row?: Partial<MonitorAsset> | null) {
 }
 
 
+function buildMonitorQrSheetRecord(row: MonitorAsset, url: string, template?: Partial<QrPrintTemplate>) {
+  if (!url) return null;
+  const mode = template?.content_mode || 'detail';
+  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `显示器 #${row.id}`;
+  const assetCode = row.asset_code || '-';
+  const sn = row.sn || '-';
+  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
+  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${sn}`, meta: [], url };
+  if (mode === 'model_asset') return { title: modelText, subtitle: `资产编号：${assetCode}`, meta: [], url };
+  return {
+    title: assetCode || `显示器 #${row.id}`,
+    subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${sn}`,
+    meta: [
+      { label: '状态', value: assetStatusText(row.status) },
+      { label: '位置', value: locationText(row) },
+      { label: '领用人', value: row.employee_name || '-' },
+      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+    ],
+    url,
+  };
+}
+
+function buildMonitorQrCardRecord(row: MonitorAsset, url: string, template?: Partial<QrPrintTemplate>) {
+  if (!url) return null;
+  const mode = template?.content_mode || 'detail';
+  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `显示器 #${row.id}`;
+  const assetCode = row.asset_code || '-';
+  const sn = row.sn || '-';
+  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
+  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${sn}`, meta: [], url };
+  if (mode === 'model_asset') return { title: modelText, subtitle: `资产编号：${assetCode}`, meta: [], url };
+  return {
+    title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
+    subtitle: `${row.model || '-'} · SN：${sn}`,
+    meta: [
+      { label: '状态', value: assetStatusText(row.status) },
+      { label: '位置', value: locationText(row) },
+      { label: '领用人', value: row.employee_name || '-' },
+    ],
+    url,
+  };
+}
+
+async function exportSingleMonitorQrSheet(template?: Partial<QrPrintTemplate>) {
+  if (!qrRow.value) return;
+  const result = await exportAssetQrPrintLocal({
+    mode: 'sheet',
+    rows: [qrRow.value],
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+    mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
+    loadQrCardUtils,
+    filename: `显示器二维码_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
+    title: '显示器二维码',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
+  ElMessage.success('二维码打印页已导出，可直接打印');
+}
+
+async function exportSingleMonitorQrCard(template?: Partial<QrPrintTemplate>) {
+  if (!qrRow.value) return;
+  const result = await exportAssetQrPrintLocal({
+    mode: 'cards',
+    rows: [qrRow.value],
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+    mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
+    loadQrCardUtils,
+    filename: `显示器标签_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
+    title: '显示器标签',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
+  ElMessage.success('标签打印页已导出，可直接打印');
+}
+
 async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
   const result = await exportAssetQrPrintLocal({
     mode: 'sheet',
     rows: selectedRows.value,
     getId: (row) => Number(row.id),
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => {
-      if (!url) return null;
-      return {
-        title: row.asset_code || `显示器 #${row.id}`,
-        subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${row.sn || '-'}`,
-        meta: [
-          { label: '状态', value: assetStatusText(row.status) },
-          { label: '位置', value: locationText(row) },
-          { label: '领用人', value: row.employee_name || '-' },
-          { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-        ],
-        url,
-      };
-    },
+    mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
     loadQrCardUtils,
     filename: `显示器二维码图版_${selectedRows.value.length}条`,
     title: '显示器二维码图版',
@@ -1473,19 +1539,7 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
     rows: selectedRows.value,
     getId: (row) => Number(row.id),
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => {
-      if (!url) return null;
-      return {
-        title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
-        subtitle: `${row.model || '-'} · SN：${row.sn || '-'}`,
-        meta: [
-          { label: '状态', value: assetStatusText(row.status) },
-          { label: '位置', value: locationText(row) },
-          { label: '领用人', value: row.employee_name || '-' },
-        ],
-        url,
-      };
-    },
+    mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
     loadQrCardUtils,
     filename: `显示器二维码卡片_${selectedRows.value.length}条`,
     title: '显示器二维码卡片',
@@ -1495,13 +1549,24 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
   ElMessage.success('二维码卡片已导出，可直接打印');
 }
 
-function openQrPrintTemplate(kind: QrPrintTemplateKind) {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: 'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet') {
+  const nextAction = action || (kind === 'cards' ? 'batch-cards' : 'batch-sheet');
+  if (nextAction.startsWith('batch') && !selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (nextAction.startsWith('single') && !qrRow.value?.id) return ElMessage.warning('请先打开要导出的二维码');
   qrTemplateKind.value = kind;
+  qrTemplateAction.value = nextAction;
   qrTemplateVisible.value = true;
 }
 
 async function submitQrPrintTemplate(template: QrPrintTemplate) {
+  if (qrTemplateAction.value === 'single-cards') {
+    await exportSingleMonitorQrCard(template);
+    return;
+  }
+  if (qrTemplateAction.value === 'single-sheet') {
+    await exportSingleMonitorQrSheet(template);
+    return;
+  }
   if (qrTemplateKind.value === 'cards') {
     await executeExportSelectedQrCards(template);
     return;
@@ -1577,19 +1642,11 @@ async function openQr(row: MonitorAsset) {
 }
 
 function downloadQr() {
-  if (!qrDataUrl.value) return;
-  const link = document.createElement('a');
-  if (qrSvgMarkup.value) {
-    const blob = new Blob([qrSvgMarkup.value], { type: 'image/svg+xml;charset=utf-8' });
-    link.href = URL.createObjectURL(blob);
-    link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.svg`;
-    link.click();
-    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
-    return;
-  }
-  link.href = qrDataUrl.value;
-  link.download = `显示器二维码_${qrRow.value?.asset_code || 'monitor'}.svg`;
-  link.click();
+  openQrPrintTemplate('sheet', 'single-sheet');
+}
+
+function downloadLabel() {
+  openQrPrintTemplate('cards', 'single-cards');
 }
 
 async function copyQrLink() {

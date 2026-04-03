@@ -4,6 +4,8 @@ export type QrPrintTemplateKind = 'cards' | 'sheet';
 export type QrPaperSize = 'A4' | 'A5' | 'custom';
 export type QrOrientation = 'portrait' | 'landscape';
 
+export type QrPrintContentMode = 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+
 export type QrPrintTemplate = {
   kind: QrPrintTemplateKind;
   paper_size: QrPaperSize;
@@ -19,6 +21,7 @@ export type QrPrintTemplate = {
   gap_x_mm: number;
   gap_y_mm: number;
   qr_size_mm: number;
+  content_mode: QrPrintContentMode;
   show_title: boolean;
   show_subtitle: boolean;
   show_meta: boolean;
@@ -39,7 +42,7 @@ type StoreState = {
   defaults: Record<QrPrintTemplateKind, QrPrintTemplate>;
 };
 
-const STORAGE_KEY = 'inventory:qr-print-templates:v1';
+const STORAGE_KEY = 'inventory:qr-print-templates:v2';
 
 function clamp(value: number, min: number, max: number) {
   if (!Number.isFinite(value)) return min;
@@ -63,6 +66,7 @@ export function createDefaultQrPrintTemplate(kind: QrPrintTemplateKind): QrPrint
       gap_x_mm: 3.6,
       gap_y_mm: 3.6,
       qr_size_mm: 25,
+      content_mode: 'detail',
       show_title: true,
       show_subtitle: true,
       show_meta: true,
@@ -85,6 +89,7 @@ export function createDefaultQrPrintTemplate(kind: QrPrintTemplateKind): QrPrint
     gap_x_mm: 4,
     gap_y_mm: 4,
     qr_size_mm: 31,
+    content_mode: 'detail',
     show_title: true,
     show_subtitle: true,
     show_meta: true,
@@ -97,6 +102,7 @@ export function normalizeQrPrintTemplate(kind: QrPrintTemplateKind, input: Parti
   const fallback = createDefaultQrPrintTemplate(kind);
   const paperSize = input?.paper_size === 'A5' || input?.paper_size === 'custom' ? input.paper_size : fallback.paper_size;
   const orientation = input?.orientation === 'portrait' ? 'portrait' : fallback.orientation;
+  const contentMode = input?.content_mode === 'qr_only' || input?.content_mode === 'model_sn' || input?.content_mode === 'model_asset' ? input.content_mode : fallback.content_mode;
   const template: QrPrintTemplate = {
     kind,
     paper_size: paperSize,
@@ -112,6 +118,7 @@ export function normalizeQrPrintTemplate(kind: QrPrintTemplateKind, input: Parti
     gap_x_mm: clamp(Number(input?.gap_x_mm ?? fallback.gap_x_mm), 0, 30),
     gap_y_mm: clamp(Number(input?.gap_y_mm ?? fallback.gap_y_mm), 0, 30),
     qr_size_mm: clamp(Number(input?.qr_size_mm ?? fallback.qr_size_mm), 10, 80),
+    content_mode: contentMode,
     show_title: input?.show_title !== false,
     show_subtitle: input?.show_subtitle !== false,
     show_meta: input?.show_meta !== false,

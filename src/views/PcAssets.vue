@@ -191,6 +191,7 @@ const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_r
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 const qrTemplateVisible = ref(false);
 const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
+const qrTemplateAction = ref<'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet'>('batch-cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('pc');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -639,26 +640,88 @@ async function initQrKeys() {
 }
 
 
+function buildPcQrSheetRecord(row: PcAsset, url: string, template?: Partial<QrPrintTemplate>) {
+  if (!url) return null;
+  const mode = template?.content_mode || 'detail';
+  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `电脑 #${row.id}`;
+  const serialNo = row.serial_no || '-';
+  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
+  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${serialNo}`, meta: [], url };
+  if (mode === 'model_asset') return { title: modelText, subtitle: `编号：${row.id || '-'}`, meta: [], url };
+  return {
+    title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
+    subtitle: `SN：${serialNo} · 状态：${assetStatusText(row.status)}`,
+    meta: [
+      { label: '领用人', value: row.last_employee_name || '-' },
+      { label: '工号', value: row.last_employee_no || '-' },
+      { label: '部门', value: row.last_department || '-' },
+      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
+    ],
+    url,
+  };
+}
+
+function buildPcQrCardRecord(row: PcAsset, url: string, template?: Partial<QrPrintTemplate>) {
+  if (!url) return null;
+  const mode = template?.content_mode || 'detail';
+  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `电脑 #${row.id}`;
+  const serialNo = row.serial_no || '-';
+  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
+  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${serialNo}`, meta: [], url };
+  if (mode === 'model_asset') return { title: modelText, subtitle: `编号：${row.id || '-'}`, meta: [], url };
+  return {
+    title: `${row.brand || '-'} ${row.model || ''}`.trim(),
+    subtitle: `SN：${serialNo}`,
+    meta: [
+      { label: '状态', value: assetStatusText(row.status) },
+      { label: '序列号', value: serialNo },
+      { label: '领用人', value: row.last_employee_name || '-' },
+    ],
+    url,
+  };
+}
+
+async function exportSinglePcQrSheet(template?: Partial<QrPrintTemplate>) {
+  if (!qrRow.value) return;
+  const result = await exportAssetQrPrintLocal({
+    mode: 'sheet',
+    rows: [qrRow.value],
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkPcAssetQrLinks,
+    mapPrintRecord: (row, url) => buildPcQrSheetRecord(row, url, template),
+    loadQrCardUtils,
+    filename: `电脑二维码_${qrRow.value.serial_no || qrRow.value.id || 'pc'}`,
+    title: '电脑二维码',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
+  ElMessage.success('二维码打印页已导出，可直接打印');
+}
+
+async function exportSinglePcQrCard(template?: Partial<QrPrintTemplate>) {
+  if (!qrRow.value) return;
+  const result = await exportAssetQrPrintLocal({
+    mode: 'cards',
+    rows: [qrRow.value],
+    getId: (row) => Number(row.id),
+    fetchBulkLinks: fetchBulkPcAssetQrLinks,
+    mapPrintRecord: (row, url) => buildPcQrCardRecord(row, url, template),
+    loadQrCardUtils,
+    filename: `电脑标签_${qrRow.value.serial_no || qrRow.value.id || 'pc'}`,
+    title: '电脑标签',
+    template,
+  });
+  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
+  ElMessage.success('标签打印页已导出，可直接打印');
+}
+
 async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
   const result = await exportAssetQrPrintLocal({
     mode: 'sheet',
     rows: selectedRows.value,
     getId: (row) => Number(row.id),
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
-    mapPrintRecord: (row, url) => {
-      if (!url) return null;
-      return {
-        title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
-        subtitle: `SN：${row.serial_no || '-'} · 状态：${assetStatusText(row.status)}`,
-        meta: [
-          { label: '领用人', value: row.last_employee_name || '-' },
-          { label: '工号', value: row.last_employee_no || '-' },
-          { label: '部门', value: row.last_department || '-' },
-          { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-        ],
-        url,
-      };
-    },
+    mapPrintRecord: (row, url) => buildPcQrSheetRecord(row, url, template),
     loadQrCardUtils,
     filename: `电脑二维码图版_${selectedRows.value.length}条`,
     title: '电脑二维码图版',
@@ -674,19 +737,7 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
     rows: selectedRows.value,
     getId: (row) => Number(row.id),
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
-    mapPrintRecord: (row, url) => {
-      if (!url) return null;
-      return {
-        title: `${row.brand || '-'} ${row.model || ''}`.trim(),
-        subtitle: `SN：${row.serial_no || '-'}`,
-        meta: [
-          { label: '状态', value: assetStatusText(row.status) },
-          { label: '序列号', value: row.serial_no || '-' },
-          { label: '领用人', value: row.last_employee_name || '-' },
-        ],
-        url,
-      };
-    },
+    mapPrintRecord: (row, url) => buildPcQrCardRecord(row, url, template),
     loadQrCardUtils,
     filename: `电脑二维码卡片_${selectedRows.value.length}条`,
     title: '电脑二维码卡片',
@@ -696,13 +747,24 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
   ElMessage.success('二维码卡片已导出，可直接打印');
 }
 
-function openQrPrintTemplate(kind: QrPrintTemplateKind) {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: 'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet') {
+  const nextAction = action || (kind === 'cards' ? 'batch-cards' : 'batch-sheet');
+  if (nextAction.startsWith('batch') && !selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (nextAction.startsWith('single') && !qrRow.value?.id) return ElMessage.warning('请先打开要导出的二维码');
   qrTemplateKind.value = kind;
+  qrTemplateAction.value = nextAction;
   qrTemplateVisible.value = true;
 }
 
 async function submitQrPrintTemplate(template: QrPrintTemplate) {
+  if (qrTemplateAction.value === 'single-cards') {
+    await exportSinglePcQrCard(template);
+    return;
+  }
+  if (qrTemplateAction.value === 'single-sheet') {
+    await exportSinglePcQrSheet(template);
+    return;
+  }
   if (qrTemplateKind.value === 'cards') {
     await executeExportSelectedQrCards(template);
     return;
@@ -817,90 +879,12 @@ async function copyQrLink() {
   }
 }
 
-function mmToPx(mm: number, dpi = 300) {
-  return Math.round((mm / 25.4) * dpi);
-}
-
 async function downloadLabel() {
-  if (!qrLink.value) return;
-  const row = qrRow.value || {};
-  const title = `${row.brand || ''} ${row.model || ''}`.trim() || '电脑信息';
-  const sn = (row.serial_no || row.id || '').toString();
-  const width = mmToPx(50);
-  const height = mmToPx(30);
-  const canvas = document.createElement('canvas');
-  canvas.width = width;
-  canvas.height = height;
-  const context = canvas.getContext('2d');
-  if (!context) return;
-
-  context.fillStyle = '#fff';
-  context.fillRect(0, 0, width, height);
-
-  const pad = Math.round(width * 0.04);
-  const topHeight = Math.round(height * 0.22);
-  const bottomHeight = Math.round(height * 0.18);
-  context.fillStyle = '#111';
-  context.textBaseline = 'middle';
-  context.font = `bold ${Math.round(height * 0.12)}px sans-serif`;
-  const maxTitleWidth = width - pad * 2;
-  let text = title;
-  while (context.measureText(text).width > maxTitleWidth && text.length > 6) text = text.slice(0, -1);
-  if (text !== title) text += '…';
-  context.fillText(text, pad, Math.round(topHeight / 2));
-
-  const qrAreaTop = topHeight;
-  const qrAreaHeight = height - topHeight - bottomHeight;
-  const qrSize = Math.min(qrAreaHeight, Math.round(width * 0.52));
-  const qrX = Math.round((width - qrSize) / 2);
-  const qrY = qrAreaTop + Math.round((qrAreaHeight - qrSize) / 2);
-
-  const QRCode = await loadQrCodeLib();
-
-  QRCode.toDataURL(qrLink.value, { width: qrSize, margin: 3, errorCorrectionLevel: 'Q' })
-    .then((dataUrl: string) => {
-      const image = new Image();
-      image.onload = () => {
-        context.drawImage(image, qrX, qrY, qrSize, qrSize);
-        context.fillStyle = '#111';
-        context.font = `${Math.round(height * 0.11)}px monospace`;
-        const bottomY = height - Math.round(bottomHeight / 2);
-        const snText = sn ? `SN: ${sn}` : '';
-        const textWidth = context.measureText(snText).width;
-        context.fillText(snText, Math.max(pad, Math.round((width - textWidth) / 2)), bottomY);
-        const link = document.createElement('a');
-        const filename = (sn || row.id || 'pc').toString();
-        link.download = `PC_${filename}_标签_50x30mm.png`;
-        link.href = canvas.toDataURL('image/png');
-        document.body.appendChild(link);
-        link.click();
-        link.remove();
-      };
-      image.src = dataUrl;
-    })
-    .catch(() => ElMessage.error('生成标签失败'));
+  openQrPrintTemplate('cards', 'single-cards');
 }
 
 function downloadQr() {
-  if (!qrDataUrl.value) return;
-  const link = document.createElement('a');
-  const sn = (qrRow.value?.serial_no || qrRow.value?.id || 'pc').toString();
-  if (qrSvgMarkup.value) {
-    const blob = new Blob([qrSvgMarkup.value], { type: 'image/svg+xml;charset=utf-8' });
-    const objectUrl = URL.createObjectURL(blob);
-    link.download = `PC_${sn}_二维码.svg`;
-    link.href = objectUrl;
-    document.body.appendChild(link);
-    link.click();
-    link.remove();
-    setTimeout(() => URL.revokeObjectURL(objectUrl), 1000);
-    return;
-  }
-  link.download = `PC_${sn}_二维码.svg`;
-  link.href = qrDataUrl.value;
-  document.body.appendChild(link);
-  link.click();
-  link.remove();
+  openQrPrintTemplate('sheet', 'single-sheet');
 }
 
 const openQrInNewTab = () => {
