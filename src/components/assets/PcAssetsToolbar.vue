@@ -277,6 +277,7 @@ const props = defineProps<{
   density: LedgerTableDensity;
   savedViews: LedgerSavedView[];
   activeViewName: string;
+  mobileMode?: boolean;
 }>();
 
 const emit = defineEmits<{

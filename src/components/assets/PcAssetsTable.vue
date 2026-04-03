@@ -197,6 +197,7 @@ const props = defineProps<{
   showInventoryColumn: boolean;
   enableInventoryHighlight: boolean;
   hasFilters: boolean;
+  mobileMode?: boolean;
 }>();
 const emit = defineEmits<{
   'open-info': [Record<string, any>];
@@ -213,6 +214,8 @@ const emit = defineEmits<{
 }>();
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
+const mobileMode = computed(() => Boolean(props.mobileMode));
+const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
@@ -293,6 +296,23 @@ function handleRowMore(command: string, row: Record<string, any>) {
   if (command) return emit('open-recommended', command, row);
 }
 
+function mobileSequence(index: number) {
+  return (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
+}
+
+function mobileInventoryText(row: Record<string, any>) {
+  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE') return inventoryIssueTypeText(row.inventory_issue_type);
+  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_OK') return row.inventory_at || '-';
+  return '本轮未盘';
+}
+
+function toggleMobileSelection(row: Record<string, any>, checked: boolean) {
+  const next = new Set(selectedSet.value);
+  if (checked) next.add(String(row.id));
+  else next.delete(String(row.id));
+  emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
+}
+
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -309,6 +329,25 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
+
+.ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
+
+.ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
+
+.ledger-mobile-card { border-radius: 18px; }
+
+.ledger-mobile-card__head, .ledger-mobile-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ledger-mobile-card__head { margin-bottom: 10px; }
+.ledger-mobile-card__select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+.ledger-mobile-card__title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.ledger-mobile-card__meta { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+.ledger-mobile-card__grid { display: grid; gap: 6px; font-size: 13px; color: #334155; margin-bottom: 8px; }
+.ledger-mobile-card__grid--muted { color: #64748b; }
+.ledger-mobile-card__inventory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ledger-mobile-card__inventory-tip { font-size: 12px; color: #64748b; }
+.ledger-mobile-card__actions { justify-content: flex-start; }
+
+.pager-wrap--mobile { justify-content: center; margin-top: 4px; }
 
 .pager-wrap {
   display: flex;

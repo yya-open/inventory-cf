@@ -6,195 +6,79 @@
   <div
     v-else
     class="app-root"
-    :style="{ '--sidebar-width': sidebarCollapsed ? '0px' : '220px' }"
+    :class="{ 'app-root--mobile': isMobile }"
+    :style="{ '--sidebar-width': desktopSidebarCollapsed ? '0px' : '220px' }"
   >
     <div class="app-bg" />
-    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': sidebarCollapsed }">
+    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed, 'app-layout--mobile': isMobile }">
       <button
+        v-if="!isMobile"
         class="app-aside-toggle"
         type="button"
-        :aria-label="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        :title="sidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+        :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+        :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
         @click="toggleSidebar"
       >
-        {{ sidebarCollapsed ? '›' : '‹' }}
+        {{ desktopSidebarCollapsed ? '›' : '‹' }}
       </button>
       <el-aside
-        :width="sidebarCollapsed ? '0px' : '220px'"
+        v-if="!isMobile"
+        :width="desktopSidebarCollapsed ? '0px' : '220px'"
         class="app-aside"
-        :class="{ 'app-aside--collapsed': sidebarCollapsed }"
+        :class="{ 'app-aside--collapsed': desktopSidebarCollapsed }"
       >
         <div class="app-aside__inner">
-        <div style="padding: 14px; font-weight: 700">
-          出入库管理
-        </div>
-
-        <!-- 系统菜单（二级菜单） -->
-        <el-menu
-          v-if="isSystem"
-          router
-          :default-active="activeMenu"
-        >
-          <el-menu-item index="/system/home">
-            系统首页
-          </el-menu-item>
-          <el-menu-item index="/system/dashboard">
-            报表与看板
-          </el-menu-item>
-          <el-menu-item index="/system/backup">
-            备份/恢复
-          </el-menu-item>
-          <el-menu-item index="/system/audit">
-            审计日志
-          </el-menu-item>
-          <el-menu-item index="/system/users">
-            用户管理
-          </el-menu-item>
-          <el-menu-item index="/system/settings">
-            系统配置
-          </el-menu-item>
-          <el-menu-item index="/system/tools">
-            运维工具
-          </el-menu-item>
-          <el-menu-item index="/system/release-check">
-            发布前检查
-          </el-menu-item>
-          <el-menu-item index="/system/performance">
-            性能面板
-          </el-menu-item>
-          <el-menu-item index="/system/docs">
-            系统交付文档
-          </el-menu-item>
-        </el-menu>
-
-        <!-- 配件仓菜单 -->
-        <el-menu
-          v-else-if="warehouse.active === 'parts' && canAccessPartsArea"
-          router
-          :default-active="activeMenu"
-        >
-          <el-menu-item index="/stock">
-            库存查询
-          </el-menu-item>
-          <el-menu-item index="/tx">
-            出入库明细
-          </el-menu-item>
-          <el-menu-item index="/warnings">
-            预警中心
-          </el-menu-item>
-
-          <el-menu-item
-            v-if="can('operator')"
-            index="/in"
-          >
-            入库
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('operator')"
-            index="/out"
-          >
-            出库
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('operator')"
-            index="/batch"
-          >
-            批量出入库
-          </el-menu-item>
-
-          <el-menu-item
-            v-if="can('admin')"
-            index="/items"
-          >
-            配件管理
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('admin')"
-            index="/import/items"
-          >
-            Excel 导入配件
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('admin')"
-            index="/stocktake"
-          >
-            库存盘点
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('admin')"
-            index="/system/home"
-          >
-            系统
-          </el-menu-item>
-        </el-menu>
-
-        <!-- 电脑/显示器仓菜单 -->
-        <el-menu
-          v-else-if="canAccessPcArea"
-          router
-          :default-active="activeMenu"
-        >
-          <el-menu-item v-if="canAccessPcLedger" index="/pc/assets">
-            电脑台账
-          </el-menu-item>
-          <el-menu-item v-if="canAccessPcLedger" index="/pc/age-warnings">
-            报废预警
-          </el-menu-item>
-          <el-menu-item v-if="canAccessPcLedger" index="/pc/tx">
-            电脑出入库明细
-          </el-menu-item>
-          <el-menu-item v-if="canAccessPcLedger" index="/pc/inventory-logs">
-            盘点记录
-          </el-menu-item>
-          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitors">
-            显示器台账
-          </el-menu-item>
-          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitor-tx">
-            显示器出入库明细
-          </el-menu-item>
-          <el-menu-item v-if="canAccessMonitorLedger" index="/pc/monitor-inventory-logs">
-            显示器盘点记录
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('operator') && canAccessPcLedger"
-            index="/pc/in"
-          >
-            电脑入库
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('operator') && canAccessPcLedger"
-            index="/pc/out"
-          >
-            电脑出库
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('operator') && canAccessPcLedger"
-            index="/pc/recycle"
-          >
-            电脑回收/归还
-          </el-menu-item>
-          <el-menu-item
-            v-if="can('admin')"
-            index="/system/home"
-          >
-            系统
-          </el-menu-item>
-        </el-menu>
-
-        <div style="padding: 12px; color: #999; font-size: 12px">
-          当前：{{ isSystem ? "系统" : (warehouse.active === "pc" ? (canAccessPcLedger && canAccessMonitorLedger ? "电脑/显示器仓" : (canAccessPcLedger ? "电脑仓" : "显示器仓")) : "配件仓") }}
-        </div>
+          <AppSidebarMenu
+            :is-system="isSystem"
+            :active-menu="activeMenu"
+            :warehouse-active="warehouse.active"
+            :can-access-parts-area="canAccessPartsArea"
+            :can-access-pc-area="canAccessPcArea"
+            :can-access-pc-ledger="canAccessPcLedger"
+            :can-access-monitor-ledger="canAccessMonitorLedger"
+            :can-operator="can('operator')"
+            :is-admin="can('admin')"
+          />
         </div>
       </el-aside>
 
+      <el-drawer
+        v-model="mobileSidebarVisible"
+        direction="ltr"
+        size="82%"
+        :with-header="false"
+        class="app-mobile-drawer"
+      >
+        <AppSidebarMenu
+          :is-system="isSystem"
+          :active-menu="activeMenu"
+          :warehouse-active="warehouse.active"
+          :can-access-parts-area="canAccessPartsArea"
+          :can-access-pc-area="canAccessPcArea"
+          :can-access-pc-ledger="canAccessPcLedger"
+          :can-access-monitor-ledger="canAccessMonitorLedger"
+          :can-operator="can('operator')"
+          :is-admin="can('admin')"
+        />
+      </el-drawer>
+
       <el-container class="app-content">
         <el-header class="app-header">
-          <div style="display:flex; align-items:center; gap:10px">
-            <div style="font-weight: 700">
+          <div class="app-header__main">
+            <el-button
+              v-if="isMobile"
+              class="app-header__menu"
+              circle
+              @click="mobileSidebarVisible = true"
+            >
+              ☰
+            </el-button>
+            <div class="app-header__title-group">
+            <div class="app-header__title">
               {{ title }}
             </div>
 
-            <el-button-group>
+            <el-button-group class="app-header__switches">
               <el-button
                 v-if="canAccessPartsArea"
                 size="small"
@@ -220,9 +104,10 @@
                 系统
               </el-button>
             </el-button-group>
+            </div>
           </div>
 
-          <div style="display: flex; gap: 8px; align-items: center">
+          <div class="app-header__actions">
             <div
               v-if="auth.user"
               style="color: #666"
@@ -317,7 +202,7 @@
     <el-dialog
       v-model="showChange"
       title="修改密码"
-      width="420px"
+      :width="isMobile ? 'calc(100vw - 24px)' : '420px'"
     >
       <el-form>
         <el-form-item label="旧密码">
@@ -353,6 +238,7 @@
 
 <script setup lang="ts">
 import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue";
+import AppSidebarMenu from "./components/AppSidebarMenu.vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
@@ -384,7 +270,9 @@ const simpleLayout = computed(() => (route.meta as any)?.public || route.path ==
 const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeletonVisible.value);
 
 const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
-const sidebarCollapsed = ref(false);
+const desktopSidebarCollapsed = ref(false);
+const isMobile = ref(false);
+const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
 
@@ -466,23 +354,44 @@ let removeGlobalTableScrollEnhancer: (() => void) | null = null;
 onMounted(() => {
   removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
   try {
-    sidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    desktopSidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    updateViewport();
+    window.addEventListener("resize", updateViewport, { passive: true });
   } catch {}
 });
 onBeforeUnmount(() => {
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
+  window.removeEventListener("resize", updateViewport);
 });
 
-watch(sidebarCollapsed, (value) => {
+watch(desktopSidebarCollapsed, (value) => {
   try {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
   } catch {}
 });
 
-function toggleSidebar() {
-  sidebarCollapsed.value = !sidebarCollapsed.value;
+function updateViewport() {
+  const nextMobile = window.innerWidth < 900;
+  isMobile.value = nextMobile;
+  if (!nextMobile) mobileSidebarVisible.value = false;
 }
+
+function toggleSidebar() {
+  if (isMobile.value) {
+    mobileSidebarVisible.value = !mobileSidebarVisible.value;
+    return;
+  }
+  desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value;
+}
+
+watch(() => route.fullPath, () => {
+  mobileSidebarVisible.value = false;
+});
+
+watch(simpleLayout, (value) => {
+  if (value) mobileSidebarVisible.value = false;
+});
 
 async function loadSchemaStatus() {
   if (!auth.user || simpleLayout.value || !needsSystemMeta.value) {

@@ -1,7 +1,7 @@
 <template>
   <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
     <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <el-card v-else shadow="never" class="ledger-table-card">
+    <el-card v-else-if="!mobileMode" shadow="never" class="ledger-table-card">
       <el-table
       ref="tableRef"
       class="ledger-table"
@@ -178,6 +178,52 @@
       />
     </div>
   </el-card>
+    <div v-else-if="mobileMode" class="ledger-mobile-list">
+      <div v-if="loading" class="ledger-mobile-loading">加载中...</div>
+      <el-empty v-else-if="!renderRows.length" :description="hasFilters ? '暂无匹配结果' : '暂无台账数据'">
+        <template #default>
+          <div class="empty-wrap">
+            <div class="empty-tip">{{ hasFilters ? '可尝试调整筛选条件后重试。' : '当前还没有显示器台账记录。' }}</div>
+            <el-button v-if="hasFilters" link type="primary" @click="emit('reset-filters')">清空筛选</el-button>
+          </div>
+        </template>
+      </el-empty>
+      <el-card v-for="(row, index) in renderRows" :key="row.id" shadow="never" class="ledger-mobile-card">
+        <div class="ledger-mobile-card__head">
+          <label class="ledger-mobile-card__select"><input type="checkbox" :checked="selectedSet.has(String(row.id))" @change="toggleMobileSelection(row, ($event.target as HTMLInputElement).checked)" /><span>#{{ sequenceNumber(index) }}</span></label>
+          <span class="status-chip" :class="assetStatusClass(row.status)">{{ statusText(row.status) }}</span>
+        </div>
+        <div class="ledger-mobile-card__title" @click="emit('open-info', row)">{{ row.asset_code || row.model || '-' }}</div>
+        <div class="ledger-mobile-card__meta">{{ [row.brand || '-', row.model || '-', row.sn ? `SN ${row.sn}` : '-'].join(' · ') }}</div>
+        <div class="ledger-mobile-card__grid">
+          <span>位置：{{ locationText(row) }}</span>
+          <span>领用人：{{ row.employee_name || '-' }}</span>
+        </div>
+        <div v-if="showInventoryColumn" class="ledger-mobile-card__inventory">
+          <span class="status-chip" :class="inventoryStatusClass(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</span>
+          <span class="ledger-mobile-card__inventory-tip">{{ mobileInventoryText(row) }}</span>
+        </div>
+        <div class="ledger-mobile-card__actions">
+          <el-button size="small" @click="emit('open-info', row)">详情</el-button>
+          <el-dropdown trigger="click" @command="(command) => emit('row-more', String(command), row)">
+            <el-button size="small">更多</el-button>
+            <template #dropdown>
+              <el-dropdown-menu>
+                <el-dropdown-item v-if="showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
+                <el-dropdown-item v-if="showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
+                <el-dropdown-item v-if="canOperator" command="qr">二维码</el-dropdown-item>
+                <el-dropdown-item command="audit">审计历史</el-dropdown-item>
+                <el-dropdown-item v-if="isAdmin && Number(row.archived || 0) === 1" command="restore">恢复归档</el-dropdown-item>
+                <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>
+              </el-dropdown-menu>
+            </template>
+          </el-dropdown>
+        </div>
+      </el-card>
+      <div class="pager-wrap pager-wrap--mobile">
+        <el-pagination :total="total" :page-size="pageSize" :current-page="page" background layout="prev, pager, next" @update:current-page="(value: number) => emit('page-change', value)" />
+      </div>
+    </div>
   </div>
 </template>
 <script setup lang="ts">
@@ -205,6 +251,7 @@ const props = defineProps<{
   statusText: (status: string) => string;
   locationText: (row: Record<string, any>) => string;
   hasFilters: boolean;
+  mobileMode?: boolean;
 }>();
 const emit = defineEmits<{
   'open-info': [Record<string, any>];
@@ -222,6 +269,8 @@ const emit = defineEmits<{
 }>();
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
+const mobileMode = computed(() => Boolean(props.mobileMode));
+const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
@@ -293,6 +342,19 @@ function shouldShowLogsShortcut(row: Record<string, any>) {
   return Boolean(action && action.command !== 'logs');
 }
 
+function mobileInventoryText(row: Record<string, any>) {
+  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE') return inventoryIssueTypeText(row.inventory_issue_type);
+  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_OK') return row.inventory_at || '-';
+  return '本轮未盘';
+}
+
+function toggleMobileSelection(row: Record<string, any>, checked: boolean) {
+  const next = new Set(selectedSet.value);
+  if (checked) next.add(String(row.id));
+  else next.delete(String(row.id));
+  emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
+}
+
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -309,6 +371,8 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   border-radius: 14px;
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
+
+.pager-wrap--mobile { justify-content: center; margin-top: 4px; }
 
 .pager-wrap {
   margin-top: 16px;

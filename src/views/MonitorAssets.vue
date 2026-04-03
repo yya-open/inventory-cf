@@ -2,6 +2,7 @@
   <div class="ledger-page ledger-page--monitor">
     <section class="ledger-section ledger-section--toolbar">
       <MonitorAssetsToolbar
+      :mobile-mode="isMobile"
       v-model:status="status"
       v-model:location-id="locationId"
       v-model:inventory-status="inventoryStatus"
@@ -59,6 +60,7 @@
 
     <section class="ledger-section ledger-section--table">
       <MonitorAssetsTable
+      :mobile-mode="isMobile"
       :rows="rows"
       :loading="refreshing"
       :initial-loading="initialLoading && !rows.length"
@@ -264,6 +266,7 @@ const isAdmin = computed(() => can('admin'));
 const canQrExport = computed(() => canPerm('qr_export'));
 const canQrReset = computed(() => canPerm('qr_reset'));
 const router = useRouter();
+const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
@@ -1894,7 +1897,13 @@ async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean }
   }, 1500);
 }
 
+function handleViewportResize() {
+  isMobile.value = typeof window !== 'undefined' ? window.innerWidth <= 900 : false;
+}
+
 onBeforeMount(() => {
+  handleViewportResize();
+  if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
   void hydrateViewData();
 });
 
@@ -1905,6 +1914,7 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
+  if (typeof window !== 'undefined') window.removeEventListener('resize', handleViewportResize);
   clearQrExportProgressAutoCloseTimer();
   cleanupViewState();
 });
