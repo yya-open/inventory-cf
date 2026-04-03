@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import {
-  ensurePcSchema,
+  ensurePcSchemaIfAllowed,
   must,
   optional,
   pcOutNo,
@@ -12,18 +12,21 @@ import {
 import { applyPcOut } from './services/asset-write';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { createTiming } from './_timing';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+  const timing = createTiming();
+  const respond = (body: any, status = 200) => Response.json(body, { status, headers: { 'Server-Timing': timing.header() } });
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await timing.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await timing.measure('parse', () => request.json<any>().catch(() => ({} as any)));
     const { no } = buildWriteNo('PCOUT', pcOutNo, body?.client_request_id);
-    const existing = await findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id');
+    const existing = await timing.measure('idempotency', () => findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id'));
     if (existing?.out_no) {
-      return Response.json({ ok: true, out_no: existing.out_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '出库成功（幂等命中）' });
+      return respond({ ok: true, out_no: existing.out_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '出库成功（幂等命中）' });
     }
 
     const employee_no = must(body?.employee_no, '员工工号', 60);
@@ -38,14 +41,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       return Response.json({ ok: false, message: '出库不再填写回收日期，请到『电脑回收/归还』页面操作' }, { status: 400 });
     }
 
-    const asset = await getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no);
+    const asset = await timing.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no));
     if (!asset) return Response.json({ ok: false, message: '未找到该电脑资产（请先入库）' }, { status: 404 });
     if (!isInStockStatus(asset.status)) {
       return Response.json({ ok: false, message: '该电脑当前不在库，无法出库' }, { status: 400 });
     }
 
     const afterStatus = toAssetStatusAfterOut(null);
-    await applyPcOut({
+    await timing.measure('write', () => applyPcOut({
       db: env.DB,
       outNo: no,
       asset,
@@ -57,7 +60,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       remark,
       createdBy: user.username,
       statusAfter: afterStatus,
-    });
+    }));
 
     waitUntil(logAudit(env.DB, request, user, 'PC_OUT', 'pc_out', no, {
       asset_id: asset.id,
@@ -73,8 +76,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       status_after: afterStatus,
     }).catch(() => {}));
 
-    return Response.json({ ok: true, out_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
+    return respond({ ok: true, out_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
   } catch (e: any) {
-    return errorResponse(e);
+    const res = errorResponse(e);
+    res.headers.set('Server-Timing', timing.header());
+    return res;
   }
 };

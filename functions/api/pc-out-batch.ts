@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import {
-  ensurePcSchema,
+  ensurePcSchemaIfAllowed,
   must,
   optional,
   pcOutNo,
@@ -12,6 +12,7 @@ import {
 import { applyPcOut } from './services/asset-write';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { createTiming } from './_timing';
 
 type Item = {
   employee_no: string;
@@ -25,12 +26,14 @@ type Item = {
 };
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+  const timing = createTiming();
+  const respond = (body: any, status = 200) => Response.json(body, { status, headers: { 'Server-Timing': timing.header() } });
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await timing.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await timing.measure('parse', () => request.json<any>().catch(() => ({} as any)));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
@@ -90,8 +93,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
-    return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
+    return respond({ ok: true, success, duplicated, failed: errors.length, errors });
   } catch (e: any) {
-    return errorResponse(e);
+    const res = errorResponse(e);
+    res.headers.set('Server-Timing', timing.header());
+    return res;
   }
 };

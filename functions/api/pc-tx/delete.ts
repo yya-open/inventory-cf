@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from "../../_auth";
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
-import { ensurePcSchema } from "../_pc";
+import { ensurePcSchemaIfAllowed } from "../_pc";
 import { recalcPcAssetStatuses } from "./_recalc";
 import { syncSystemDictionaryUsageCounters } from '../services/system-dictionaries';
 
@@ -122,7 +122,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const actor = await requireAuth(env, request, "admin");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
 
     const body = await request.json().catch(() => ({} as any));
     requireConfirm(body, "删除", "二次确认不通过");
