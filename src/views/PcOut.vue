@@ -196,6 +196,8 @@ import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText, validateEmployeeNo } from "../utils/dataQuality";
 
 const formRef = ref<FormInstance>();
 
@@ -218,6 +220,7 @@ const rules: FormRules = {
 };
 
 const assetOptions = ref<any[]>([]);
+const settings = ref(getCachedSystemSettings());
 const pickedAsset = ref<any | null>(null);
 const assetLoading = ref(false);
 const ASSET_OPTIONS_CACHE_TTL_MS = 10_000;
@@ -289,6 +292,16 @@ const canSubmit = computed(() => {
   );
 });
 
+function normalizeForm() {
+  form.value.employee_no = String(form.value.employee_no || "").trim();
+  form.value.remark = normalizeRemark(form.value.remark, settings.value.validation_remark_max_length);
+}
+
+function removeAssetOption(id?: number) {
+  if (!id) return;
+  assetOptions.value = assetOptions.value.filter((x: any) => Number(x.id) !== Number(id));
+}
+
 function downloadOutTemplate() {
   downloadTemplate({
     filename: "电脑出库导入模板.xlsx",
@@ -322,13 +335,13 @@ async function onImportOutFile(uploadFile: any) {
     const rows = await parseXlsx(file);
     const items = rows
       .map((r) => ({
-        serial_no: String(r["序列号"] ?? r["serial_no"] ?? "").trim(),
+        serial_no: normalizeSerialNo(String(r["序列号"] ?? r["serial_no"] ?? "").trim(), settings.value.validation_serial_no_uppercase),
         employee_no: String(r["员工工号"] ?? r["employee_no"] ?? "").trim(),
         department: String(r["部门"] ?? r["department"] ?? "").trim(),
         employee_name: String(r["员工姓名"] ?? r["employee_name"] ?? "").trim(),
         is_employed: String(r["是否在职"] ?? r["is_employed"] ?? "在职").trim() || "在职",
         config_date: String(r["配置日期"] ?? r["config_date"] ?? "").trim(),
-        remark: String(r["备注"] ?? r["remark"] ?? "").trim(),
+        remark: normalizeRemark(String(r["备注"] ?? r["remark"] ?? "").trim(), settings.value.validation_remark_max_length),
       }))
       .filter((x) => x.serial_no && x.employee_no && x.department && x.employee_name);
 
@@ -336,6 +349,12 @@ async function onImportOutFile(uploadFile: any) {
       ElMessage.warning("Excel里没有可导入的数据");
       return;
     }
+
+    const frontErrors = items.map((it, idx) => {
+      const errs = [validateEmployeeNo(it.employee_no, settings.value.validation_employee_no_pattern), validateDateText(it.config_date, "配置日期")].filter(Boolean);
+      return errs.length ? `第${idx+2}行：${errs.join("；")}` : "";
+    }).filter(Boolean);
+    if (frontErrors.length) { ElMessage.warning(summarizeValidationErrors(frontErrors, 3)); return; }
 
     const res: any = await apiPost("/api/pc-out-batch", { items });
     const okSum = Number(res?.success || 0);
@@ -347,18 +366,27 @@ async function onImportOutFile(uploadFile: any) {
       ElMessage.success(`导入完成：成功 ${okSum} 条`);
     }
 
-    await loadAssets();
+    if (settings.value.ui_write_local_refresh && items.length && assetOptions.value.length) {
+      const serialSet = new Set(items.map((it) => normalizeSerialNo(it.serial_no, settings.value.validation_serial_no_uppercase)));
+      assetOptions.value = assetOptions.value.filter((row: any) => !serialSet.has(normalizeSerialNo(row?.serial_no, settings.value.validation_serial_no_uppercase)));
+    } else {
+      await loadAssets();
+    }
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
   }
 }
 
 async function submit() {
+  normalizeForm();
+  const softErrors = [validateEmployeeNo(form.value.employee_no, settings.value.validation_employee_no_pattern), validateDateText(form.value.config_date, "配置日期")].filter(Boolean);
+  if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
   const ok = await formRef.value?.validate().catch(() => false);
   if (!ok) return;
 
   submitting.value = true;
   try {
+    const usedAssetId = form.value.asset_id;
     const r: any = await apiPost("/api/pc-out", { ...form.value });
     ElMessage.success("出库成功");
 
@@ -372,8 +400,9 @@ async function submit() {
     form.value.config_date = "";
     form.value.remark = "";
     formRef.value?.clearValidate();
-    // 重新拉取在库列表
-    await loadAssets();
+    // 优先本地移除已出库资产，减少一次整表刷新
+    if (settings.value.ui_write_local_refresh) removeAssetOption(usedAssetId);
+    else await loadAssets();
   } catch (e: any) {
     ElMessage.error(e?.message || "出库失败");
   } finally {
@@ -382,6 +411,7 @@ async function submit() {
 }
 
 onMounted(async () => {
+  try { settings.value = await fetchSystemSettings(); } catch {}
   await loadAssets();
 });
 </script>

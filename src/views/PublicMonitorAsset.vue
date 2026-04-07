@@ -109,6 +109,10 @@
           <span v-else>-</span>
         </el-descriptions-item>
         <el-descriptions-item label="备注" :span="2"><div style="white-space:pre-wrap">{{ row?.remark || '-' }}</div></el-descriptions-item>
+        <template v-if="settings.public_asset_show_updated_at">
+          <el-descriptions-item label="资料更新">{{ row?.updated_at || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="二维码更新">{{ row?.qr_updated_at || '-' }}</el-descriptions-item>
+        </template>
       </el-descriptions>
 
       <el-alert

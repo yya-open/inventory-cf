@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
-import { ensurePcSchemaIfAllowed, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
+import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
@@ -30,7 +30,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const user = await requireAuth(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
+    await ensurePcSchema(env.DB);
 
     const body = await request.json<any>().catch(() => ({} as any));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];

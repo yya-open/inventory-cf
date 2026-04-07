@@ -133,11 +133,13 @@
 
 <script setup lang="ts">
 import { ElUpload } from 'element-plus';
-import { ref, computed } from "vue";
+import { ref, computed, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
+import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText } from "../utils/dataQuality";
 
 const formRef = ref<FormInstance>();
 
@@ -160,6 +162,7 @@ const rules: FormRules = {
 };
 
 const submitting = ref(false);
+const settings = ref(getCachedSystemSettings());
 
 const canSubmit = computed(() => {
   return (
@@ -201,21 +204,26 @@ function downloadInTemplate() {
   });
 }
 
+function normalizeForm() {
+  form.value.serial_no = normalizeSerialNo(form.value.serial_no, settings.value.validation_serial_no_uppercase);
+  form.value.remark = normalizeRemark(form.value.remark, settings.value.validation_remark_max_length);
+}
+
 async function onImportFile(uploadFile: any) {
   const file: File = uploadFile?.raw;
   if (!file) return;
   try {
     const rows = await parseXlsx(file);
     const items = rows
-      .map((r) => ({
+.map((r) => ({
         brand: String(r["品牌"] ?? r["brand"] ?? "").trim(),
-        serial_no: String(r["序列号"] ?? r["serial_no"] ?? "").trim(),
+        serial_no: normalizeSerialNo(String(r["序列号"] ?? r["serial_no"] ?? "").trim(), settings.value.validation_serial_no_uppercase),
         model: String(r["型号"] ?? r["model"] ?? "").trim(),
         manufacture_date: String(r["出厂时间"] ?? r["manufacture_date"] ?? "").trim(),
         warranty_end: String(r["保修到期"] ?? r["warranty_end"] ?? "").trim(),
         disk_capacity: String(r["硬盘容量"] ?? r["disk_capacity"] ?? "").trim(),
         memory_size: String(r["内存大小"] ?? r["memory_size"] ?? "").trim(),
-        remark: String(r["备注"] ?? r["remark"] ?? "").trim(),
+        remark: normalizeRemark(String(r["备注"] ?? r["remark"] ?? "").trim(), settings.value.validation_remark_max_length),
       }))
       .filter((x) => x.brand || x.serial_no || x.model);
 
@@ -223,6 +231,12 @@ async function onImportFile(uploadFile: any) {
       ElMessage.warning("Excel里没有可导入的数据");
       return;
     }
+
+    const invalidRows = items.map((it, idx) => {
+      const errs = [validateDateText(it.manufacture_date, "出厂时间"), validateDateText(it.warranty_end, "保修到期")].filter(Boolean);
+      return errs.length ? `第${idx+2}行：${errs.join("；")}` : "";
+    }).filter(Boolean);
+    if (invalidRows.length) { ElMessage.warning(summarizeValidationErrors(invalidRows, 3)); return; }
 
     // 出厂时间必填：优先在前端拦截，提示缺失行号
     const missing = items
@@ -257,6 +271,9 @@ async function onImportFile(uploadFile: any) {
 }
 
 async function submit() {
+  normalizeForm();
+  const softErrors = [validateDateText(form.value.manufacture_date, "出厂时间"), validateDateText(form.value.warranty_end, "保修到期")].filter(Boolean);
+  if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
   const ok = await formRef.value?.validate().catch(() => false);
   if (!ok) return;
 
@@ -278,4 +295,8 @@ async function submit() {
     submitting.value = false;
   }
 }
+
+onMounted(async () => {
+  try { settings.value = await fetchSystemSettings(); } catch {}
+});
 </script>

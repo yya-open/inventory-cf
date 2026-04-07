@@ -43,20 +43,20 @@ export function buildPublicQuery(target: PublicAssetTarget) {
   return qs.toString();
 }
 
-export function saveRecentPublicTarget(kind: 'pc' | 'monitor', target: PublicAssetTarget) {
+export function saveRecentPublicTarget(kind: 'pc' | 'monitor', target: PublicAssetTarget, limit = MAX_RECENT) {
   const qs = buildPublicQuery(target);
   if (!qs) return;
   const key = `${RECENT_KEY_PREFIX}${kind}`;
   let current: string[] = [];
   try { current = JSON.parse(localStorage.getItem(key) || '[]'); } catch {}
-  const next = [qs, ...current.filter((item) => item !== qs)].slice(0, MAX_RECENT);
+  const next = [qs, ...current.filter((item) => item !== qs)].slice(0, Math.max(1, limit || MAX_RECENT));
   localStorage.setItem(key, JSON.stringify(next));
 }
 
-export function loadRecentPublicTargets(kind: 'pc' | 'monitor') {
+export function loadRecentPublicTargets(kind: 'pc' | 'monitor', limit = MAX_RECENT) {
   const key = `${RECENT_KEY_PREFIX}${kind}`;
   try {
-    return (JSON.parse(localStorage.getItem(key) || '[]') || []) as string[];
+    return ((JSON.parse(localStorage.getItem(key) || '[]') || []) as string[]).slice(0, Math.max(1, limit || MAX_RECENT));
   } catch {
     return [];
   }

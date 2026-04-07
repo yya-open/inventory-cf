@@ -10,45 +10,47 @@ import {
   toAssetStatusAfterOut,
 } from './_pc';
 import { applyPcOut } from './services/asset-write';
+import { createTiming } from './_timing';
+import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
-import { createTiming } from './_timing';
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
-  const timing = createTiming();
-  const respond = (body: any, status = 200) => Response.json(body, { status, headers: { 'Server-Timing': timing.header() } });
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+  const t = env.__timing || createTiming();
+  const url = new URL(request.url);
   try {
-    const user = await timing.measure('auth', () => requireAuth(env, request, 'operator'));
+    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
+    await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
-    const body = await timing.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const { no } = buildWriteNo('PCOUT', pcOutNo, body?.client_request_id);
-    const existing = await timing.measure('idempotency', () => findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id'));
+    const existing = await findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id');
     if (existing?.out_no) {
-      return respond({ ok: true, out_no: existing.out_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '出库成功（幂等命中）' });
+      return Response.json({ ok: true, out_no: existing.out_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '出库成功（幂等命中）' });
     }
 
-    const employee_no = must(body?.employee_no, '员工工号', 60);
+    const employee_no = assertEmployeeNo(must(body?.employee_no, '员工工号', 60), quality.employeeNoPattern);
     const department = must(body?.department, '部门', 120);
     await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
     const employee_name = must(body?.employee_name, '员工姓名', 120);
     const is_employed = optional(body?.is_employed, 40);
-    const config_date = optional(body?.config_date, 40);
-    const remark = optional(body?.remark, 2000);
+    const config_date = assertDateText(optional(body?.config_date, 40), '配置日期');
+    const remark = trimRemarkByRule(optional(body?.remark, 2000), quality.remarkMaxLength);
 
     if (String(body?.recycle_date || '').trim()) {
       return Response.json({ ok: false, message: '出库不再填写回收日期，请到『电脑回收/归还』页面操作' }, { status: 400 });
     }
 
-    const asset = await timing.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no));
+    const asset = await t.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no));
     if (!asset) return Response.json({ ok: false, message: '未找到该电脑资产（请先入库）' }, { status: 404 });
     if (!isInStockStatus(asset.status)) {
       return Response.json({ ok: false, message: '该电脑当前不在库，无法出库' }, { status: 400 });
     }
 
     const afterStatus = toAssetStatusAfterOut(null);
-    await timing.measure('write', () => applyPcOut({
+    await t.measure('write', () => applyPcOut({
       db: env.DB,
       outNo: no,
       asset,
@@ -76,10 +78,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       status_after: afterStatus,
     }).catch(() => {}));
 
-    return respond({ ok: true, out_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
+    return Response.json({ ok: true, out_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
   } catch (e: any) {
-    const res = errorResponse(e);
-    res.headers.set('Server-Timing', timing.header());
-    return res;
+    return errorResponse(e);
   }
 };

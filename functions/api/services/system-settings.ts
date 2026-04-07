@@ -5,8 +5,12 @@ export type PublicScanMode = 'manual' | 'scanner' | 'camera';
 
 export type SystemSettings = {
   ui_default_page_size: number;
+  ui_write_local_refresh: boolean;
   asset_allow_physical_delete: boolean;
   pc_scrap_warning_years: number;
+  validation_employee_no_pattern: string;
+  validation_serial_no_uppercase: boolean;
+  validation_remark_max_length: number;
   asset_archive_reason_options: string[];
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
@@ -17,13 +21,20 @@ export type SystemSettings = {
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
   public_inventory_scan_mode_default: PublicScanMode;
+  public_inventory_recent_targets_limit: number;
+  public_inventory_camera_auto_start: boolean;
+  public_asset_show_updated_at: boolean;
   settings_updated_at?: string | null;
 };
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui_default_page_size: 50,
+  ui_write_local_refresh: true,
   asset_allow_physical_delete: true,
   pc_scrap_warning_years: 5,
+  validation_employee_no_pattern: '^[A-Za-z0-9_-]{3,32}$',
+  validation_serial_no_uppercase: true,
+  validation_remark_max_length: 500,
   asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
@@ -34,6 +45,9 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
   public_inventory_scan_mode_default: 'scanner',
+  public_inventory_recent_targets_limit: 8,
+  public_inventory_camera_auto_start: false,
+  public_asset_show_updated_at: true,
   settings_updated_at: null,
 };
 
@@ -139,8 +153,12 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
   const source = input || {};
   return {
     ui_default_page_size: toInt(source.ui_default_page_size, DEFAULT_SYSTEM_SETTINGS.ui_default_page_size, 10, 200),
+    ui_write_local_refresh: toBoolean(source.ui_write_local_refresh, DEFAULT_SYSTEM_SETTINGS.ui_write_local_refresh),
     asset_allow_physical_delete: toBoolean(source.asset_allow_physical_delete, DEFAULT_SYSTEM_SETTINGS.asset_allow_physical_delete),
     pc_scrap_warning_years: toInt(source.pc_scrap_warning_years, DEFAULT_SYSTEM_SETTINGS.pc_scrap_warning_years, 1, 5),
+    validation_employee_no_pattern: String(source.validation_employee_no_pattern || DEFAULT_SYSTEM_SETTINGS.validation_employee_no_pattern).trim() || DEFAULT_SYSTEM_SETTINGS.validation_employee_no_pattern,
+    validation_serial_no_uppercase: toBoolean(source.validation_serial_no_uppercase, DEFAULT_SYSTEM_SETTINGS.validation_serial_no_uppercase),
+    validation_remark_max_length: toInt(source.validation_remark_max_length, DEFAULT_SYSTEM_SETTINGS.validation_remark_max_length, 50, 2000),
     asset_archive_reason_options: toStringArray(source.asset_archive_reason_options, DEFAULT_SYSTEM_SETTINGS.asset_archive_reason_options),
     dictionary_pc_brand_options: toStringArray(source.dictionary_pc_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_pc_brand_options),
     dictionary_monitor_brand_options: toStringArray(source.dictionary_monitor_brand_options, DEFAULT_SYSTEM_SETTINGS.dictionary_monitor_brand_options),
@@ -151,6 +169,9 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_continuous_mode_default: toBoolean(source.public_inventory_continuous_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_continuous_mode_default),
     public_inventory_retry_hint: toBoolean(source.public_inventory_retry_hint, DEFAULT_SYSTEM_SETTINGS.public_inventory_retry_hint),
     public_inventory_scan_mode_default: normalizeScanMode(source.public_inventory_scan_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scan_mode_default, source.public_inventory_scanner_mode_default),
+    public_inventory_recent_targets_limit: toInt(source.public_inventory_recent_targets_limit, DEFAULT_SYSTEM_SETTINGS.public_inventory_recent_targets_limit, 3, 20),
+    public_inventory_camera_auto_start: toBoolean(source.public_inventory_camera_auto_start, DEFAULT_SYSTEM_SETTINGS.public_inventory_camera_auto_start),
+    public_asset_show_updated_at: toBoolean(source.public_asset_show_updated_at, DEFAULT_SYSTEM_SETTINGS.public_asset_show_updated_at),
     settings_updated_at: normalizeVersion(source.settings_updated_at),
   };
 }
@@ -269,5 +290,8 @@ export function getPublicSettingsPayload(settings: SystemSettings) {
     public_inventory_continuous_mode_default: settings.public_inventory_continuous_mode_default,
     public_inventory_retry_hint: settings.public_inventory_retry_hint,
     public_inventory_scan_mode_default: settings.public_inventory_scan_mode_default,
+    public_inventory_recent_targets_limit: settings.public_inventory_recent_targets_limit,
+    public_inventory_camera_auto_start: settings.public_inventory_camera_auto_start,
+    public_asset_show_updated_at: settings.public_asset_show_updated_at,
   };
 }

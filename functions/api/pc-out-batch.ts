@@ -10,9 +10,10 @@ import {
   toAssetStatusAfterOut,
 } from './_pc';
 import { applyPcOut } from './services/asset-write';
+import { createTiming } from './_timing';
+import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
-import { createTiming } from './_timing';
 
 type Item = {
   employee_no: string;
@@ -25,15 +26,16 @@ type Item = {
   remark?: string;
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
-  const timing = createTiming();
-  const respond = (body: any, status = 200) => Response.json(body, { status, headers: { 'Server-Timing': timing.header() } });
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+  const t = env.__timing || createTiming();
+  const url = new URL(request.url);
   try {
-    const user = await timing.measure('auth', () => requireAuth(env, request, 'operator'));
+    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
+    await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
-    const body = await timing.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
@@ -52,13 +54,13 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           continue;
         }
 
-        const employee_no = must(it?.employee_no, '员工工号', 60);
+        const employee_no = assertEmployeeNo(must(it?.employee_no, '员工工号', 60), quality.employeeNoPattern);
         const department = must(it?.department, '部门', 120);
         await assertDepartmentDictionaryValue(env.DB, department, '领用部门');
         const employee_name = must(it?.employee_name, '员工姓名', 120);
         const is_employed = optional(it?.is_employed, 40);
-        const config_date = optional(it?.config_date, 40);
-        const remark = optional(it?.remark, 2000);
+        const config_date = assertDateText(optional(it?.config_date, 40), '配置日期');
+        const remark = trimRemarkByRule(optional(it?.remark, 2000), quality.remarkMaxLength);
 
         const asset = await getPcAssetByIdOrSerial(env.DB, it?.asset_id, it?.serial_no);
         if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
@@ -93,10 +95,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
-    return respond({ ok: true, success, duplicated, failed: errors.length, errors });
+    return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
   } catch (e: any) {
-    const res = errorResponse(e);
-    res.headers.set('Server-Timing', timing.header());
-    return res;
+    return errorResponse(e);
   }
 };

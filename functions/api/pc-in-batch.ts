@@ -2,6 +2,8 @@ import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, pcInNo } from './_pc';
 import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
+import { createTiming } from './_timing';
+import { assertDateText, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
@@ -16,14 +18,17 @@ type Item = {
   remark?: string;
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+  const t = env.__timing || createTiming();
+  const url = new URL(request.url);
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
+    await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
@@ -51,11 +56,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         if (seenSerial.has(snKey)) throw new Error(`序列号重复：${snKey}`);
         seenSerial.add(snKey);
 
-        const manufacture_date = must(it?.manufacture_date, '出厂时间', 40);
-        const warranty_end = optional(it?.warranty_end, 40);
+        const manufacture_date = assertDateText(must(it?.manufacture_date, '出厂时间', 40), '出厂时间');
+        const warranty_end = assertDateText(optional(it?.warranty_end, 40), '保修到期');
         const disk_capacity = optional(it?.disk_capacity, 40);
         const memory_size = optional(it?.memory_size, 40);
-        const remark = optional(it?.remark, 2000);
+        const remark = trimRemarkByRule(optional(it?.remark, 2000), quality.remarkMaxLength);
 
 
         const assetId = await createPcAssetAndInRecord({

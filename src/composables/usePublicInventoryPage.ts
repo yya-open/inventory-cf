@@ -198,6 +198,8 @@ export function usePublicInventoryPage(options: {
     return `${title} · ${row.value?.asset_code || row.value?.sn || '-'}`;
   }
 
+  const recentTargetsLimit = computed(() => Math.max(1, Number(settings.value.public_inventory_recent_targets_limit || 8)));
+
   function loadRecentResult() {
     if (typeof window === 'undefined') return;
     try {
@@ -437,6 +439,7 @@ export function usePublicInventoryPage(options: {
       settings.value = await fetchPublicSettings();
       continuousMode.value = settings.value.public_inventory_continuous_mode_default;
       scanMode.value = settings.value.public_inventory_scan_mode_default;
+      recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
       if (scanMode.value === 'camera' && !cameraSupported.value) scanMode.value = 'scanner';
     } catch {}
     handleNetworkChange();
@@ -458,7 +461,7 @@ export function usePublicInventoryPage(options: {
       else {
         row.value = null;
         syncCooldownForCurrentTarget();
-        recentTargets.value = loadRecentPublicTargets(options.kind);
+        recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
         refreshPendingQueue();
         return;
       }
@@ -467,7 +470,7 @@ export function usePublicInventoryPage(options: {
       ensureSessionSummary(row.value?.inventory_batch_name);
       syncCooldownForCurrentTarget();
       saveRecentPublicTarget(options.kind, token.value ? { token: token.value } : { id: id.value, key: key.value });
-      recentTargets.value = loadRecentPublicTargets(options.kind);
+      recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
       refreshPendingQueue();
     } catch (err: any) {
       error.value = err?.message || '获取失败';
@@ -620,6 +623,14 @@ export function usePublicInventoryPage(options: {
   }
 
   watch(() => settings.value.public_inventory_retry_hint, handleNetworkChange);
+  watch(recentTargetsLimit, (limit) => { recentTargets.value = loadRecentPublicTargets(options.kind, limit); });
+  watch([scanMode, cameraSupported], async ([mode, supported]) => {
+    if (mode !== 'camera') {
+      stopCamera();
+      return;
+    }
+    if (supported && settings.value.public_inventory_camera_auto_start && continuousMode.value) await startCamera();
+  });
   watch(() => pendingQueue.value.length, (count) => {
     if (!count && retryAction.value && retryMessage.value.includes('待重试')) clearRetry();
   });
@@ -651,7 +662,7 @@ export function usePublicInventoryPage(options: {
     await loadPublicConfig();
     loadRecentResult();
     loadSessionSummary();
-    recentTargets.value = loadRecentPublicTargets(options.kind);
+    recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
     refreshPendingQueue();
     await refresh();
     if (navigator.onLine && pendingQueue.value.length) {

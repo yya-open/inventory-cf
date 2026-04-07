@@ -10,12 +10,19 @@ export type PublicSettings = {
   public_inventory_continuous_mode_default: boolean;
   public_inventory_retry_hint: boolean;
   public_inventory_scan_mode_default: PublicScanMode;
+  public_inventory_recent_targets_limit: number;
+  public_inventory_camera_auto_start: boolean;
+  public_asset_show_updated_at: boolean;
 };
 
 export type SystemSettings = PublicSettings & {
   ui_default_page_size: number;
+  ui_write_local_refresh: boolean;
   asset_allow_physical_delete: boolean;
   pc_scrap_warning_years: number;
+  validation_employee_no_pattern: string;
+  validation_serial_no_uppercase: boolean;
+  validation_remark_max_length: number;
   asset_archive_reason_options: string[];
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
@@ -25,8 +32,12 @@ export type SystemSettings = PublicSettings & {
 
 export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   ui_default_page_size: 50,
+  ui_write_local_refresh: true,
   asset_allow_physical_delete: true,
   pc_scrap_warning_years: 5,
+  validation_employee_no_pattern: '^[A-Za-z0-9_-]{3,32}$',
+  validation_serial_no_uppercase: true,
+  validation_remark_max_length: 500,
   asset_archive_reason_options: ['停用归档', '闲置归档', '重复录入', '测试数据归档', '其他'],
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
@@ -38,6 +49,9 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_continuous_mode_default: true,
   public_inventory_retry_hint: true,
   public_inventory_scan_mode_default: 'scanner',
+  public_inventory_recent_targets_limit: 8,
+  public_inventory_camera_auto_start: false,
+  public_asset_show_updated_at: true,
 };
 
 const SETTINGS_CACHE_KEY = 'inventory:system-settings-cache';

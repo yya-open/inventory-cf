@@ -38,6 +38,10 @@
           <div class="summary-label">归档原因</div>
           <div class="summary-value">{{ activeCount('asset_archive_reason') }}</div>
         </div>
+        <div class="summary-item">
+          <div class="summary-label">写入后刷新</div>
+          <div class="summary-value">{{ form.ui_write_local_refresh ? '本地刷新' : '整页回拉' }}</div>
+        </div>
       </div>
 
       <el-row :gutter="14" class="settings-grid">
@@ -48,6 +52,10 @@
               <el-form-item label="默认每页条数">
                 <el-input-number v-model="form.ui_default_page_size" :min="10" :max="200" :step="10" />
                 <div class="form-tip">台账页未记住个人页大小时，会使用这里的默认值。</div>
+              </el-form-item>
+              <el-form-item label="写入后刷新策略">
+                <el-switch v-model="form.ui_write_local_refresh" />
+                <div class="form-tip">开启后，入库/出库成功会优先本地更新列表，减少一次整表刷新请求。</div>
               </el-form-item>
             </el-form>
           </el-card>
@@ -93,6 +101,17 @@
                 <el-segmented v-model="form.public_inventory_scan_mode_default" :options="scanModeOptions" class="scan-mode-setting" />
                 <div class="form-tip">可选手动、扫码枪或摄像头连续扫码。摄像头模式更适合手机现场盘点。</div>
               </el-form-item>
+              <el-form-item label="最近扫码数量">
+                <el-input-number v-model="form.public_inventory_recent_targets_limit" :min="3" :max="20" />
+                <div class="form-tip">扫码页顶部最近记录按钮数量，手机现场建议 5~8 条。</div>
+              </el-form-item>
+              <el-form-item label="摄像头模式自动启动">
+                <el-switch v-model="form.public_inventory_camera_auto_start" />
+              </el-form-item>
+              <el-form-item label="扫码页显示更新时间">
+                <el-switch v-model="form.public_asset_show_updated_at" />
+                <div class="form-tip">开启后，公开扫码页会额外显示资料更新时间和二维码更新时间。</div>
+              </el-form-item>
             </el-form>
           </el-card>
         </el-col>
@@ -107,6 +126,26 @@
             </div>
           </el-card>
         </el-col>
+      
+        <el-col :xs="24" :lg="12">
+          <el-card shadow="never" class="section-card">
+            <template #header><div class="section-title">数据质量与防错</div></template>
+            <el-form label-width="170px">
+              <el-form-item label="员工工号正则">
+                <el-input v-model="form.validation_employee_no_pattern" placeholder="例如：^[A-Za-z0-9_-]{3,32}$" />
+                <div class="form-tip">出库单和批量 Excel 会按这里校验员工工号格式。</div>
+              </el-form-item>
+              <el-form-item label="序列号自动大写">
+                <el-switch v-model="form.validation_serial_no_uppercase" />
+              </el-form-item>
+              <el-form-item label="备注最大长度">
+                <el-input-number v-model="form.validation_remark_max_length" :min="50" :max="2000" :step="50" />
+                <div class="form-tip">导入和手工表单都会按这里自动裁剪备注长度。</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </el-col>
+
       </el-row>
 
       <div class="dictionary-sections">
