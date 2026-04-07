@@ -18,6 +18,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const action = (url.searchParams.get("action") || "").trim().toUpperCase();
     const issue_type = (url.searchParams.get("issue_type") || "").trim().toUpperCase();
     const keyword = (url.searchParams.get("keyword") || "").trim();
+    const batchId = Number(url.searchParams.get("batch_id") || 0) || 0;
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
 
@@ -31,6 +32,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (issue_type) {
       wh.push("l.issue_type=?");
       binds.push(issue_type);
+    }
+    if (batchId > 0) {
+      wh.push("l.batch_id=?");
+      binds.push(batchId);
     }
 
     if (keyword) {

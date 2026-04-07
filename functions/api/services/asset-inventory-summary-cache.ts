@@ -118,6 +118,8 @@ export async function readDefaultInventorySummaryCache(db: D1Database, kind: Inv
 }
 
 export function isDefaultInventorySummaryRequest(url: URL, kind: InventoryKind) {
+  const forceNoCache = ['1', 'true', 'yes'].includes(String(url.searchParams.get('no_cache') || '').trim().toLowerCase());
+  if (forceNoCache) return false;
   const hasStatus = String(url.searchParams.get('status') || '').trim().length > 0;
   const hasKeyword = String(url.searchParams.get('keyword') || '').trim().length > 0;
   const hasArchiveReason = String(url.searchParams.get('archive_reason') || '').trim().length > 0;

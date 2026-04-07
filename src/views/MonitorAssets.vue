@@ -749,7 +749,8 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
     return;
   }
   try {
-    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters));
+    if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('monitor');
+    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters), undefined, { force: hasActiveInventoryBatch.value });
   } catch (error) {
     console.warn('monitor inventory summary failed', error);
   }

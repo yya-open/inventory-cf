@@ -18,8 +18,8 @@
         :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
         :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
         @click="toggleSidebar"
-      >
-        {{ desktopSidebarCollapsed ? '›' : '‹' }}
+>
+        <span class="app-aside-toggle__icon" aria-hidden="true">{{ desktopSidebarCollapsed ? '›' : '‹' }}</span>
       </button>
       <el-aside
         v-if="!isMobile"

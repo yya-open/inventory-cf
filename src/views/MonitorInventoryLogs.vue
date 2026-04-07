@@ -172,7 +172,7 @@ import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryB
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
-import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
+import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openMonitorLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
@@ -354,8 +354,10 @@ function reset() {
 
 async function loadMonitorIssueBreakdown() {
   const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
+  const activeBatchId = Number(inventoryBatch.value.active?.id || 0) || 0;
+  const batchQuery = activeBatchId > 0 ? `&batch_id=${activeBatchId}` : '';
   const result = await Promise.all(
-    codes.map((code) => apiGet(`/api/monitor-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
+    codes.map((code) => apiGet(`/api/monitor-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}${batchQuery}`).then((res: any) => [code, Number(res?.total || 0)] as const))
   );
   const next = emptyInventoryIssueBreakdown();
   for (const [code, value] of result) next[code] = value;
@@ -363,16 +365,17 @@ async function loadMonitorIssueBreakdown() {
 }
 
 async function refreshInventoryBatchAndSummary() {
-  const [batchResult, summaryResult, issueBreakdownResult] = await Promise.allSettled([
-    refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 }),
-    getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters()),
+  invalidateAssetInventorySummaryCache('monitor');
+  try {
+    const payload = await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    applyInventoryBatchPayload(payload);
+  } catch (error) {
+    console.warn('monitor inventory batch fetch failed', error);
+  }
+  const [summaryResult, issueBreakdownResult] = await Promise.allSettled([
+    getMonitorAssetInventorySummary(buildMonitorBatchExportBaseFilters(), undefined, { force: true }),
     loadMonitorIssueBreakdown(),
   ]);
-  if (batchResult.status === 'fulfilled') {
-    applyInventoryBatchPayload(batchResult.value);
-  } else {
-    console.warn('monitor inventory batch fetch failed', batchResult.reason);
-  }
   if (summaryResult.status === 'fulfilled') {
     inventorySummary.value = summaryResult.value;
   } else {

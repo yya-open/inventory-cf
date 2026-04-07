@@ -621,7 +621,8 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
     return;
   }
   try {
-    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(filters));
+    if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('pc');
+    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(filters), undefined, { force: hasActiveInventoryBatch.value });
   } catch (error) {
     console.warn('pc inventory summary failed', error);
   }

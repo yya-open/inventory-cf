@@ -109,21 +109,22 @@ export async function listAllLocations(signal?: AbortSignal) {
   }, { ttlMs: LOCATION_CACHE_TTL_MS });
 }
 
-export async function getPcAssetInventorySummary(filters: PcFilters, signal?: AbortSignal) {
+export async function getPcAssetInventorySummary(filters: PcFilters, signal?: AbortSignal, options?: { force?: boolean }) {
   const params = {
     status: filters.status,
     keyword: filters.keyword,
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+    no_cache: options?.force ? '1' : undefined,
   } satisfies Record<string, QueryValue>;
   return getCachedResource(summaryCacheKey('pc', params), async () => {
     const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString(params)}`, { signal });
     return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
-  }, { ttlMs: SUMMARY_CACHE_TTL_MS });
+  }, { ttlMs: SUMMARY_CACHE_TTL_MS, force: Boolean(options?.force) });
 }
 
-export async function getMonitorAssetInventorySummary(filters: MonitorFilters, signal?: AbortSignal) {
+export async function getMonitorAssetInventorySummary(filters: MonitorFilters, signal?: AbortSignal, options?: { force?: boolean }) {
   const params = {
     status: filters.status,
     location_id: filters.locationId,
@@ -131,9 +132,10 @@ export async function getMonitorAssetInventorySummary(filters: MonitorFilters, s
     archive_reason: filters.archiveReason,
     archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined,
     show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined,
+    no_cache: options?.force ? '1' : undefined,
   } satisfies Record<string, QueryValue>;
   return getCachedResource(summaryCacheKey('monitor', params), async () => {
     const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString(params)}`, { signal });
     return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
-  }, { ttlMs: SUMMARY_CACHE_TTL_MS });
+  }, { ttlMs: SUMMARY_CACHE_TTL_MS, force: Boolean(options?.force) });
 }

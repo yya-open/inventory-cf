@@ -173,7 +173,7 @@ import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryB
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
-import { countPcAssets, getPcAssetInventorySummary } from '../api/assetLedgers';
+import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, PcFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openPcLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
@@ -355,8 +355,10 @@ function reset() {
 
 async function loadPcIssueBreakdown() {
   const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
+  const activeBatchId = Number(inventoryBatch.value.active?.id || 0) || 0;
+  const batchQuery = activeBatchId > 0 ? `&batch_id=${activeBatchId}` : '';
   const result = await Promise.all(
-    codes.map((code) => apiGet(`/api/pc-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}`).then((res: any) => [code, Number(res?.total || 0)] as const))
+    codes.map((code) => apiGet(`/api/pc-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}${batchQuery}`).then((res: any) => [code, Number(res?.total || 0)] as const))
   );
   const next = emptyInventoryIssueBreakdown();
   for (const [code, value] of result) next[code] = value;
@@ -364,16 +366,17 @@ async function loadPcIssueBreakdown() {
 }
 
 async function refreshInventoryBatchAndSummary() {
-  const [batchResult, summaryResult, issueBreakdownResult] = await Promise.allSettled([
-    refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 }),
-    getPcAssetInventorySummary(buildPcBatchExportBaseFilters()),
+  invalidateAssetInventorySummaryCache('pc');
+  try {
+    const payload = await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
+    applyInventoryBatchPayload(payload);
+  } catch (error) {
+    console.warn('pc inventory batch fetch failed', error);
+  }
+  const [summaryResult, issueBreakdownResult] = await Promise.allSettled([
+    getPcAssetInventorySummary(buildPcBatchExportBaseFilters(), undefined, { force: true }),
     loadPcIssueBreakdown(),
   ]);
-  if (batchResult.status === 'fulfilled') {
-    applyInventoryBatchPayload(batchResult.value);
-  } else {
-    console.warn('pc inventory batch fetch failed', batchResult.reason);
-  }
   if (summaryResult.status === 'fulfilled') {
     inventorySummary.value = summaryResult.value;
   } else {
