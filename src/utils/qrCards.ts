@@ -1,5 +1,3 @@
-import JSZip from 'jszip';
-import QRCode from 'qrcode';
 import {
   createDefaultQrPrintTemplate,
   normalizeQrPrintTemplate,
@@ -9,6 +7,23 @@ import {
 } from './qrPrintTemplate';
 import type { AssetQrExportProgressCallback } from './assetQrExport';
 import { buildQrZipEntryName } from './exportNaming';
+
+type JsZipModule = typeof import('jszip');
+type QrCodeModule = typeof import('qrcode');
+
+let jsZipModulePromise: Promise<JsZipModule> | null = null;
+let qrCodeModulePromise: Promise<QrCodeModule> | null = null;
+const imageLoadCache = new Map<string, Promise<HTMLImageElement>>();
+
+function loadJsZipModule() {
+  jsZipModulePromise ||= import('jszip');
+  return jsZipModulePromise;
+}
+
+function loadQrCodeModule() {
+  qrCodeModulePromise ||= import('qrcode');
+  return qrCodeModulePromise;
+}
 
 export type QrCardRecord = {
   title: string;
@@ -115,7 +130,7 @@ async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, temp
     const record = records[index];
     prepared.push({
       ...record,
-      dataUrl: await QRCode.toDataURL(record.url, { width, margin: Math.max(1, Math.trunc(template.qr_margin_modules || 2)), errorCorrectionLevel: template.output_dpi === 203 ? 'H' : 'Q' }),
+      dataUrl: await (await loadQrCodeModule()).toDataURL(record.url, { width, margin: Math.max(1, Math.trunc(template.qr_margin_modules || 2)), errorCorrectionLevel: template.output_dpi === 203 ? 'H' : 'Q' }),
     });
     onProgress?.({ stage: '生成二维码图片', current: index + 1, total, detail: `已生成 ${index + 1} / ${total} 张二维码` });
   }
@@ -143,12 +158,19 @@ function canvasToBlob(canvas: HTMLCanvasElement): Promise<Blob> {
 }
 
 function loadImage(src: string): Promise<HTMLImageElement> {
-  return new Promise((resolve, reject) => {
+  const cached = imageLoadCache.get(src);
+  if (cached) return cached;
+  const task = new Promise<HTMLImageElement>((resolve, reject) => {
     const image = new Image();
     image.onload = () => resolve(image);
-    image.onerror = () => reject(new Error('二维码图片加载失败'));
+    image.onerror = () => {
+      imageLoadCache.delete(src);
+      reject(new Error('二维码图片加载失败'));
+    };
     image.src = src;
   });
+  imageLoadCache.set(src, task);
+  return task;
 }
 
 function wrapText(ctx: CanvasRenderingContext2D, text: string, maxWidth: number) {
@@ -416,6 +438,7 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
     return;
   }
   onProgress?.({ stage: '打包 ZIP', current: 0, total: Math.max(1, files.length), detail: `正在打包 ${files.length} 张 PNG 图片…` });
+  const JSZip = (await loadJsZipModule()).default;
   const zip = new JSZip();
   const normalizedTemplate = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
   const pageChunks = chunkRecords(records, Math.max(1, normalizedTemplate.cols * normalizedTemplate.rows));

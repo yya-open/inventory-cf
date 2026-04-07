@@ -189,7 +189,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../../utils/el-services';
 import { getCachedSystemSettings } from '../../api/systemSettings';
 import { buildSystemDefaultQrTemplate } from '../../utils/systemQrConfig';
@@ -248,6 +248,28 @@ const presetName = ref('');
 const labelPresets = listQrLabelPresets();
 const printerProfiles = listQrPrinterProfiles();
 const importInputRef = ref<HTMLInputElement | null>(null);
+const previewForm = ref<QrPrintTemplate>(normalizeQrPrintTemplate(props.kind, form.value));
+let previewTimer: ReturnType<typeof setTimeout> | null = null;
+
+function syncPreviewForm(immediate = false) {
+  const next = normalizeQrPrintTemplate(props.kind, form.value);
+  if (previewTimer) {
+    clearTimeout(previewTimer);
+    previewTimer = null;
+  }
+  if (immediate) {
+    previewForm.value = next;
+    return;
+  }
+  previewTimer = setTimeout(() => {
+    previewForm.value = next;
+    previewTimer = null;
+  }, 120);
+}
+
+onBeforeUnmount(() => {
+  if (previewTimer) clearTimeout(previewTimer);
+});
 
 function downloadJsonFile(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });
@@ -304,6 +326,7 @@ async function handleImportFile(event: Event) {
 
 function patchForm(next: QrPrintTemplate) {
   form.value = normalizeQrPrintTemplate(props.kind, { ...next });
+  syncPreviewForm(true);
 }
 
 function resolveSystemDefaultTemplate(kind = props.kind) {
@@ -319,7 +342,12 @@ function refreshState() {
 
 watch(() => [props.visible, props.kind] as const, ([nextVisible]) => {
   if (nextVisible) refreshState();
+  else syncPreviewForm(true);
 }, { immediate: true });
+
+watch(form, () => {
+  syncPreviewForm(false);
+}, { deep: true });
 
 function applySelectedPreset() {
   const preset = presets.value.find((item) => item.id === selectedPresetId.value);
@@ -345,7 +373,7 @@ function applyPrinterProfile(profileKey: QrPrinterProfileKey) {
 }
 
 function applyPrinterProfileByDpi(dpi: 203 | 300) {
-  const current = getQrPrinterProfile(form.value.printer_profile);
+  const current = getQrPrinterProfile(previewForm.value.printer_profile);
   const match = printerProfiles.find((item) => item.dpi === dpi && (item.key === current.key || item.key.startsWith(dpi === 203 ? 'gprinter' : 'generic'))) || printerProfiles.find((item) => item.dpi === dpi) || current;
   applyPrinterProfile(match.key);
 }
@@ -409,27 +437,27 @@ const contentModeLabelMap: Record<QrPrintContentMode, string> = {
   model_asset: '二维码+型号+资产编号',
 };
 
-const activeLabelPreset = computed(() => getQrLabelPreset(form.value.label_preset));
-const activePrinterProfile = computed(() => getQrPrinterProfile(form.value.printer_profile));
-const cellEstimate = computed(() => estimateQrCellSize(form.value));
+const activeLabelPreset = computed(() => getQrLabelPreset(previewForm.value.label_preset));
+const activePrinterProfile = computed(() => getQrPrinterProfile(previewForm.value.printer_profile));
+const cellEstimate = computed(() => estimateQrCellSize(previewForm.value));
 const paperLabel = computed(() => {
   const { pageWidthMm, pageHeightMm } = cellEstimate.value;
   if (activeLabelPreset.value) return `${activeLabelPreset.value.name} 标签`; 
-  if (form.value.paper_size === 'custom') return `自定义 ${pageWidthMm} × ${pageHeightMm} mm`;
-  return `${form.value.paper_size} ${pageWidthMm} × ${pageHeightMm} mm`;
+  if (previewForm.value.paper_size === 'custom') return `自定义 ${pageWidthMm} × ${pageHeightMm} mm`;
+  return `${previewForm.value.paper_size} ${pageWidthMm} × ${pageHeightMm} mm`;
 });
 const contentSummary = computed(() => {
   const parts: string[] = [];
-  if (form.value.show_title) parts.push('标题');
-  if (form.value.show_subtitle) parts.push('副标题');
-  if (form.value.show_meta) parts.push(`元信息${form.value.meta_count}行`);
-  if (form.value.show_link && props.kind === 'cards' && form.value.label_preset === 'none') parts.push('链接');
+  if (previewForm.value.show_title) parts.push('标题');
+  if (previewForm.value.show_subtitle) parts.push('副标题');
+  if (previewForm.value.show_meta) parts.push(`元信息${previewForm.value.meta_count}行`);
+  if (previewForm.value.show_link && props.kind === 'cards' && previewForm.value.label_preset === 'none') parts.push('链接');
   return parts.length ? parts.join(' / ') : '仅二维码';
 });
 
 
 const previewScale = computed(() => {
-  const { widthMm, heightMm } = resolveQrPaperDimensions(form.value);
+  const { widthMm, heightMm } = resolveQrPaperDimensions(previewForm.value);
   const maxWidthPx = 280;
   const maxHeightPx = 260;
   return Math.min(maxWidthPx / Math.max(1, widthMm), maxHeightPx / Math.max(1, heightMm));
@@ -443,32 +471,32 @@ const previewScaleRatio = computed(() => {
 const validationWarnings = computed(() => {
   const warnings: string[] = [];
   const { widthMm, heightMm } = cellEstimate.value;
-  const qrMm = form.value.qr_size_mm;
+  const qrMm = previewForm.value.qr_size_mm;
   const smallLabel = !!activeLabelPreset.value && (activeLabelPreset.value.widthMm <= 50 || activeLabelPreset.value.heightMm <= 30);
   if (qrMm < 20) warnings.push('二维码小于 20 mm，部分标签机或扫码枪可能识别不稳。');
-  if (form.value.content_mode === 'detail' && widthMm < 42) warnings.push('当前单块区域较窄，明细版可能过密，建议改用“二维码+型号+SN”。');
-  if (form.value.show_meta && form.value.meta_count >= 3 && heightMm < 34) warnings.push('元信息行数偏多，导出时会自动缩字，仍建议减少到 1-2 行。');
-  if (smallLabel && form.value.content_mode === 'detail') warnings.push('小尺寸标签更适合“仅二维码”或“二维码+型号+SN”。');
-  if (form.value.margin_left_mm + form.value.margin_right_mm >= Math.max(6, cellEstimate.value.pageWidthMm * 0.3)) warnings.push('左右边距占比偏大，可适当减小边距提升可用面积。');
-  if (form.value.output_dpi === 203 && form.value.qr_size_mm < 22) warnings.push('203 DPI 机型建议二维码至少 22 mm，以提升扫码稳定性。');
-  if (form.value.qr_margin_modules < 2) warnings.push('二维码留白过小，标签切边后可能影响扫码，建议至少 2 模块。');
-  if (form.value.safe_padding_mm < 1.2 && form.value.label_preset !== 'none') warnings.push('标签机安全边距偏小，建议至少 1.2 mm。');
-  if (form.value.label_preset !== 'none' && form.value.show_link) warnings.push('标签机模板已自动隐藏底部链接，以避免文字过密。');
+  if (previewForm.value.content_mode === 'detail' && widthMm < 42) warnings.push('当前单块区域较窄，明细版可能过密，建议改用“二维码+型号+SN”。');
+  if (previewForm.value.show_meta && previewForm.value.meta_count >= 3 && heightMm < 34) warnings.push('元信息行数偏多，导出时会自动缩字，仍建议减少到 1-2 行。');
+  if (smallLabel && previewForm.value.content_mode === 'detail') warnings.push('小尺寸标签更适合“仅二维码”或“二维码+型号+SN”。');
+  if (previewForm.value.margin_left_mm + previewForm.value.margin_right_mm >= Math.max(6, cellEstimate.value.pageWidthMm * 0.3)) warnings.push('左右边距占比偏大，可适当减小边距提升可用面积。');
+  if (previewForm.value.output_dpi === 203 && previewForm.value.qr_size_mm < 22) warnings.push('203 DPI 机型建议二维码至少 22 mm，以提升扫码稳定性。');
+  if (previewForm.value.qr_margin_modules < 2) warnings.push('二维码留白过小，标签切边后可能影响扫码，建议至少 2 模块。');
+  if (previewForm.value.safe_padding_mm < 1.2 && previewForm.value.label_preset !== 'none') warnings.push('标签机安全边距偏小，建议至少 1.2 mm。');
+  if (previewForm.value.label_preset !== 'none' && previewForm.value.show_link) warnings.push('标签机模板已自动隐藏底部链接，以避免文字过密。');
   return warnings;
 });
 
-const previewVertical = computed(() => form.value.label_preset !== 'none' || kind.value === 'sheet');
+const previewVertical = computed(() => previewForm.value.label_preset !== 'none' || kind.value === 'sheet');
 
 const previewPageStyle = computed(() => {
-  const { widthMm, heightMm } = resolveQrPaperDimensions(form.value);
+  const { widthMm, heightMm } = resolveQrPaperDimensions(previewForm.value);
   const scale = previewScale.value;
   return {
     width: `${Math.round(widthMm * scale)}px`,
     height: `${Math.round(heightMm * scale)}px`,
-    paddingTop: `${Math.max(4, Math.round(form.value.margin_top_mm * scale))}px`,
-    paddingRight: `${Math.max(4, Math.round(form.value.margin_right_mm * scale))}px`,
-    paddingBottom: `${Math.max(4, Math.round(form.value.margin_bottom_mm * scale))}px`,
-    paddingLeft: `${Math.max(4, Math.round(form.value.margin_left_mm * scale))}px`,
+    paddingTop: `${Math.max(4, Math.round(previewForm.value.margin_top_mm * scale))}px`,
+    paddingRight: `${Math.max(4, Math.round(previewForm.value.margin_right_mm * scale))}px`,
+    paddingBottom: `${Math.max(4, Math.round(previewForm.value.margin_bottom_mm * scale))}px`,
+    paddingLeft: `${Math.max(4, Math.round(previewForm.value.margin_left_mm * scale))}px`,
   };
 });
 
@@ -479,14 +507,14 @@ const previewHeaderStyle = computed(() => ({
 }));
 
 const previewGridStyle = computed(() => ({
-  gridTemplateColumns: `repeat(${form.value.cols}, minmax(0, 1fr))`,
-  gridTemplateRows: `repeat(${form.value.rows}, minmax(0, 1fr))`,
-  gap: `${Math.max(2, Math.round(Math.max(form.value.gap_x_mm, form.value.gap_y_mm) * previewScale.value))}px`,
+  gridTemplateColumns: `repeat(${previewForm.value.cols}, minmax(0, 1fr))`,
+  gridTemplateRows: `repeat(${previewForm.value.rows}, minmax(0, 1fr))`,
+  gap: `${Math.max(2, Math.round(Math.max(previewForm.value.gap_x_mm, previewForm.value.gap_y_mm) * previewScale.value))}px`,
   padding: `${Math.max(6, Math.round(2 * previewScale.value))}px`,
 }));
 
 const previewQrStyle = computed(() => {
-  const size = Math.max(14, Math.round(form.value.qr_size_mm * previewScale.value));
+  const size = Math.max(14, Math.round(previewForm.value.qr_size_mm * previewScale.value));
   return { width: `${size}px`, height: `${size}px` };
 });
 </script>

@@ -1317,27 +1317,61 @@ async function saveAsset() {
       await apiPost('/api/monitor-assets', payload);
       ElMessage.success('新增成功');
       notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
+      dlgAsset.show = false;
+      await refreshCurrent(true, true);
     } else {
       await apiPut('/api/monitor-assets', payload);
       ElMessage.success('保存成功');
       notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
+      dlgAsset.show = false;
+      if (systemSettings.value.ui_write_local_refresh) {
+        patchCurrentRows([Number(payload.id)], (row) => ({
+          ...row,
+          asset_code: payload.asset_code,
+          sn: payload.sn,
+          brand: payload.brand,
+          model: payload.model,
+          size_inch: payload.size_inch || '',
+          remark: payload.remark || '',
+          location_id: payload.location_id || null,
+          ...findLocationParts(Number(payload.location_id || 0) || 0),
+        }));
+        await ensureLocalPatchedPageStable(false);
+      } else {
+        await refreshCurrent(true, true);
+      }
     }
-    dlgAsset.show = false;
-    await refreshCurrent(true, true);
   } catch (error: any) {
     try {
       await handleMaybeMissingSchema(error);
-      if (dlgAsset.mode === 'create') {
-        await apiPost('/api/monitor-assets', payload);
-        ElMessage.success('新增成功');
-        notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
-      } else {
-        await apiPut('/api/monitor-assets', payload);
-        ElMessage.success('保存成功');
-        notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
-      }
+    if (dlgAsset.mode === 'create') {
+      await apiPost('/api/monitor-assets', payload);
+      ElMessage.success('新增成功');
+      notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
       dlgAsset.show = false;
       await refreshCurrent(true, true);
+    } else {
+      await apiPut('/api/monitor-assets', payload);
+      ElMessage.success('保存成功');
+      notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
+      dlgAsset.show = false;
+      if (systemSettings.value.ui_write_local_refresh) {
+        patchCurrentRows([Number(payload.id)], (row) => ({
+          ...row,
+          asset_code: payload.asset_code,
+          sn: payload.sn,
+          brand: payload.brand,
+          model: payload.model,
+          size_inch: payload.size_inch || '',
+          remark: payload.remark || '',
+          location_id: payload.location_id || null,
+          ...findLocationParts(Number(payload.location_id || 0) || 0),
+        }));
+        await ensureLocalPatchedPageStable(false);
+      } else {
+        await refreshCurrent(true, true);
+      }
+    }
     } catch (nextError: any) {
       ElMessage.error(nextError.message || '操作失败');
     }
@@ -1469,7 +1503,27 @@ async function submitOp() {
       ElMessage.success('调拨成功');
     }
     dlgOp.show = false;
-    await refreshCurrent(true, true);
+    if (systemSettings.value.ui_write_local_refresh) {
+      const assetId = Number(asset.id);
+      if (dlgOp.kind === 'in') {
+        applyMonitorStatusPatch([assetId], 'IN_STOCK');
+        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
+        applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+      } else if (dlgOp.kind === 'out') {
+        applyMonitorStatusPatch([assetId], 'ASSIGNED');
+        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
+        applyMonitorOwnerPatch([assetId], { employee_name: dlgOp.form.employee_name, employee_no: dlgOp.form.employee_no, department: dlgOp.form.department });
+      } else if (dlgOp.kind === 'return') {
+        applyMonitorStatusPatch([assetId], 'IN_STOCK');
+        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
+        applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+      } else if (dlgOp.kind === 'transfer') {
+        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
+      }
+      await ensureLocalPatchedPageStable(false);
+    } else {
+      await refreshCurrent(true, true);
+    }
   } catch (error: any) {
     ElMessage.error(error?.message || '操作失败');
   } finally {

@@ -1007,7 +1007,22 @@ async function saveEdit() {
     ElMessage.success('修改成功');
     notifyAction('电脑台账已更新', `已更新 ${payload.brand} ${payload.model}`.trim() || '电脑记录');
     editVisible.value = false;
-    await refreshCurrent(true, true);
+    if (systemSettings.value.ui_write_local_refresh) {
+      patchCurrentRows([Number(payload.id)], (row) => ({
+        ...row,
+        brand: payload.brand,
+        model: payload.model,
+        serial_no: payload.serial_no,
+        manufacture_date: payload.manufacture_date || '',
+        warranty_end: payload.warranty_end || '',
+        disk_capacity: payload.disk_capacity || '',
+        memory_size: payload.memory_size || '',
+        remark: payload.remark || '',
+      }));
+      await ensureLocalPatchedPageStable(false);
+    } else {
+      await refreshCurrent(true, true);
+    }
   } catch (error: any) {
     ElMessage.error(error?.message || '修改失败');
   } finally {

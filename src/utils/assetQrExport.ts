@@ -33,6 +33,42 @@ export type AssetQrExportJobResult = {
   splitCount: number;
 };
 
+const QR_LINK_CACHE_PREFIX = 'inventory:asset-qr-link:';
+const QR_LINK_CACHE_TTL_MS = 10 * 60_000;
+const qrLinkMemoryCache = new Map<number, { url: string; expiresAt: number }>();
+
+function canUseSessionStorage() {
+  return typeof window !== 'undefined' && typeof window.sessionStorage !== 'undefined';
+}
+
+function readCachedQrLink(id: number) {
+  const memory = qrLinkMemoryCache.get(id);
+  if (memory && memory.expiresAt > Date.now() && memory.url) return memory.url;
+  if (!canUseSessionStorage()) return '';
+  try {
+    const raw = window.sessionStorage.getItem(`${QR_LINK_CACHE_PREFIX}${id}`);
+    if (!raw) return '';
+    const payload = JSON.parse(raw) as { url?: string; expiresAt?: number };
+    if (!payload?.url || Number(payload.expiresAt || 0) <= Date.now()) return '';
+    qrLinkMemoryCache.set(id, { url: String(payload.url || ''), expiresAt: Number(payload.expiresAt || 0) });
+    return String(payload.url || '');
+  } catch {
+    return '';
+  }
+}
+
+function writeCachedQrLink(id: number, url: string) {
+  const normalized = String(url || '');
+  if (!normalized) return;
+  const expiresAt = Date.now() + QR_LINK_CACHE_TTL_MS;
+  qrLinkMemoryCache.set(id, { url: normalized, expiresAt });
+  if (!canUseSessionStorage()) return;
+  try {
+    window.sessionStorage.setItem(`${QR_LINK_CACHE_PREFIX}${id}`, JSON.stringify({ url: normalized, expiresAt }));
+  } catch {}
+}
+
+
 function normalizeSelectedIds<T>(rows: T[], getId: (row: T) => number | string) {
   return rows
     .map((row) => Number(getId(row)))
@@ -46,10 +82,24 @@ export async function fetchAssetQrLinkMap<T>(options: {
 }) {
   const ids = normalizeSelectedIds(options.rows, options.getId);
   if (!ids.length) return new Map<number, string>();
-  const qrLinks = await options.fetchBulkLinks(ids);
-  return new Map<number, string>(
-    (Array.isArray(qrLinks) ? qrLinks : []).map((item) => [Number(item.id), String(item.url || '')] as [number, string])
-  );
+  const result = new Map<number, string>();
+  const missingIds: number[] = [];
+  ids.forEach((id) => {
+    const cached = readCachedQrLink(id);
+    if (cached) result.set(id, cached);
+    else missingIds.push(id);
+  });
+  if (missingIds.length) {
+    const qrLinks = await options.fetchBulkLinks(missingIds);
+    (Array.isArray(qrLinks) ? qrLinks : []).forEach((item) => {
+      const normalizedId = Number(item.id);
+      const normalizedUrl = String(item.url || '');
+      if (!Number.isFinite(normalizedId) || !normalizedUrl) return;
+      result.set(normalizedId, normalizedUrl);
+      writeCachedQrLink(normalizedId, normalizedUrl);
+    });
+  }
+  return result;
 }
 
 export async function exportAssetQrLinksWorkbook<T>(options: {
