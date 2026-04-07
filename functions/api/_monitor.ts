@@ -1,3 +1,4 @@
+import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 /**
@@ -17,7 +18,9 @@ export function shouldHealMonitorSchema(env: any, url: URL) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  if (!shouldHealMonitorSchema(env, url)) return;
+  const settings = await getSystemSettings(db).catch(() => null as any);
+  const allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
+  if (!(allowBySettings || shouldHealMonitorSchema(env, url))) return;
   return ensureMonitorSchema(db);
 }
 

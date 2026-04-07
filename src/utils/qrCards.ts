@@ -8,6 +8,7 @@ import {
   type QrPrintTemplateKind,
 } from './qrPrintTemplate';
 import type { AssetQrExportProgressCallback } from './assetQrExport';
+import { buildQrZipEntryName } from './exportNaming';
 
 export type QrCardRecord = {
   title: string;
@@ -416,7 +417,12 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
   }
   onProgress?.({ stage: '打包 ZIP', current: 0, total: Math.max(1, files.length), detail: `正在打包 ${files.length} 张 PNG 图片…` });
   const zip = new JSZip();
-  files.forEach((file, index) => { zip.file(file.name, file.blob); onProgress?.({ stage: '打包 ZIP', current: index + 1, total: Math.max(1, files.length), detail: `已加入 ${index + 1} / ${files.length} 张图片` }); });
+  const normalizedTemplate = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
+  const pageChunks = chunkRecords(records, Math.max(1, normalizedTemplate.cols * normalizedTemplate.rows));
+  files.forEach((file, index) => {
+    zip.file(buildQrZipEntryName(filename, index, pageChunks[index] as any || []), file.blob);
+    onProgress?.({ stage: '打包 ZIP', current: index + 1, total: Math.max(1, files.length), detail: `已加入 ${index + 1} / ${files.length} 张图片` });
+  });
   const zipBlob = await zip.generateAsync({ type: 'blob', compression: 'DEFLATE', compressionOptions: { level: 6 } });
   onProgress?.({ stage: '下载文件', current: 1, total: 1, detail: '正在下载 ZIP 压缩包…' });
   downloadBlob(`${filename}.zip`, zipBlob);

@@ -408,8 +408,8 @@ export function usePublicInventoryPage(options: {
 
   function syncFromLocation() {
     const url = new URL(window.location.href);
-    id.value = (url.searchParams.get('id') || '').trim();
-    key.value = (url.searchParams.get('key') || '').trim();
+    id.value = (url.searchParams.get('id') || url.searchParams.get('a') || '').trim();
+    key.value = (url.searchParams.get('key') || url.searchParams.get('k') || '').trim();
     token.value = (url.searchParams.get('token') || '').trim();
   }
 

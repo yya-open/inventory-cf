@@ -180,6 +180,7 @@ import type { AssetInventorySummary, PcAsset, PcFilters } from '../types/assets'
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
+import { buildQrExportFilename } from '../utils/exportNaming';
 import { can, canPerm } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
@@ -511,7 +512,7 @@ const batchStatusValue = ref('IN_STOCK');
 const batchOwnerVisible = ref(false);
 const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
 const batchArchiveVisible = ref(false);
-const batchArchiveForm = ref({ reason: '停用归档', note: '' });
+const batchArchiveForm = ref({ reason: systemSettings.value.warehouse_default_archive_reason || '停用归档', note: '' });
 
 const lazyEditDialog = ref(false);
 const lazyInfoDialog = ref(false);
@@ -746,7 +747,7 @@ async function exportSinglePcQrSheet(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
     mapPrintRecord: (row, url) => buildPcQrSheetRecord(row, url, template),
     loadQrCardUtils,
-    filename: `电脑二维码_${qrRow.value.serial_no || qrRow.value.id || 'pc'}`,
+    filename: buildQrExportFilename({ scope: 'pc', kind: 'sheet', count: 1, template, singleLabel: `电脑二维码_${qrRow.value.serial_no || qrRow.value.id || 'pc'}` }),
     title: '电脑二维码',
     template,
     onProgress: updateQrExportProgress,
@@ -764,7 +765,7 @@ async function exportSinglePcQrCard(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
     mapPrintRecord: (row, url) => buildPcQrCardRecord(row, url, template),
     loadQrCardUtils,
-    filename: `电脑标签_${qrRow.value.serial_no || qrRow.value.id || 'pc'}`,
+    filename: buildQrExportFilename({ scope: 'pc', kind: 'cards', count: 1, template, singleLabel: `电脑标签_${qrRow.value.serial_no || qrRow.value.id || 'pc'}` }),
     title: '电脑标签',
     template,
     onProgress: updateQrExportProgress,
@@ -781,7 +782,7 @@ async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
     mapPrintRecord: (row, url) => buildPcQrSheetRecord(row, url, template),
     loadQrCardUtils,
-    filename: `电脑二维码图版_${selectedRows.value.length}条`,
+    filename: buildQrExportFilename({ scope: 'pc', kind: 'sheet', count: selectedRows.value.length, template }),
     title: '电脑二维码图版',
     template,
     onProgress: updateQrExportProgress,
@@ -798,7 +799,7 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkPcAssetQrLinks,
     mapPrintRecord: (row, url) => buildPcQrCardRecord(row, url, template),
     loadQrCardUtils,
-    filename: `电脑二维码卡片_${selectedRows.value.length}条`,
+    filename: buildQrExportFilename({ scope: 'pc', kind: 'cards', count: selectedRows.value.length, template }),
     title: '电脑二维码卡片',
     template,
     onProgress: updateQrExportProgress,
@@ -1235,7 +1236,7 @@ async function batchRestoreSelected() {
 
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
-  batchArchiveForm.value = { reason: archiveReasonOptions.value[0] || '停用归档', note: '' };
+  batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }

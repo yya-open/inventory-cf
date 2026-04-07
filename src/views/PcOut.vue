@@ -8,7 +8,7 @@
       style="max-width: 760px"
     >
       <el-alert
-        title="电脑出库（仓库2：电脑仓）"
+        :title="`电脑出库（仓库2：${settings.warehouse_default_pc_label || '电脑仓' }）`"
         type="warning"
         show-icon
         :closable="false"

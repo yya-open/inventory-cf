@@ -2,6 +2,9 @@ import { apiGet, apiPut, apiGetPublic } from './client';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 
 export type PublicScanMode = 'manual' | 'scanner' | 'camera';
+export type QrContentStrategy = 'public_link' | 'short_query' | 'custom_text';
+export type ExportQrFileNameMode = 'simple' | 'date' | 'scope_template';
+export type ExportQrZipEntryNameMode = 'page' | 'asset';
 
 export type PublicSettings = {
   public_inventory_cooldown_seconds: number;
@@ -27,6 +30,24 @@ export type SystemSettings = PublicSettings & {
   dictionary_pc_brand_options: string[];
   dictionary_monitor_brand_options: string[];
   dictionary_asset_warehouse_options: string[];
+  qr_default_printer_profile: 'generic_300' | 'brother_300' | 'deli_203' | 'gprinter_203';
+  qr_default_pc_cards_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_pc_cards_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_pc_sheet_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_pc_sheet_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_monitor_cards_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_monitor_cards_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_monitor_sheet_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_monitor_sheet_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_content_strategy: QrContentStrategy;
+  qr_public_base_url: string;
+  qr_custom_prefix: string;
+  warehouse_default_pc_label: string;
+  warehouse_default_monitor_label: string;
+  warehouse_default_archive_reason: string;
+  export_qr_file_name_mode: ExportQrFileNameMode;
+  export_qr_zip_entry_name_mode: ExportQrZipEntryNameMode;
+  ops_enable_runtime_ddl: boolean;
   settings_updated_at?: string | null;
 };
 
@@ -42,6 +63,24 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   dictionary_pc_brand_options: ['联想', '戴尔', '惠普', '华为', '苹果'],
   dictionary_monitor_brand_options: ['联想', '戴尔', 'AOC', '飞利浦', '三星'],
   dictionary_asset_warehouse_options: ['配件仓', '电脑仓', '显示器仓'],
+  qr_default_printer_profile: 'generic_300',
+  qr_default_pc_cards_label_preset: '60x40',
+  qr_default_pc_cards_content_mode: 'model_sn',
+  qr_default_pc_sheet_label_preset: '60x40',
+  qr_default_pc_sheet_content_mode: 'qr_only',
+  qr_default_monitor_cards_label_preset: '60x40',
+  qr_default_monitor_cards_content_mode: 'model_asset',
+  qr_default_monitor_sheet_label_preset: '60x40',
+  qr_default_monitor_sheet_content_mode: 'qr_only',
+  qr_content_strategy: 'public_link',
+  qr_public_base_url: '',
+  qr_custom_prefix: 'ASSET:',
+  warehouse_default_pc_label: '电脑仓',
+  warehouse_default_monitor_label: '显示器仓',
+  warehouse_default_archive_reason: '停用归档',
+  export_qr_file_name_mode: 'scope_template',
+  export_qr_zip_entry_name_mode: 'asset',
+  ops_enable_runtime_ddl: false,
   settings_updated_at: null,
   public_inventory_cooldown_seconds: 30,
   public_inventory_auto_vibrate: true,

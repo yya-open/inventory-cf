@@ -2,6 +2,9 @@ import { getEnabledDictionaryLabels } from './system-dictionaries';
 import { sqlNowStored } from '../_time';
 
 export type PublicScanMode = 'manual' | 'scanner' | 'camera';
+export type QrContentStrategy = 'public_link' | 'short_query' | 'custom_text';
+export type ExportQrFileNameMode = 'simple' | 'date' | 'scope_template';
+export type ExportQrZipEntryNameMode = 'page' | 'asset';
 
 export type SystemSettings = {
   ui_default_page_size: number;
@@ -24,6 +27,24 @@ export type SystemSettings = {
   public_inventory_recent_targets_limit: number;
   public_inventory_camera_auto_start: boolean;
   public_asset_show_updated_at: boolean;
+  qr_default_printer_profile: 'generic_300' | 'brother_300' | 'deli_203' | 'gprinter_203';
+  qr_default_pc_cards_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_pc_cards_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_pc_sheet_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_pc_sheet_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_monitor_cards_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_monitor_cards_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_default_monitor_sheet_label_preset: 'none' | '40x30' | '50x30' | '60x40' | '70x50';
+  qr_default_monitor_sheet_content_mode: 'detail' | 'qr_only' | 'model_sn' | 'model_asset';
+  qr_content_strategy: QrContentStrategy;
+  qr_public_base_url: string;
+  qr_custom_prefix: string;
+  warehouse_default_pc_label: string;
+  warehouse_default_monitor_label: string;
+  warehouse_default_archive_reason: string;
+  export_qr_file_name_mode: ExportQrFileNameMode;
+  export_qr_zip_entry_name_mode: ExportQrZipEntryNameMode;
+  ops_enable_runtime_ddl: boolean;
   settings_updated_at?: string | null;
 };
 
@@ -48,6 +69,24 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   public_inventory_recent_targets_limit: 8,
   public_inventory_camera_auto_start: false,
   public_asset_show_updated_at: true,
+  qr_default_printer_profile: 'generic_300',
+  qr_default_pc_cards_label_preset: '60x40',
+  qr_default_pc_cards_content_mode: 'model_sn',
+  qr_default_pc_sheet_label_preset: '60x40',
+  qr_default_pc_sheet_content_mode: 'qr_only',
+  qr_default_monitor_cards_label_preset: '60x40',
+  qr_default_monitor_cards_content_mode: 'model_asset',
+  qr_default_monitor_sheet_label_preset: '60x40',
+  qr_default_monitor_sheet_content_mode: 'qr_only',
+  qr_content_strategy: 'public_link',
+  qr_public_base_url: '',
+  qr_custom_prefix: 'ASSET:',
+  warehouse_default_pc_label: '电脑仓',
+  warehouse_default_monitor_label: '显示器仓',
+  warehouse_default_archive_reason: '停用归档',
+  export_qr_file_name_mode: 'scope_template',
+  export_qr_zip_entry_name_mode: 'asset',
+  ops_enable_runtime_ddl: false,
   settings_updated_at: null,
 };
 
@@ -149,6 +188,36 @@ function normalizeVersion(value: any) {
   return version || null;
 }
 
+function normalizeQrContentStrategy(value: any, fallback: QrContentStrategy): QrContentStrategy {
+  const raw = String(value || '').trim();
+  return raw === 'short_query' || raw === 'custom_text' ? raw : fallback;
+}
+
+function normalizeExportQrFileNameMode(value: any, fallback: ExportQrFileNameMode): ExportQrFileNameMode {
+  const raw = String(value || '').trim();
+  return raw === 'date' || raw === 'scope_template' ? raw : fallback;
+}
+
+function normalizeExportQrZipEntryNameMode(value: any, fallback: ExportQrZipEntryNameMode): ExportQrZipEntryNameMode {
+  const raw = String(value || '').trim();
+  return raw === 'asset' ? raw : fallback;
+}
+
+function normalizeLabelPreset(value: any, fallback: SystemSettings['qr_default_pc_cards_label_preset']) {
+  const raw = String(value || '').trim();
+  return raw === '40x30' || raw === '50x30' || raw === '60x40' || raw === '70x50' || raw === 'none' ? raw as SystemSettings['qr_default_pc_cards_label_preset'] : fallback;
+}
+
+function normalizeContentMode(value: any, fallback: SystemSettings['qr_default_pc_cards_content_mode']) {
+  const raw = String(value || '').trim();
+  return raw === 'qr_only' || raw === 'model_sn' || raw === 'model_asset' ? raw as SystemSettings['qr_default_pc_cards_content_mode'] : fallback;
+}
+
+function normalizePrinterProfile(value: any, fallback: SystemSettings['qr_default_printer_profile']) {
+  const raw = String(value || '').trim();
+  return raw === 'brother_300' || raw === 'deli_203' || raw === 'gprinter_203' || raw === 'generic_300' ? raw as SystemSettings['qr_default_printer_profile'] : fallback;
+}
+
 export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettings, any>> | null | undefined): SystemSettings {
   const source = input || {};
   return {
@@ -172,6 +241,24 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_recent_targets_limit: toInt(source.public_inventory_recent_targets_limit, DEFAULT_SYSTEM_SETTINGS.public_inventory_recent_targets_limit, 3, 20),
     public_inventory_camera_auto_start: toBoolean(source.public_inventory_camera_auto_start, DEFAULT_SYSTEM_SETTINGS.public_inventory_camera_auto_start),
     public_asset_show_updated_at: toBoolean(source.public_asset_show_updated_at, DEFAULT_SYSTEM_SETTINGS.public_asset_show_updated_at),
+    qr_default_printer_profile: normalizePrinterProfile(source.qr_default_printer_profile, DEFAULT_SYSTEM_SETTINGS.qr_default_printer_profile),
+    qr_default_pc_cards_label_preset: normalizeLabelPreset(source.qr_default_pc_cards_label_preset, DEFAULT_SYSTEM_SETTINGS.qr_default_pc_cards_label_preset),
+    qr_default_pc_cards_content_mode: normalizeContentMode(source.qr_default_pc_cards_content_mode, DEFAULT_SYSTEM_SETTINGS.qr_default_pc_cards_content_mode),
+    qr_default_pc_sheet_label_preset: normalizeLabelPreset(source.qr_default_pc_sheet_label_preset, DEFAULT_SYSTEM_SETTINGS.qr_default_pc_sheet_label_preset),
+    qr_default_pc_sheet_content_mode: normalizeContentMode(source.qr_default_pc_sheet_content_mode, DEFAULT_SYSTEM_SETTINGS.qr_default_pc_sheet_content_mode),
+    qr_default_monitor_cards_label_preset: normalizeLabelPreset(source.qr_default_monitor_cards_label_preset, DEFAULT_SYSTEM_SETTINGS.qr_default_monitor_cards_label_preset),
+    qr_default_monitor_cards_content_mode: normalizeContentMode(source.qr_default_monitor_cards_content_mode, DEFAULT_SYSTEM_SETTINGS.qr_default_monitor_cards_content_mode),
+    qr_default_monitor_sheet_label_preset: normalizeLabelPreset(source.qr_default_monitor_sheet_label_preset, DEFAULT_SYSTEM_SETTINGS.qr_default_monitor_sheet_label_preset),
+    qr_default_monitor_sheet_content_mode: normalizeContentMode(source.qr_default_monitor_sheet_content_mode, DEFAULT_SYSTEM_SETTINGS.qr_default_monitor_sheet_content_mode),
+    qr_content_strategy: normalizeQrContentStrategy(source.qr_content_strategy, DEFAULT_SYSTEM_SETTINGS.qr_content_strategy),
+    qr_public_base_url: String(source.qr_public_base_url || DEFAULT_SYSTEM_SETTINGS.qr_public_base_url).trim(),
+    qr_custom_prefix: String(source.qr_custom_prefix || DEFAULT_SYSTEM_SETTINGS.qr_custom_prefix).trim(),
+    warehouse_default_pc_label: String(source.warehouse_default_pc_label || DEFAULT_SYSTEM_SETTINGS.warehouse_default_pc_label).trim() || DEFAULT_SYSTEM_SETTINGS.warehouse_default_pc_label,
+    warehouse_default_monitor_label: String(source.warehouse_default_monitor_label || DEFAULT_SYSTEM_SETTINGS.warehouse_default_monitor_label).trim() || DEFAULT_SYSTEM_SETTINGS.warehouse_default_monitor_label,
+    warehouse_default_archive_reason: String(source.warehouse_default_archive_reason || DEFAULT_SYSTEM_SETTINGS.warehouse_default_archive_reason).trim() || DEFAULT_SYSTEM_SETTINGS.warehouse_default_archive_reason,
+    export_qr_file_name_mode: normalizeExportQrFileNameMode(source.export_qr_file_name_mode, DEFAULT_SYSTEM_SETTINGS.export_qr_file_name_mode),
+    export_qr_zip_entry_name_mode: normalizeExportQrZipEntryNameMode(source.export_qr_zip_entry_name_mode, DEFAULT_SYSTEM_SETTINGS.export_qr_zip_entry_name_mode),
+    ops_enable_runtime_ddl: toBoolean(source.ops_enable_runtime_ddl, DEFAULT_SYSTEM_SETTINGS.ops_enable_runtime_ddl),
     settings_updated_at: normalizeVersion(source.settings_updated_at),
   };
 }

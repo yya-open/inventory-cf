@@ -1,3 +1,4 @@
+import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 /**
@@ -24,7 +25,9 @@ export function shouldHealPcSchema(env: any, url: URL) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  if (!shouldHealPcSchema(env, url)) return;
+  const settings = await getSystemSettings(db).catch(() => null as any);
+  const allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
+  if (!(allowBySettings || shouldHealPcSchema(env, url))) return;
   return ensurePcSchema(db);
 }
 

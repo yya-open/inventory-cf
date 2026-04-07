@@ -146,6 +146,95 @@
           </el-card>
         </el-col>
 
+        <el-col :xs="24" :lg="12">
+          <el-card shadow="never" class="section-card">
+            <template #header><div class="section-title">二维码与标签默认策略</div></template>
+            <el-form label-width="180px">
+              <el-form-item label="系统默认打印机预设">
+                <el-select v-model="form.qr_default_printer_profile">
+                  <el-option v-for="item in printerProfileOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="电脑标签默认模板">
+                <div class="setting-stack">
+                  <el-select v-model="form.qr_default_pc_cards_label_preset"><el-option v-for="item in labelPresetOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                  <el-select v-model="form.qr_default_pc_cards_content_mode"><el-option v-for="item in qrContentModeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                </div>
+              </el-form-item>
+              <el-form-item label="电脑图版默认模板">
+                <div class="setting-stack">
+                  <el-select v-model="form.qr_default_pc_sheet_label_preset"><el-option v-for="item in labelPresetOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                  <el-select v-model="form.qr_default_pc_sheet_content_mode"><el-option v-for="item in qrContentModeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                </div>
+              </el-form-item>
+              <el-form-item label="显示器标签默认模板">
+                <div class="setting-stack">
+                  <el-select v-model="form.qr_default_monitor_cards_label_preset"><el-option v-for="item in labelPresetOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                  <el-select v-model="form.qr_default_monitor_cards_content_mode"><el-option v-for="item in qrContentModeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                </div>
+              </el-form-item>
+              <el-form-item label="显示器图版默认模板">
+                <div class="setting-stack">
+                  <el-select v-model="form.qr_default_monitor_sheet_label_preset"><el-option v-for="item in labelPresetOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                  <el-select v-model="form.qr_default_monitor_sheet_content_mode"><el-option v-for="item in qrContentModeOptions" :key="item.value" :label="item.label" :value="item.value" /></el-select>
+                </div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12">
+          <el-card shadow="never" class="section-card">
+            <template #header><div class="section-title">二维码内容策略与导出命名</div></template>
+            <el-form label-width="180px">
+              <el-form-item label="二维码内容策略">
+                <el-select v-model="form.qr_content_strategy">
+                  <el-option v-for="item in qrStrategyOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="公开访问基础地址">
+                <el-input v-model="form.qr_public_base_url" placeholder="留空默认当前站点，如 https://asset.example.com" />
+              </el-form-item>
+              <el-form-item label="自定义二维码前缀">
+                <el-input v-model="form.qr_custom_prefix" placeholder="仅在“自定义文本”策略下生效，例如 ASSET:" />
+              </el-form-item>
+              <el-form-item label="导出文件命名">
+                <el-select v-model="form.export_qr_file_name_mode">
+                  <el-option v-for="item in exportFileNameOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="ZIP 内页命名">
+                <el-select v-model="form.export_qr_zip_entry_name_mode">
+                  <el-option v-for="item in exportZipEntryOptions" :key="item.value" :label="item.label" :value="item.value" />
+                </el-select>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </el-col>
+
+        <el-col :xs="24" :lg="12">
+          <el-card shadow="never" class="section-card">
+            <template #header><div class="section-title">仓库默认规则与系统开关</div></template>
+            <el-form label-width="180px">
+              <el-form-item label="电脑仓默认标签">
+                <el-input v-model="form.warehouse_default_pc_label" />
+              </el-form-item>
+              <el-form-item label="显示器仓默认标签">
+                <el-input v-model="form.warehouse_default_monitor_label" />
+              </el-form-item>
+              <el-form-item label="默认归档原因">
+                <el-select v-model="form.warehouse_default_archive_reason" allow-create filterable default-first-option>
+                  <el-option v-for="item in form.asset_archive_reason_options" :key="item" :label="item" :value="item" />
+                </el-select>
+              </el-form-item>
+              <el-form-item label="允许运行时 DDL">
+                <el-switch v-model="form.ops_enable_runtime_ddl" />
+                <div class="form-tip">仅用于应急自修复。生产环境建议关闭，优先使用迁移脚本和初始化工具。</div>
+              </el-form-item>
+            </el-form>
+          </el-card>
+        </el-col>
+
       </el-row>
 
       <div class="dictionary-sections">
@@ -294,6 +383,39 @@ const scanModeOptions = [
   { label: '手动', value: 'manual' },
   { label: '扫码枪', value: 'scanner' },
   { label: '摄像头', value: 'camera' },
+];
+const printerProfileOptions = [
+  { label: '通用高精度 / 300 DPI', value: 'generic_300' },
+  { label: '兄弟标签机 / 300 DPI', value: 'brother_300' },
+  { label: '得力标签机 / 203 DPI', value: 'deli_203' },
+  { label: '佳博 / 热敏 203 DPI', value: 'gprinter_203' },
+];
+const labelPresetOptions = [
+  { label: '普通纸张', value: 'none' },
+  { label: '40 × 30 mm', value: '40x30' },
+  { label: '50 × 30 mm', value: '50x30' },
+  { label: '60 × 40 mm', value: '60x40' },
+  { label: '70 × 50 mm', value: '70x50' },
+];
+const qrContentModeOptions = [
+  { label: '明细版', value: 'detail' },
+  { label: '仅二维码', value: 'qr_only' },
+  { label: '二维码+型号+SN', value: 'model_sn' },
+  { label: '二维码+型号+资产编号', value: 'model_asset' },
+];
+const qrStrategyOptions = [
+  { label: '公开详情链接（标准）', value: 'public_link' },
+  { label: '短参数详情链接', value: 'short_query' },
+  { label: '自定义文本内容', value: 'custom_text' },
+];
+const exportFileNameOptions = [
+  { label: '简洁名称', value: 'simple' },
+  { label: '带日期时间', value: 'date' },
+  { label: '按设备+模板命名', value: 'scope_template' },
+];
+const exportZipEntryOptions = [
+  { label: '按页码命名', value: 'page' },
+  { label: '单资产优先命名', value: 'asset' },
 ];
 const dictionaryDefs: Array<{ key: SystemDictionaryKey; title: string; description: string }> = [
   { key: 'asset_archive_reason', title: '归档原因字典', description: '用于台账归档原因筛选和批量归档弹窗。' },

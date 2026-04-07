@@ -662,7 +662,7 @@ const batchLocationValue = ref<number | ''>('');
 const batchOwnerVisible = ref(false);
 const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' });
 const batchArchiveVisible = ref(false);
-const batchArchiveForm = ref({ reason: '停用归档', note: '' });
+const batchArchiveForm = ref({ reason: systemSettings.value.warehouse_default_archive_reason || '停用归档', note: '' });
 
 const lazyAssetDialog = ref(false);
 const lazyInfoDialog = ref(false);
@@ -1029,7 +1029,7 @@ async function batchRestoreSelected() {
 
 async function batchArchiveSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  batchArchiveForm.value = { reason: archiveReasonOptions.value[0] || '停用归档', note: '' };
+  batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
@@ -1543,7 +1543,7 @@ async function exportSingleMonitorQrSheet(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
     mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
     loadQrCardUtils,
-    filename: `显示器二维码_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
+    filename: buildQrExportFilename({ scope: 'monitor', kind: 'sheet', count: 1, template, singleLabel: `显示器二维码_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}` }),
     title: '显示器二维码',
     template,
     onProgress: updateQrExportProgress,
@@ -1561,7 +1561,7 @@ async function exportSingleMonitorQrCard(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
     mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
     loadQrCardUtils,
-    filename: `显示器标签_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}`,
+    filename: buildQrExportFilename({ scope: 'monitor', kind: 'cards', count: 1, template, singleLabel: `显示器标签_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}` }),
     title: '显示器标签',
     template,
     onProgress: updateQrExportProgress,
@@ -1578,7 +1578,7 @@ async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
     mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
     loadQrCardUtils,
-    filename: `显示器二维码图版_${selectedRows.value.length}条`,
+    filename: buildQrExportFilename({ scope: 'monitor', kind: 'sheet', count: selectedRows.value.length, template }),
     title: '显示器二维码图版',
     template,
     onProgress: updateQrExportProgress,
@@ -1595,7 +1595,7 @@ async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
     fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
     mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
     loadQrCardUtils,
-    filename: `显示器二维码卡片_${selectedRows.value.length}条`,
+    filename: buildQrExportFilename({ scope: 'monitor', kind: 'cards', count: selectedRows.value.length, template }),
     title: '显示器二维码卡片',
     template,
     onProgress: updateQrExportProgress,

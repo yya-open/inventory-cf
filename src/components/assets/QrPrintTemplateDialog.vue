@@ -191,6 +191,8 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../../utils/el-services';
+import { getCachedSystemSettings } from '../../api/systemSettings';
+import { buildSystemDefaultQrTemplate } from '../../utils/systemQrConfig';
 import {
   applyQrLabelPreset,
   applyQrPrinterProfile,
@@ -239,7 +241,7 @@ const visible = computed(() => props.visible);
 const kind = computed(() => props.kind);
 const kindLabel = computed(() => props.kindLabel);
 const scope = computed(() => props.scope as QrPrintTemplateScope);
-const form = ref<QrPrintTemplate>(getDefaultQrPrintTemplate(props.kind, props.scope));
+const form = ref<QrPrintTemplate>(buildSystemDefaultQrTemplate(props.kind, props.scope, getCachedSystemSettings()));
 const presets = ref<Array<{ id: string; name: string; template: QrPrintTemplate }>>([]);
 const selectedPresetId = ref('');
 const presetName = ref('');
@@ -304,8 +306,12 @@ function patchForm(next: QrPrintTemplate) {
   form.value = normalizeQrPrintTemplate(props.kind, { ...next });
 }
 
+function resolveSystemDefaultTemplate(kind = props.kind) {
+  return buildSystemDefaultQrTemplate(kind, props.scope, getCachedSystemSettings());
+}
+
 function refreshState() {
-  patchForm(getLastUsedQrPrintTemplate(props.kind, props.scope) || getDefaultQrPrintTemplate(props.kind, props.scope));
+  patchForm(getLastUsedQrPrintTemplate(props.kind, props.scope) || resolveSystemDefaultTemplate());
   presets.value = listSavedQrPrintPresets(props.kind, props.scope);
   selectedPresetId.value = '';
   presetName.value = '';
@@ -322,11 +328,11 @@ function applySelectedPreset() {
 }
 
 function restoreDefaults() {
-  patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
+  patchForm(resolveSystemDefaultTemplate());
 }
 
 function applyStandardPreset() {
-  patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
+  patchForm(resolveSystemDefaultTemplate());
 }
 
 function applyLabelPreset(presetKey: Exclude<QrLabelPresetKey, 'none'>) {
@@ -347,14 +353,14 @@ function applyPrinterProfileByDpi(dpi: 203 | 300) {
 watch(() => form.value.label_preset, (presetKey, prevKey) => {
   if (!visible.value || presetKey === prevKey) return;
   if (presetKey === 'none') {
-    if (prevKey !== 'none') patchForm(getDefaultQrPrintTemplate(props.kind, props.scope));
+    if (prevKey !== 'none') patchForm(resolveSystemDefaultTemplate());
     return;
   }
   patchForm(applyQrLabelPreset(props.kind, presetKey as Exclude<QrLabelPresetKey, 'none'>, form.value));
 });
 
 watch(() => props.kind, (nextKind) => {
-  patchForm(getDefaultQrPrintTemplate(nextKind, props.scope));
+  patchForm(buildSystemDefaultQrTemplate(nextKind, props.scope, getCachedSystemSettings()));
 });
 
 
