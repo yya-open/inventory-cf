@@ -28,6 +28,8 @@ import MonitorAssets from "../views/MonitorAssets.vue";
 import MonitorTx from "../views/MonitorTx.vue";
 import SystemHome from "../views/SystemHome.vue";
 import SystemSettings from "../views/SystemSettings.vue";
+import SystemTaskCenter from "../views/SystemTaskCenter.vue";
+import SystemReportsCenter from "../views/SystemReportsCenter.vue";
 import SystemOpsTools from "../views/SystemOpsTools.vue";
 import SystemPerformance from "../views/SystemPerformance.vue";
 import SystemReleaseCheck from "../views/SystemReleaseCheck.vue";
@@ -108,6 +110,8 @@ const router = createRouter({
       children: [
         { path: "home", component: SystemHome, meta: { role: "admin", title: "系统" } },
         { path: "dashboard", component: Dashboard, meta: { role: "admin", title: "报表与看板" } },
+        { path: "reports", component: SystemReportsCenter, meta: { role: "admin", title: "数据报表中心" } },
+        { path: "tasks", component: SystemTaskCenter, meta: { role: "admin", title: "批量任务中心" } },
         { path: "import", redirect: "/import/items", meta: { role: "admin", title: "Excel 导入配件" } },
         { path: "backup", component: BackupRestore, meta: { role: "admin", title: "备份/恢复" } },
         { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },

@@ -5,6 +5,8 @@
     <el-menu v-if="isSystem" router :default-active="activeMenu" class="app-sidebar-menu__menu">
       <el-menu-item index="/system/home">系统首页</el-menu-item>
       <el-menu-item index="/system/dashboard">报表与看板</el-menu-item>
+      <el-menu-item index="/system/reports">数据报表中心</el-menu-item>
+      <el-menu-item index="/system/tasks">批量任务中心</el-menu-item>
       <el-menu-item index="/system/backup">备份/恢复</el-menu-item>
       <el-menu-item index="/system/audit">审计日志</el-menu-item>
       <el-menu-item index="/system/users">用户管理</el-menu-item>
