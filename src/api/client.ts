@@ -1,7 +1,10 @@
 import { getAuthRequestEpoch, getAuthSessionKey, useAuth } from "../store/auth";
 
+import type { Schema } from './schema';
+
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
 type ApiError = Error & { status?: number; response?: any };
+export type ApiEnvelope<T> = { ok: boolean; data?: T; message?: string; meta?: Record<string, unknown> };
 
 function handleUnauthorized(message: string | undefined, requestEpoch?: number, sessionKey?: string): never {
   if ((typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) || (typeof sessionKey === 'string' && sessionKey && sessionKey !== getAuthSessionKey())) {
@@ -51,6 +54,32 @@ export const apiDelete = <T>(path: string, body?: any, init: RequestInit = {}) =
 export const apiPostForm = <T>(path: string, form: FormData, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "POST", body: form, ...init });
 export const apiGetPublic = <T>(path: string, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "GET", ...init }, { handleUnauthorized: false });
 export const apiPostPublic = <T>(path: string, body: any, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "POST", headers: { "content-type": "application/json", ...(init.headers || {}) }, body: JSON.stringify(body), ...init }, { handleUnauthorized: false });
+
+
+function unwrapData<T>(payload: ApiEnvelope<T>, schema?: Schema<T>) {
+  const data = payload?.data as T;
+  return schema ? schema(data) : data;
+}
+
+export async function apiGetData<T>(path: string, schema?: Schema<T>, init: RequestInit = {}) {
+  const payload = await apiGet<ApiEnvelope<T>>(path, init);
+  return unwrapData(payload, schema);
+}
+
+export async function apiPostData<T>(path: string, body: any, schema?: Schema<T>, init: RequestInit = {}) {
+  const payload = await apiPost<ApiEnvelope<T>>(path, body, init);
+  return unwrapData(payload, schema);
+}
+
+export async function apiPutData<T>(path: string, body: any, schema?: Schema<T>, init: RequestInit = {}) {
+  const payload = await apiPut<ApiEnvelope<T>>(path, body, init);
+  return unwrapData(payload, schema);
+}
+
+export async function apiDeleteData<T>(path: string, body?: any, schema?: Schema<T>, init: RequestInit = {}) {
+  const payload = await apiDelete<ApiEnvelope<T>>(path, body, init);
+  return unwrapData(payload, schema);
+}
 
 function getDownloadFilename(path: string, r: Response, fallback?: string) {
   if (fallback) return fallback;

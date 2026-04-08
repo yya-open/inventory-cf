@@ -5,7 +5,7 @@
         <div class="history-title-row">
           <div>
             <div class="history-title">当前盘点批次</div>
-            <div class="history-subtle">仅保留上一轮盘点的开启/结束时间与结果汇总。</div>
+            <div class="history-subtle">默认保留最近 5 轮盘点的开启/结束时间与结果汇总。</div>
           </div>
           <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '暂无进行中' }}</el-tag>
         </div>
@@ -76,7 +76,7 @@
           </div>
         </div>
       </div>
-      <el-empty v-else description="暂无上一轮盘点历史" />
+      <el-empty v-else description="暂无历史盘点记录" />
     </div>
   </el-drawer>
 </template>
@@ -137,11 +137,14 @@ function canDownload(item: InventoryBatchRow | null | undefined) {
 
 function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
   if (!item) return '-';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return item.snapshot_error_message || '结果快照生成失败，请稍后重试';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return item.snapshot_error_message || '结果快照任务已取消';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return '结果快照正在后台生成，请稍后刷新页面';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return '结果快照已入队，后台将继续生成';
+  const jobMeta = item.snapshot_job_meta || null;
+  const jobText = item.snapshot_job_id ? `任务 #${item.snapshot_job_id}` : '快照任务';
+  const retryText = jobMeta && Number(jobMeta.max_retries || 0) > 0 ? ` · 重试 ${Number(jobMeta.retry_count || 0)}/${Number(jobMeta.max_retries || 0)}` : '';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || jobMeta?.finished_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}${item.snapshot_file_size ? ` · 大小：${(Number(item.snapshot_file_size || 0) / 1024).toFixed(1)} KB` : ''} · ${jobText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return `${item.snapshot_error_message || '结果快照生成失败'} · ${jobText}${retryText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return `${item.snapshot_error_message || '结果快照任务已取消'} · ${jobText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return `${jobText} 正在后台生成${jobMeta?.started_at ? ` · 开始于 ${jobMeta.started_at}` : ''}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return `${jobText} 已入队，后台将继续生成${retryText}`;
   return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照';
 }
 

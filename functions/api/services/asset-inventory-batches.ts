@@ -14,6 +14,9 @@ export type AssetInventoryIssueBreakdown = {
 
 export type AssetInventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
 
+const INVENTORY_BATCH_RECENT_HISTORY_LIMIT = 5;
+const INVENTORY_BATCH_RETENTION_LIMIT = INVENTORY_BATCH_RECENT_HISTORY_LIMIT + 1;
+
 export type AssetInventoryBatchRow = {
   id: number;
   kind: AssetInventoryKind;
@@ -36,6 +39,14 @@ export type AssetInventoryBatchRow = {
   snapshot_file_size: number | null;
   snapshot_exported_at: string | null;
   updated_at: string | null;
+  snapshot_job_meta?: {
+    id: number;
+    message: string | null;
+    started_at: string | null;
+    finished_at: string | null;
+    retry_count: number;
+    max_retries: number;
+  } | null;
 };
 
 const KIND_CONFIG: Record<
@@ -231,7 +242,41 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
     snapshot_file_size: row.snapshot_file_size == null ? null : Number(row.snapshot_file_size || 0),
     snapshot_exported_at: row.snapshot_exported_at ? String(row.snapshot_exported_at) : null,
     updated_at: row.updated_at ? String(row.updated_at) : null,
+    snapshot_job_meta: row.snapshot_job_id ? {
+      id: Number(row.snapshot_job_id || 0),
+      message: row.snapshot_job_message ? String(row.snapshot_job_message) : null,
+      started_at: row.snapshot_job_started_at ? String(row.snapshot_job_started_at) : null,
+      finished_at: row.snapshot_job_finished_at ? String(row.snapshot_job_finished_at) : null,
+      retry_count: Number(row.snapshot_job_retry_count || 0),
+      max_retries: Number(row.snapshot_job_max_retries || 0),
+    } : null,
   };
+}
+
+async function firstBatchRow(db: D1Database, sql: string, binds: any[]) {
+  await ensureAssetInventoryBatchSchema(db);
+  const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
+  const normalizedBinds = Array.isArray(binds) ? binds : [];
+  try {
+    const row = await db.prepare(selectWithJob).bind(...normalizedBinds).first<any>();
+    return normalizeBatchRow(row);
+  } catch {
+    const row = await db.prepare(sql).bind(...normalizedBinds).first<any>();
+    return normalizeBatchRow(row);
+  }
+}
+
+async function allBatchRows(db: D1Database, sql: string, binds: any[]) {
+  await ensureAssetInventoryBatchSchema(db);
+  const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
+  const normalizedBinds = Array.isArray(binds) ? binds : [];
+  try {
+    const result = await db.prepare(selectWithJob).bind(...normalizedBinds).all<any>();
+    return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
+  } catch {
+    const result = await db.prepare(sql).bind(...normalizedBinds).all<any>();
+    return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
+  }
 }
 
 async function getInventoryBatchSummaryForAssets(
@@ -296,10 +341,10 @@ async function pruneInventoryBatchHistory(
             SELECT id FROM asset_inventory_batch
              WHERE kind=?
              ORDER BY (CASE WHEN status='ACTIVE' THEN 0 ELSE 1 END), datetime(started_at) DESC, id DESC
-             LIMIT 2
+             LIMIT ?
           )`,
     )
-    .bind(kind, kind)
+    .bind(kind, kind, INVENTORY_BATCH_RETENTION_LIMIT)
     .run();
 }
 
@@ -307,58 +352,35 @@ export async function getActiveInventoryBatch(
   db: D1Database,
   kind: AssetInventoryKind,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
-  const row = await db
-    .prepare(
-      `SELECT *
+  return firstBatchRow(db, `SELECT *
        FROM asset_inventory_batch
       WHERE kind=? AND status='ACTIVE'
       ORDER BY datetime(started_at) DESC, id DESC
-      LIMIT 1`,
-    )
-    .bind(kind)
-    .first<any>();
-  return normalizeBatchRow(row);
+      LIMIT 1`, [kind]);
 }
 
 export async function getLatestInventoryBatch(
   db: D1Database,
   kind: AssetInventoryKind,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
-  const row = await db
-    .prepare(
-      `SELECT *
+  return firstBatchRow(db, `SELECT *
        FROM asset_inventory_batch
       WHERE kind=?
       ORDER BY (CASE WHEN status='ACTIVE' THEN 0 ELSE 1 END), datetime(started_at) DESC, id DESC
-      LIMIT 1`,
-    )
-    .bind(kind)
-    .first<any>();
-  return normalizeBatchRow(row);
+      LIMIT 1`, [kind]);
 }
 
 export async function listRecentInventoryBatches(
   db: D1Database,
   kind: AssetInventoryKind,
-  limit = 1,
+  limit = INVENTORY_BATCH_RECENT_HISTORY_LIMIT,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
-  const take = Math.max(1, Math.min(5, Number(limit) || 1));
-  const result = await db
-    .prepare(
-      `SELECT *
+  const take = Math.max(1, Math.min(INVENTORY_BATCH_RECENT_HISTORY_LIMIT, Number(limit) || INVENTORY_BATCH_RECENT_HISTORY_LIMIT));
+  return allBatchRows(db, `SELECT *
        FROM asset_inventory_batch
       WHERE kind=?
       ORDER BY (CASE WHEN status='ACTIVE' THEN 0 ELSE 1 END), datetime(started_at) DESC, id DESC
-      LIMIT ? OFFSET 1`,
-    )
-    .bind(kind, take)
-    .all<any>();
-  return (result.results || [])
-    .map(normalizeBatchRow)
-    .filter(Boolean) as AssetInventoryBatchRow[];
+      LIMIT ? OFFSET 1`, [kind, take]);
 }
 
 export async function getEffectiveInventoryBatch(
@@ -504,11 +526,7 @@ export async function attachInventoryBatchSnapshotJob(
     )
     .bind(Number(jobId || 0) || null, kind, Number(batchId))
     .run();
-  const row = await db
-    .prepare(`SELECT * FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`)
-    .bind(kind, Number(batchId))
-    .first<any>();
-  return normalizeBatchRow(row);
+  return firstBatchRow(db, `SELECT * FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`, [kind, Number(batchId)]);
 }
 
 export async function updateInventoryBatchSnapshotJobState(

@@ -333,9 +333,9 @@ async function load() {
     qs.set("sort_dir", String(sortDir.value || "desc"));
     if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
     qs.set("_ts", String(Date.now()));
-    const r = await apiGet<{ ok:boolean; data: Row[]; total:number }>("/api/users?" + qs.toString(), { cache: "no-store" });
+    const r = await apiGet<{ ok:boolean; data: Row[]; meta?: { total?: number } }>("/api/users?" + qs.toString(), { cache: "no-store" });
     rows.value = r.data || [];
-    total.value = Number((r as any).total || 0);
+    total.value = Number((r as any).meta?.total || 0);
   } catch (e:any) {
     ElMessage.error(e.message || "加载失败");
   } finally {

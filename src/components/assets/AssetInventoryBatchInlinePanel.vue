@@ -4,11 +4,11 @@
       <div class="batch-inline-shell-head">
         <div>
           <div class="batch-inline-title">{{ inventoryBatch.active ? '当前盘点批次' : '最近盘点批次' }}</div>
-          <div class="batch-inline-subtle">历史数据只保留上一轮，旧批次会在开启新一轮时自动清理。</div>
+          <div class="batch-inline-subtle">历史数据最多保留最近 5 轮，开启新一轮后会自动清理更早批次。</div>
         </div>
         <div class="batch-inline-shell-actions">
           <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '最近一轮' }}</el-tag>
-          <el-button text class="batch-collapse-btn" @click="expanded = !expanded">{{ expanded ? '收起' : '展开' }}</el-button>
+          <el-button text class="batch-collapse-btn" @click="toggleExpanded">{{ expanded ? '收起' : '展开' }}</el-button>
         </div>
       </div>
 
@@ -124,7 +124,7 @@
             </div>
           </div>
         </div>
-        <el-empty v-else description="暂无上一轮盘点历史" />
+        <el-empty v-else description="暂无历史盘点记录" />
       </div>
     </div>
   </div>
@@ -134,6 +134,7 @@
 import { computed, ref } from 'vue';
 import { ElMessage } from 'element-plus';
 import { apiDownload } from '../../api/client';
+import { trackUiEvent } from '../../utils/browserPerf';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
 import type { AssetInventorySummary, InventoryIssueBreakdown } from '../../types/assets';
 import { emptyInventoryIssueBreakdown } from '../../types/assets';
@@ -194,17 +195,33 @@ function canDownload(item: InventoryBatchRow | null | undefined) {
 
 function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
   if (!item) return '-';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return item.snapshot_error_message || '结果快照生成失败，请稍后重试';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return item.snapshot_error_message || '结果快照任务已取消';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return '结果快照正在后台生成，请稍后刷新页面';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return '结果快照已入队，后台将继续生成';
+  const jobMeta = item.snapshot_job_meta || null;
+  const jobText = item.snapshot_job_id ? `任务 #${item.snapshot_job_id}` : '快照任务';
+  const retryText = jobMeta && Number(jobMeta.max_retries || 0) > 0 ? ` · 重试 ${Number(jobMeta.retry_count || 0)}/${Number(jobMeta.max_retries || 0)}` : '';
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || jobMeta?.finished_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}${item.snapshot_file_size ? ` · 大小：${(Number(item.snapshot_file_size || 0) / 1024).toFixed(1)} KB` : ''} · ${jobText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return `${item.snapshot_error_message || '结果快照生成失败'} · ${jobText}${retryText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return `${item.snapshot_error_message || '结果快照任务已取消'} · ${jobText}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return `${jobText} 正在后台生成${jobMeta?.started_at ? ` · 开始于 ${jobMeta.started_at}` : ''}`;
+  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return `${jobText} 已入队，后台将继续生成${retryText}`;
   return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照';
+}
+
+function toggleExpanded() {
+  expanded.value = !expanded.value;
+  trackUiEvent('inventory_batch_panel_toggle', { metadata: { expanded: expanded.value, kind_label: props.kindLabel } });
 }
 
 async function downloadSnapshot(item: InventoryBatchRow) {
   try {
     if (!canDownload(item)) return;
+    trackUiEvent('inventory_snapshot_download', {
+      metadata: {
+        kind: item.kind,
+        batch_id: item.id,
+        filename: item.snapshot_filename || null,
+      },
+      urgent: true,
+    });
     await apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined);
   } catch (error: any) {
     ElMessage.error(error?.message || '下载结果快照失败');

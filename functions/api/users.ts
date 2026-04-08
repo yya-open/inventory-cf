@@ -1,4 +1,5 @@
-import { json, requireAuth, errorResponse } from "../_auth";
+import { requireAuth, errorResponse } from "../_auth";
+import { apiFail, apiOk } from "./_response";
 import { logAudit } from "./_audit";
 import { sqlNowStored } from "./_time";
 import { hashPassword } from "../_password";
@@ -91,7 +92,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
       };
     });
 
-    return Response.json({ ok: true, data: rows, total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw, permission_codes: ALL_PERMISSION_CODES, permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES });
+    return apiOk(rows, { meta: { total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw, permission_codes: ALL_PERMISSION_CODES, permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES } });
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -106,10 +107,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const p = String(password || "");
     const r = (role || "viewer") as any;
 
-    if (!u) return json(false, null, "username 必填", 400);
+    if (!u) return apiFail('username 必填', { status: 400 });
     const pv = validatePassword(p);
-    if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
-    if (!["admin", "operator", "viewer"].includes(r)) return json(false, null, "role 无效", 400);
+    if (!pv.ok) return apiFail(pv.msg || '密码不符合规则', { status: 400 });
+    if (!["admin", "operator", "viewer"].includes(r)) return apiFail('role 无效', { status: 400 });
 
     const ph = await hashPassword(pv.password);
     const validatedScope = await assertScopeDictionaryConstraints(env.DB, data_scope_type, data_scope_value, data_scope_value2);
@@ -123,7 +124,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
       newId = Number((ins as any)?.meta?.last_row_id || 0) || null;
     } catch (e: any) {
       // Unique constraint on username
-      return json(false, null, "用户名已存在", 400);
+      return apiFail('用户名已存在', { status: 400 });
     }
 
     const created = newId
@@ -142,7 +143,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {}, ...(newId ? await getUserDataScope(env.DB, newId) : validatedScope) } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {}, ...validatedScope };
     await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
-    return json(true, enriched);
+    return apiOk(enriched);
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -154,14 +155,14 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json<any>();
 
     const uid = Number(id);
-    if (!uid) return json(false, null, "id 无效", 400);
+    if (!uid) return apiFail('id 无效', { status: 400 });
 
     const target = await env.DB.prepare("SELECT id, username, role, is_active, must_change_password, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?").bind(uid).first<any>();
-    if (!target) return json(false, null, "用户不存在", 404);
+    if (!target) return apiFail('用户不存在', { status: 404 });
 
     // 禁止禁用自己（避免把自己踢出系统）
     if (uid === actor.id && typeof is_active !== "undefined" && !is_active) {
-      return json(false, null, "禁止禁用自己账号", 400);
+      return apiFail('禁止禁用自己账号', { status: 400 });
     }
 
     // 最后一个管理员保护：不允许把最后一个启用的 admin 降权或禁用
@@ -177,7 +178,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
         .bind(uid)
         .first<any>();
       if (Number(cnt?.c || 0) <= 0) {
-        return json(false, null, "至少需要保留 1 个启用的管理员账号", 400);
+        return apiFail('至少需要保留 1 个启用的管理员账号', { status: 400 });
       }
     }
 
@@ -187,14 +188,14 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     if (reset_password) {
       const newP = String(reset_password);
       const pv = validatePassword(newP);
-      if (!pv.ok) return json(false, null, pv.msg || "密码不符合规则", 400);
+      if (!pv.ok) return apiFail(pv.msg || '密码不符合规则', { status: 400 });
       const ph = await hashPassword(pv.password);
       await env.DB.prepare("UPDATE users SET password_hash=?, must_change_password=1, token_version=COALESCE(token_version,0)+1 WHERE id=?").bind(ph, uid).run();
       changes.reset_password = true;
       changes.must_change_password = 1;
     }
     if (role) {
-      if (!["admin", "operator", "viewer"].includes(role)) return json(false, null, "role 无效", 400);
+      if (!["admin", "operator", "viewer"].includes(role)) return apiFail('role 无效', { status: 400 });
       await env.DB.prepare("UPDATE users SET role=? WHERE id=?").bind(role, uid).run();
       changes.role = role;
     }
@@ -225,7 +226,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const enrichedAfter = { ...after, permission_template_code: await getUserTemplateCode(env.DB, uid, after?.role || target.role), permissions: await getUserPermissionMap(env.DB, uid, after?.role || target.role, after?.permission_template_code || null), ...(await getUserDataScope(env.DB, uid)) };
     await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after: enrichedAfter, changes });
 
-    return json(true, enrichedAfter);
+    return apiOk(enrichedAfter);
   } catch (e: any) {
     return errorResponse(e);
   }
@@ -237,14 +238,14 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     const { id } = await request.json<any>();
 
     const uid = Number(id);
-    if (!uid) return json(false, null, "id 无效", 400);
+    if (!uid) return apiFail('id 无效', { status: 400 });
 
     if (uid === actor.id) {
-      return json(false, null, "禁止删除自己账号", 400);
+      return apiFail('禁止删除自己账号', { status: 400 });
     }
 
     const target = await env.DB.prepare("SELECT id, username, role, is_active FROM users WHERE id=?").bind(uid).first<any>();
-    if (!target) return json(false, null, "用户不存在", 404);
+    if (!target) return apiFail('用户不存在', { status: 404 });
 
     // 最后一个管理员保护（只对启用管理员生效）
     const isAdminActive = String(target.role) === "admin" && Number(target.is_active) === 1;
@@ -254,14 +255,14 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
         .bind(uid)
         .first<any>();
       if (Number(cnt?.c || 0) <= 0) {
-        return json(false, null, "至少需要保留 1 个启用的管理员账号", 400);
+        return apiFail('至少需要保留 1 个启用的管理员账号', { status: 400 });
       }
     }
 
     await env.DB.prepare("DELETE FROM users WHERE id=?").bind(uid).run();
     await logAudit(env.DB, request, actor, "USER_DELETE", "users", uid, { before: target });
 
-    return json(true);
+    return apiOk({});
   } catch (e: any) {
     return errorResponse(e);
   }

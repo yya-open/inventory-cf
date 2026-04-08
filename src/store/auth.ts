@@ -4,6 +4,7 @@ import type { Role } from "../utils/roles";
 import { hasRole } from "../utils/roles";
 import type { PermissionCode } from "../utils/permissions";
 import { hasPermission } from "../utils/permissions";
+import { hasCapability, type CapabilityCode } from '../domain/capabilities';
 
 export type User = { id: number; username: string; role: Role; must_change_password?: number; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 type LoginResponse = { ok: boolean; data: { user: User; require_captcha?: boolean; locked_until_ms?: number; locked_until?: string }; message?: string };
@@ -172,3 +173,4 @@ export async function logout() {
 }
 export function can(min: Role) { return hasRole(state.user?.role, min); }
 export function canPerm(code: PermissionCode) { return hasPermission(state.user, code); }
+export function canCapability(code: CapabilityCode) { return hasCapability(state.user, code); }

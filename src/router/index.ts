@@ -37,7 +37,7 @@ import SystemDocs from "../views/SystemDocs.vue";
 import SystemLayout from "../views/SystemLayout.vue";
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
-import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can } from "../store/auth";
+import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can, canCapability } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
@@ -111,13 +111,13 @@ const router = createRouter({
         { path: "home", component: SystemHome, meta: { role: "admin", title: "系统" } },
         { path: "dashboard", component: Dashboard, meta: { role: "admin", title: "报表与看板" } },
         { path: "reports", component: SystemReportsCenter, meta: { role: "admin", title: "数据报表中心" } },
-        { path: "tasks", component: SystemTaskCenter, meta: { role: "admin", title: "批量任务中心" } },
+        { path: "tasks", component: SystemTaskCenter, meta: { role: "admin", title: "批量任务中心", capability: 'system.jobs.manage' } },
         { path: "import", redirect: "/import/items", meta: { role: "admin", title: "Excel 导入配件" } },
         { path: "backup", component: BackupRestore, meta: { role: "admin", title: "备份/恢复" } },
         { path: "audit", component: AuditLog, meta: { role: "admin", title: "审计日志" } },
         { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
-        { path: "settings", component: SystemSettings, meta: { role: "admin", title: "系统配置" } },
-        { path: "tools", component: SystemOpsTools, meta: { role: "admin", title: "运维工具" } },
+        { path: "settings", component: SystemSettings, meta: { role: "admin", title: "系统配置", capability: 'system.settings.manage' } },
+        { path: "tools", component: SystemOpsTools, meta: { role: "admin", title: "运维工具", capability: 'system.tools.manage' } },
         { path: "release-check", component: SystemReleaseCheck, meta: { role: "admin", title: "发布前检查" } },
         { path: "performance", component: SystemPerformance, meta: { role: "admin", title: "性能面板" } },
         { path: "docs", component: SystemDocs, meta: { role: "admin", title: "系统交付文档" } },
@@ -227,6 +227,11 @@ router.beforeEach(async (to) => {
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
     ElMessage.warning("权限不足");
+    return { path: fallbackPath };
+  }
+  const capability = (to.meta as any)?.capability as any;
+  if (capability && !canCapability(capability)) {
+    ElMessage.warning('当前账号缺少对应能力授权');
     return { path: fallbackPath };
   }
 

@@ -1,5 +1,6 @@
-import { apiGet } from './client';
+import { apiGet, apiGetData } from './client';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters, PcAsset, PcFilters } from '../types/assets';
+import { asArray, asNumber, asObject } from './schema';
 import { getCachedResource, invalidateCachedResource } from '../utils/resourceCache';
 
 export type PagedResponse<T> = { rows: T[]; total: number | null };
@@ -97,15 +98,13 @@ export async function countMonitorAssets(filters: MonitorFilters, signal?: Abort
 
 export async function listEnabledLocations(signal?: AbortSignal) {
   return getCachedResource(locationCacheKey(true), async () => {
-    const result: any = await apiGet('/api/pc-locations?enabled=1', { signal });
-    return (result?.data || []) as LocationRow[];
+    return await apiGetData('/api/pc-locations?enabled=1', (input) => asArray(input || [], (row) => asObject(row) as unknown as LocationRow, '位置列表'), { signal });
   }, { ttlMs: LOCATION_CACHE_TTL_MS });
 }
 
 export async function listAllLocations(signal?: AbortSignal) {
   return getCachedResource(locationCacheKey(false), async () => {
-    const result: any = await apiGet('/api/pc-locations', { signal });
-    return (result?.data || []) as LocationRow[];
+    return await apiGetData('/api/pc-locations', (input) => asArray(input || [], (row) => asObject(row) as unknown as LocationRow, '位置列表'), { signal });
   }, { ttlMs: LOCATION_CACHE_TTL_MS });
 }
 
@@ -119,8 +118,10 @@ export async function getPcAssetInventorySummary(filters: PcFilters, signal?: Ab
     no_cache: options?.force ? '1' : undefined,
   } satisfies Record<string, QueryValue>;
   return getCachedResource(summaryCacheKey('pc', params), async () => {
-    const result: any = await apiGet(`/api/pc-assets-inventory-summary?${toQueryString(params)}`, { signal });
-    return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+    return await apiGetData(`/api/pc-assets-inventory-summary?${toQueryString(params)}`, (input) => {
+      const row = asObject(input || {}, '电脑盘点汇总');
+      return { unchecked: asNumber(row.unchecked, 0), checked_ok: asNumber(row.checked_ok, 0), checked_issue: asNumber(row.checked_issue, 0), total: asNumber(row.total, 0) } as AssetInventorySummary;
+    }, { signal });
   }, { ttlMs: SUMMARY_CACHE_TTL_MS, force: Boolean(options?.force) });
 }
 
@@ -135,7 +136,9 @@ export async function getMonitorAssetInventorySummary(filters: MonitorFilters, s
     no_cache: options?.force ? '1' : undefined,
   } satisfies Record<string, QueryValue>;
   return getCachedResource(summaryCacheKey('monitor', params), async () => {
-    const result: any = await apiGet(`/api/monitor-assets-inventory-summary?${toQueryString(params)}`, { signal });
-    return (result?.data || { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 }) as AssetInventorySummary;
+    return await apiGetData(`/api/monitor-assets-inventory-summary?${toQueryString(params)}`, (input) => {
+      const row = asObject(input || {}, '显示器盘点汇总');
+      return { unchecked: asNumber(row.unchecked, 0), checked_ok: asNumber(row.checked_ok, 0), checked_issue: asNumber(row.checked_issue, 0), total: asNumber(row.total, 0) } as AssetInventorySummary;
+    }, { signal });
   }, { ttlMs: SUMMARY_CACHE_TTL_MS, force: Boolean(options?.force) });
 }

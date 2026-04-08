@@ -1,6 +1,6 @@
 const SAMPLE_RATE = 0.2;
 const SLOW_ROUTE_MS = 1600;
-const MAX_BUFFER = 12;
+const MAX_BUFFER = 20;
 const AUTO_FLUSH_MIN_SIZE = 4;
 const STORAGE_KEY = 'inventory:browser-perf-buffer';
 
@@ -12,7 +12,16 @@ type RoutePerfPayload = {
   ts: number;
 };
 
-type PendingPerfPayload = RoutePerfPayload;
+type UiEventPayload = {
+  kind: 'event';
+  path: string;
+  fullPath?: string;
+  event_name: string;
+  metadata?: Record<string, unknown>;
+  ts: number;
+};
+
+type PendingPerfPayload = RoutePerfPayload | UiEventPayload;
 
 function canUseStorage() {
   return typeof window !== 'undefined' && typeof window.localStorage !== 'undefined';
@@ -117,4 +126,25 @@ export function trackRoutePerf(path: string, durationMs: number, fullPath?: stri
     return;
   }
   scheduleFlush();
+}
+
+export function trackUiEvent(eventName: string, options?: { path?: string; fullPath?: string; metadata?: Record<string, unknown>; urgent?: boolean }) {
+  const name = String(eventName || '').trim();
+  if (!name) return;
+  const fallbackPath = typeof window !== 'undefined' ? window.location.pathname : '/';
+  const fallbackFullPath = typeof window !== 'undefined' ? `${window.location.pathname}${window.location.search}` : fallbackPath;
+  enqueue({
+    kind: 'event',
+    event_name: name.slice(0, 80),
+    path: String(options?.path || fallbackPath || '/').slice(0, 180),
+    fullPath: String(options?.fullPath || fallbackFullPath || fallbackPath).slice(0, 500),
+    metadata: options?.metadata && Object.keys(options.metadata).length ? options.metadata : undefined,
+    ts: Date.now(),
+  });
+  const size = readBuffer().length;
+  if (options?.urgent || size >= AUTO_FLUSH_MIN_SIZE) {
+    void flushBrowserPerfQueue();
+    return;
+  }
+  scheduleFlush(8_000);
 }

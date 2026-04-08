@@ -234,7 +234,7 @@ import { exportAssetQrLinksWorkbook, exportAssetQrPrintLocal } from '../utils/as
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
-import { can, canPerm } from '../store/auth';
+import { can, canCapability } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
@@ -263,8 +263,8 @@ const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../com
 const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
-const canQrExport = computed(() => canPerm('qr_export'));
-const canQrReset = computed(() => canPerm('qr_reset'));
+const canQrExport = computed(() => canCapability('qr.export'));
+const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();
 const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
 const systemSettings = ref(getCachedSystemSettings());

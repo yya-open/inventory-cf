@@ -1141,11 +1141,23 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
 }
+.app-aside-hotzone {
+  position: absolute;
+  inset: 0 auto 0 0;
+  width: 18px;
+  z-index: 18;
+}
+
 
 .app-aside--collapsed {
   min-width: 0 !important;
   opacity: 0;
   box-shadow: none;
+}
+
+.app-aside--preview {
+  opacity: 1;
+  box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
 }
 
 .app-aside--collapsed .app-aside__inner {
@@ -1200,6 +1212,10 @@ body {
 
 .app-layout--sidebar-collapsed .app-aside-toggle {
   left: 6px;
+}
+
+.app-layout--sidebar-preview .app-aside-toggle {
+  left: calc(220px + 10px);
 }
 
 

@@ -7,10 +7,16 @@
     v-else
     class="app-root"
     :class="{ 'app-root--mobile': isMobile }"
-    :style="{ '--sidebar-width': desktopSidebarCollapsed ? '0px' : '220px' }"
+    :style="{ '--sidebar-width': desktopSidebarVisible ? '220px' : '0px' }"
   >
     <div class="app-bg" />
-    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed, 'app-layout--mobile': isMobile }">
+    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
+      <div
+        v-if="!isMobile && desktopSidebarCollapsed"
+        class="app-aside-hotzone"
+        aria-hidden="true"
+        @mouseenter="openSidebarPreview"
+      />
       <button
         v-if="!isMobile"
         class="app-aside-toggle"
@@ -23,9 +29,11 @@
       </button>
       <el-aside
         v-if="!isMobile"
-        :width="desktopSidebarCollapsed ? '0px' : '220px'"
+        :width="desktopSidebarVisible ? '220px' : '0px'"
         class="app-aside"
-        :class="{ 'app-aside--collapsed': desktopSidebarCollapsed }"
+        :class="{ 'app-aside--collapsed': !desktopSidebarVisible, 'app-aside--preview': desktopSidebarPreview }"
+        @mouseenter="markSidebarHovered(true)"
+        @mouseleave="markSidebarHovered(false)"
       >
         <div class="app-aside__inner">
           <AppSidebarMenu
@@ -254,6 +262,7 @@ import { routePageSkeletonVisible } from "./router";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
 import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
 import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
+import { trackUiEvent } from "./utils/browserPerf";
 
 const route = useRoute();
 const router = useRouter();
@@ -277,10 +286,13 @@ const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeleto
 
 const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
 const desktopSidebarCollapsed = ref(false);
+const desktopSidebarPreview = ref(false);
+const sidebarHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
+const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
 
 const title = computed(() => {
   // 系统模块：优先用路由 meta.title
@@ -371,10 +383,22 @@ onBeforeUnmount(() => {
   window.removeEventListener("resize", updateViewport);
 });
 
-watch(desktopSidebarCollapsed, (value) => {
+watch(desktopSidebarCollapsed, (value, previous) => {
   try {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
   } catch {}
+  if (value === previous) return;
+  if (!value) desktopSidebarPreview.value = false;
+  trackUiEvent('sidebar_toggle', {
+    path: route.path,
+    fullPath: route.fullPath,
+    metadata: {
+      collapsed: value,
+      area: currentArea.value,
+      source: 'desktop-toggle',
+    },
+    urgent: true,
+  });
 });
 
 function updateViewport() {
@@ -383,9 +407,35 @@ function updateViewport() {
   if (!nextMobile) mobileSidebarVisible.value = false;
 }
 
+function openSidebarPreview() {
+  if (isMobile.value || !desktopSidebarCollapsed.value || desktopSidebarPreview.value) return;
+  desktopSidebarPreview.value = true;
+  trackUiEvent('sidebar_preview_open', {
+    path: route.path,
+    fullPath: route.fullPath,
+    metadata: { area: currentArea.value },
+  });
+}
+
+function markSidebarHovered(next: boolean) {
+  sidebarHovered.value = next;
+  if (!next && desktopSidebarCollapsed.value && desktopSidebarPreview.value) {
+    window.setTimeout(() => {
+      if (!sidebarHovered.value && desktopSidebarCollapsed.value) {
+        desktopSidebarPreview.value = false;
+      }
+    }, 120);
+  }
+}
+
 function toggleSidebar() {
   if (isMobile.value) {
     mobileSidebarVisible.value = !mobileSidebarVisible.value;
+    trackUiEvent('mobile_sidebar_toggle', {
+      path: route.path,
+      fullPath: route.fullPath,
+      metadata: { open: mobileSidebarVisible.value, area: currentArea.value },
+    });
     return;
   }
   desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value;
@@ -393,6 +443,7 @@ function toggleSidebar() {
 
 watch(() => route.fullPath, () => {
   mobileSidebarVisible.value = false;
+  if (desktopSidebarCollapsed.value) desktopSidebarPreview.value = false;
 });
 
 watch(simpleLayout, (value) => {

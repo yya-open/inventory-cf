@@ -170,13 +170,13 @@ import LazyMountBlock from '../components/LazyMountBlock.vue';
 import AssetInventoryBatchPageSection from '../components/assets/AssetInventoryBatchPageSection.vue';
 import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryBatchCloseDialog.vue';
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
-import type { InventoryBatchPayload } from '../api/inventoryBatches';
+import type { InventoryBatchPayload, InventoryBatchRow } from '../api/inventoryBatches';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
-import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache } from '../api/assetLedgers';
+import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';
 import { openMonitorLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
-import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
+import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, invalidateInventoryBatchDomainCaches, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
 import { usePagedAssetList } from '../composables/usePagedAssetList';
 import { scheduleOnIdle } from '../utils/idle';
 import LedgerTableSkeleton from '../components/assets/LedgerTableSkeleton.vue';
@@ -236,6 +236,25 @@ const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIs
 
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
+
+function currentSnapshotBatch() {
+  return (inventoryBatch.value.active || inventoryBatch.value.latest || null) as InventoryBatchRow | null;
+}
+
+function snapshotTaskMessage(kindLabel: string) {
+  const batch = currentSnapshotBatch();
+  if (!batch?.snapshot_job_id) return `${kindLabel}盘点已结束，结果快照正在后台生成`;
+  const meta = batch.snapshot_job_meta || null;
+  const status = String(batch.snapshot_job_status || '').toLowerCase();
+  const retryCount = Number(meta?.retry_count || 0);
+  const maxRetries = Number(meta?.max_retries || 0);
+  const retryText = maxRetries > 0 ? `（已重试 ${retryCount}/${maxRetries} 次）` : '';
+  if (status === 'success') return `${kindLabel}盘点已结束，结果快照已生成（任务 #${batch.snapshot_job_id}）`;
+  if (status === 'failed') return `${kindLabel}盘点已结束，结果快照生成失败（任务 #${batch.snapshot_job_id}）${retryText}`;
+  if (status === 'running') return `${kindLabel}盘点已结束，结果快照正在后台生成（任务 #${batch.snapshot_job_id}）`;
+  if (status === 'canceled') return `${kindLabel}盘点已结束，结果快照任务已取消（任务 #${batch.snapshot_job_id}）`;
+  return `${kindLabel}盘点已结束，结果快照已入队（任务 #${batch.snapshot_job_id}）`;
+}
 
 type MonitorInventoryLogFilters = {
   action: string;
@@ -365,7 +384,7 @@ async function loadMonitorIssueBreakdown() {
 }
 
 async function refreshInventoryBatchAndSummary() {
-  invalidateAssetInventorySummaryCache('monitor');
+  invalidateInventoryBatchDomainCaches('monitor');
   try {
     const payload = await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
     applyInventoryBatchPayload(payload);
@@ -556,7 +575,7 @@ async function confirmCloseActiveBatch() {
       applyInventoryBatchPayload({ active: null, latest: result.data, recent: inventoryBatch.value.active?.id ? [inventoryBatch.value.active, ...(inventoryBatch.value.recent || [])] : (inventoryBatch.value.recent || []) });
     }
     closeBatchVisible.value = false;
-    ElMessage.success(result?.message || '本轮盘点已结束，结果快照正在后台生成');
+    ElMessage.success(snapshotTaskMessage('显示器'));
     await refreshInventoryBatchAndSummary();
   } catch (error: any) {
     ElMessage.error(error?.message || '结束盘点批次失败');

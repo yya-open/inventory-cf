@@ -181,7 +181,7 @@ import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '..
 import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { buildQrExportFilename } from '../utils/exportNaming';
-import { can, canPerm } from '../store/auth';
+import { can, canCapability } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
@@ -201,8 +201,8 @@ const PcAssetBatchArchiveDialog = defineAsyncComponent(() => import('../componen
 
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
-const canQrExport = computed(() => canPerm('qr_export'));
-const canQrReset = computed(() => canPerm('qr_reset'));
+const canQrExport = computed(() => canCapability('qr.export'));
+const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();
 const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
 const systemSettings = ref(getCachedSystemSettings());

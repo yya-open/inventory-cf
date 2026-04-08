@@ -1,9 +1,19 @@
-import { apiGet, apiPost } from './client';
+import { apiGetData, apiPost } from './client';
 import type { InventoryIssueBreakdown } from '../types/assets';
+import { inventoryBatchPayloadSchema, inventoryBatchRowSchema } from '../domain/inventory/schemas';
 
 export type InventoryBatchKind = 'pc' | 'monitor';
 export type InventoryBatchStatus = 'ACTIVE' | 'CLOSED';
 export type InventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
+
+export type InventoryBatchSnapshotJobMeta = {
+  id: number;
+  message?: string | null;
+  started_at?: string | null;
+  finished_at?: string | null;
+  retry_count?: number | null;
+  max_retries?: number | null;
+};
 
 export type InventoryBatchRow = {
   id: number;
@@ -27,6 +37,7 @@ export type InventoryBatchRow = {
   snapshot_file_size?: number | null;
   snapshot_exported_at?: string | null;
   updated_at?: string | null;
+  snapshot_job_meta?: InventoryBatchSnapshotJobMeta | null;
 };
 
 export type InventoryBatchPayload = {
@@ -35,16 +46,19 @@ export type InventoryBatchPayload = {
   recent: InventoryBatchRow[];
 };
 
-
 export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchPayload> | null): InventoryBatchPayload {
   const latest = payload?.latest || null;
   const resolvedActive = payload?.active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
   const resolvedLatest = resolvedActive || latest;
   const recent = (payload?.recent || []).filter((item): item is InventoryBatchRow => Boolean(item?.id) && (!resolvedActive || Number(item.id) !== Number(resolvedActive.id)));
+  const normalizeRow = (row: InventoryBatchRow | null | undefined) => {
+    if (!row?.id) return null;
+    return inventoryBatchRowSchema(row);
+  };
   return {
-    active: resolvedActive,
-    latest: resolvedLatest,
-    recent,
+    active: normalizeRow(resolvedActive),
+    latest: normalizeRow(resolvedLatest),
+    recent: recent.map((item) => normalizeRow(item)).filter((item): item is InventoryBatchRow => Boolean(item?.id)),
   };
 }
 
@@ -84,8 +98,8 @@ export async function fetchInventoryBatch(kind: InventoryBatchKind, options: { f
     const pending = inventoryBatchClientPending.get(kind);
     if (pending) return pending;
   }
-  const task = apiGet(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`)
-    .then((result: any) => writeInventoryBatchClientCache(kind, normalizeInventoryBatchPayload((result?.data || { active: null, latest: null, recent: [] }) as InventoryBatchPayload)))
+  const task = apiGetData(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`, inventoryBatchPayloadSchema)
+    .then((result) => writeInventoryBatchClientCache(kind, normalizeInventoryBatchPayload(result)))
     .finally(() => {
       if (inventoryBatchClientPending.get(kind) === task) inventoryBatchClientPending.delete(kind);
     });
@@ -98,42 +112,42 @@ export async function startInventoryBatch(kind: InventoryBatchKind, name: string
     action: 'start',
     kind,
     name,
-    clear_previous_logs: Boolean(options.clearPreviousLogs),
+    clear_previous_logs: options.clearPreviousLogs ? 1 : 0,
   });
   invalidateInventoryBatchClientCache(kind);
-  return result;
+  return {
+    batch: inventoryBatchRowSchema(result?.data),
+    deletedLogs: Number((result?.meta as any)?.cleanup?.deleted || 0),
+    message: String(result?.message || ''),
+  };
 }
 
-export async function closeInventoryBatch(kind: InventoryBatchKind, id?: number | null) {
+export async function closeInventoryBatch(kind: InventoryBatchKind, batchId: number) {
   const result: any = await apiPost('/api/asset-inventory-batch', {
     action: 'close',
     kind,
-    id: id || undefined,
+    batch_id: batchId,
   });
   invalidateInventoryBatchClientCache(kind);
-  return result;
-}
-
-export function getInventoryBatchSnapshotDownloadUrl(kind: InventoryBatchKind, id: number) {
-  const q = new URLSearchParams();
-  q.set('kind', kind);
-  q.set('id', String(id));
-  return `/api/asset-inventory-batch-snapshot-download?${q.toString()}`;
+  return {
+    batch: inventoryBatchRowSchema(result?.data),
+    snapshotJobId: Number((result?.meta as any)?.snapshot_job_id || 0),
+    message: String(result?.message || ''),
+    reused: Boolean((result?.meta as any)?.reused),
+  };
 }
 
 export function inventoryBatchSnapshotStatusText(status: InventoryBatchSnapshotStatus) {
-  switch (String(status || '').toLowerCase()) {
-    case 'queued':
-      return '排队中';
-    case 'running':
-      return '生成中';
-    case 'success':
-      return '可下载';
-    case 'failed':
-      return '生成失败';
-    case 'canceled':
-      return '已取消';
-    default:
-      return '未生成';
+  switch (status) {
+    case 'queued': return '排队中';
+    case 'running': return '生成中';
+    case 'success': return '已完成';
+    case 'failed': return '失败';
+    case 'canceled': return '已取消';
+    default: return '未生成';
   }
+}
+
+export function getInventoryBatchSnapshotDownloadUrl(kind: InventoryBatchKind, batchId: number) {
+  return `/api/asset-inventory-batch-snapshot-download?kind=${encodeURIComponent(kind)}&batch_id=${encodeURIComponent(String(batchId))}`;
 }
