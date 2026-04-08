@@ -75,14 +75,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
     const fromSqlBase = `
-      WITH latest_out AS (
+      FROM pc_inventory_log l
+      JOIN pc_assets a ON a.id = l.asset_id
+      LEFT JOIN (
         SELECT asset_id, MAX(id) AS max_id
         FROM pc_out
         GROUP BY asset_id
-      )
-      FROM pc_inventory_log l
-      JOIN pc_assets a ON a.id = l.asset_id
-      LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
+      ) lo ON lo.asset_id = l.asset_id
       LEFT JOIN pc_out o ON o.id = lo.max_id
       ${where}
     `;
