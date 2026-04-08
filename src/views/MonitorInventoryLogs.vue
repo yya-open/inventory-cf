@@ -160,7 +160,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
@@ -172,6 +172,7 @@ import AssetInventoryBatchCloseDialog from '../components/assets/AssetInventoryB
 import AssetInventoryBatchStartDialog from '../components/assets/AssetInventoryBatchStartDialog.vue';
 import type { InventoryBatchPayload, InventoryBatchRow } from '../api/inventoryBatches';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
+import { getMonitorInventoryOverview } from '../api/inventoryOverview';
 import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
 import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorFilters } from '../types/assets';
 import { emptyInventoryIssueBreakdown } from '../types/assets';

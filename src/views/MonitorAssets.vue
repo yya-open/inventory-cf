@@ -727,7 +727,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 }
 
 const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
-const LEDGER_BATCH_REFRESH_DELAY_MS = 900;
+const LEDGER_BATCH_REFRESH_DELAY_MS = 2200;
 
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
