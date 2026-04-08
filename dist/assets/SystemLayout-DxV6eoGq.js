@@ -1,1 +1,0 @@
-import{_ as r}from"./index-Bk-PuOtW.js";import{ad as t,I as e,U as c}from"./vendor-CLJYU4I4.js";import"./vue-vendor-D3BAILaB.js";import"./element-plus-CBiGpK6e.js";import"./element-plus-icons-CwaMKy9S.js";import"./excel-utils-puM1fYsQ.js";const n={};function s(m,_){const o=t("router-view");return e(),c(o)}const l=r(n,[["render",s]]);export{l as default};
