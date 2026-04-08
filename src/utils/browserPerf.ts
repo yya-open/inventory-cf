@@ -87,7 +87,7 @@ async function flushPayloads(payloads: PendingPerfPayload[]) {
 }
 
 let flushing = false;
-let flushTimer: ReturnType<typeof setTimeout> | null = null;
+let flushTimer: number | null = null;
 
 function scheduleFlush(delayMs = 12_000) {
   if (typeof window === 'undefined') return;

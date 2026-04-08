@@ -420,7 +420,8 @@ async function loadItems(force = false) {
   itemsController?.abort();
   const controller = new AbortController();
   itemsController = controller;
-  const request = (async () => {
+  let request: Promise<void> | null = null;
+  request = (async () => {
     try {
       itemsLoading.value = true;
       const j = await apiGet<{ ok: boolean; data: any[] }>(`/api/items?page=1&page_size=200`, { signal: controller.signal });
@@ -432,7 +433,7 @@ async function loadItems(force = false) {
       throw error;
     } finally {
       itemsLoading.value = false;
-      if (itemsRequestPromise === request) itemsRequestPromise = null;
+      if (request && itemsRequestPromise === request) itemsRequestPromise = null;
     }
   })();
   itemsRequestPromise = request;

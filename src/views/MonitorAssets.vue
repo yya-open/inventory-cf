@@ -249,6 +249,7 @@ import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
+import { buildQrExportFilename } from '../utils/exportNaming';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -441,7 +442,7 @@ async function exportMonitorBatchClosingWorkbook(active: NonNullable<InventoryBa
     fetchAll({ ...base, inventoryStatus: 'CHECKED_ISSUE' }, 300),
   ]);
   const { exportWorkbookXlsx } = await loadExcelUtils();
-  const filename = `${String(active.name || '显示器盘点').replace(/[\/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
+  const filename = `${String(active.name || '显示器盘点').replace(/[/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
   const summaryRows = [
     { 项目: '盘点批次', 内容: active.name || '-' },
     { 项目: '开始时间', 内容: active.started_at || '-' },

@@ -1,6 +1,7 @@
 import { errorResponse, json } from '../_auth';
 import { requirePermission } from '../_permissions';
 import { ensureRequestErrorLogTable, ensureSlowRequestLogTable } from './services/ops-tools';
+import { ensureBrowserObservabilityTables, getObservabilityRetentionPolicy, percentile, summarizeRouteDurations } from './services/observability';
 
 type PerfPayload = {
   range_days: number;
@@ -9,40 +10,77 @@ type PerfPayload = {
   top_error_paths: any[];
   recent_slow_requests: any[];
   recent_error_requests: any[];
+  browser_summary: Record<string, number>;
+  browser_top_routes: any[];
+  browser_recent_routes: any[];
+  browser_top_events: any[];
+  browser_recent_events: any[];
+  daily_browser_trend: any[];
+  retention_policy: Record<string, number>;
+  index_recommendations: Array<{ key: string; label: string; status: 'ready' | 'recommended'; detail: string }>;
 };
 
 type CacheEntry = { expiresAt: number; value?: PerfPayload; pending?: Promise<PerfPayload> };
 const cache = new Map<string, CacheEntry>();
 const TTL_MS = 30_000;
 
-function percentile(values: number[], p: number) {
-  if (!values.length) return 0;
-  const sorted = [...values].sort((a, b) => a - b);
-  const idx = Math.min(sorted.length - 1, Math.max(0, Math.ceil((p / 100) * sorted.length) - 1));
-  return Number(sorted[idx] || 0);
+function toSafeNumber(value: unknown) {
+  const num = Number(value);
+  return Number.isFinite(num) ? num : 0;
 }
 
 async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayload> {
-  await Promise.all([ensureSlowRequestLogTable(db), ensureRequestErrorLogTable(db)]);
+  await Promise.all([ensureSlowRequestLogTable(db), ensureRequestErrorLogTable(db), ensureBrowserObservabilityTables(db)]);
   const since = `-${days} day`;
-  const [slowRowsRes, errorRowsRes, topSlowRes, topErrorRes, statusRes] = await Promise.all([
+  const [
+    slowRowsRes,
+    errorRowsRes,
+    topSlowRes,
+    topErrorRes,
+    statusRes,
+    browserRouteRowsRes,
+    browserTopRoutesRes,
+    browserTopEventsRes,
+    browserRecentEventsRes,
+    browserTrendRes,
+    retentionPolicy,
+  ] = await Promise.all([
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM slow_request_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 300`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 200`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT path, COUNT(*) AS hit_count, ROUND(AVG(total_ms),1) AS avg_total_ms, MAX(total_ms) AS max_total_ms, ROUND(AVG(sql_ms),1) AS avg_sql_ms FROM slow_request_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path ORDER BY avg_total_ms DESC, hit_count DESC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT path, status, COUNT(*) AS hit_count FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path, status ORDER BY hit_count DESC, path ASC LIMIT 20`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT status, COUNT(*) AS c FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY status`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT id, path, full_path, duration_ms, username, created_at FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 200`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT path, COUNT(*) AS hit_count, ROUND(AVG(duration_ms),1) AS avg_duration_ms, MAX(duration_ms) AS max_duration_ms FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY path ORDER BY avg_duration_ms DESC, hit_count DESC LIMIT 15`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT event_name, COUNT(*) AS hit_count, COUNT(DISTINCT path) AS path_count FROM browser_event_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY event_name ORDER BY hit_count DESC, event_name ASC LIMIT 15`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT id, event_name, path, full_path, username, created_at, metadata_json FROM browser_event_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 100`).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(`SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS route_count, ROUND(AVG(duration_ms),1) AS avg_duration_ms, MAX(duration_ms) AS max_duration_ms FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY substr(created_at,1,10) ORDER BY day DESC LIMIT 14`).bind(since).all<any>().catch(() => ({ results: [] })),
+    getObservabilityRetentionPolicy(db).catch(() => ({ slow_request_days: 30, request_error_days: 30, browser_perf_days: 14, browser_event_days: 14 })),
   ]);
 
   const slowRows = slowRowsRes.results || [];
   const errorRows = errorRowsRes.results || [];
-  const totals = slowRows.map((row: any) => Number(row?.total_ms || 0)).filter((v) => Number.isFinite(v) && v >= 0);
-  const sqlTotals = slowRows.map((row: any) => Number(row?.sql_ms || 0)).filter((v) => Number.isFinite(v) && v >= 0);
+  const totals = slowRows.map((row: any) => toSafeNumber(row?.total_ms)).filter((v) => v >= 0);
+  const sqlTotals = slowRows.map((row: any) => toSafeNumber(row?.sql_ms)).filter((v) => v >= 0);
   const avg = totals.length ? Number((totals.reduce((sum, v) => sum + v, 0) / totals.length).toFixed(1)) : 0;
   const sqlAvg = sqlTotals.length ? Number((sqlTotals.reduce((sum, v) => sum + v, 0) / sqlTotals.length).toFixed(1)) : 0;
   const statuses = new Map<number, number>();
-  for (const row of statusRes.results || []) statuses.set(Number(row?.status || 0), Number(row?.c || 0));
+  for (const row of statusRes.results || []) statuses.set(toSafeNumber(row?.status), toSafeNumber(row?.c));
   const error4xx = Array.from(statuses.entries()).filter(([status]) => status >= 400 && status < 500).reduce((sum, [, c]) => sum + c, 0);
   const error5xx = Array.from(statuses.entries()).filter(([status]) => status >= 500).reduce((sum, [, c]) => sum + c, 0);
+
+  const browserRouteRows = browserRouteRowsRes.results || [];
+  const browserSummary = summarizeRouteDurations(browserRouteRows);
+  const browserRecentRoutes = browserRouteRows.slice(0, 20);
+  const browserRecentEvents = (browserRecentEventsRes.results || []).slice(0, 20).map((row: any) => {
+    let metadata: Record<string, unknown> | null = null;
+    try {
+      metadata = row?.metadata_json ? JSON.parse(String(row.metadata_json)) : null;
+    } catch {
+      metadata = null;
+    }
+    return { ...row, metadata };
+  });
 
   return {
     range_days: days,
@@ -63,6 +101,25 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
     top_error_paths: topErrorRes.results || [],
     recent_slow_requests: slowRows,
     recent_error_requests: errorRows,
+    browser_summary: browserSummary,
+    browser_top_routes: browserTopRoutesRes.results || [],
+    browser_recent_routes: browserRecentRoutes,
+    browser_top_events: browserTopEventsRes.results || [],
+    browser_recent_events: browserRecentEvents,
+    daily_browser_trend: browserTrendRes.results || [],
+    retention_policy: {
+      slow_request_days: retentionPolicy.slow_request_days,
+      request_error_days: retentionPolicy.request_error_days,
+      browser_perf_days: retentionPolicy.browser_perf_days,
+      browser_event_days: retentionPolicy.browser_event_days,
+    },
+    index_recommendations: [
+      { key: 'idx_asset_inventory_batch_kind_status_started', label: '盘点批次状态索引', status: 'ready', detail: '支撑当前批次/历史批次查询。' },
+      { key: 'idx_pc_inventory_log_batch_id_asset_created', label: '电脑盘点记录批次索引', status: 'ready', detail: '支撑按批次回溯盘点记录与问题分布。' },
+      { key: 'idx_monitor_inventory_log_batch_id_asset_created', label: '显示器盘点记录批次索引', status: 'ready', detail: '支撑显示器盘点历史与问题统计。' },
+      { key: 'idx_browser_perf_log_path_duration_created', label: '浏览器路由性能复合索引', status: 'recommended', detail: '支撑按路径统计平均耗时与慢页面排行。' },
+      { key: 'idx_browser_event_log_path_event_created', label: '浏览器事件复合索引', status: 'recommended', detail: '支撑按路径和事件名称查看交互热点。' },
+    ],
   };
 }
 

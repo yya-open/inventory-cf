@@ -8,15 +8,15 @@ import {
 import type { AssetQrExportProgressCallback } from './assetQrExport';
 import { buildQrZipEntryName } from './exportNaming';
 
-type JsZipModule = typeof import('jszip');
+type JsZipConstructor = any;
 type QrCodeModule = typeof import('qrcode');
 
-let jsZipModulePromise: Promise<JsZipModule> | null = null;
+let jsZipModulePromise: Promise<JsZipConstructor> | null = null;
 let qrCodeModulePromise: Promise<QrCodeModule> | null = null;
 const imageLoadCache = new Map<string, Promise<HTMLImageElement>>();
 
 function loadJsZipModule() {
-  jsZipModulePromise ||= import('jszip');
+  jsZipModulePromise ||= import('jszip').then((module: any) => module?.default ?? module);
   return jsZipModulePromise;
 }
 
@@ -434,11 +434,13 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
   if (!files.length) return;
   if (files.length === 1) {
     onProgress?.({ stage: '下载文件', current: 1, total: 1, detail: '正在下载 PNG 图片…' });
-    downloadBlob(`${filename}.png`, files[0].blob);
+    const firstFile = files[0];
+    if (!firstFile) return;
+    downloadBlob(`${filename}.png`, firstFile.blob);
     return;
   }
   onProgress?.({ stage: '打包 ZIP', current: 0, total: Math.max(1, files.length), detail: `正在打包 ${files.length} 张 PNG 图片…` });
-  const JSZip = (await loadJsZipModule()).default;
+  const JSZip = await loadJsZipModule();
   const zip = new JSZip();
   const normalizedTemplate = normalizeQrPrintTemplate(kind, inputTemplate || createDefaultQrPrintTemplate(kind));
   const pageChunks = chunkRecords(records, Math.max(1, normalizedTemplate.cols * normalizedTemplate.rows));

@@ -39,7 +39,7 @@
           <AppSidebarMenu
             :is-system="isSystem"
             :active-menu="activeMenu"
-            :warehouse-active="warehouse.active"
+            :warehouse-active="sidebarWarehouseActive"
             :can-access-parts-area="canAccessPartsArea"
             :can-access-pc-area="canAccessPcArea"
             :can-access-pc-ledger="canAccessPcLedger"
@@ -66,7 +66,7 @@
         <AppSidebarMenu
           :is-system="isSystem"
           :active-menu="activeMenu"
-          :warehouse-active="warehouse.active"
+          :warehouse-active="sidebarWarehouseActive"
           :can-access-parts-area="canAccessPartsArea"
           :can-access-pc-area="canAccessPcArea"
           :can-access-pc-ledger="canAccessPcLedger"
@@ -276,10 +276,13 @@ const canAccessPcArea = computed(() => canAccessModuleArea(auth.user, "pc"));
 const canAccessPcLedger = computed(() => canAccessPcSection(auth.user, "pc"));
 const canAccessMonitorLedger = computed(() => canAccessPcSection(auth.user, "monitor"));
 
-const currentArea = computed(() => {
+const currentArea = computed<"parts" | "pc" | "system">(() => {
   if (isSystem.value) return "system";
-  return warehouse.active === "pc" ? "pc" : "parts";
+  if (warehouse.active === "pc") return "pc";
+  return "parts";
 });
+
+const sidebarWarehouseActive = computed<"parts" | "pc">(() => (warehouse.active === "pc" ? "pc" : "parts"));
 
 const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
 const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeletonVisible.value);

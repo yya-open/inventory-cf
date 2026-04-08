@@ -36,11 +36,11 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  'start-batch': [];
-  'close-batch': [];
-  'open-history': [];
-  'open-execution': [];
-  'jump-logs': [];
+  (event: 'start-batch'): void;
+  (event: 'close-batch'): void;
+  (event: 'open-history'): void;
+  (event: 'open-execution'): void;
+  (event: 'jump-logs'): void;
 }>();
 
 function emitTracked(name: 'start-batch' | 'close-batch' | 'open-history' | 'open-execution' | 'jump-logs') {
@@ -51,7 +51,23 @@ function emitTracked(name: 'start-batch' | 'close-batch' | 'open-history' | 'ope
       is_admin: !!props.isAdmin,
     },
   });
-  emit(name);
+  switch (name) {
+    case 'start-batch':
+      emit('start-batch');
+      return;
+    case 'close-batch':
+      emit('close-batch');
+      return;
+    case 'open-history':
+      emit('open-history');
+      return;
+    case 'open-execution':
+      emit('open-execution');
+      return;
+    case 'jump-logs':
+      emit('jump-logs');
+      return;
+  }
 }
 
 function handleCommand(command: string | number | object) {

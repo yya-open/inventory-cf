@@ -208,5 +208,10 @@
     "id": "202603300040_audit_archive_capacity_control",
     "file": "sql/migrate_audit_archive_capacity_control.sql",
     "description": "audit log archive policy, storage stats cache, and archive run history for d1 capacity control"
+  },
+  {
+    "id": "202604080010_observability_retention_indexes",
+    "file": "sql/migrate_observability_retention_indexes.sql",
+    "description": "observability retention policy, cleanup history, and composite indexes for browser and inventory log queries"
   }
 ]

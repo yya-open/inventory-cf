@@ -272,7 +272,12 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
             patchPageCacheTotal(getFilterPrefix(options, filterKey), inferredTotal);
           }
         })
-        .catch(() => undefined)
+        .catch((error) => {
+          if (!isAbortError(error)) {
+            // noop
+          }
+          return { rows: [], total: resolveKnownTotal(filterKey, total.value) } as LoadResult<TItem>;
+        })
         .finally(() => {
           const active = pageRequests.get(nextKey);
           if (active?.promise === request) pageRequests.delete(nextKey);
@@ -371,7 +376,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         totalCache.set(filterKey, total.value);
         persistTotal(options, filterKey, total.value);
         patchPageCacheTotal(cachePrefix, total.value);
-        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
+        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
         return;
       }
 
@@ -394,7 +399,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         total.value = resolveKnownTotal(filterKey, 0);
         patchPageCacheTotal(cachePrefix, total.value);
         persistTotal(options, filterKey, total.value);
-        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
+        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
         return;
       }
 
@@ -404,7 +409,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         patchPageCacheTotal(cachePrefix, cachedTotal);
       }
 
-      prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value);
+      prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
       clearTotalTimer();
       totalController?.abort();
       totalController = new AbortController();

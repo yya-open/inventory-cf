@@ -225,7 +225,7 @@ let cancelPanelRefresh: (() => void) | null = null;
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, applyPayload: applyInventoryBatchPayload } = useInventoryBatchStore('monitor');
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
-let snapshotPollTimer: ReturnType<typeof window.setInterval> | null = null;
+let snapshotPollTimer: number | ReturnType<typeof setInterval> | null = null;
 const closeBatchVisible = ref(false);
 const startBatchVisible = ref(false);
 const startBatchSuggestedName = ref('');

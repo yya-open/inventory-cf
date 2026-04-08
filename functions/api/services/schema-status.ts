@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202603210030_p3_perf_indexes";
+export const REQUIRED_SCHEMA_VERSION = "202604080010_observability_retention_indexes";
 
 type SchemaStatus = {
   ok: boolean;
@@ -47,6 +47,11 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'idx_report_daily_snapshots_scope_day', label: '看板快照组合索引', ok: indexes.has('idx_report_daily_snapshots_scope_day'), need: 'idx_report_daily_snapshots_scope_day' },
     { key: 'idx_slow_request_log_created_path', label: '慢请求聚合索引', ok: indexes.has('idx_slow_request_log_created_path'), need: 'idx_slow_request_log_created_path' },
     { key: 'idx_request_error_log_created_status', label: '错误请求聚合索引', ok: indexes.has('idx_request_error_log_created_status'), need: 'idx_request_error_log_created_status' },
+    { key: 'observability_retention_policy', label: '可观测性保留策略表', ok: tables.has('observability_retention_policy'), need: 'observability_retention_policy' },
+    { key: 'observability_cleanup_runs', label: '可观测性清理历史表', ok: tables.has('observability_cleanup_runs'), need: 'observability_cleanup_runs' },
+    { key: 'idx_browser_perf_log_path_duration_created', label: '浏览器路由性能复合索引', ok: indexes.has('idx_browser_perf_log_path_duration_created'), need: 'idx_browser_perf_log_path_duration_created' },
+    { key: 'idx_browser_event_log_path_event_created', label: '浏览器事件复合索引', ok: indexes.has('idx_browser_event_log_path_event_created'), need: 'idx_browser_event_log_path_event_created' },
+    { key: 'idx_asset_inventory_batch_kind_status_closed', label: '盘点历史批次索引', ok: indexes.has('idx_asset_inventory_batch_kind_status_closed'), need: 'idx_asset_inventory_batch_kind_status_closed' },
   ];
 
   let currentVersion: string | null = null;

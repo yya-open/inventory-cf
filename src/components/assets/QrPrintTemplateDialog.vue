@@ -168,7 +168,9 @@
               <div v-if="form.content_mode !== 'qr_only'" class="preview-text">
                 <div v-if="form.show_title" class="preview-text-line strong"></div>
                 <div v-if="form.show_subtitle" class="preview-text-line"></div>
-                <div v-if="form.show_meta" v-for="metaIndex in Math.max(1, form.meta_count)" :key="metaIndex" class="preview-text-line light"></div>
+                <template v-if="form.show_meta">
+                <div v-for="metaIndex in Math.max(1, form.meta_count)" :key="metaIndex" class="preview-text-line light"></div>
+              </template>
                 <div v-if="form.show_link && kind === 'cards' && form.label_preset === 'none'" class="preview-text-line tiny"></div>
               </div>
             </div>

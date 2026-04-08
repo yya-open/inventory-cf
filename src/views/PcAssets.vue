@@ -373,7 +373,7 @@ async function exportPcBatchClosingWorkbook(active: NonNullable<InventoryBatchPa
     fetchAll({ ...base, inventoryStatus: 'CHECKED_ISSUE' }, 300),
   ]);
   const { exportWorkbookXlsx } = await loadExcelUtils();
-  const filename = `${String(active.name || '电脑盘点').replace(/[\/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
+  const filename = `${String(active.name || '电脑盘点').replace(/[/:*?"<>|]/g, '_')}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
   const summaryRows = [
     { 项目: '盘点批次', 内容: active.name || '-' },
     { 项目: '开始时间', 内容: active.started_at || '-' },
@@ -983,7 +983,7 @@ async function saveEdit() {
   const form = editForm.value || {};
   const trim = (value: unknown) => String(value ?? '').trim();
   const datePattern = /^\d{4}-\d{2}-\d{2}$/;
-  const payload = {
+  const payload: Record<string, any> = {
     ...form,
     brand: trim(form.brand),
     model: trim(form.model),

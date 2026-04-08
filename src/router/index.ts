@@ -1,10 +1,10 @@
 import { createRouter, createWebHistory } from "vue-router";
 import { ref } from "vue";
-import StockQuery from "../views/StockQuery.vue";
+const StockQuery = () => import("../views/StockQuery.vue");
 const StockIn = () => import("../views/StockIn.vue");
 const StockOut = () => import("../views/StockOut.vue");
-import TxList from "../views/TxList.vue";
-import Warnings from "../views/Warnings.vue";
+const TxList = () => import("../views/TxList.vue");
+const Warnings = () => import("../views/Warnings.vue");
 const BatchTx = () => import("../views/BatchTx.vue");
 const Stocktake = () => import("../views/Stocktake.vue");
 const Dashboard = () => import("../views/Dashboard.vue");
@@ -17,24 +17,24 @@ const BackupRestore = () => import("../views/BackupRestore.vue");
 const ImportItems = () => import("../views/ImportItems.vue");
 const PcOut = () => import("../views/PcOut.vue");
 const PcIn = () => import("../views/PcIn.vue");
-import PcTx from "../views/PcTx.vue";
+const PcTx = () => import("../views/PcTx.vue");
 const PcRecycle = () => import("../views/PcRecycle.vue");
-import PcAssets from "../views/PcAssets.vue";
-import PcWarehouse from "../views/PcWarehouse.vue";
-import PcAgeWarnings from "../views/PcAgeWarnings.vue";
-import PcInventoryLogs from "../views/PcInventoryLogs.vue";
-import MonitorInventoryLogs from "../views/MonitorInventoryLogs.vue";
-import MonitorAssets from "../views/MonitorAssets.vue";
-import MonitorTx from "../views/MonitorTx.vue";
-import SystemHome from "../views/SystemHome.vue";
-import SystemSettings from "../views/SystemSettings.vue";
-import SystemTaskCenter from "../views/SystemTaskCenter.vue";
-import SystemReportsCenter from "../views/SystemReportsCenter.vue";
-import SystemOpsTools from "../views/SystemOpsTools.vue";
-import SystemPerformance from "../views/SystemPerformance.vue";
-import SystemReleaseCheck from "../views/SystemReleaseCheck.vue";
-import SystemDocs from "../views/SystemDocs.vue";
-import SystemLayout from "../views/SystemLayout.vue";
+const PcAssets = () => import("../views/PcAssets.vue");
+const PcWarehouse = () => import("../views/PcWarehouse.vue");
+const PcAgeWarnings = () => import("../views/PcAgeWarnings.vue");
+const PcInventoryLogs = () => import("../views/PcInventoryLogs.vue");
+const MonitorInventoryLogs = () => import("../views/MonitorInventoryLogs.vue");
+const MonitorAssets = () => import("../views/MonitorAssets.vue");
+const MonitorTx = () => import("../views/MonitorTx.vue");
+const SystemHome = () => import("../views/SystemHome.vue");
+const SystemSettings = () => import("../views/SystemSettings.vue");
+const SystemTaskCenter = () => import("../views/SystemTaskCenter.vue");
+const SystemReportsCenter = () => import("../views/SystemReportsCenter.vue");
+const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
+const SystemPerformance = () => import("../views/SystemPerformance.vue");
+const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
+const SystemDocs = () => import("../views/SystemDocs.vue");
+const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can, canCapability } from "../store/auth";
@@ -48,6 +48,10 @@ export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
 let routePageSkeletonTimer: ReturnType<typeof setTimeout> | null = null;
 let firstRouteResolved = false;
+
+const preloadStockQuery = StockQuery;
+const preloadTxList = TxList;
+const preloadWarnings = Warnings;
 
 function startRoutePagePending() {
   routePagePending.value = true;
@@ -74,13 +78,13 @@ function finishRoutePagePending() {
   firstRouteResolved = true;
 }
 
-const preloadPcAssets = () => Promise.resolve(PcAssets);
-const preloadMonitorAssets = () => Promise.resolve(MonitorAssets);
-const preloadPcAgeWarnings = () => Promise.resolve(PcAgeWarnings);
-const preloadPcTx = () => Promise.resolve(PcTx);
-const preloadMonitorTx = () => Promise.resolve(MonitorTx);
-const preloadPcInventoryLogs = () => Promise.resolve(PcInventoryLogs);
-const preloadMonitorInventoryLogs = () => Promise.resolve(MonitorInventoryLogs);
+const preloadPcAssets = PcAssets;
+const preloadMonitorAssets = MonitorAssets;
+const preloadPcAgeWarnings = PcAgeWarnings;
+const preloadPcTx = PcTx;
+const preloadMonitorTx = MonitorTx;
+const preloadPcInventoryLogs = PcInventoryLogs;
+const preloadMonitorInventoryLogs = MonitorInventoryLogs;
 
 const router = createRouter({
   history: createWebHistory(),
@@ -312,14 +316,14 @@ router.afterEach((to) => {
     }
   } else {
     if (to.path === '/stock') {
-      add('/tx', TxList, canViewParts);
-      add('/warnings', Warnings, canViewParts);
+      add('/tx', preloadTxList, canViewParts);
+      add('/warnings', preloadWarnings, canViewParts);
     } else if (to.path === '/tx') {
-      add('/stock', StockQuery, canViewParts);
+      add('/stock', preloadStockQuery, canViewParts);
       add('/batch', BatchTx, canOperate && canViewParts);
     } else {
-      add('/stock', StockQuery, canViewParts);
-      add('/tx', TxList, canViewParts);
+      add('/stock', preloadStockQuery, canViewParts);
+      add('/tx', preloadTxList, canViewParts);
     }
   }
 

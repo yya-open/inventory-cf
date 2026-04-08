@@ -398,7 +398,8 @@ async function loadMeta(force = false) {
   metaController?.abort();
   const controller = new AbortController();
   metaController = controller;
-  const request = (async () => {
+  let request: Promise<void> | null = null;
+  request = (async () => {
     try {
       const c = await apiGet<{ ok: boolean; data: string[] }>(`/api/meta/categories`, { signal: controller.signal });
       categories.value = c.data || [];
@@ -407,7 +408,7 @@ async function loadMeta(force = false) {
       if (error?.name === "AbortError") return;
       categories.value = [];
     } finally {
-      if (metaRequestPromise === request) metaRequestPromise = null;
+      if (request && metaRequestPromise === request) metaRequestPromise = null;
     }
   })();
   metaRequestPromise = request;

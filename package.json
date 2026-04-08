@@ -26,7 +26,8 @@
     "check:runtime-sources": "node scripts/check-runtime-sources.mjs",
     "db:clean": "node scripts/db-clean.mjs",
     "audit:cleanup": "node scripts/audit-cleanup.mjs",
-    "audit:stats": "node scripts/audit-capacity-report.mjs"
+    "audit:stats": "node scripts/audit-capacity-report.mjs",
+    "obs:cleanup": "node scripts/observability-cleanup.mjs"
   },
   "dependencies": {
     "element-plus": "^2.7.8",
