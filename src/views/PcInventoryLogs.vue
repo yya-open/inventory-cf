@@ -223,6 +223,8 @@ const isAdmin = computed(() => can('admin'));
 const SOFT_REFRESH_TTL_MS = 20_000;
 let lastRefreshAt = 0;
 let cancelPanelRefresh: (() => void) | null = null;
+let panelRefreshInFlight: Promise<void> | null = null;
+let panelRefreshQueued = false;
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, applyPayload: applyInventoryBatchPayload } = useInventoryBatchStore('pc');
 const inventorySummary = ref<AssetInventorySummary>({ total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 });
 const batchBusy = ref(false);
@@ -237,6 +239,7 @@ const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIs
 
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
+let routeFiltersInitialized = false;
 
 function currentSnapshotBatch() {
   return (inventoryBatch.value.active || inventoryBatch.value.latest || null) as InventoryBatchRow | null;
@@ -373,38 +376,42 @@ function reset() {
 }
 
 async function loadPcIssueBreakdown() {
-  const codes = ['NOT_FOUND', 'WRONG_LOCATION', 'WRONG_QR', 'WRONG_STATUS', 'MISSING', 'OTHER'] as const;
   const activeBatchId = Number(inventoryBatch.value.active?.id || 0) || 0;
-  const batchQuery = activeBatchId > 0 ? `&batch_id=${activeBatchId}` : '';
-  const result = await Promise.all(
-    codes.map((code) => apiGet(`/api/pc-inventory-log-count?action=ISSUE&issue_type=${encodeURIComponent(code)}${batchQuery}`).then((res: any) => [code, Number(res?.total || 0)] as const))
-  );
+  const params = new URLSearchParams();
+  params.set('action', 'ISSUE');
+  params.set('group_by', 'issue_type');
+  if (activeBatchId > 0) params.set('batch_id', String(activeBatchId));
+  const res: any = await apiGet(`/api/pc-inventory-log-count?${params.toString()}`);
+  const breakdown = res?.breakdown && typeof res.breakdown === 'object' ? res.breakdown : {};
   const next = emptyInventoryIssueBreakdown();
-  for (const [code, value] of result) next[code] = value;
+  for (const code of Object.keys(next)) next[code as keyof typeof next] = Number(breakdown?.[code] || 0);
   return next;
 }
 
 async function refreshInventoryBatchAndSummary() {
-  invalidateInventoryBatchDomainCaches('pc');
+  if (panelRefreshInFlight) {
+    panelRefreshQueued = true;
+    return panelRefreshInFlight;
+  }
+  panelRefreshInFlight = (async () => {
+    invalidateInventoryBatchDomainCaches('pc');
+    try {
+      const overview = await getPcInventoryOverview();
+      applyInventoryBatchPayload(overview.batch);
+      inventorySummary.value = overview.summary;
+      inventoryIssueBreakdown.value = overview.issue_breakdown;
+    } catch (error) {
+      console.warn('pc inventory overview refresh failed', error);
+    }
+  })();
   try {
-    const payload = await refreshInventoryBatchStore({ force: true, silent: true, ttlMs: 0 });
-    applyInventoryBatchPayload(payload);
-  } catch (error) {
-    console.warn('pc inventory batch fetch failed', error);
-  }
-  const [summaryResult, issueBreakdownResult] = await Promise.allSettled([
-    getPcAssetInventorySummary(buildPcBatchExportBaseFilters(), undefined, { force: true }),
-    loadPcIssueBreakdown(),
-  ]);
-  if (summaryResult.status === 'fulfilled') {
-    inventorySummary.value = summaryResult.value;
-  } else {
-    console.warn('pc inventory summary refresh failed', summaryResult.reason);
-  }
-  if (issueBreakdownResult.status === 'fulfilled') {
-    inventoryIssueBreakdown.value = issueBreakdownResult.value;
-  } else {
-    console.warn('pc inventory issue breakdown refresh failed', issueBreakdownResult.reason);
+    await panelRefreshInFlight;
+  } finally {
+    panelRefreshInFlight = null;
+    if (panelRefreshQueued) {
+      panelRefreshQueued = false;
+      void refreshInventoryBatchAndSummary();
+    }
   }
 }
 
@@ -607,11 +614,29 @@ function viewLedger(row: any) {
   void openPcLedgerFromInventoryLog(router, row, 'view');
 }
 
+function isSnapshotPollingEnabled() {
+  if (!inventoryPageActive) return false;
+  if (!hasPendingSnapshotJob.value) return false;
+  if (typeof document !== 'undefined' && document.visibilityState !== 'visible') return false;
+  return true;
+}
+
+function onDocumentVisibilityChange() {
+  if (!inventoryPageActive || typeof window === 'undefined') return;
+  if (document.visibilityState === 'visible' && hasPendingSnapshotJob.value) {
+    void refreshInventoryBatchAndSummary();
+  }
+}
+
 function handleIssue(row: any) {
   if (String(row?.action || '').toUpperCase() !== 'ISSUE') return;
   void openPcLedgerFromInventoryLog(router, row, 'handle');
 }
 watch(() => route.query, () => {
+  if (!routeFiltersInitialized) {
+    routeFiltersInitialized = true;
+    return;
+  }
   applyRouteFilters();
   void load();
   schedulePanelRefresh();
@@ -626,22 +651,35 @@ onBeforeMount(() => {
 onMounted(() => {
   if (typeof window !== 'undefined') {
     snapshotPollTimer = window.setInterval(() => {
-      if (!hasPendingSnapshotJob.value) return;
+      if (!isSnapshotPollingEnabled()) return;
       void refreshInventoryBatchAndSummary();
-    }, 5000);
+    }, SNAPSHOT_POLL_INTERVAL_MS);
+    document.addEventListener('visibilitychange', onDocumentVisibilityChange);
   }
 });
 
 onActivated(() => {
+  inventoryPageActive = true;
   if (Date.now() - lastRefreshAt >= SOFT_REFRESH_TTL_MS) {
     void load({ keepPage: true, silent: true });
   }
   schedulePanelRefresh();
+  if (hasPendingSnapshotJob.value) {
+    void refreshInventoryBatchAndSummary();
+  }
+});
+
+onDeactivated(() => {
+  inventoryPageActive = false;
 });
 
 onUnmounted(() => {
+  inventoryPageActive = false;
   cancelPanelRefresh?.();
   cancelPanelRefresh = null;
+  if (typeof document !== 'undefined') {
+    document.removeEventListener('visibilitychange', onDocumentVisibilityChange);
+  }
   if (snapshotPollTimer != null && typeof window !== 'undefined') {
     window.clearInterval(snapshotPollTimer);
     snapshotPollTimer = null;

@@ -279,7 +279,7 @@ async function allBatchRows(db: D1Database, sql: string, binds: any[]) {
   }
 }
 
-async function getInventoryBatchSummaryForAssets(
+export async function getInventoryBatchSummaryForAssets(
   db: D1Database,
   kind: AssetInventoryKind,
   batchId: number,
@@ -305,7 +305,7 @@ async function getInventoryBatchSummaryForAssets(
   };
 }
 
-async function getInventoryIssueBreakdownForBatchLogs(
+export async function getInventoryIssueBreakdownForBatchLogs(
   db: D1Database,
   kind: AssetInventoryKind,
   batchId: number,

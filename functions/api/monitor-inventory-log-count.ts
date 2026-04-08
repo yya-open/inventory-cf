@@ -18,6 +18,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const batchId = Number(url.searchParams.get("batch_id") || 0) || 0;
     const date_from = url.searchParams.get("date_from");
     const date_to = url.searchParams.get("date_to");
+    const groupBy = (url.searchParams.get("group_by") || '').trim().toLowerCase();
 
     const wh: string[] = [];
     const binds: any[] = [];
@@ -73,13 +74,29 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
 
-    const sql = `
-      SELECT COUNT(*) as c
+    const fromSqlBase = `
       FROM monitor_inventory_log l
       JOIN monitor_assets a ON a.id = l.asset_id
       LEFT JOIN pc_locations loc ON loc.id = a.location_id
       ${where}
     `;
+
+    if (groupBy === 'issue_type') {
+      const sql = `
+        SELECT COALESCE(NULLIF(TRIM(l.issue_type), ''), 'OTHER') AS issue_type, COUNT(*) as c
+        ${fromSqlBase}
+        GROUP BY COALESCE(NULLIF(TRIM(l.issue_type), ''), 'OTHER')
+      `;
+      const rows = await env.DB.prepare(sql).bind(...binds).all<any>();
+      const breakdown: Record<string, number> = {};
+      for (const row of Array.isArray(rows?.results) ? rows.results : []) {
+        breakdown[String((row as any)?.issue_type || 'OTHER').toUpperCase()] = Number((row as any)?.c || 0);
+      }
+      const total = Object.values(breakdown).reduce((sum, value) => sum + Number(value || 0), 0);
+      return Response.json({ ok: true, total, breakdown });
+    }
+
+    const sql = `SELECT COUNT(*) as c ${fromSqlBase}`;
 
     const row = await env.DB.prepare(sql).bind(...binds).first<any>();
     return Response.json({ ok: true, total: Number(row?.c || 0) });
