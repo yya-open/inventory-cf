@@ -1,6 +1,8 @@
 import { toSqlRange } from '../_date';
 import { buildKeywordWhere } from '../_search';
 import { sqlBjDateTime } from '../_time';
+import { ensurePcLatestStateTable } from './pc-latest-state';
+import { ensureMonitorLatestStateTable } from './monitor-latest-state';
 
 type PagedQuery = {
   page: number;
@@ -114,6 +116,30 @@ const PC_TX_UNION_SQL = `
   FROM pc_scrap s
 `;
 
+function buildPcEffectiveWhere(effective: '' | 'current' | 'history') {
+  if (effective === 'current') return 'WHERE y.is_current_effective = 1';
+  if (effective === 'history') return 'WHERE y.is_current_effective = 0';
+  return '';
+}
+
+function buildPcEffectiveScope(queryWhere: string) {
+  return `
+    WITH tx AS ( ${PC_TX_UNION_SQL} ),
+    scoped AS (
+      SELECT
+        x.*,
+        CASE
+          WHEN s.asset_id IS NOT NULL AND s.current_tx_type = x.type AND s.current_tx_id = x.id THEN 1
+          ELSE 0
+        END AS is_current_effective,
+        ${sqlBjDateTime('x.created_at')} AS created_at_bj
+      FROM tx x
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = x.asset_id
+      ${queryWhere}
+    )
+  `;
+}
+
 export function buildPcTxQuery(url: URL): PcTxQuery {
   const type = (url.searchParams.get('type') || '').trim().toUpperCase();
   const keyword = (url.searchParams.get('keyword') || '').trim();
@@ -164,70 +190,30 @@ export function buildPcTxQuery(url: URL): PcTxQuery {
     effective,
     orderBy:
       type === 'OUT'
-        ? "ORDER BY (CASE WHEN x.config_date IS NULL OR x.config_date='' THEN x.created_at ELSE x.config_date END) DESC, x.created_at DESC, x.id DESC"
-        : 'ORDER BY x.created_at DESC, x.id DESC',
+        ? "ORDER BY (CASE WHEN y.config_date IS NULL OR y.config_date='' THEN y.created_at ELSE y.config_date END) DESC, y.created_at DESC, y.id DESC"
+        : 'ORDER BY y.created_at DESC, y.id DESC',
   };
 }
 
 export async function countPcTxRows(db: D1Database, query: Pick<PcTxQuery, 'where' | 'binds' | 'effective'>) {
-  const effectiveWhere = query.effective === 'current'
-    ? 'WHERE y.is_current_effective = 1'
-    : query.effective === 'history'
-      ? 'WHERE y.is_current_effective = 0'
-      : '';
+  await ensurePcLatestStateTable(db);
   const row = await db.prepare(`
-    WITH tx AS ( ${PC_TX_UNION_SQL} ),
-    latest AS (
-      SELECT ranked.asset_id, ranked.id, ranked.type
-      FROM (
-        SELECT t.asset_id, t.id, t.type, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-        FROM tx t
-        WHERE t.asset_id IS NOT NULL
-      ) ranked
-      WHERE ranked.rn = 1
-    ), scoped AS (
-      SELECT
-        x.*,
-        CASE WHEN l.asset_id IS NOT NULL AND l.id = x.id AND l.type = x.type THEN 1 ELSE 0 END AS is_current_effective
-      FROM tx x
-      LEFT JOIN latest l ON l.asset_id = x.asset_id
-      ${query.where}
-    )
+    ${buildPcEffectiveScope(query.where)}
     SELECT COUNT(*) as c
     FROM scoped y
-    ${effectiveWhere}
+    ${buildPcEffectiveWhere(query.effective)}
   `).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listPcTxRows(db: D1Database, query: PcTxQuery) {
-  const effectiveWhere = query.effective === 'current'
-    ? 'WHERE y.is_current_effective = 1'
-    : query.effective === 'history'
-      ? 'WHERE y.is_current_effective = 0'
-      : '';
+  await ensurePcLatestStateTable(db);
   const sql = `
-    WITH tx AS ( ${PC_TX_UNION_SQL} ),
-    latest AS (
-      SELECT ranked.asset_id, ranked.id, ranked.type
-      FROM (
-        SELECT t.asset_id, t.id, t.type, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-        FROM tx t
-        WHERE t.asset_id IS NOT NULL
-      ) ranked
-      WHERE ranked.rn = 1
-    ), scoped AS (
-      SELECT
-        x.*,
-        CASE WHEN l.asset_id IS NOT NULL AND l.id = x.id AND l.type = x.type THEN 1 ELSE 0 END AS is_current_effective
-      FROM tx x
-      LEFT JOIN latest l ON l.asset_id = x.asset_id
-      ${query.where}
-    )
+    ${buildPcEffectiveScope(query.where)}
     SELECT y.*
     FROM scoped y
-    ${effectiveWhere}
-    ${query.orderBy.replace(/x\./g, 'y.')}
+    ${buildPcEffectiveWhere(query.effective)}
+    ${query.orderBy}
     LIMIT ? OFFSET ?
   `;
   const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all<any>();
@@ -240,6 +226,54 @@ export type MonitorTxQuery = PagedQuery & {
   binds: any[];
   effective: '' | 'current' | 'history';
 };
+
+function buildMonitorEffectiveWhere(effective: '' | 'current' | 'history') {
+  if (effective === 'current') return 'WHERE y.is_current_effective = 1';
+  if (effective === 'history') return 'WHERE y.is_current_effective = 0';
+  return '';
+}
+
+function buildMonitorScopedSql(queryWhere: string) {
+  return `
+    WITH scoped AS (
+      SELECT
+        t.id,
+        t.tx_no,
+        t.tx_type,
+        t.asset_id,
+        t.asset_code,
+        t.sn,
+        t.brand,
+        t.model,
+        t.size_inch,
+        t.from_location_id,
+        t.to_location_id,
+        fl.name AS from_location,
+        tl.name AS to_location,
+        fp.name AS from_parent_location,
+        tp.name AS to_parent_location,
+        t.employee_no,
+        t.employee_name,
+        t.department,
+        t.is_employed,
+        t.remark,
+        t.created_by,
+        t.created_at,
+        ${sqlBjDateTime('t.created_at')} AS created_at_bj,
+        CASE
+          WHEN s.asset_id IS NOT NULL AND s.current_tx_type = t.tx_type AND s.current_tx_id = t.id THEN 1
+          ELSE 0
+        END AS is_current_effective
+      FROM monitor_tx t
+      LEFT JOIN monitor_asset_latest_state s ON s.asset_id = t.asset_id
+      LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
+      LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
+      LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
+      LEFT JOIN pc_locations tp ON tp.id = tl.parent_id
+      ${queryWhere}
+    )
+  `;
+}
 
 export function buildMonitorTxQuery(url: URL): MonitorTxQuery {
   const type = (url.searchParams.get('type') || url.searchParams.get('tx_type') || '').trim().toUpperCase();
@@ -272,8 +306,8 @@ export function buildMonitorTxQuery(url: URL): MonitorTxQuery {
     const kw = buildKeywordWhere(keyword, {
       numericId: 't.id',
       exact: ['t.tx_no', 't.asset_code', 't.sn', 't.employee_no'],
-      prefix: ['t.asset_code', 't.sn', 't.brand', 't.model', 't.employee_name', 't.department'],
-      contains: ['t.remark', 't.employee_name', 't.department'],
+      prefix: ['t.tx_no', 't.asset_code', 't.sn', 't.brand', 't.model', 't.employee_name', 't.department'],
+      contains: ['t.remark', 't.employee_name', 't.department', 't.brand', 't.model'],
     });
     if (kw.sql) {
       wh.push(kw.sql);
@@ -291,82 +325,23 @@ export function buildMonitorTxQuery(url: URL): MonitorTxQuery {
 }
 
 export async function countMonitorTxRows(db: D1Database, query: Pick<MonitorTxQuery, 'where' | 'binds' | 'effective'>) {
-  const effectiveWhere = query.effective === 'current'
-    ? 'WHERE y.is_current_effective = 1'
-    : query.effective === 'history'
-      ? 'WHERE y.is_current_effective = 0'
-      : '';
+  await ensureMonitorLatestStateTable(db);
   const row = await db.prepare(`
-    WITH latest AS (
-      SELECT ranked.asset_id, ranked.id
-      FROM (
-        SELECT t.asset_id, t.id, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-        FROM monitor_tx t
-        WHERE t.asset_id IS NOT NULL
-      ) ranked
-      WHERE ranked.rn = 1
-    ), scoped AS (
-      SELECT
-        t.id,
-        CASE WHEN l.asset_id IS NOT NULL AND l.id = t.id THEN 1 ELSE 0 END AS is_current_effective
-      FROM monitor_tx t
-      LEFT JOIN latest l ON l.asset_id = t.asset_id
-      ${query.where}
-    )
-    SELECT COUNT(*) AS c FROM scoped y ${effectiveWhere}
+    ${buildMonitorScopedSql(query.where)}
+    SELECT COUNT(*) AS c
+    FROM scoped y
+    ${buildMonitorEffectiveWhere(query.effective)}
   `).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listMonitorTxRows(db: D1Database, query: MonitorTxQuery) {
-  const effectiveWhere = query.effective === 'current'
-    ? 'WHERE y.is_current_effective = 1'
-    : query.effective === 'history'
-      ? 'WHERE y.is_current_effective = 0'
-      : '';
+  await ensureMonitorLatestStateTable(db);
   const sql = `
-    WITH latest AS (
-      SELECT ranked.asset_id, ranked.id
-      FROM (
-        SELECT t.asset_id, t.id, ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-        FROM monitor_tx t
-        WHERE t.asset_id IS NOT NULL
-      ) ranked
-      WHERE ranked.rn = 1
-    ), scoped AS (
-      SELECT
-        t.id,
-        t.tx_no,
-        t.tx_type,
-        t.asset_id,
-        t.asset_code,
-        t.sn,
-        t.brand,
-        t.model,
-        t.size_inch,
-        t.employee_no,
-        t.employee_name,
-        t.department,
-        t.is_employed,
-        t.remark,
-        t.created_at,
-        t.created_by,
-        fl.name AS from_location_name,
-        tl.name AS to_location_name,
-        fp.name AS from_parent_location_name,
-        tp.name AS to_parent_location_name,
-        CASE WHEN l.asset_id IS NOT NULL AND l.id = t.id THEN 1 ELSE 0 END AS is_current_effective
-      FROM monitor_tx t
-      LEFT JOIN latest l ON l.asset_id = t.asset_id
-      LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
-      LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
-      LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
-      LEFT JOIN pc_locations tp ON tp.id = tl.parent_id
-      ${query.where}
-    )
+    ${buildMonitorScopedSql(query.where)}
     SELECT y.*
     FROM scoped y
-    ${effectiveWhere}
+    ${buildMonitorEffectiveWhere(query.effective)}
     ORDER BY y.created_at DESC, y.id DESC
     LIMIT ? OFFSET ?
   `;
@@ -375,314 +350,12 @@ export async function listMonitorTxRows(db: D1Database, query: MonitorTxQuery) {
 }
 
 export function buildMonitorTxExportSql(query: Pick<MonitorTxQuery, 'where'>) {
-  const where = query.where ? `${query.where} AND t.id < ?` : 'WHERE t.id < ?';
   return `
-    SELECT
-      t.id,
-      t.created_at,
-      ${sqlBjDateTime('t.created_at')} AS created_at_bj,
-      t.tx_no,
-      t.tx_type,
-      t.asset_code,
-      t.sn,
-      t.brand,
-      t.model,
-      t.size_inch,
-      t.employee_no,
-      t.employee_name,
-      t.department,
-      t.remark,
-      t.created_by,
-      fl.name AS from_location,
-      tl.name AS to_location,
-      fp.name AS from_parent_location,
-      tp.name AS to_parent_location
-    FROM monitor_tx t
-    LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
-    LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
-    LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
-    LEFT JOIN pc_locations tp ON tp.id = tl.parent_id
-    ${where}
-    ORDER BY t.id DESC
+    ${buildMonitorScopedSql(query.where)}
+    SELECT y.*
+    FROM scoped y
+    WHERE y.id < ?
+    ORDER BY y.id DESC
     LIMIT ?
-  `;
-}
-
-export type InventoryLogQuery = PagedQuery & {
-  where: string;
-  binds: any[];
-  action: string;
-  issue_type: string;
-};
-
-export function buildPcInventoryLogQuery(url: URL): InventoryLogQuery {
-  const action = (url.searchParams.get('action') || '').trim().toUpperCase();
-  const issue_type = (url.searchParams.get('issue_type') || '').trim().toUpperCase();
-  const keyword = (url.searchParams.get('keyword') || '').trim();
-  const date_from = url.searchParams.get('date_from');
-  const date_to = url.searchParams.get('date_to');
-  const effective = (url.searchParams.get('effective') || '').trim().toLowerCase() === 'current'
-    ? 'current'
-    : (url.searchParams.get('effective') || '').trim().toLowerCase() === 'history'
-      ? 'history'
-      : '';
-  const wh: string[] = [];
-  const binds: any[] = [];
-
-  if (action === 'OK' || action === 'ISSUE') {
-    wh.push('l.action=?');
-    binds.push(action);
-  }
-  if (issue_type) {
-    wh.push('l.issue_type=?');
-    binds.push(issue_type);
-  }
-  if (keyword) {
-    const kw = buildKeywordWhere(keyword, {
-      numericId: 'l.id',
-      exact: ['a.serial_no', 'o.employee_no'],
-      prefix: ['a.serial_no', 'a.brand', 'a.model', 'o.employee_no', 'o.employee_name', 'o.department', 'l.action', 'l.issue_type', 'l.ip'],
-      contains: ['a.remark', 'l.remark', 'o.employee_name', 'o.department', 'l.ua'],
-    });
-    if (kw.sql) {
-      wh.push(kw.sql);
-      binds.push(...kw.binds);
-    }
-  }
-  const fromSql = toSqlRange(date_from, false);
-  const toSql = toSqlRange(date_to, true);
-  if (fromSql) {
-    wh.push('l.created_at >= ?');
-    binds.push(fromSql);
-  }
-  if (toSql) {
-    wh.push('l.created_at <= ?');
-    binds.push(toSql);
-  }
-
-  return {
-    ...getPageParams(url),
-    where: wh.length ? `WHERE ${wh.join(' AND ')}` : '',
-    binds,
-    action,
-    issue_type,
-  };
-}
-
-const PC_INVENTORY_LOG_COUNT_SQL = `
-  WITH latest_out AS (
-    SELECT asset_id, MAX(id) AS max_id
-    FROM pc_out
-    GROUP BY asset_id
-  )
-  SELECT COUNT(*) as c
-  FROM pc_inventory_log l
-  JOIN pc_assets a ON a.id = l.asset_id
-  LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
-  LEFT JOIN pc_out o ON o.id = lo.max_id
-`;
-
-export async function countPcInventoryLogRows(db: D1Database, query: Pick<InventoryLogQuery, 'where' | 'binds'>) {
-  const row = await db.prepare(`${PC_INVENTORY_LOG_COUNT_SQL} ${query.where}`).bind(...query.binds).first<any>();
-  return Number(row?.c || 0);
-}
-
-export async function listPcInventoryLogRows(db: D1Database, query: InventoryLogQuery) {
-  const sql = `
-    WITH page_l AS (
-      SELECT l.id, l.asset_id, l.created_at
-      FROM pc_inventory_log l
-      JOIN pc_assets a ON a.id = l.asset_id
-      LEFT JOIN (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_out
-        GROUP BY asset_id
-      ) lo0 ON lo0.asset_id = l.asset_id
-      LEFT JOIN pc_out o ON o.id = lo0.max_id
-      ${query.where}
-      ORDER BY l.created_at DESC, l.id DESC
-      LIMIT ? OFFSET ?
-    ),
-    latest_out AS (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM pc_out
-      WHERE asset_id IN (SELECT DISTINCT asset_id FROM page_l)
-      GROUP BY asset_id
-    )
-    SELECT
-      l.id,
-      l.asset_id,
-      l.action,
-      l.issue_type,
-      l.remark,
-      l.ip,
-      l.ua,
-      l.created_at,
-      a.serial_no,
-      a.brand,
-      a.model,
-      a.status,
-      o.employee_no   AS last_employee_no,
-      o.employee_name AS last_employee_name,
-      o.department    AS last_department
-    FROM pc_inventory_log l
-    JOIN page_l p ON p.id = l.id
-    JOIN pc_assets a ON a.id = l.asset_id
-    LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
-    LEFT JOIN pc_out o ON o.id = lo.max_id
-    ORDER BY l.created_at DESC, l.id DESC
-  `;
-  const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all<any>();
-  return result.results || [];
-}
-
-export function buildPcInventoryLogExportSql(query: Pick<InventoryLogQuery, 'where'>) {
-  const where = query.where ? `${query.where} AND l.id < ?` : 'WHERE l.id < ?';
-  return `
-    WITH latest_out AS (
-      SELECT asset_id, MAX(id) AS max_id
-      FROM pc_out
-      GROUP BY asset_id
-    )
-    SELECT
-      l.id,
-      l.created_at,
-      ${sqlBjDateTime('l.created_at')} AS created_at_bj,
-      l.action,
-      l.issue_type,
-      l.remark,
-      l.ip,
-      a.serial_no,
-      a.brand,
-      a.model,
-      a.status,
-      o.employee_no   AS employee_no,
-      o.employee_name AS employee_name,
-      o.department    AS department
-    FROM pc_inventory_log l
-    JOIN pc_assets a ON a.id = l.asset_id
-    LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
-    LEFT JOIN pc_out o ON o.id = lo.max_id
-    ${where}
-    ORDER BY l.id DESC
-    LIMIT ?
-  `;
-}
-
-export function buildMonitorInventoryLogQuery(url: URL): InventoryLogQuery {
-  const action = (url.searchParams.get('action') || '').trim().toUpperCase();
-  const issue_type = (url.searchParams.get('issue_type') || '').trim().toUpperCase();
-  const keyword = (url.searchParams.get('keyword') || '').trim();
-  const date_from = url.searchParams.get('date_from');
-  const date_to = url.searchParams.get('date_to');
-  const effective = (url.searchParams.get('effective') || '').trim().toLowerCase() === 'current'
-    ? 'current'
-    : (url.searchParams.get('effective') || '').trim().toLowerCase() === 'history'
-      ? 'history'
-      : '';
-  const wh: string[] = [];
-  const binds: any[] = [];
-
-  if (action === 'OK' || action === 'ISSUE') {
-    wh.push('l.action=?');
-    binds.push(action);
-  }
-  if (issue_type) {
-    wh.push('l.issue_type=?');
-    binds.push(issue_type);
-  }
-  if (keyword) {
-    const kw = buildKeywordWhere(keyword, {
-      numericId: 'l.id',
-      exact: ['a.asset_code', 'a.sn', 'a.employee_no'],
-      prefix: ['a.asset_code', 'a.sn', 'a.brand', 'a.model', 'a.size_inch', 'a.employee_no', 'a.employee_name', 'a.department', 'l.action', 'l.issue_type', 'loc.name'],
-      contains: ['a.remark', 'l.remark', 'l.ua'],
-    });
-    if (kw.sql) {
-      wh.push(kw.sql);
-      binds.push(...kw.binds);
-    }
-  }
-  const fromSql = toSqlRange(date_from, false);
-  const toSql = toSqlRange(date_to, true);
-  if (fromSql) {
-    wh.push('l.created_at >= ?');
-    binds.push(fromSql);
-  }
-  if (toSql) {
-    wh.push('l.created_at <= ?');
-    binds.push(toSql);
-  }
-
-  return {
-    ...getPageParams(url),
-    where: wh.length ? `WHERE ${wh.join(' AND ')}` : '',
-    binds,
-    action,
-    issue_type,
-  };
-}
-
-export async function countMonitorInventoryLogRows(db: D1Database, query: Pick<InventoryLogQuery, 'where' | 'binds'>) {
-  const row = await db.prepare(`SELECT COUNT(*) as c FROM monitor_inventory_log l JOIN monitor_assets a ON a.id = l.asset_id LEFT JOIN pc_locations loc ON loc.id = a.location_id ${query.where}`).bind(...query.binds).first<any>();
-  return Number(row?.c || 0);
-}
-
-export async function listMonitorInventoryLogRows(db: D1Database, query: InventoryLogQuery) {
-  const sql = `
-    SELECT
-      l.id,
-      l.asset_id,
-      l.action,
-      l.issue_type,
-      l.remark,
-      l.ip,
-      l.ua,
-      l.created_at,
-      a.asset_code,
-      a.sn,
-      a.brand,
-      a.model,
-      a.size_inch,
-      a.status,
-      loc.name AS location_name,
-      a.employee_no,
-      a.employee_name,
-      a.department
-    FROM monitor_inventory_log l
-    JOIN monitor_assets a ON a.id = l.asset_id
-    LEFT JOIN pc_locations loc ON loc.id = a.location_id
-    ${query.where}
-    ORDER BY l.created_at DESC, l.id DESC
-    LIMIT ? OFFSET ?
-  `;
-  const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all<any>();
-  return result.results || [];
-}
-
-export function buildMonitorInventoryLogExportSql(query: Pick<InventoryLogQuery, 'where'>) {
-  return `
-    SELECT
-      l.id,
-      l.action,
-      l.issue_type,
-      l.remark,
-      l.created_at,
-      a.asset_code,
-      a.sn,
-      a.brand,
-      a.model,
-      a.size_inch,
-      a.status,
-      loc.name AS location_name,
-      a.employee_no,
-      a.employee_name,
-      a.department
-    FROM monitor_inventory_log l
-    JOIN monitor_assets a ON a.id = l.asset_id
-    LEFT JOIN pc_locations loc ON loc.id = a.location_id
-    ${query.where}
-    ORDER BY l.created_at DESC, l.id DESC
-    LIMIT ? OFFSET ?
   `;
 }

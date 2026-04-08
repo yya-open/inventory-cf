@@ -1,6 +1,7 @@
 import { sqlNowStored } from '../_time';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
 import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
+import { upsertMonitorLatestState } from './monitor-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
@@ -155,6 +156,20 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
     ),
     db.prepare(updateSqlByType[type].sql).bind(...updateSqlByType[type].binds),
   ]);
+  const txRow = await db.prepare(`SELECT id, created_at FROM monitor_tx WHERE tx_no=?`).bind(txNo).first<any>();
+  const clearsEmployee = type === 'IN' || type === 'RETURN' || type === 'SCRAP';
+  await upsertMonitorLatestState(db, Number(asset.id || 0), {
+    last_tx_id: Number(txRow?.id || 0) || null,
+    last_tx_type: type,
+    last_tx_at: txRow?.created_at || null,
+    current_location_id: type === 'SCRAP' ? null : (toLocationId ?? asset.location_id ?? null),
+    current_employee_no: clearsEmployee ? null : (employeeNo ?? asset.employee_no ?? null),
+    current_employee_name: clearsEmployee ? null : (employeeName ?? asset.employee_name ?? null),
+    current_department: clearsEmployee ? null : (department ?? asset.department ?? null),
+    current_tx_type: type,
+    current_tx_id: Number(txRow?.id || 0) || null,
+    current_tx_at: txRow?.created_at || null,
+  });
   await syncSystemDictionaryUsageCounters(db, []);
 }
 
@@ -348,7 +363,7 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
     }
 
     const lastIn = await db.prepare(`SELECT id, created_at FROM pc_in WHERE in_no=?`).bind(inNo).first<any>();
-    await upsertPcLatestState(db, assetId, { last_in_id: Number(lastIn?.id || 0) || null, last_in_at: lastIn?.created_at || null, current_employee_no: null, current_employee_name: null, current_department: null });
+    await upsertPcLatestState(db, assetId, { last_in_id: Number(lastIn?.id || 0) || null, last_in_at: lastIn?.created_at || null, current_employee_no: null, current_employee_name: null, current_department: null, current_tx_type: 'IN', current_tx_id: Number(lastIn?.id || 0) || null, current_tx_at: lastIn?.created_at || null });
     await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
     return assetId;
   } catch (error) {
@@ -408,6 +423,9 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
     current_department: department,
     last_config_date: configDate,
     last_out_at: outRow?.created_at || null,
+    current_tx_type: 'OUT',
+    current_tx_id: Number(outRow?.id || 0) || null,
+    current_tx_at: outRow?.created_at || null,
   });
   await db.prepare(
     `UPDATE pc_asset_latest_state
@@ -454,13 +472,17 @@ export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
     createdBy,
   ).run();
   await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id).run();
-  const recycleRow = await db.prepare(`SELECT id FROM pc_recycle WHERE recycle_no=?`).bind(recycleNo).first<any>();
+  const recycleRow = await db.prepare(`SELECT id, created_at FROM pc_recycle WHERE recycle_no=?`).bind(recycleNo).first<any>();
   await upsertPcLatestState(db, asset.id, {
     last_recycle_id: Number(recycleRow?.id || 0) || null,
+    last_recycle_at: recycleRow?.created_at || null,
     last_recycle_date: recycleDate,
     current_employee_no: null,
     current_employee_name: null,
     current_department: null,
+    current_tx_type: action,
+    current_tx_id: Number(recycleRow?.id || 0) || null,
+    current_tx_at: recycleRow?.created_at || null,
   });
   await syncSystemDictionaryUsageCounters(db, []);
   return statusAfter;
@@ -507,10 +529,16 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
   }
   await db.batch(stmts);
   for (const row of rows) {
+    const scrapRow = await db.prepare(`SELECT id, created_at FROM pc_scrap WHERE scrap_no=? AND asset_id=? ORDER BY id DESC LIMIT 1`).bind(scrapNo, Number(row.id || 0)).first<any>();
     await upsertPcLatestState(db, Number(row.id || 0), {
+      last_scrap_id: Number(scrapRow?.id || 0) || null,
+      last_scrap_at: scrapRow?.created_at || null,
       current_employee_no: null,
       current_employee_name: null,
       current_department: null,
+      current_tx_type: 'SCRAP',
+      current_tx_id: Number(scrapRow?.id || 0) || null,
+      current_tx_at: scrapRow?.created_at || null,
     });
   }
   await syncSystemDictionaryUsageCounters(db, []);

@@ -123,17 +123,30 @@ export async function ensurePcSchema(db: D1Database) {
     last_out_id INTEGER,
     last_in_id INTEGER,
     last_recycle_id INTEGER,
+    last_scrap_id INTEGER,
     current_employee_no TEXT,
     current_employee_name TEXT,
     current_department TEXT,
     last_config_date TEXT,
     last_out_at TEXT,
     last_in_at TEXT,
+    last_recycle_at TEXT,
     last_recycle_date TEXT,
+    last_scrap_at TEXT,
+    current_tx_type TEXT,
+    current_tx_id INTEGER,
+    current_tx_at TEXT,
     updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
     FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
   )`).run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_department ON pc_asset_latest_state(current_department, asset_id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_tx ON pc_asset_latest_state(current_tx_type, current_tx_id, asset_id)").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN last_scrap_id INTEGER").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN last_recycle_at TEXT").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN last_scrap_at TEXT").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN current_tx_type TEXT").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN current_tx_id INTEGER").run().catch(() => {});
+  await db.prepare("ALTER TABLE pc_asset_latest_state ADD COLUMN current_tx_at TEXT").run().catch(() => {});
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).

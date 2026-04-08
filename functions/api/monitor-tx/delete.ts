@@ -10,14 +10,9 @@ async function listLatestMonitorTxIds(db: D1Database, assetIds: number[]) {
   if (!ids.length) return new Map<number, number>();
   const placeholders = ids.map(() => '?').join(',');
   const { results } = await db.prepare(
-    `SELECT asset_id, id AS latest_id
-       FROM (
-         SELECT asset_id, id,
-                ROW_NUMBER() OVER (PARTITION BY asset_id ORDER BY created_at DESC, id DESC) AS rn
-           FROM monitor_tx
-          WHERE asset_id IN (${placeholders})
-       ) ranked
-      WHERE rn = 1`
+    `SELECT asset_id, current_tx_id AS latest_id
+       FROM monitor_asset_latest_state
+      WHERE asset_id IN (${placeholders})`
   ).bind(...ids).all<any>();
   const latest = new Map<number, number>();
   for (const row of results || []) {

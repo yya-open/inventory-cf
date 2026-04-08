@@ -5,7 +5,7 @@ import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-
 import { createTiming } from './_timing';
 import { assertDateText, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertPcBrandDictionaryValue } from './services/master-data';
-import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { buildChildWriteNo } from './services/write-idempotency';
 
 type Item = {
   brand: string;
@@ -17,6 +17,16 @@ type Item = {
   memory_size?: string;
   remark?: string;
 };
+
+function placeholders(count: number) {
+  return Array.from({ length: count }, () => '?').join(',');
+}
+
+async function loadExistingInNos(db: D1Database, nos: string[]) {
+  if (!nos.length) return new Set<string>();
+  const rows = await db.prepare(`SELECT in_no FROM pc_in WHERE in_no IN (${placeholders(nos.length)})`).bind(...nos).all<any>();
+  return new Set((rows.results || []).map((row: any) => String(row?.in_no || '')));
+}
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
@@ -32,6 +42,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
+    const inNos = items.map((_, index) => buildChildWriteNo('PCIN', pcInNo, body?.client_request_id, index + 1).no);
+    const existingNos = await loadExistingInNos(env.DB, inNos);
+
     let success = 0;
     let duplicated = 0;
     const errors: { row: number; message: string }[] = [];
@@ -40,9 +53,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     for (let i = 0; i < items.length; i++) {
       try {
         const it: any = items[i] || {};
-        const { no } = buildChildWriteNo('PCIN', pcInNo, body?.client_request_id, i + 1);
-        const existingByNo = await findExistingByNo(env.DB, 'pc_in', 'in_no', no, 'in_no, asset_id');
-        if (existingByNo?.in_no) {
+        const no = inNos[i];
+        if (existingNos.has(no)) {
           success++;
           duplicated++;
           continue;
@@ -61,7 +73,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
         const disk_capacity = optional(it?.disk_capacity, 40);
         const memory_size = optional(it?.memory_size, 40);
         const remark = trimRemarkByRule(optional(it?.remark, 2000), quality.remarkMaxLength);
-
 
         const assetId = await createPcAssetAndInRecord({
           db: env.DB,

@@ -56,7 +56,7 @@ export async function fetchAllPages<T>(loader: (page: number, pageSize: number) 
   return rows;
 }
 
-export function listPcAssets(filters: PcFilters, page: number, pageSize: number, fast = true, signal?: AbortSignal) {
+export function listPcAssets(filters: PcFilters, page: number, pageSize: number, _fast = true, signal?: AbortSignal) {
   return fetchPaged<PcAsset>('/api/pc-assets', {
     status: filters.status,
     keyword: filters.keyword,
@@ -66,7 +66,6 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
     inventory_status: filters.inventoryStatus,
     page,
     page_size: pageSize,
-    fast: fast ? '1' : undefined,
   }, undefined, signal);
 }
 

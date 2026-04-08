@@ -354,19 +354,13 @@ const {
   cacheTtlMs: 60_000,
   totalDebounceMs: 350,
   createFilterKey: filterKey,
-  fetchPage: async ({ filters, page, pageSize, fast, signal }) => {
+  fetchPage: async ({ filters, page, pageSize, signal }) => {
     const params = buildListParams(filters, true, page, pageSize);
-    if (fast) params.set("fast", "1");
     const r: any = await apiGet(`/api/pc-tx?${params.toString()}`, { signal });
     return {
       rows: (r.data || []).map((it: any) => ({ ...it, __rowKey: `${String(it.type || "").toUpperCase()}_${it.id}` })),
       total: typeof r.total === "number" ? Number(r.total || 0) : null,
     };
-  },
-  fetchTotal: async (filters, signal) => {
-    const params = buildListParams(filters, false);
-    const r: any = await apiGet(`/api/pc-tx-count?${params.toString()}`, { signal });
-    return Number(r.total || 0);
   },
 });
 
