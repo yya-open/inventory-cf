@@ -24,9 +24,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
     const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
-    const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const { no } = buildWriteNo('PCOUT', pcOutNo, body?.client_request_id);
-    const existing = await findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id');
+    const [quality, existing, asset] = await Promise.all([
+      t.measure('settings', () => getDataQualitySettings(env.DB)),
+      t.measure('idempotency', () => findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id')),
+      t.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no)),
+    ]);
     if (existing?.out_no) {
       return Response.json({ ok: true, out_no: existing.out_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '出库成功（幂等命中）' });
     }
@@ -43,7 +46,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       return Response.json({ ok: false, message: '出库不再填写回收日期，请到『电脑回收/归还』页面操作' }, { status: 400 });
     }
 
-    const asset = await t.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no));
     if (!asset) return Response.json({ ok: false, message: '未找到该电脑资产（请先入库）' }, { status: 404 });
     if (!isInStockStatus(asset.status)) {
       return Response.json({ ok: false, message: '该电脑当前不在库，无法出库' }, { status: 400 });

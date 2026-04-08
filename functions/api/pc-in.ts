@@ -16,9 +16,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
 
     const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
-    const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const { no } = buildWriteNo('PCIN', pcInNo, body?.client_request_id);
-    const existing = await findExistingByNo(env.DB, 'pc_in', 'in_no', no, 'in_no, asset_id');
+    const [quality, existing] = await Promise.all([
+      t.measure('settings', () => getDataQualitySettings(env.DB)),
+      t.measure('idempotency', () => findExistingByNo(env.DB, 'pc_in', 'in_no', no, 'in_no, asset_id')),
+    ]);
     if (existing?.in_no) {
       return Response.json({ ok: true, in_no: existing.in_no, asset_id: Number(existing.asset_id || 0) || null, created: false, duplicate: true, message: '入库成功（幂等命中）' });
     }

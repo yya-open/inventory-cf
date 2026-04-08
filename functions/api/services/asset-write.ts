@@ -1,6 +1,6 @@
 import { sqlNowStored } from '../_time';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
-import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
+import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
@@ -277,10 +277,7 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
     searchText,
   ).run();
   const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
-  const assetRow = lastId
-    ? await db.prepare('SELECT id FROM pc_assets WHERE id=?').bind(lastId).first<any>()
-    : await getPcAssetByNormalizedSerial(db, serialNo);
-  const assetId = Number(assetRow?.id || 0);
+  const assetId = Number(lastId || 0);
   if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
   return assetId;
 }
@@ -347,8 +344,21 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
       assetId = Number(existingIn.asset_id || assetId || 0);
     }
 
-    const lastIn = await db.prepare(`SELECT id, created_at FROM pc_in WHERE in_no=?`).bind(inNo).first<any>();
-    await upsertPcLatestState(db, assetId, { last_in_id: Number(lastIn?.id || 0) || null, last_in_at: lastIn?.created_at || null, current_employee_no: null, current_employee_name: null, current_department: null });
+    await db.batch([
+      db.prepare(
+        `INSERT INTO pc_asset_latest_state (
+          asset_id, last_out_id, last_in_id, last_recycle_id,
+          current_employee_no, current_employee_name, current_department,
+          last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+        ) VALUES (?, NULL, (SELECT id FROM pc_in WHERE in_no=? LIMIT 1), NULL, NULL, NULL, NULL, NULL, NULL, ${sqlNowStored()}, NULL, ${sqlNowStored()})
+        ON CONFLICT(asset_id) DO UPDATE SET
+          last_in_id=(SELECT id FROM pc_in WHERE in_no=? LIMIT 1),
+          current_employee_no=NULL,
+          current_employee_name=NULL,
+          current_department=NULL,
+          updated_at=${sqlNowStored()}`
+      ).bind(assetId, inNo, inNo),
+    ]);
     await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
     return assetId;
   } catch (error) {
@@ -373,47 +383,58 @@ type ApplyPcOutArgs = {
 
 export async function applyPcOut(args: ApplyPcOutArgs) {
   const { db, outNo, asset, employeeNo, department, employeeName, isEmployed = null, configDate = null, remark = null, createdBy, statusAfter } = args;
-  await db.prepare(
-    `INSERT INTO pc_out (
-      out_no, asset_id,
-      employee_no, department, employee_name, is_employed,
-      brand, serial_no, model,
-      config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
-      remark, created_by, created_at
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-  ).bind(
-    outNo,
-    asset.id,
-    employeeNo,
-    department,
-    employeeName,
-    isEmployed,
-    asset.brand,
-    asset.serial_no,
-    asset.model,
-    configDate,
-    asset.manufacture_date ?? null,
-    asset.warranty_end ?? null,
-    asset.disk_capacity ?? null,
-    asset.memory_size ?? null,
-    remark,
-    createdBy,
-  ).run();
-  await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id).run();
-  const outRow = await db.prepare(`SELECT id, created_at FROM pc_out WHERE out_no=?`).bind(outNo).first<any>();
-  await upsertPcLatestState(db, asset.id, {
-    last_out_id: Number(outRow?.id || 0) || null,
-    current_employee_no: employeeNo,
-    current_employee_name: employeeName,
-    current_department: department,
-    last_config_date: configDate,
-    last_out_at: outRow?.created_at || null,
-  });
-  await db.prepare(
-    `UPDATE pc_asset_latest_state
-     SET last_recycle_id=NULL, last_recycle_date=NULL, updated_at=${sqlNowStored()}
-     WHERE asset_id=?`
-  ).bind(asset.id).run();
+  await db.batch([
+    db.prepare(
+      `INSERT INTO pc_out (
+        out_no, asset_id,
+        employee_no, department, employee_name, is_employed,
+        brand, serial_no, model,
+        config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
+        remark, created_by, created_at
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+    ).bind(
+      outNo,
+      asset.id,
+      employeeNo,
+      department,
+      employeeName,
+      isEmployed,
+      asset.brand,
+      asset.serial_no,
+      asset.model,
+      configDate,
+      asset.manufacture_date ?? null,
+      asset.warranty_end ?? null,
+      asset.disk_capacity ?? null,
+      asset.memory_size ?? null,
+      remark,
+      createdBy,
+    ),
+    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
+    db.prepare(
+      `INSERT INTO pc_asset_latest_state (
+        asset_id, last_out_id, last_in_id, last_recycle_id,
+        current_employee_no, current_employee_name, current_department,
+        last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+      ) VALUES (
+        ?,
+        (SELECT id FROM pc_out WHERE out_no=? LIMIT 1),
+        NULL,
+        NULL,
+        ?, ?, ?, ?, ${sqlNowStored()}, NULL, NULL, ${sqlNowStored()}
+      )
+      ON CONFLICT(asset_id) DO UPDATE SET
+        last_out_id=(SELECT id FROM pc_out WHERE out_no=? LIMIT 1),
+        current_employee_no=excluded.current_employee_no,
+        current_employee_name=excluded.current_employee_name,
+        current_department=excluded.current_department,
+        last_config_date=excluded.last_config_date,
+        last_out_at=${sqlNowStored()},
+        last_recycle_id=NULL,
+        last_recycle_date=NULL,
+        updated_at=${sqlNowStored()}`
+    ).bind(asset.id, outNo, employeeNo, employeeName, department, configDate, outNo),
+  ]);
   await syncSystemDictionaryUsageCounters(db, []);
 }
 
@@ -431,37 +452,48 @@ type ApplyPcRecycleArgs = {
 export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
   const { db, recycleNo, action, asset, lastOut, recycleDate, remark = null, createdBy } = args;
   const statusAfter = pcStatusAfterRecycle(action);
-  await db.prepare(
-    `INSERT INTO pc_recycle (
-      recycle_no, action, asset_id,
-      employee_no, department, employee_name, is_employed,
-      brand, serial_no, model,
-      recycle_date, remark, created_by
-    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
-  ).bind(
-    recycleNo,
-    action,
-    asset.id,
-    lastOut?.employee_no ?? null,
-    lastOut?.department ?? null,
-    lastOut?.employee_name ?? null,
-    lastOut?.is_employed ?? null,
-    asset.brand,
-    asset.serial_no,
-    asset.model,
-    recycleDate,
-    remark,
-    createdBy,
-  ).run();
-  await db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id).run();
-  const recycleRow = await db.prepare(`SELECT id FROM pc_recycle WHERE recycle_no=?`).bind(recycleNo).first<any>();
-  await upsertPcLatestState(db, asset.id, {
-    last_recycle_id: Number(recycleRow?.id || 0) || null,
-    last_recycle_date: recycleDate,
-    current_employee_no: null,
-    current_employee_name: null,
-    current_department: null,
-  });
+  await db.batch([
+    db.prepare(
+      `INSERT INTO pc_recycle (
+        recycle_no, action, asset_id,
+        employee_no, department, employee_name, is_employed,
+        brand, serial_no, model,
+        recycle_date, remark, created_by
+      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+    ).bind(
+      recycleNo,
+      action,
+      asset.id,
+      lastOut?.employee_no ?? null,
+      lastOut?.department ?? null,
+      lastOut?.employee_name ?? null,
+      lastOut?.is_employed ?? null,
+      asset.brand,
+      asset.serial_no,
+      asset.model,
+      recycleDate,
+      remark,
+      createdBy,
+    ),
+    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
+    db.prepare(
+      `INSERT INTO pc_asset_latest_state (
+        asset_id, last_out_id, last_in_id, last_recycle_id,
+        current_employee_no, current_employee_name, current_department,
+        last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+      ) VALUES (
+        ?, NULL, NULL, (SELECT id FROM pc_recycle WHERE recycle_no=? LIMIT 1),
+        NULL, NULL, NULL, NULL, NULL, NULL, ?, ${sqlNowStored()}
+      )
+      ON CONFLICT(asset_id) DO UPDATE SET
+        last_recycle_id=(SELECT id FROM pc_recycle WHERE recycle_no=? LIMIT 1),
+        last_recycle_date=excluded.last_recycle_date,
+        current_employee_no=NULL,
+        current_employee_name=NULL,
+        current_department=NULL,
+        updated_at=${sqlNowStored()}`
+    ).bind(asset.id, recycleNo, recycleDate, recycleNo),
+  ]);
   await syncSystemDictionaryUsageCounters(db, []);
   return statusAfter;
 }

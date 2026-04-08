@@ -1,8 +1,9 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { logAudit } from './_audit';
-import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
+import { ensurePcSchemaIfAllowed, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { createTiming } from './_timing';
 
 function assertAssigned(status: any) {
   return String(status) === 'ASSIGNED';
@@ -18,20 +19,24 @@ function mustAction(v: any) {
   return a as 'RETURN' | 'RECYCLE';
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+  const t = env.__timing || createTiming();
+  const url = new URL(request.url);
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
+    await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
     const { no } = buildWriteNo('PCR', pcRecycleNo, body?.client_request_id);
-    const existing = await findExistingByNo(env.DB, 'pc_recycle', 'recycle_no', no, 'recycle_no, asset_id');
+    const [existing, asset] = await Promise.all([
+      t.measure('idempotency', () => findExistingByNo(env.DB, 'pc_recycle', 'recycle_no', no, 'recycle_no, asset_id')),
+      t.measure('lookup_asset', () => getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no)),
+    ]);
     if (existing?.recycle_no) {
       return Response.json({ ok: true, recycle_no: existing.recycle_no, asset_id: Number(existing.asset_id || 0) || null, duplicate: true, message: '回收/归还成功（幂等命中）' });
     }
 
-    const asset = await getPcAssetByIdOrSerial(env.DB, body?.asset_id, body?.serial_no);
     if (!asset) return Response.json({ ok: false, message: '未找到该电脑资产' }, { status: 404 });
     if (!assertAssigned(asset.status)) {
       return Response.json({ ok: false, message: '该电脑当前不是“已领用”，无法回收/归还' }, { status: 400 });
@@ -41,15 +46,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const recycle_date = must(body?.recycle_date, '回收/归还日期', 40);
     const remark = optional(body?.remark, 2000);
 
-    const lastOut = await env.DB.prepare(
+    const lastOut = await t.measure('lookup_last_out', () => env.DB.prepare(
       `SELECT employee_no, department, employee_name, is_employed
        FROM pc_out
        WHERE asset_id=?
        ORDER BY id DESC
        LIMIT 1`
-    ).bind(asset.id).first<any>();
+    ).bind(asset.id).first<any>());
 
-    const afterStatus = await applyPcRecycle({
+    const afterStatus = await t.measure('write', () => applyPcRecycle({
       db: env.DB,
       recycleNo: no,
       action,
@@ -58,7 +63,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       recycleDate: recycle_date,
       remark,
       createdBy: user.username,
-    });
+    }));
 
     waitUntil(logAudit(env.DB, request, user, pcRecycleAuditAction(action), 'pc_recycle', no, {
       asset_id: asset.id,
