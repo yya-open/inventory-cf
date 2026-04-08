@@ -4,6 +4,7 @@ import { ensureMonitorSchemaIfAllowed } from './_monitor';
 import { buildPcAssetQuery, buildMonitorAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
 import { getInventoryBatchDomainSnapshot, type AssetInventoryKind } from './services/asset-inventory-domain';
+import { getInventoryBatchSummaryForAssets } from './services/asset-inventory-batches';
 import { requireAuthWithDataScope } from './services/data-scope';
 
 type IssueBreakdown = {
@@ -89,14 +90,13 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const batchPayload = await getInventoryBatchDomainSnapshot(env.DB, kind);
     const activeBatchId = Number(batchPayload.active?.id || 0) || 0;
 
-    const summaryQuery = kind === 'pc'
-      ? buildPcAssetQuery(new URL(request.url), user)
-      : buildMonitorAssetQuery(new URL(request.url), user);
-    const summary = await queryInventorySummaryByWhere(
-      env.DB,
-      kind === 'pc' ? 'pc_assets a' : 'monitor_assets a',
-      summaryQuery,
-    );
+    const summary = activeBatchId > 0
+      ? await getInventoryBatchSummaryForAssets(env.DB, kind, activeBatchId)
+      : await queryInventorySummaryByWhere(
+          env.DB,
+          kind === 'pc' ? 'pc_assets a' : 'monitor_assets a',
+          kind === 'pc' ? buildPcAssetQuery(new URL(request.url), user) : buildMonitorAssetQuery(new URL(request.url), user),
+        );
     const issue_breakdown = await queryIssueBreakdown(env.DB, kind, activeBatchId || null);
 
     return Response.json({
