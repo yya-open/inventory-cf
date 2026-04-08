@@ -222,6 +222,8 @@ const dateRange = ref<[string, string] | null>(null);
 const selectedRows = ref<any[]>([]);
 const isAdmin = computed(() => can('admin'));
 const SOFT_REFRESH_TTL_MS = 20_000;
+const SNAPSHOT_POLL_INTERVAL_MS = 10_000;
+let inventoryPageActive = true;
 let lastRefreshAt = 0;
 let cancelPanelRefresh: (() => void) | null = null;
 let panelRefreshInFlight: Promise<void> | null = null;
