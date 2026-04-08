@@ -268,6 +268,11 @@ const {
       total: typeof r?.total === 'number' ? Number(r.total || 0) : null,
     };
   },
+  fetchTotal: async (filters, signal) => {
+    const params = buildParams(filters, false);
+    const j = await apiGet<any>(`/api/monitor-tx-count?${params.toString()}`, { signal });
+    return Number(j?.data?.total || j?.total || 0);
+  },
 });
 
 function typeText(v: any) {

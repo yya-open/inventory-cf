@@ -5,14 +5,15 @@ import {
   must,
   optional,
   pcOutNo,
+  getPcAssetByIdOrSerial,
   isInStockStatus,
   toAssetStatusAfterOut,
 } from './_pc';
-import { applyPcOut, normalizePcSerialNo } from './services/asset-write';
+import { applyPcOut } from './services/asset-write';
 import { createTiming } from './_timing';
 import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
-import { buildChildWriteNo } from './services/write-idempotency';
+import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 
 type Item = {
   employee_no: string;
@@ -24,46 +25,6 @@ type Item = {
   config_date?: string;
   remark?: string;
 };
-
-function placeholders(count: number) {
-  return Array.from({ length: count }, () => '?').join(',');
-}
-
-async function loadExistingOutNos(db: D1Database, nos: string[]) {
-  if (!nos.length) return new Set<string>();
-  const rows = await db.prepare(`SELECT out_no FROM pc_out WHERE out_no IN (${placeholders(nos.length)})`).bind(...nos).all<any>();
-  return new Set((rows.results || []).map((row: any) => String(row?.out_no || '')));
-}
-
-async function loadPcAssetsForBatch(db: D1Database, items: Item[]) {
-  const idList = [...new Set(items.map((it) => Number(it?.asset_id || 0)).filter((id) => id > 0))];
-  const serialList = [...new Set(items.map((it) => normalizePcSerialNo(it?.serial_no)).filter(Boolean))];
-  const byId = new Map<number, any>();
-  const bySerial = new Map<string, any>();
-  if (idList.length) {
-    const rows = await db.prepare(`SELECT * FROM pc_assets WHERE id IN (${placeholders(idList.length)})`).bind(...idList).all<any>();
-    for (const row of rows.results || []) {
-      byId.set(Number(row.id), row);
-      bySerial.set(normalizePcSerialNo(row.serial_no), row);
-    }
-  }
-  if (serialList.length) {
-    const rows = await db.prepare(`SELECT * FROM pc_assets WHERE UPPER(TRIM(serial_no)) IN (${placeholders(serialList.length)})`).bind(...serialList).all<any>();
-    for (const row of rows.results || []) {
-      byId.set(Number(row.id), row);
-      bySerial.set(normalizePcSerialNo(row.serial_no), row);
-    }
-  }
-  return { byId, bySerial };
-}
-
-function resolveBatchAsset(maps: { byId: Map<number, any>; bySerial: Map<string, any> }, item: Item) {
-  const assetId = Number(item?.asset_id || 0);
-  if (assetId > 0 && maps.byId.has(assetId)) return maps.byId.get(assetId);
-  const serial = normalizePcSerialNo(item?.serial_no);
-  if (serial && maps.bySerial.has(serial)) return maps.bySerial.get(serial);
-  return null;
-}
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
@@ -78,12 +39,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
-    const outNos = items.map((_, index) => buildChildWriteNo('PCOUT', pcOutNo, body?.client_request_id, index + 1).no);
-    const [existingNos, assetMaps] = await Promise.all([
-      loadExistingOutNos(env.DB, outNos),
-      loadPcAssetsForBatch(env.DB, items),
-    ]);
-
     let success = 0;
     let duplicated = 0;
     const errors: { row: number; message: string }[] = [];
@@ -91,8 +46,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     for (let i = 0; i < items.length; i++) {
       try {
         const it: any = items[i] || {};
-        const no = outNos[i];
-        if (existingNos.has(no)) {
+        const { no } = buildChildWriteNo('PCOUT', pcOutNo, body?.client_request_id, i + 1);
+        const existingByNo = await findExistingByNo(env.DB, 'pc_out', 'out_no', no, 'out_no, asset_id');
+        if (existingByNo?.out_no) {
           success++;
           duplicated++;
           continue;
@@ -106,7 +62,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
         const config_date = assertDateText(optional(it?.config_date, 40), '配置日期');
         const remark = trimRemarkByRule(optional(it?.remark, 2000), quality.remarkMaxLength);
 
-        const asset = resolveBatchAsset(assetMaps, it);
+        const asset = await getPcAssetByIdOrSerial(env.DB, it?.asset_id, it?.serial_no);
         if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
         if (!isInStockStatus(asset.status)) throw new Error('该电脑当前不是“在库”，无法出库');
 

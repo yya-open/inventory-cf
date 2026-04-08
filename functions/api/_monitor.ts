@@ -149,29 +149,6 @@ export async function ensureMonitorSchema(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_created_at ON monitor_tx(created_at)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_id ON monitor_tx(asset_id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_type ON monitor_tx(tx_type)").run();
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_asset_created_id ON monitor_tx(asset_id, created_at DESC, id DESC)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_type_created_id ON monitor_tx(tx_type, created_at DESC, id DESC)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_tx_no ON monitor_tx(tx_no)").run().catch(() => {});
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS monitor_asset_latest_state (
-        asset_id INTEGER PRIMARY KEY,
-        last_tx_id INTEGER,
-        last_tx_type TEXT,
-        last_tx_at TEXT,
-        current_location_id INTEGER,
-        current_employee_no TEXT,
-        current_employee_name TEXT,
-        current_department TEXT,
-        current_tx_type TEXT,
-        current_tx_id INTEGER,
-        current_tx_at TEXT,
-        updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT},
-        FOREIGN KEY(asset_id) REFERENCES monitor_assets(id) ON DELETE CASCADE
-      )
-    `).run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_asset_latest_state_current_department ON monitor_asset_latest_state(current_department, asset_id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_asset_latest_state_current_tx ON monitor_asset_latest_state(current_tx_type, current_tx_id, asset_id)").run().catch(() => {});
 
     // monitor inventory log
     await db

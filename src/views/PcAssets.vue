@@ -168,7 +168,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
-import { getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
+import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
@@ -434,6 +434,7 @@ const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, 
   cacheTtlMs: 30_000,
   createFilterKey: (filters) => `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`,
   fetchPage: (filters, currentPage, currentPageSize, fast, signal) => listPcAssets(filters, currentPage, currentPageSize, fast, signal),
+  fetchTotal: (filters, signal) => countPcAssets(filters, signal),
 });
 
 pageSize.value = initialPageSize;
