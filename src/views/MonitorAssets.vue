@@ -226,7 +226,7 @@ import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
-import { countMonitorAssets, getMonitorAssetInventorySummary, listMonitorAssets } from '../api/assetLedgers';
+import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
@@ -745,7 +745,7 @@ function shouldLoadInventorySummary(filters: MonitorFilters = currentFiltersForL
 
 async function refreshInventorySummary(filters: MonitorFilters = currentFiltersForList()) {
   if (!shouldLoadInventorySummary(filters)) {
-    inventorySummary.value = { total: 0, normal: 0, profit: 0, loss: 0, pending: 0 } as any;
+    inventorySummary.value = { total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 };
     return;
   }
   try {
@@ -1941,6 +1941,11 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
+  if (shouldRefreshBatch) {
+    try {
+      await refreshInventoryBatch({ force: true });
+    } catch {}
+  }
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
   runWhenBrowserIdle(async () => {

@@ -1169,7 +1169,17 @@ body {
   align-items: center;
   justify-content: center;
   padding: 0;
-  transition: left 0.22s ease, transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease;
+  opacity: 0;
+  pointer-events: none;
+  transition: left 0.22s ease, transform 0.16s ease, box-shadow 0.16s ease, background 0.16s ease, opacity 0.16s ease;
+}
+
+
+.app-layout:hover .app-aside-toggle,
+.app-aside-toggle:hover,
+.app-aside-toggle:focus-visible {
+  opacity: 1;
+  pointer-events: auto;
 }
 
 .app-aside-toggle__icon {
