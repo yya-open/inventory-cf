@@ -1141,13 +1141,6 @@ body {
   overflow-y: auto;
   overflow-x: hidden;
 }
-.app-aside-hotzone {
-  position: absolute;
-  inset: 0 auto 0 0;
-  width: 18px;
-  z-index: 18;
-}
-
 
 .app-aside--collapsed {
   min-width: 0 !important;
@@ -1187,7 +1180,22 @@ body {
 }
 
 
-.app-layout:hover .app-aside-toggle,
+.app-aside-toggle-zone {
+  position: absolute;
+  top: 0;
+  left: calc(var(--sidebar-width, 220px) + 2px);
+  width: 28px;
+  height: 84px;
+  z-index: 26;
+  background: transparent;
+}
+
+.app-aside-toggle-zone--collapsed {
+  left: 0;
+  width: 34px;
+}
+
+.app-aside-toggle--visible,
 .app-aside-toggle:hover,
 .app-aside-toggle:focus-visible {
   opacity: 1;

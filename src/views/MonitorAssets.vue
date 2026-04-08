@@ -250,6 +250,7 @@ import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
 import { buildQrExportFilename } from '../utils/exportNaming';
+import { isLedgerMobileViewport } from '../utils/responsive';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -267,7 +268,7 @@ const isAdmin = computed(() => can('admin'));
 const canQrExport = computed(() => canCapability('qr.export'));
 const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();
-const isMobile = ref(typeof window !== 'undefined' ? window.innerWidth <= 900 : false);
+const isMobile = ref(typeof window !== 'undefined' ? isLedgerMobileViewport() : false);
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
@@ -725,7 +726,8 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
   return { ...filters, inventoryStatus: '' };
 }
 
-const INVENTORY_BATCH_SOFT_TTL_MS = 5 * 60_000;
+const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
+const LEDGER_BATCH_REFRESH_DELAY_MS = 900;
 
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
@@ -1944,17 +1946,19 @@ async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean }
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
-  runWhenBrowserIdle(async () => {
-    try {
-      await refreshInventoryBatch();
-      const nextFilters = currentFiltersForList();
-      if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
-    } catch {}
-  }, 1500);
+  window.setTimeout(() => {
+    runWhenBrowserIdle(async () => {
+      try {
+        await refreshInventoryBatch();
+        const nextFilters = currentFiltersForList();
+        if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
+      } catch {}
+    }, 2200);
+  }, LEDGER_BATCH_REFRESH_DELAY_MS);
 }
 
 function handleViewportResize() {
-  isMobile.value = typeof window !== 'undefined' ? window.innerWidth <= 900 : false;
+  isMobile.value = typeof window !== 'undefined' ? isLedgerMobileViewport() : false;
 }
 
 onBeforeMount(() => {

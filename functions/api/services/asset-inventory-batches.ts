@@ -253,60 +253,29 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
   };
 }
 
-function shouldRetryInventoryBatchReadWithSchema(error: unknown) {
-  const message = String((error as any)?.message || '').toLowerCase();
-  return message.includes('no such table') || message.includes('no such column');
-}
-
 async function firstBatchRow(db: D1Database, sql: string, binds: any[]) {
+  await ensureAssetInventoryBatchSchema(db);
   const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
   const normalizedBinds = Array.isArray(binds) ? binds : [];
   try {
     const row = await db.prepare(selectWithJob).bind(...normalizedBinds).first<any>();
     return normalizeBatchRow(row);
-  } catch (error) {
-    if (!shouldRetryInventoryBatchReadWithSchema(error)) {
-      try {
-        const row = await db.prepare(sql).bind(...normalizedBinds).first<any>();
-        return normalizeBatchRow(row);
-      } catch (fallbackError) {
-        if (!shouldRetryInventoryBatchReadWithSchema(fallbackError)) throw fallbackError;
-      }
-    }
-    await ensureAssetInventoryBatchSchema(db);
-    try {
-      const row = await db.prepare(selectWithJob).bind(...normalizedBinds).first<any>();
-      return normalizeBatchRow(row);
-    } catch {
-      const row = await db.prepare(sql).bind(...normalizedBinds).first<any>();
-      return normalizeBatchRow(row);
-    }
+  } catch {
+    const row = await db.prepare(sql).bind(...normalizedBinds).first<any>();
+    return normalizeBatchRow(row);
   }
 }
 
 async function allBatchRows(db: D1Database, sql: string, binds: any[]) {
+  await ensureAssetInventoryBatchSchema(db);
   const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
   const normalizedBinds = Array.isArray(binds) ? binds : [];
   try {
     const result = await db.prepare(selectWithJob).bind(...normalizedBinds).all<any>();
     return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
-  } catch (error) {
-    if (!shouldRetryInventoryBatchReadWithSchema(error)) {
-      try {
-        const result = await db.prepare(sql).bind(...normalizedBinds).all<any>();
-        return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
-      } catch (fallbackError) {
-        if (!shouldRetryInventoryBatchReadWithSchema(fallbackError)) throw fallbackError;
-      }
-    }
-    await ensureAssetInventoryBatchSchema(db);
-    try {
-      const result = await db.prepare(selectWithJob).bind(...normalizedBinds).all<any>();
-      return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
-    } catch {
-      const result = await db.prepare(sql).bind(...normalizedBinds).all<any>();
-      return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
-    }
+  } catch {
+    const result = await db.prepare(sql).bind(...normalizedBinds).all<any>();
+    return (result.results || []).map(normalizeBatchRow).filter(Boolean) as AssetInventoryBatchRow[];
   }
 }
 

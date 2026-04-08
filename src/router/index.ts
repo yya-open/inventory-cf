@@ -65,7 +65,7 @@ function startRoutePagePending() {
   }
   routePageSkeletonTimer = setTimeout(() => {
     if (routePagePending.value) routePageSkeletonVisible.value = true;
-  }, 80);
+  }, 180);
 }
 
 function finishRoutePagePending() {

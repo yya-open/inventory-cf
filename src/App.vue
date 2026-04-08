@@ -12,17 +12,22 @@
     <div class="app-bg" />
     <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
       <div
-        v-if="!isMobile && desktopSidebarCollapsed"
-        class="app-aside-hotzone"
+        v-if="!isMobile"
+        class="app-aside-toggle-zone"
+        :class="{ 'app-aside-toggle-zone--collapsed': desktopSidebarCollapsed && !desktopSidebarPreview }"
         aria-hidden="true"
-        @mouseenter="openSidebarPreview"
+        @mouseenter="handleSidebarToggleHover(true)"
+        @mouseleave="handleSidebarToggleHover(false)"
       />
       <button
         v-if="!isMobile"
         class="app-aside-toggle"
+        :class="{ 'app-aside-toggle--visible': sidebarToggleHovered || sidebarHovered }"
         type="button"
         :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
         :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
+        @mouseenter="handleSidebarToggleHover(true)"
+        @mouseleave="handleSidebarToggleHover(false)"
         @click="toggleSidebar"
 >
         <span class="app-aside-toggle__icon" aria-hidden="true">{{ desktopSidebarCollapsed ? '›' : '‹' }}</span>
@@ -263,6 +268,7 @@ import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./stor
 import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
 import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
 import { trackUiEvent } from "./utils/browserPerf";
+import { isAppMobileViewport } from "./utils/responsive";
 
 const route = useRoute();
 const router = useRouter();
@@ -291,6 +297,7 @@ const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
 const desktopSidebarCollapsed = ref(false);
 const desktopSidebarPreview = ref(false);
 const sidebarHovered = ref(false);
+const sidebarToggleHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 
@@ -405,9 +412,14 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 });
 
 function updateViewport() {
-  const nextMobile = window.innerWidth < 900;
+  const nextMobile = isAppMobileViewport();
   isMobile.value = nextMobile;
   if (!nextMobile) mobileSidebarVisible.value = false;
+}
+
+function handleSidebarToggleHover(next: boolean) {
+  sidebarToggleHovered.value = next;
+  if (next) openSidebarPreview();
 }
 
 function openSidebarPreview() {
@@ -423,6 +435,7 @@ function openSidebarPreview() {
 function markSidebarHovered(next: boolean) {
   sidebarHovered.value = next;
   if (!next && desktopSidebarCollapsed.value && desktopSidebarPreview.value) {
+    sidebarToggleHovered.value = false;
     window.setTimeout(() => {
       if (!sidebarHovered.value && desktopSidebarCollapsed.value) {
         desktopSidebarPreview.value = false;
@@ -446,6 +459,7 @@ function toggleSidebar() {
 
 watch(() => route.fullPath, () => {
   mobileSidebarVisible.value = false;
+  sidebarToggleHovered.value = false;
   if (desktopSidebarCollapsed.value) desktopSidebarPreview.value = false;
 });
 
