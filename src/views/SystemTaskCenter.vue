@@ -87,7 +87,7 @@
               <el-button v-if="canDownload(row)" link type="primary" @click="downloadJob(row)">下载</el-button>
               <el-button v-if="row.status==='failed'" link type="warning" @click="retryJob(row)">重试</el-button>
               <el-button v-if="row.status==='queued' || row.status==='running'" link type="danger" @click="cancelJob(row)">取消</el-button>
-              <el-button v-if="canDelete(row)" link type="danger" @click="deleteJob(row)">删除</el-button>
+              <el-button v-if="canDelete(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id)" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -134,6 +134,7 @@ const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
 const loading = ref(false);
 const loadingMore = ref(false);
 const snapshotSubmitting = ref(false);
+const deletingJobId = ref<number | null>(null);
 const jobs = ref<any[]>([]);
 const summary = reactive({ async_job_count: 0, queued_job_count: 0, failed_job_count: 0, slow_request_count: 0 });
 const filter = reactive({ status: '', job_type: '', days: 7, mine: false });
@@ -290,13 +291,18 @@ async function cleanupJobs() {
 }
 async function deleteJob(row: any) {
   await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
-  await apiPut('/api/jobs', { action: 'delete', id: row.id });
-  if (detailVisible.value && Number(detailRow.value?.id || 0) === Number(row.id || 0)) {
-    detailVisible.value = false;
-    detailRow.value = null;
+  deletingJobId.value = Number(row?.id || 0) || null;
+  try {
+    await apiPut('/api/jobs', { action: 'delete', id: row.id });
+    if (detailVisible.value && Number(detailRow.value?.id || 0) === Number(row.id || 0)) {
+      detailVisible.value = false;
+      detailRow.value = null;
+    }
+    ElMessage.success('任务已删除');
+    await loadJobs({ force: true, includeBase: true, reset: true });
+  } finally {
+    deletingJobId.value = null;
   }
-  ElMessage.success('任务已删除');
-  await loadJobs({ force: true, includeBase: true, reset: true });
 }
 
 function applyFilters(forceBase = false) {

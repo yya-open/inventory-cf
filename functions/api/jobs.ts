@@ -109,6 +109,11 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
       return json(true, { id }, '任务已重试，后台将继续处理');
     }
+    if (action === 'delete') {
+      await deleteAsyncJob(env.DB, id, env.BACKUP_BUCKET);
+      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE', 'async_jobs', id, {});
+      return json(true, { id }, '任务已删除');
+    }
     return json(false, null, '不支持的操作', 400);
   } catch (e: any) {
     return errorResponse(e);

@@ -139,7 +139,7 @@
                 <el-button v-if="row.status==='success' && canPrintJob(row)" link type="warning" @click="printJob(row)">打印</el-button>
                 <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
                 <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
-                <el-button v-if="canDeleteJob(row)" link type="danger" @click="deleteJob(row)">删除</el-button>
+                <el-button v-if="canDeleteJob(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id)" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
               </div>
             </template>
           </el-table-column>
@@ -660,13 +660,18 @@ async function openJobDetail(row:any) {
 
 async function deleteJob(row:any) {
   await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
-  await apiPut('/api/jobs', { action: 'delete', id: row.id });
-  if (Number(jobDetail.row?.id || 0) === Number(row.id || 0)) {
-    jobDetail.visible = false;
-    jobDetail.row = null;
+  deletingJobId.value = Number(row?.id || 0) || null;
+  try {
+    await apiPut('/api/jobs', { action: 'delete', id: row.id });
+    if (Number(jobDetail.row?.id || 0) === Number(row.id || 0)) {
+      jobDetail.visible = false;
+      jobDetail.row = null;
+    }
+    ElMessage.success('任务已删除');
+    await loadJobs();
+  } finally {
+    deletingJobId.value = null;
   }
-  ElMessage.success('任务已删除');
-  await loadJobs();
 }
 
 async function cancelJob(id:number) {
