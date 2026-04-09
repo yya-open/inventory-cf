@@ -17,8 +17,8 @@ export async function ensureItemCategorySchema(db: D1Database) {
          id INTEGER PRIMARY KEY AUTOINCREMENT,
          name TEXT NOT NULL UNIQUE,
          enabled INTEGER NOT NULL DEFAULT 1,
-         created_at TEXT NOT NULL DEFAULT ${sqlNowStored()},
-         updated_at TEXT NOT NULL DEFAULT ${sqlNowStored()}
+         created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+         updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
        )`
     ).run();
     await db.prepare(`CREATE INDEX IF NOT EXISTS idx_item_categories_enabled_name ON item_categories(enabled, name)`).run();
