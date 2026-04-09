@@ -141,7 +141,7 @@ let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaseLoadedAt = 0;
 const BASE_REFRESH_MS = 60_000;
 const ACTIVE_POLL_MS = 8_000;
-const IDLE_POLL_MS = 45_000;
+const IDLE_POLL_MS = 180_000;
 const RENDER_LIMIT_COMPACT = 30;
 const jobTypeOptions = [
   { label: '审计导出', value: 'AUDIT_EXPORT' },
@@ -162,7 +162,7 @@ const refreshHint = computed(() => {
   const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
   const mode = hasActiveJobs.value
     ? (hidden ? '页面隐藏中，已暂停自动轮询' : '检测到运行中任务，将自动轮询')
-    : (hidden ? '页面隐藏中，暂停轮询' : '当前无运行中任务，低频轮询');
+    : (hidden ? '页面隐藏中，暂停轮询' : '当前无运行中任务，超低频轮询（约 3 分钟）');
   return lastSyncedAt.value ? `${mode} · 上次 ${formatTime(lastSyncedAt.value)}` : mode;
 });
 function statusTag(status: string) { if (status === 'success') return 'success'; if (status === 'failed') return 'danger'; if (status === 'running') return 'warning'; return 'info'; }

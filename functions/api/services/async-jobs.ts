@@ -1074,7 +1074,7 @@ function mapAsyncJobRow(row: any) {
 }
 
 export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}, bucket?: AsyncJobResultBucket) {
-  await cleanupAsyncJobHousekeeping(db, bucket);
+  await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
   const binds: any[] = [];
@@ -1108,7 +1108,6 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
 }
 
 export async function getAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
-  await cleanupAsyncJobHousekeeping(db, bucket);
   await ensureAsyncJobsTable(db);
   return await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
 }
