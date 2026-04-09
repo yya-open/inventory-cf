@@ -29,8 +29,10 @@
           <el-option label="失败" value="failed" />
           <el-option label="已取消" value="canceled" />
         </el-select>
-        <el-select v-model="filter.job_type" clearable placeholder="任务类型" style="width:240px" @change="applyFilters">
-          <el-option v-for="item in jobTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
+        <el-select v-model="filter.job_type" clearable placeholder="任务类型" style="width:260px" @change="applyFilters">
+          <el-option-group v-for="group in jobTypeGroups" :key="group.label" :label="group.label">
+            <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
+          </el-option-group>
         </el-select>
         <el-select v-model="filter.days" style="width:140px" @change="applyFilters(true)">
           <el-option label="最近 7 天" :value="7" />
@@ -54,8 +56,12 @@
       </div>
 
       <el-table :data="renderedJobs" border v-loading="loading" max-height="640" row-key="id" table-layout="fixed">
-        <el-table-column prop="id" label="ID" width="76" />
-        <el-table-column prop="job_type" label="任务类型" min-width="170" show-overflow-tooltip />
+        <el-table-column label="序号" width="78" align="center">
+          <template #default="{ $index }">{{ displayIndex($index) }}</template>
+        </el-table-column>
+        <el-table-column label="任务类型" min-width="210" show-overflow-tooltip>
+          <template #default="{ row }">{{ formatAsyncJobType(row.job_type) }}</template>
+        </el-table-column>
         <el-table-column label="状态" width="110">
           <template #default="{ row }"><el-tag :type="statusTag(row.status)">{{ statusText(row.status) }}</el-tag></template>
         </el-table-column>
@@ -81,6 +87,7 @@
               <el-button v-if="canDownload(row)" link type="primary" @click="downloadJob(row)">下载</el-button>
               <el-button v-if="row.status==='failed'" link type="warning" @click="retryJob(row)">重试</el-button>
               <el-button v-if="row.status==='queued' || row.status==='running'" link type="danger" @click="cancelJob(row)">取消</el-button>
+              <el-button v-if="canDelete(row)" link type="danger" @click="deleteJob(row)">删除</el-button>
             </div>
           </template>
         </el-table-column>
@@ -95,7 +102,7 @@
       <template v-if="detailRow">
         <div class="detail-grid">
           <div><span>任务 ID</span><strong>{{ detailRow.id }}</strong></div>
-          <div><span>任务类型</span><strong>{{ detailRow.job_type || '-' }}</strong></div>
+          <div><span>任务类型</span><strong>{{ formatAsyncJobType(detailRow.job_type) }}</strong></div>
           <div><span>状态</span><strong>{{ statusText(detailRow.status) }}</strong></div>
           <div><span>创建人</span><strong>{{ detailRow.created_by_name || '-' }}</strong></div>
           <div><span>进度</span><strong>{{ Number(detailRow.progress_pct || 0) }}%</strong></div>
@@ -121,6 +128,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
 
 const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
 const loading = ref(false);
@@ -143,18 +151,7 @@ const BASE_REFRESH_MS = 60_000;
 const ACTIVE_POLL_MS = 8_000;
 const IDLE_POLL_MS = 180_000;
 const RENDER_LIMIT_COMPACT = 30;
-const jobTypeOptions = [
-  { label: '审计导出', value: 'AUDIT_EXPORT' },
-  { label: '审计归档', value: 'AUDIT_ARCHIVE_EXPORT' },
-  { label: '备份导出', value: 'BACKUP_EXPORT' },
-  { label: '报废预警导出', value: 'PC_AGE_WARNING_EXPORT' },
-  { label: '看板快照预计算', value: 'DASHBOARD_PRECOMPUTE' },
-  { label: '深度巡检', value: 'OPS_SCAN_REFRESH' },
-  { label: '电脑二维码卡片', value: 'PC_QR_CARDS_EXPORT' },
-  { label: '电脑二维码图版', value: 'PC_QR_SHEET_EXPORT' },
-  { label: '显示器二维码卡片', value: 'MONITOR_QR_CARDS_EXPORT' },
-  { label: '显示器二维码图版', value: 'MONITOR_QR_SHEET_EXPORT' },
-];
+const jobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const hasActiveJobs = computed(() => jobs.value.some((row) => ['queued', 'running'].includes(String(row?.status || ''))));
 const renderedJobs = computed(() => compactMode.value ? jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT)) : jobs.value);
 const refreshHint = computed(() => {
@@ -171,9 +168,21 @@ function formatTime(value: any) { if (!value) return '-'; const d = new Date(val
 function formatDuration(ms: any) { const value = Number(ms || 0); if (!value || value < 0) return '-'; if (value < 1000) return `${value} ms`; const sec = value/1000; if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`; const min = Math.floor(sec/60); return `${min} 分 ${Math.round(sec % 60)} 秒`; }
 function formatBytes(value: any) { const num = Number(value || 0); if (!num) return '-'; if (num < 1024) return `${num} B`; if (num < 1024*1024) return `${(num/1024).toFixed(1)} KB`; return `${(num/(1024*1024)).toFixed(1)} MB`; }
 function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (row?.result_content_type || row?.result_blob_base64 || row?.result_object_key); }
+function canDelete(row: any) { return !['queued', 'running'].includes(String(row?.status || '')); }
+function displayIndex(index: number) { return index + 1; }
 function buildDownloadUrl(row: any) { const q = new URLSearchParams(); q.set('id', String(row.id)); return `/api/jobs-download?${q.toString()}`; }
 function downloadJob(row: any) { window.open(buildDownloadUrl(row), '_blank', 'noopener'); }
-function openDetail(row: any) { detailRow.value = row; detailVisible.value = true; }
+async function openDetail(row: any) {
+  try {
+    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90`);
+    const found = normalizeJobRowsResponse(r)?.[0] || row;
+    detailRow.value = found;
+    detailVisible.value = true;
+  } catch {
+    detailRow.value = row;
+    detailVisible.value = true;
+  }
+}
 async function loadBase() {
   const r:any = await apiGet('/api/system-tools?section=base');
   const dashboard = r?.data?.dashboard || {};
@@ -279,6 +288,17 @@ async function cleanupJobs() {
   ElMessage.success('已提交清理任务');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
+async function deleteJob(row: any) {
+  await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
+  await apiPut('/api/jobs', { action: 'delete', id: row.id });
+  if (detailVisible.value && Number(detailRow.value?.id || 0) === Number(row.id || 0)) {
+    detailVisible.value = false;
+    detailRow.value = null;
+  }
+  ElMessage.success('任务已删除');
+  await loadJobs({ force: true, includeBase: true, reset: true });
+}
+
 function applyFilters(forceBase = false) {
   hasMore.value = false;
   cursorId.value = null;

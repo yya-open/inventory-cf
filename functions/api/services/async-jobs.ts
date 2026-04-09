@@ -1140,3 +1140,17 @@ export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJo
   const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
   await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'queued', errorMessage: null, filename: null, exportedAt: null });
 }
+
+export async function deleteAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
+  await ensureAsyncJobsTable(db);
+  const row = await getAsyncJob(db, id, bucket);
+  if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
+  if (['queued', 'running'].includes(String(row.status || ''))) throw Object.assign(new Error('运行中的任务不能直接删除，请先取消'), { status: 409 });
+  const objectKey = String(row.result_object_key || '').trim();
+  if (objectKey && bucket && typeof bucket.delete === 'function') {
+    try { await bucket.delete(objectKey); } catch {}
+  }
+  await db.prepare(`UPDATE asset_inventory_batch SET snapshot_job_id=NULL WHERE snapshot_job_id=?`).bind(id).run();
+  await db.prepare(`DELETE FROM async_jobs WHERE id=?`).bind(id).run();
+  return true;
+}

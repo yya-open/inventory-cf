@@ -1,6 +1,6 @@
 import { errorResponse, json } from '../_auth';
 import { requirePermission } from '../_permissions';
-import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
+import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, deleteAsyncJob, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
 import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';

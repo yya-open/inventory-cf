@@ -86,7 +86,11 @@
       <el-tab-pane label="异步任务" name="jobs">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
           <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="loadJobs"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:220px" @change="loadJobs"><el-option label="审计导出" value="AUDIT_EXPORT" /><el-option label="审计归档" value="AUDIT_ARCHIVE_EXPORT" /><el-option label="备份导出" value="BACKUP_EXPORT" /><el-option label="报废预警导出" value="PC_AGE_WARNING_EXPORT" /><el-option label="看板快照预计算" value="DASHBOARD_PRECOMPUTE" /><el-option label="深度巡检" value="OPS_SCAN_REFRESH" /><el-option label="电脑二维码补齐" value="PC_QR_KEY_INIT" /><el-option label="显示器二维码补齐" value="MONITOR_QR_KEY_INIT" /><el-option label="电脑二维码卡片" value="PC_QR_CARDS_EXPORT" /><el-option label="电脑二维码图版" value="PC_QR_SHEET_EXPORT" /><el-option label="显示器二维码卡片" value="MONITOR_QR_CARDS_EXPORT" /><el-option label="显示器二维码图版" value="MONITOR_QR_SHEET_EXPORT" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:260px" @change="loadJobs">
+            <el-option-group v-for="group in asyncJobTypeGroups" :key="group.label" :label="group.label">
+              <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
+            </el-option-group>
+          </el-select>
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
@@ -94,8 +98,12 @@
         </div>
 
         <el-table :data="jobs" border>
-          <el-table-column prop="id" label="ID" width="70" />
-          <el-table-column prop="job_type" label="任务类型" min-width="160" />
+          <el-table-column label="序号" width="78" align="center">
+            <template #default="{ $index }">{{ $index + 1 }}</template>
+          </el-table-column>
+          <el-table-column label="任务类型" min-width="220">
+            <template #default="{ row }">{{ formatAsyncJobType(row.job_type) }}</template>
+          </el-table-column>
           <el-table-column label="状态" width="120">
             <template #default="{ row }">
               <el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag>
@@ -125,11 +133,13 @@
           <el-table-column label="操作" min-width="220">
             <template #default="{ row }">
               <div style="display:flex; gap:8px; flex-wrap:wrap">
+                <el-button link @click="openJobDetail(row)">详情</el-button>
                 <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row)">下载</el-button>
                 <el-button v-if="row.status==='success' && canPreviewJob(row)" link type="success" @click="previewJob(row)">预览</el-button>
                 <el-button v-if="row.status==='success' && canPrintJob(row)" link type="warning" @click="printJob(row)">打印</el-button>
                 <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
                 <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
+                <el-button v-if="canDeleteJob(row)" link type="danger" @click="deleteJob(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
@@ -191,18 +201,44 @@
         </el-table-column>
       </el-table>
     </el-dialog>
-  </el-card>
+  
+
+    <el-dialog v-model="jobDetail.visible" width="680px" :title="jobDetail.title || '任务详情'">
+      <template v-if="jobDetail.row">
+        <el-descriptions :column="2" border>
+          <el-descriptions-item label="任务类型">{{ formatAsyncJobType(jobDetail.row.job_type) }}</el-descriptions-item>
+          <el-descriptions-item label="状态">{{ statusText(jobDetail.row.status) }}</el-descriptions-item>
+          <el-descriptions-item label="创建人">{{ jobDetail.row.created_by_name || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="创建时间">{{ formatTime(jobDetail.row.created_at) || '-' }}</el-descriptions-item>
+          <el-descriptions-item label="进度">{{ Number(jobDetail.row.progress_pct || 0) }}%</el-descriptions-item>
+          <el-descriptions-item label="耗时">{{ formatDuration(jobDetail.row.duration_ms) }}</el-descriptions-item>
+          <el-descriptions-item label="结果大小">{{ formatBytes(jobDetail.row.result_size) }}</el-descriptions-item>
+          <el-descriptions-item label="保留期">{{ formatTime(jobDetail.row.retain_until) || '-' }}</el-descriptions-item>
+        </el-descriptions>
+        <div style="margin-top:12px">
+          <div style="font-weight:700; margin-bottom:6px">结果摘要</div>
+          <div style="white-space:pre-wrap; word-break:break-word">{{ jobDetail.row.message || '-' }}</div>
+        </div>
+        <div v-if="jobDetail.row.error_text" style="margin-top:12px">
+          <div style="font-weight:700; margin-bottom:6px">失败原因</div>
+          <pre style="white-space:pre-wrap; word-break:break-word; background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:12px">{{ jobDetail.row.error_text }}</pre>
+        </div>
+      </template>
+    </el-dialog>
+
+</el-card>
 </template>
 
 <script setup lang="ts">
 import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
 import { ElProgress } from 'element-plus';
 import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 import { confirmRiskAction } from '../utils/riskAction';
 import { downloadJobResultCached, openJobResultCached } from '../utils/jobResultCache';
+import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
 
 const autoScanMinutes = 15;
 type JobRow = any;
@@ -221,6 +257,8 @@ const lastRepair = ref('');
 const snapshotPrecomputing = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
+const jobDetail = reactive<any>({ visible: false, title: '任务详情', row: null });
+const asyncJobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const loadedTabs = reactive<Record<string, boolean>>({ repair: false, jobs: false, obs: false, health: false, history: false });
 const JOB_LIST_LIMIT = 100;
 const JOB_POLL_FAST_MS = 4000;
@@ -304,6 +342,10 @@ function statusType(status: string) {
 function statusText(status: string) {
   const map: Record<string, string> = { queued: '排队中', running: '执行中', success: '成功', failed: '失败', canceled: '已取消' };
   return map[status] || status;
+}
+
+function canDeleteJob(row: any) {
+  return !['queued', 'running'].includes(String(row?.status || ''));
 }
 
 function applySchema(data:any) { Object.assign(schema, data || {}); }
@@ -605,6 +647,28 @@ async function retryJob(id:number) {
   ElMessage.success(r.message || '已重试');
   await loadJobs();
 }
+async function openJobDetail(row:any) {
+  try {
+    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90`);
+    jobDetail.row = Array.isArray(r?.data) ? (r.data[0] || row) : row;
+  } catch {
+    jobDetail.row = row;
+  }
+  jobDetail.title = `${formatAsyncJobType(jobDetail.row?.job_type)} · 任务详情`;
+  jobDetail.visible = true;
+}
+
+async function deleteJob(row:any) {
+  await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
+  await apiPut('/api/jobs', { action: 'delete', id: row.id });
+  if (Number(jobDetail.row?.id || 0) === Number(row.id || 0)) {
+    jobDetail.visible = false;
+    jobDetail.row = null;
+  }
+  ElMessage.success('任务已删除');
+  await loadJobs();
+}
+
 async function cancelJob(id:number) {
   await confirmRiskAction({ title: '取消异步任务', actionLabel: '取消任务', detail: `任务 #${id} 将被取消或进入取消中状态。`, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'cancel', id });
