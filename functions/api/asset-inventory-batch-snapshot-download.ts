@@ -14,11 +14,11 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
     await ensureAssetInventoryBatchSchema(env.DB);
     const url = new URL(request.url);
     const kind = parseKind(url.searchParams.get('kind'));
-    const id = Number(url.searchParams.get('id') || 0);
-    if (!id) return json(false, null, 'id 无效', 400);
+    const batchId = Number(url.searchParams.get('id') || url.searchParams.get('batch_id') || 0);
+    if (!batchId) return json(false, null, 'id 无效', 400);
     const batch = await env.DB.prepare(
       `SELECT id, kind, snapshot_job_id, snapshot_job_status FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`
-    ).bind(kind, id).first<any>();
+    ).bind(kind, batchId).first<any>();
     if (!batch?.id) return json(false, null, '盘点批次不存在', 404);
     if (!Number(batch.snapshot_job_id || 0)) return json(false, null, '该批次暂无可下载结果快照', 404);
     const row = await getAsyncJob(env.DB, Number(batch.snapshot_job_id), env.BACKUP_BUCKET);
