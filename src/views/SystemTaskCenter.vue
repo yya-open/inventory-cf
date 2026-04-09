@@ -205,6 +205,13 @@ function buildQuery(afterId?: number | null) {
   if (afterId) q.set('after_id', String(afterId));
   return q.toString();
 }
+function normalizeJobRowsResponse(payload: any) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.data?.items)) return payload.data.items;
+  return [];
+}
 function mergeJobs(rows: any[], append = false) {
   const next = append ? [...jobs.value, ...rows] : rows;
   const seen = new Set<number>();
@@ -222,7 +229,7 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
   try {
     if (opts.includeBase && (opts.force || !lastBaseLoadedAt || (Date.now() - lastBaseLoadedAt) > BASE_REFRESH_MS)) await loadBase();
     const r:any = await apiGet(`/api/jobs?${buildQuery()}`);
-    const rows = Array.isArray(r?.items) ? r.items : (Array.isArray(r?.data?.items) ? r.data.items : []);
+    const rows = normalizeJobRowsResponse(r);
     mergeJobs(rows, false);
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
@@ -236,7 +243,7 @@ async function loadMoreJobs() {
   loadingMore.value = true;
   try {
     const r:any = await apiGet(`/api/jobs?${buildQuery(cursorId.value)}`);
-    const rows = Array.isArray(r?.items) ? r.items : (Array.isArray(r?.data?.items) ? r.data.items : []);
+    const rows = normalizeJobRowsResponse(r);
     mergeJobs(rows, true);
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
@@ -256,19 +263,19 @@ async function createSnapshotJob() {
 }
 async function retryJob(row: any) {
   await ElMessageBox.confirm(`确定重试任务 #${row.id} 吗？`, '提示', { type: 'warning' });
-  await apiPost('/api/jobs-retry', { id: row.id });
+  await apiPut('/api/jobs', { action: 'retry', id: row.id });
   ElMessage.success('已提交重试');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function cancelJob(row: any) {
   await ElMessageBox.confirm(`确定取消任务 #${row.id} 吗？`, '提示', { type: 'warning' });
-  await apiPut(`/api/jobs?id=${row.id}`, { status: 'canceled' });
+  await apiPut('/api/jobs', { action: 'cancel', id: row.id });
   ElMessage.success('任务已取消');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function cleanupJobs() {
   await ElMessageBox.confirm('自动清理会删除较旧的成功/失败历史任务，是否继续？', '提示', { type: 'warning' });
-  await apiPost('/api/system-tools', { action: 'cleanup_jobs' });
+  await apiPut('/api/jobs', { action: 'cleanup' });
   ElMessage.success('已提交清理任务');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
