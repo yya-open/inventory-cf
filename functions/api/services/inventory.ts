@@ -140,8 +140,8 @@ export async function getItemById(db: D1Database, id: number) {
 
 export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId?: number | null) {
   const row = excludeId
-    ? await db.prepare('SELECT id FROM items WHERE sku=? AND id<>? LIMIT 1').bind(sku, excludeId).first<any>()
-    : await db.prepare('SELECT id FROM items WHERE sku=? LIMIT 1').bind(sku).first<any>();
+    ? await db.prepare('SELECT id FROM items WHERE sku=? AND enabled=1 AND id<>? LIMIT 1').bind(sku, excludeId).first<any>()
+    : await db.prepare('SELECT id FROM items WHERE sku=? AND enabled=1 LIMIT 1').bind(sku).first<any>();
   if (row?.id) {
     throw Object.assign(new Error('SKU 已存在'), { status: 400 });
   }
@@ -149,6 +149,13 @@ export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId
 
 export async function createItem(db: D1Database, input: ItemInput) {
   const category = await resolveItemCategory(db, input.category);
+  const existing = await db.prepare('SELECT id, enabled FROM items WHERE sku=? LIMIT 1').bind(input.sku).first<any>();
+  if (existing?.id) {
+    await db.prepare(
+      'UPDATE items SET name=?, brand=?, model=?, category=?, category_id=?, unit=?, warning_qty=?, enabled=1 WHERE id=?'
+    ).bind(input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty, existing.id).run();
+    return Number(existing.id);
+  }
   const result = await db.prepare(
     `INSERT INTO items (sku, name, brand, model, category, category_id, unit, warning_qty, created_at)
      VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
