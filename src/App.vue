@@ -7,13 +7,13 @@
     v-else
     class="app-root"
     :class="{ 'app-root--mobile': isMobile }"
-    :style="{ '--sidebar-width': desktopSidebarCollapsed ? '72px' : '220px' }"
+    :style="{ '--sidebar-width': `${desktopSidebarWidth}px` }"
   >
     <div class="app-bg" />
     <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed, 'app-layout--mobile': isMobile }">
       <el-aside
         v-if="!isMobile"
-        :width="desktopSidebarCollapsed ? '72px' : '220px'"
+        :width="`${desktopSidebarWidth}px`"
         class="app-aside"
         :class="{ 'app-aside--collapsed': desktopSidebarCollapsed }"
       >
@@ -58,6 +58,7 @@
           :can-operator="can('operator')"
           :is-admin="can('admin')"
           :collapsed="false"
+          :show-collapse-toggle="false"
         />
       </el-drawer>
 
@@ -279,6 +280,7 @@ const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
+const desktopSidebarWidth = computed(() => (isMobile.value ? 0 : (desktopSidebarCollapsed.value ? 72 : 220)));
 
 const title = computed(() => {
   // 系统模块：优先用路由 meta.title
