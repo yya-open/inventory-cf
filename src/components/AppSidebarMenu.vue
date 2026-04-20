@@ -1,70 +1,66 @@
 <template>
-  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed }">
-    <div class="app-sidebar-menu__brand">
-      <span class="app-sidebar-menu__brand-mark">仓</span>
-      <span v-if="!collapsed" class="app-sidebar-menu__brand-text">出入库管理</span>
-    </div>
+  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--compact': compact }">
+    <div class="app-sidebar-menu__brand">{{ compact ? '出' : '出入库管理' }}</div>
 
     <el-menu
       router
       :default-active="activeMenu"
-      :collapse="collapsed"
-      :collapse-transition="false"
       class="app-sidebar-menu__menu"
-      :class="{ 'app-sidebar-menu__menu--collapsed': collapsed }"
+      :collapse="compact"
+      :collapse-transition="false"
     >
-      <el-menu-item
-        v-for="item in menuItems"
-        :key="item.index"
-        :index="item.index"
-        :title="collapsed ? item.label : ''"
-      >
-        <el-icon class="app-sidebar-menu__item-icon"><component :is="item.icon" /></el-icon>
-        <span class="app-sidebar-menu__item-text">{{ item.label }}</span>
-      </el-menu-item>
+      <template v-for="item in visibleMenuItems" :key="item.index">
+        <el-tooltip v-if="compact" :content="item.label" placement="right">
+          <el-menu-item :index="item.index">
+            <el-icon><component :is="item.icon" /></el-icon>
+            <template #title>{{ item.label }}</template>
+          </el-menu-item>
+        </el-tooltip>
+        <el-menu-item v-else :index="item.index">
+          <el-icon><component :is="item.icon" /></el-icon>
+          <template #title>{{ item.label }}</template>
+        </el-menu-item>
+      </template>
     </el-menu>
 
-    <div v-if="!collapsed" class="app-sidebar-menu__meta">
-      当前：{{ currentLabel }}
-    </div>
-
-    <div v-if="showCollapseToggle !== false" class="app-sidebar-menu__footer">
-      <button
-        class="app-sidebar-menu__collapse-btn"
-        :class="{ 'app-sidebar-menu__collapse-btn--collapsed': collapsed }"
-        type="button"
-        :aria-label="collapsed ? '展开侧边栏' : '收起侧边栏'"
-        :title="collapsed ? '展开侧边栏' : '收起侧边栏'"
-        @click="$emit('toggle-collapse')"
-      >
-        <el-icon class="app-sidebar-menu__collapse-icon"><component :is="collapsed ? ArrowRight : ArrowLeft" /></el-icon>
-        <span v-if="!collapsed">收起侧边栏</span>
-      </button>
+    <div class="app-sidebar-menu__meta">
+      <template v-if="compact">{{ currentLabelShort }}</template>
+      <template v-else>当前：{{ currentLabel }}</template>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { computed } from 'vue';
-import { ElIcon } from 'element-plus';
 import {
-  ArrowLeft,
-  ArrowRight,
   Box,
-  Calendar,
-  Download,
+  Bottom,
+  CircleCheck,
+  Coin,
+  Cpu,
   DataAnalysis,
   Document,
   Files,
-  FolderOpened,
-  Grid,
+  FolderChecked,
+  Goods,
   Histogram,
+  House,
   Monitor,
+  Operation,
+  PieChart,
+  Plus,
+  Reading,
+  RefreshLeft,
+  ScaleToOriginal,
+  Search,
   Setting,
-  Tools,
-  Upload,
+  Tickets,
+  User,
   Warning,
 } from '@element-plus/icons-vue';
+
+type IconComponent = any;
+type MenuItem = { index: string; label: string; icon: IconComponent; visible: boolean };
 
 const props = defineProps<{
   isSystem: boolean;
@@ -76,88 +72,54 @@ const props = defineProps<{
   canAccessMonitorLedger: boolean;
   canOperator: boolean;
   isAdmin: boolean;
-  collapsed?: boolean;
-  showCollapseToggle?: boolean;
+  compact?: boolean;
 }>();
 
-defineEmits<{
-  (e: 'toggle-collapse'): void;
-}>();
-
-type MenuItem = { index: string; label: string; icon: any };
-
-const systemMenu = computed<MenuItem[]>(() => [
-  { index: '/system/home', label: '系统首页', icon: Grid },
-  { index: '/system/dashboard', label: '报表与看板', icon: DataAnalysis },
-  { index: '/system/reports', label: '数据报表中心', icon: Histogram },
-  { index: '/system/tasks', label: '批量任务中心', icon: Files },
-  { index: '/system/backup', label: '备份/恢复', icon: FolderOpened },
-  { index: '/system/audit', label: '审计日志', icon: Document },
-  { index: '/system/users', label: '用户管理', icon: Tools },
-  { index: '/system/settings', label: '系统配置', icon: Setting },
-  { index: '/system/tools', label: '运维工具', icon: Tools },
-  { index: '/system/release-check', label: '发布前检查', icon: Calendar },
-  { index: '/system/performance', label: '性能面板', icon: DataAnalysis },
-  { index: '/system/docs', label: '系统交付文档', icon: Files },
-]);
-
-const partsMenu = computed<MenuItem[]>(() => {
-  const items: MenuItem[] = [
-    { index: '/stock', label: '库存查询', icon: Box },
-    { index: '/tx', label: '出入库明细', icon: Document },
-    { index: '/warnings', label: '预警中心', icon: Warning },
+const visibleMenuItems = computed<MenuItem[]>(() => {
+  const systemItems: MenuItem[] = [
+    { index: '/system/home', label: '系统首页', icon: House, visible: true },
+    { index: '/system/dashboard', label: '报表与看板', icon: DataAnalysis, visible: true },
+    { index: '/system/reports', label: '数据报表中心', icon: PieChart, visible: true },
+    { index: '/system/tasks', label: '批量任务中心', icon: FolderChecked, visible: true },
+    { index: '/system/backup', label: '备份/恢复', icon: RefreshLeft, visible: true },
+    { index: '/system/audit', label: '审计日志', icon: Reading, visible: true },
+    { index: '/system/users', label: '用户管理', icon: User, visible: true },
+    { index: '/system/settings', label: '系统配置', icon: Setting, visible: true },
+    { index: '/system/tools', label: '运维工具', icon: Operation, visible: true },
+    { index: '/system/release-check', label: '发布前检查', icon: CircleCheck, visible: true },
+    { index: '/system/performance', label: '性能面板', icon: Histogram, visible: true },
+    { index: '/system/docs', label: '系统交付文档', icon: Document, visible: true },
   ];
-  if (props.canOperator) {
-    items.push(
-      { index: '/in', label: '入库', icon: Upload },
-      { index: '/out', label: '出库', icon: Download },
-      { index: '/batch', label: '批量出入库', icon: Files },
-    );
-  }
-  if (props.isAdmin) {
-    items.push(
-      { index: '/items', label: '配件管理', icon: Grid },
-      { index: '/import/items', label: 'Excel 导入配件', icon: FolderOpened },
-      { index: '/stocktake', label: '库存盘点', icon: Calendar },
-      { index: '/system/home', label: '系统', icon: Setting },
-    );
-  }
-  return items;
-});
 
-const pcMenu = computed<MenuItem[]>(() => {
-  const items: MenuItem[] = [];
-  if (props.canAccessPcLedger) {
-    items.push(
-      { index: '/pc/assets', label: '电脑台账', icon: Monitor },
-      { index: '/pc/age-warnings', label: '报废预警', icon: Warning },
-      { index: '/pc/tx', label: '电脑出入库明细', icon: Document },
-      { index: '/pc/inventory-logs', label: '盘点记录', icon: Calendar },
-    );
-  }
-  if (props.canAccessMonitorLedger) {
-    items.push(
-      { index: '/pc/monitors', label: '显示器台账', icon: Monitor },
-      { index: '/pc/monitor-tx', label: '显示器出入库明细', icon: Document },
-      { index: '/pc/monitor-inventory-logs', label: '显示器盘点记录', icon: Calendar },
-    );
-  }
-  if (props.canOperator && props.canAccessPcLedger) {
-    items.push(
-      { index: '/pc/in', label: '电脑入库', icon: Upload },
-      { index: '/pc/out', label: '电脑出库', icon: Download },
-      { index: '/pc/recycle', label: '电脑回收/归还', icon: FolderOpened },
-    );
-  }
-  if (props.isAdmin) items.push({ index: '/system/home', label: '系统', icon: Setting });
-  return items;
-});
+  const partsItems: MenuItem[] = [
+    { index: '/stock', label: '库存查询', icon: Search, visible: props.canAccessPartsArea },
+    { index: '/tx', label: '出入库明细', icon: Tickets, visible: props.canAccessPartsArea },
+    { index: '/warnings', label: '预警中心', icon: Warning, visible: props.canAccessPartsArea },
+    { index: '/in', label: '入库', icon: Plus, visible: props.canAccessPartsArea && props.canOperator },
+    { index: '/out', label: '出库', icon: Bottom, visible: props.canAccessPartsArea && props.canOperator },
+    { index: '/batch', label: '批量出入库', icon: Files, visible: props.canAccessPartsArea && props.canOperator },
+    { index: '/items', label: '配件管理', icon: Box, visible: props.canAccessPartsArea && props.isAdmin },
+    { index: '/import/items', label: 'Excel 导入配件', icon: Document, visible: props.canAccessPartsArea && props.isAdmin },
+    { index: '/stocktake', label: '库存盘点', icon: ScaleToOriginal, visible: props.canAccessPartsArea && props.isAdmin },
+    { index: '/system/home', label: '系统', icon: Setting, visible: props.canAccessPartsArea && props.isAdmin },
+  ];
 
-const menuItems = computed<MenuItem[]>(() => {
-  if (props.isSystem) return systemMenu.value;
-  if (props.warehouseActive === 'parts' && props.canAccessPartsArea) return partsMenu.value;
-  if (props.canAccessPcArea) return pcMenu.value;
-  return [];
+  const pcItems: MenuItem[] = [
+    { index: '/pc/assets', label: '电脑台账', icon: Cpu, visible: props.canAccessPcArea && props.canAccessPcLedger },
+    { index: '/pc/age-warnings', label: '报废预警', icon: Warning, visible: props.canAccessPcArea && props.canAccessPcLedger },
+    { index: '/pc/tx', label: '电脑出入库明细', icon: Tickets, visible: props.canAccessPcArea && props.canAccessPcLedger },
+    { index: '/pc/inventory-logs', label: '盘点记录', icon: ScaleToOriginal, visible: props.canAccessPcArea && props.canAccessPcLedger },
+    { index: '/pc/monitors', label: '显示器台账', icon: Monitor, visible: props.canAccessPcArea && props.canAccessMonitorLedger },
+    { index: '/pc/monitor-tx', label: '显示器出入库明细', icon: Goods, visible: props.canAccessPcArea && props.canAccessMonitorLedger },
+    { index: '/pc/monitor-inventory-logs', label: '显示器盘点记录', icon: Coin, visible: props.canAccessPcArea && props.canAccessMonitorLedger },
+    { index: '/pc/in', label: '电脑入库', icon: Plus, visible: props.canAccessPcArea && props.canOperator && props.canAccessPcLedger },
+    { index: '/pc/out', label: '电脑出库', icon: Bottom, visible: props.canAccessPcArea && props.canOperator && props.canAccessPcLedger },
+    { index: '/pc/recycle', label: '电脑回收/归还', icon: RefreshLeft, visible: props.canAccessPcArea && props.canOperator && props.canAccessPcLedger },
+    { index: '/system/home', label: '系统', icon: Setting, visible: props.canAccessPcArea && props.isAdmin },
+  ];
+
+  const source = props.isSystem ? systemItems : props.warehouseActive === 'parts' ? partsItems : pcItems;
+  return source.filter((item) => item.visible);
 });
 
 const currentLabel = computed(() => {
@@ -166,6 +128,12 @@ const currentLabel = computed(() => {
     if (props.canAccessPcLedger && props.canAccessMonitorLedger) return '电脑/显示器仓';
     return props.canAccessPcLedger ? '电脑仓' : '显示器仓';
   }
+  return '配件仓';
+});
+
+const currentLabelShort = computed(() => {
+  if (props.isSystem) return '系统';
+  if (props.warehouseActive === 'pc') return '电脑仓';
   return '配件仓';
 });
 </script>
