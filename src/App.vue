@@ -288,7 +288,7 @@ const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || d
 const desktopSidebarWidth = computed(() => {
   if (isMobile.value) return '0px';
   if (desktopSidebarCollapsed.value && !desktopSidebarPreview.value) return '72px';
-  return '236px';
+  return '220px';
 });
 
 const title = computed(() => {

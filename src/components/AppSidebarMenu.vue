@@ -1,6 +1,11 @@
 <template>
   <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed }">
-    <div class="app-sidebar-menu__brand" :title="brandTitle">{{ collapsed ? '库存' : brandTitle }}</div>
+    <div class="app-sidebar-menu__brand" :title="brandTitle">
+      <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
+        <el-icon><Box /></el-icon>
+      </span>
+      <template v-else>{{ brandTitle }}</template>
+    </div>
 
     <el-menu
       router
@@ -18,7 +23,7 @@
       >
         <div class="app-sidebar-menu__item-inner">
           <span class="app-sidebar-menu__item-icon" aria-hidden="true">
-            <component :is="item.icon" class="app-sidebar-menu__icon-svg" />
+            <el-icon><component :is="item.icon" /></el-icon>
           </span>
           <span v-if="!collapsed" class="app-sidebar-menu__item-label">{{ item.label }}</span>
         </div>
@@ -44,7 +49,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, markRaw } from 'vue';
+import { computed } from 'vue';
 import {
   Box,
   Document,
@@ -97,45 +102,45 @@ type MenuItem = {
 const brandTitle = '出入库管理';
 
 const systemItems = computed<MenuItem[]>(() => [
-  { index: '/system/home', label: '系统首页', icon: markRaw(Setting), visible: true },
-  { index: '/system/dashboard', label: '报表与看板', icon: markRaw(DataAnalysis), visible: true },
-  { index: '/system/reports', label: '数据报表中心', icon: markRaw(Histogram), visible: true },
-  { index: '/system/tasks', label: '批量任务中心', icon: markRaw(Files), visible: true },
-  { index: '/system/backup', label: '备份/恢复', icon: markRaw(RefreshRight), visible: true },
-  { index: '/system/audit', label: '审计日志', icon: markRaw(Document), visible: true },
-  { index: '/system/users', label: '用户管理', icon: markRaw(User), visible: true },
-  { index: '/system/settings', label: '系统配置', icon: markRaw(Tools), visible: true },
-  { index: '/system/tools', label: '运维工具', icon: markRaw(Operation), visible: true },
-  { index: '/system/release-check', label: '发布前检查', icon: markRaw(FolderChecked), visible: true },
-  { index: '/system/performance', label: '性能面板', icon: markRaw(TrendCharts), visible: true },
-  { index: '/system/docs', label: '系统交付文档', icon: markRaw(Reading), visible: true },
+  { index: '/system/home', label: '系统首页', icon: Setting, visible: true },
+  { index: '/system/dashboard', label: '报表与看板', icon: DataAnalysis, visible: true },
+  { index: '/system/reports', label: '数据报表中心', icon: Histogram, visible: true },
+  { index: '/system/tasks', label: '批量任务中心', icon: Files, visible: true },
+  { index: '/system/backup', label: '备份/恢复', icon: RefreshRight, visible: true },
+  { index: '/system/audit', label: '审计日志', icon: Document, visible: true },
+  { index: '/system/users', label: '用户管理', icon: User, visible: true },
+  { index: '/system/settings', label: '系统配置', icon: Tools, visible: true },
+  { index: '/system/tools', label: '运维工具', icon: Operation, visible: true },
+  { index: '/system/release-check', label: '发布前检查', icon: FolderChecked, visible: true },
+  { index: '/system/performance', label: '性能面板', icon: TrendCharts, visible: true },
+  { index: '/system/docs', label: '系统交付文档', icon: Reading, visible: true },
 ]);
 
 const partsItems = computed<MenuItem[]>(() => [
-  { index: '/stock', label: '库存查询', icon: markRaw(Box), visible: true },
-  { index: '/tx', label: '出入库明细', icon: markRaw(Document), visible: true },
-  { index: '/warnings', label: '预警中心', icon: markRaw(Warning), visible: true },
-  { index: '/in', label: '入库', icon: markRaw(Plus), visible: props.canOperator },
-  { index: '/out', label: '出库', icon: markRaw(Minus), visible: props.canOperator },
-  { index: '/batch', label: '批量出入库', icon: markRaw(Operation), visible: props.canOperator },
-  { index: '/items', label: '配件管理', icon: markRaw(Management), visible: props.isAdmin },
-  { index: '/import/items', label: 'Excel 导入配件', icon: markRaw(Upload), visible: props.isAdmin },
-  { index: '/stocktake', label: '库存盘点', icon: markRaw(Checked), visible: props.isAdmin },
-  { index: '/system/home', label: '系统', icon: markRaw(Setting), visible: props.isAdmin },
+  { index: '/stock', label: '库存查询', icon: Box, visible: true },
+  { index: '/tx', label: '出入库明细', icon: Document, visible: true },
+  { index: '/warnings', label: '预警中心', icon: Warning, visible: true },
+  { index: '/in', label: '入库', icon: Plus, visible: props.canOperator },
+  { index: '/out', label: '出库', icon: Minus, visible: props.canOperator },
+  { index: '/batch', label: '批量出入库', icon: Operation, visible: props.canOperator },
+  { index: '/items', label: '配件管理', icon: Management, visible: props.isAdmin },
+  { index: '/import/items', label: 'Excel 导入配件', icon: Upload, visible: props.isAdmin },
+  { index: '/stocktake', label: '库存盘点', icon: Checked, visible: props.isAdmin },
+  { index: '/system/home', label: '系统', icon: Setting, visible: props.isAdmin },
 ]);
 
 const pcItems = computed<MenuItem[]>(() => [
-  { index: '/pc/assets', label: '电脑台账', icon: markRaw(Cpu), visible: props.canAccessPcLedger },
-  { index: '/pc/age-warnings', label: '报废预警', icon: markRaw(Warning), visible: props.canAccessPcLedger },
-  { index: '/pc/tx', label: '电脑出入库明细', icon: markRaw(Document), visible: props.canAccessPcLedger },
-  { index: '/pc/inventory-logs', label: '盘点记录', icon: markRaw(Checked), visible: props.canAccessPcLedger },
-  { index: '/pc/monitors', label: '显示器台账', icon: markRaw(Monitor), visible: props.canAccessMonitorLedger },
-  { index: '/pc/monitor-tx', label: '显示器出入库明细', icon: markRaw(Document), visible: props.canAccessMonitorLedger },
-  { index: '/pc/monitor-inventory-logs', label: '显示器盘点记录', icon: markRaw(Checked), visible: props.canAccessMonitorLedger },
-  { index: '/pc/in', label: '电脑入库', icon: markRaw(Plus), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/pc/out', label: '电脑出库', icon: markRaw(Minus), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/pc/recycle', label: '电脑回收/归还', icon: markRaw(RefreshRight), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/system/home', label: '系统', icon: markRaw(Setting), visible: props.isAdmin },
+  { index: '/pc/assets', label: '电脑台账', icon: Cpu, visible: props.canAccessPcLedger },
+  { index: '/pc/age-warnings', label: '报废预警', icon: Warning, visible: props.canAccessPcLedger },
+  { index: '/pc/tx', label: '电脑出入库明细', icon: Document, visible: props.canAccessPcLedger },
+  { index: '/pc/inventory-logs', label: '盘点记录', icon: Checked, visible: props.canAccessPcLedger },
+  { index: '/pc/monitors', label: '显示器台账', icon: Monitor, visible: props.canAccessMonitorLedger },
+  { index: '/pc/monitor-tx', label: '显示器出入库明细', icon: Document, visible: props.canAccessMonitorLedger },
+  { index: '/pc/monitor-inventory-logs', label: '显示器盘点记录', icon: Checked, visible: props.canAccessMonitorLedger },
+  { index: '/pc/in', label: '电脑入库', icon: Plus, visible: props.canOperator && props.canAccessPcLedger },
+  { index: '/pc/out', label: '电脑出库', icon: Minus, visible: props.canOperator && props.canAccessPcLedger },
+  { index: '/pc/recycle', label: '电脑回收/归还', icon: RefreshRight, visible: props.canOperator && props.canAccessPcLedger },
+  { index: '/system/home', label: '系统', icon: Setting, visible: props.isAdmin },
 ]);
 
 const visibleItems = computed(() => {

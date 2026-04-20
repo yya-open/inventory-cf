@@ -270,8 +270,67 @@ function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _rou
 
 router.afterEach((to) => {
   requestAnimationFrame(() => finishRoutePagePending());
-  if ((to.meta as any)?.public) return;
-  // 性能回退：关闭路由预取与预热，避免进入页面后追加发起非必要请求。
+  if ((to.meta as any)?.public || !shouldAllowRoutePrefetch()) return;
+  const auth = useAuth();
+  const tasks: Array<[string, () => Promise<unknown>, boolean]> = [];
+  const add = (key: string, loader: () => Promise<unknown>, enabled = true) => {
+    tasks.push([key, loader, enabled]);
+  };
+  const canAdminAccess = auth.user?.role === 'admin';
+  const canOperate = auth.user?.role === 'admin' || auth.user?.role === 'operator';
+  const canViewParts = canAccessModuleArea(auth.user, 'parts');
+  const canViewPc = canAccessModuleArea(auth.user, 'pc');
+  const canViewPcLedger = canAccessPcSection(auth.user, 'pc');
+  const canViewMonitorLedger = canAccessPcSection(auth.user, 'monitor');
+
+  prewarmPcLedgerData(auth.user, to.path);
+
+  if (to.path.startsWith('/system')) {
+    if (to.path === '/system/home') {
+      add('/system/dashboard', Dashboard, canAdminAccess);
+    } else if (to.path === '/system/dashboard') {
+      add('/system/audit', AuditLog, canAdminAccess);
+    } else if (to.path === '/system/tools') {
+    } else {
+    }
+  } else if (to.path.startsWith('/pc')) {
+    if (to.path === '/pc/assets') {
+      add('/pc/tx', preloadPcTx, canViewPc && canViewPcLedger);
+      add('/pc/age-warnings', preloadPcAgeWarnings, canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitors') {
+      add('/pc/monitor-tx', preloadMonitorTx, canViewPc && canViewMonitorLedger);
+      add('/pc/monitor-inventory-logs', preloadMonitorInventoryLogs, canViewPc && canViewMonitorLedger);
+    } else if (to.path === '/pc/tx') {
+      add('/pc/assets', preloadPcAssets, canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitor-tx') {
+      add('/pc/monitors', preloadMonitorAssets, canViewPc && canViewMonitorLedger);
+    } else if (to.path === '/pc/inventory-logs') {
+      add('/pc/assets', preloadPcAssets, canViewPc && canViewPcLedger);
+      add('/pc/tx', preloadPcTx, canViewPc && canViewPcLedger);
+    } else if (to.path === '/pc/monitor-inventory-logs') {
+      add('/pc/monitors', preloadMonitorAssets, canViewPc && canViewMonitorLedger);
+      add('/pc/monitor-tx', preloadMonitorTx, canViewPc && canViewMonitorLedger);
+    } else {
+      add('/pc/assets', preloadPcAssets, canViewPc && canViewPcLedger);
+      add('/pc/monitors', preloadMonitorAssets, canViewPc && canViewMonitorLedger);
+    }
+  } else {
+    if (to.path === '/stock') {
+      add('/tx', preloadTxList, canViewParts);
+      add('/warnings', preloadWarnings, canViewParts);
+    } else if (to.path === '/tx') {
+      add('/stock', preloadStockQuery, canViewParts);
+      add('/batch', BatchTx, canOperate && canViewParts);
+    } else {
+      add('/stock', preloadStockQuery, canViewParts);
+      add('/tx', preloadTxList, canViewParts);
+    }
+  }
+
+  const selected = tasks
+    .filter(([key, , enabled]) => enabled && key !== to.path)
+    .slice(0, 1);
+  selected.forEach(([key, loader]) => prefetchChunk(key, loader));
 });
 
 
