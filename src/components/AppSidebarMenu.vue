@@ -9,8 +9,19 @@
       :collapse="collapsed"
       :collapse-transition="false"
     >
-      <el-menu-item v-for="item in visibleItems" :key="item.index" :index="item.index" :title="collapsed ? item.label : undefined">
-        <el-icon><component :is="item.icon" /></el-icon>
+      <el-menu-item
+        v-for="item in visibleItems"
+        :key="item.index"
+        :index="item.index"
+        :title="collapsed ? item.label : undefined"
+        class="app-sidebar-menu__item"
+      >
+        <div class="app-sidebar-menu__item-inner">
+          <span class="app-sidebar-menu__item-icon" aria-hidden="true">
+            <el-icon><component :is="item.icon" /></el-icon>
+          </span>
+          <span v-if="!collapsed" class="app-sidebar-menu__item-label">{{ item.label }}</span>
+        </div>
         <template #title>{{ item.label }}</template>
       </el-menu-item>
     </el-menu>
@@ -50,7 +61,6 @@ import {
   Histogram,
   Files,
   RefreshRight,
-  Clock,
   Monitor,
   Cpu,
   Tools,
