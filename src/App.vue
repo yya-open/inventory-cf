@@ -7,38 +7,15 @@
     v-else
     class="app-root"
     :class="{ 'app-root--mobile': isMobile }"
-    :style="{ '--sidebar-width': desktopSidebarVisible ? '220px' : '72px' }"
+    :style="{ '--sidebar-width': desktopSidebarCollapsed ? '72px' : '220px' }"
   >
     <div class="app-bg" />
-    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
-      <div
-        v-if="!isMobile"
-        class="app-aside-toggle-zone"
-        :class="{ 'app-aside-toggle-zone--collapsed': desktopSidebarCollapsed && !desktopSidebarPreview }"
-        aria-hidden="true"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
-      />
-      <button
-        v-if="!isMobile"
-        class="app-aside-toggle"
-        :class="{ 'app-aside-toggle--visible': sidebarToggleHovered || sidebarHovered }"
-        type="button"
-        :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
-        @click="toggleSidebar"
->
-        <span class="app-aside-toggle__icon" aria-hidden="true">{{ desktopSidebarCollapsed ? '›' : '‹' }}</span>
-      </button>
+    <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed, 'app-layout--mobile': isMobile }">
       <el-aside
         v-if="!isMobile"
-        :width="desktopSidebarVisible ? '220px' : '72px'"
+        :width="desktopSidebarCollapsed ? '72px' : '220px'"
         class="app-aside"
-        :class="{ 'app-aside--collapsed': !desktopSidebarVisible, 'app-aside--preview': desktopSidebarPreview }"
-        @mouseenter="markSidebarHovered(true)"
-        @mouseleave="markSidebarHovered(false)"
+        :class="{ 'app-aside--collapsed': desktopSidebarCollapsed }"
       >
         <div class="app-aside__inner">
           <AppSidebarMenu
@@ -51,7 +28,8 @@
             :can-access-monitor-ledger="canAccessMonitorLedger"
             :can-operator="can('operator')"
             :is-admin="can('admin')"
-            :collapsed="!desktopSidebarVisible && !desktopSidebarPreview"
+            :collapsed="desktopSidebarCollapsed"
+            @toggle-collapse="toggleSidebar"
           />
         </div>
       </el-aside>
@@ -297,14 +275,10 @@ const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeleto
 
 const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
 const desktopSidebarCollapsed = ref(false);
-const desktopSidebarPreview = ref(false);
-const sidebarHovered = ref(false);
-const sidebarToggleHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
-const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
 
 const title = computed(() => {
   // 系统模块：优先用路由 meta.title
@@ -400,7 +374,6 @@ watch(desktopSidebarCollapsed, (value, previous) => {
     localStorage.setItem(SIDEBAR_COLLAPSED_KEY, value ? "1" : "0");
   } catch {}
   if (value === previous) return;
-  if (!value) desktopSidebarPreview.value = false;
   trackUiEvent('sidebar_toggle', {
     path: route.path,
     fullPath: route.fullPath,
@@ -419,33 +392,6 @@ function updateViewport() {
   if (!nextMobile) mobileSidebarVisible.value = false;
 }
 
-function handleSidebarToggleHover(next: boolean) {
-  sidebarToggleHovered.value = next;
-  if (next) openSidebarPreview();
-}
-
-function openSidebarPreview() {
-  if (isMobile.value || !desktopSidebarCollapsed.value || desktopSidebarPreview.value) return;
-  desktopSidebarPreview.value = true;
-  trackUiEvent('sidebar_preview_open', {
-    path: route.path,
-    fullPath: route.fullPath,
-    metadata: { area: currentArea.value },
-  });
-}
-
-function markSidebarHovered(next: boolean) {
-  sidebarHovered.value = next;
-  if (!next && desktopSidebarCollapsed.value && desktopSidebarPreview.value) {
-    sidebarToggleHovered.value = false;
-    window.setTimeout(() => {
-      if (!sidebarHovered.value && desktopSidebarCollapsed.value) {
-        desktopSidebarPreview.value = false;
-      }
-    }, 120);
-  }
-}
-
 function toggleSidebar() {
   if (isMobile.value) {
     mobileSidebarVisible.value = !mobileSidebarVisible.value;
@@ -461,8 +407,6 @@ function toggleSidebar() {
 
 watch(() => route.fullPath, () => {
   mobileSidebarVisible.value = false;
-  sidebarToggleHovered.value = false;
-  if (desktopSidebarCollapsed.value) desktopSidebarPreview.value = false;
 });
 
 watch(simpleLayout, (value) => {
