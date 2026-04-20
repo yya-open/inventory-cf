@@ -1134,27 +1134,98 @@ body {
   transition: width 0.22s ease, opacity 0.22s ease, box-shadow 0.22s ease;
 }
 
+
+.app-aside {
+  transition: width 180ms ease, box-shadow 180ms ease;
+}
+
+.app-sidebar-menu .el-menu {
+  --el-menu-bg-color: transparent;
+  --el-menu-border-color: transparent;
+}
+
+.app-sidebar-menu .el-menu-item [class^="el-icon"],
+.app-sidebar-menu .el-sub-menu__title [class^="el-icon"] {
+  font-size: 18px;
+}
+
+.app-sidebar-menu--collapsed {
+  align-items: center;
+}
+
+.app-sidebar-menu--collapsed .app-sidebar-menu__brand,
+.app-sidebar-menu--collapsed .app-sidebar-menu__meta {
+  text-align: center;
+}
+
+.app-sidebar-menu--collapsed .app-sidebar-menu__brand {
+  padding-inline: 8px;
+}
+
+.app-sidebar-menu--collapsed .app-sidebar-menu__meta {
+  padding-inline: 8px;
+}
+
+.app-sidebar-menu__collapse-btn {
+  margin: 0 12px 14px;
+  padding: 10px 12px;
+  border: 1px solid rgba(148, 163, 184, 0.22);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.75);
+  color: #475569;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  cursor: pointer;
+  transition: all 160ms ease;
+}
+
+.app-sidebar-menu__collapse-btn:hover {
+  border-color: rgba(64, 158, 255, 0.34);
+  color: #1d4ed8;
+  background: rgba(239, 246, 255, 0.92);
+}
+
+.app-sidebar-menu__collapse-text {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.app-sidebar-menu__collapse-arrow {
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+}
+
+.app-sidebar-menu--collapsed .app-sidebar-menu__collapse-btn {
+  width: 48px;
+  height: 48px;
+  margin-inline: auto;
+  padding: 0;
+  justify-content: center;
+  border-radius: 16px;
+}
+
+.app-sidebar-menu--collapsed .app-sidebar-menu__collapse-arrow {
+  font-size: 18px;
+}
 .app-aside__inner {
-  width: 220px;
-  min-width: 220px;
+  width: 100%;
+  min-width: 0;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .app-aside--collapsed {
-  min-width: 0 !important;
-  opacity: 0;
+  opacity: 1;
   box-shadow: none;
 }
 
 .app-aside--preview {
   opacity: 1;
   box-shadow: 0 18px 48px rgba(15, 23, 42, 0.16);
-}
-
-.app-aside--collapsed .app-aside__inner {
-  pointer-events: none;
 }
 
 .app-aside-toggle {

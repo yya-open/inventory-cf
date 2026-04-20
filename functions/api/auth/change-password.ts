@@ -1,4 +1,4 @@
-import { json, requireAuth, errorResponse, signJwt, JWT_TTL_SECONDS } from "../../_auth";
+import { json, requireAuth, errorResponse, signJwt, getJwtTtlSeconds } from "../../_auth";
 import { verifyPassword, hashPassword } from "../../_password";
 import { validatePassword } from "../../_password_policy";
 
@@ -28,10 +28,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     // Issue a new token for the current session so the user won't be kicked out.
     const tvRow = await env.DB.prepare("SELECT token_version, username, role FROM users WHERE id=?").bind(user.id).first<any>();
     const tv = Number(tvRow?.token_version || 0);
+    const ttlSeconds = getJwtTtlSeconds(env as any);
     (env as any).__refresh_token = await signJwt(
       { sub: user.id, u: tvRow?.username || user.username, r: tvRow?.role || user.role, tv },
       env.JWT_SECRET,
-      JWT_TTL_SECONDS
+      ttlSeconds
     );
 
     return json(true);

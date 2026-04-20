@@ -7,34 +7,13 @@
     v-else
     class="app-root"
     :class="{ 'app-root--mobile': isMobile }"
-    :style="{ '--sidebar-width': desktopSidebarVisible ? '220px' : '0px' }"
+    :style="{ '--sidebar-width': desktopSidebarWidth }"
   >
     <div class="app-bg" />
     <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
-      <div
-        v-if="!isMobile"
-        class="app-aside-toggle-zone"
-        :class="{ 'app-aside-toggle-zone--collapsed': desktopSidebarCollapsed && !desktopSidebarPreview }"
-        aria-hidden="true"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
-      />
-      <button
-        v-if="!isMobile"
-        class="app-aside-toggle"
-        :class="{ 'app-aside-toggle--visible': sidebarToggleHovered || sidebarHovered }"
-        type="button"
-        :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
-        @click="toggleSidebar"
->
-        <span class="app-aside-toggle__icon" aria-hidden="true">{{ desktopSidebarCollapsed ? '›' : '‹' }}</span>
-      </button>
       <el-aside
         v-if="!isMobile"
-        :width="desktopSidebarVisible ? '220px' : '0px'"
+        :width="desktopSidebarWidth"
         class="app-aside"
         :class="{ 'app-aside--collapsed': !desktopSidebarVisible, 'app-aside--preview': desktopSidebarPreview }"
         @mouseenter="markSidebarHovered(true)"
@@ -51,6 +30,8 @@
             :can-access-monitor-ledger="canAccessMonitorLedger"
             :can-operator="can('operator')"
             :is-admin="can('admin')"
+            :collapsed="desktopSidebarCollapsed"
+            @toggle-collapse="toggleSidebar"
           />
         </div>
       </el-aside>
@@ -78,6 +59,7 @@
           :can-access-monitor-ledger="canAccessMonitorLedger"
           :can-operator="can('operator')"
           :is-admin="can('admin')"
+          :is-mobile="true"
         />
       </el-drawer>
 
@@ -303,6 +285,11 @@ const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
 const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
+const desktopSidebarWidth = computed(() => {
+  if (isMobile.value) return '0px';
+  if (desktopSidebarCollapsed.value && !desktopSidebarPreview.value) return '72px';
+  return '220px';
+});
 
 const title = computed(() => {
   // 系统模块：优先用路由 meta.title
