@@ -11,26 +11,15 @@
   >
     <div class="app-bg" />
     <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
-      <div
-        v-if="!isMobile"
-        class="app-aside-toggle-zone"
-        :class="{ 'app-aside-toggle-zone--collapsed': desktopSidebarCollapsed && !desktopSidebarPreview }"
-        aria-hidden="true"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
-      />
       <button
-        v-if="!isMobile"
-        class="app-aside-toggle"
-        :class="{ 'app-aside-toggle--visible': sidebarToggleHovered || sidebarHovered }"
+        v-if="!isMobile && desktopSidebarCollapsed && !isSystem"
+        class="app-sidebar-expand-tab"
         type="button"
-        :aria-label="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        :title="desktopSidebarCollapsed ? '展开左侧菜单' : '收起左侧菜单'"
-        @mouseenter="handleSidebarToggleHover(true)"
-        @mouseleave="handleSidebarToggleHover(false)"
+        aria-label="展开左侧菜单"
+        title="展开左侧菜单"
         @click="toggleSidebar"
->
-        <span class="app-aside-toggle__icon" aria-hidden="true">{{ desktopSidebarCollapsed ? '›' : '‹' }}</span>
+      >
+        <span class="app-sidebar-expand-tab__icon" aria-hidden="true">›</span>
       </button>
       <el-aside
         v-if="!isMobile"
@@ -41,17 +30,31 @@
         @mouseleave="markSidebarHovered(false)"
       >
         <div class="app-aside__inner">
-          <AppSidebarMenu
-            :is-system="isSystem"
-            :active-menu="activeMenu"
-            :warehouse-active="sidebarWarehouseActive"
-            :can-access-parts-area="canAccessPartsArea"
-            :can-access-pc-area="canAccessPcArea"
-            :can-access-pc-ledger="canAccessPcLedger"
-            :can-access-monitor-ledger="canAccessMonitorLedger"
-            :can-operator="can('operator')"
-            :is-admin="can('admin')"
-          />
+          <div class="app-aside__content">
+            <AppSidebarMenu
+              :is-system="isSystem"
+              :active-menu="activeMenu"
+              :warehouse-active="sidebarWarehouseActive"
+              :can-access-parts-area="canAccessPartsArea"
+              :can-access-pc-area="canAccessPcArea"
+              :can-access-pc-ledger="canAccessPcLedger"
+              :can-access-monitor-ledger="canAccessMonitorLedger"
+              :can-operator="can('operator')"
+              :is-admin="can('admin')"
+            />
+          </div>
+          <div v-if="!isSystem" class="app-aside__footer">
+            <button
+              class="app-sidebar-collapse-btn"
+              type="button"
+              aria-label="收起左侧菜单"
+              title="收起左侧菜单"
+              @click="toggleSidebar"
+            >
+              <span class="app-sidebar-collapse-btn__icon" aria-hidden="true">‹</span>
+              <span>收起侧边栏</span>
+            </button>
+          </div>
         </div>
       </el-aside>
 
