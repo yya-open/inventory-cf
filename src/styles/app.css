@@ -1135,15 +1135,16 @@ body {
 }
 
 .app-aside__inner {
-  width: 100%;
-  min-width: 0;
+  width: 220px;
+  min-width: 220px;
   height: 100%;
   overflow-y: auto;
   overflow-x: hidden;
 }
 
 .app-aside--collapsed {
-  opacity: 1;
+  min-width: 0 !important;
+  opacity: 0;
   box-shadow: none;
 }
 
@@ -1153,7 +1154,7 @@ body {
 }
 
 .app-aside--collapsed .app-aside__inner {
-  pointer-events: auto;
+  pointer-events: none;
 }
 
 .app-aside-toggle {
@@ -1218,7 +1219,7 @@ body {
 }
 
 .app-layout--sidebar-collapsed .app-aside-toggle {
-  left: calc(72px + 10px);
+  left: 6px;
 }
 
 .app-layout--sidebar-preview .app-aside-toggle {
@@ -1574,46 +1575,4 @@ body {
   .el-message-box {
     width: calc(100vw - 16px) !important;
   }
-}
-
-
-.app-sidebar-menu--compact {
-  align-items: center;
-}
-
-.app-sidebar-menu--compact .app-sidebar-menu__brand {
-  width: 100%;
-  padding: 14px 0 10px;
-  text-align: center;
-}
-
-.app-sidebar-menu__menu.el-menu--collapse {
-  width: 100%;
-}
-
-.app-sidebar-menu__menu .el-menu-item {
-  gap: 10px;
-  border-radius: 14px;
-  margin: 6px 10px;
-}
-
-.app-sidebar-menu__menu .el-menu-item .el-icon {
-  font-size: 16px;
-}
-
-.app-sidebar-menu--compact .app-sidebar-menu__menu .el-menu-item {
-  width: 48px;
-  height: 48px;
-  line-height: 48px;
-  padding: 0 !important;
-  margin: 8px auto;
-  justify-content: center;
-  border-radius: 14px;
-}
-
-.app-sidebar-menu--compact .app-sidebar-menu__meta {
-  width: 100%;
-  text-align: center;
-  padding: 10px 8px 16px;
-  font-size: 11px;
 }

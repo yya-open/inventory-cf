@@ -7,7 +7,7 @@
     v-else
     class="app-root"
     :class="{ 'app-root--mobile': isMobile }"
-    :style="{ '--sidebar-width': desktopSidebarWidth }"
+    :style="{ '--sidebar-width': desktopSidebarVisible ? '220px' : '0px' }"
   >
     <div class="app-bg" />
     <el-container class="app-layout" :class="{ 'app-layout--sidebar-collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-layout--sidebar-preview': desktopSidebarPreview, 'app-layout--mobile': isMobile }">
@@ -34,9 +34,9 @@
       </button>
       <el-aside
         v-if="!isMobile"
-        :width="desktopSidebarWidth"
+        :width="desktopSidebarVisible ? '220px' : '0px'"
         class="app-aside"
-        :class="{ 'app-aside--collapsed': desktopSidebarCollapsed && !desktopSidebarPreview, 'app-aside--preview': desktopSidebarPreview }"
+        :class="{ 'app-aside--collapsed': !desktopSidebarVisible, 'app-aside--preview': desktopSidebarPreview }"
         @mouseenter="markSidebarHovered(true)"
         @mouseleave="markSidebarHovered(false)"
       >
@@ -51,7 +51,6 @@
             :can-access-monitor-ledger="canAccessMonitorLedger"
             :can-operator="can('operator')"
             :is-admin="can('admin')"
-            :compact="desktopSidebarCollapsed && !desktopSidebarPreview"
           />
         </div>
       </el-aside>
@@ -79,7 +78,6 @@
           :can-access-monitor-ledger="canAccessMonitorLedger"
           :can-operator="can('operator')"
           :is-admin="can('admin')"
-          :compact="false"
         />
       </el-drawer>
 
@@ -304,8 +302,7 @@ const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 
 const activeMenu = computed(() => route.path);
-const desktopSidebarWidth = computed(() => (desktopSidebarCollapsed.value && !desktopSidebarPreview.value ? '72px' : '220px'));
-const desktopSidebarVisible = computed(() => true);
+const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
 
 const title = computed(() => {
   // 系统模块：优先用路由 meta.title
