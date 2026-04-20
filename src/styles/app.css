@@ -1674,8 +1674,11 @@ body {
   box-shadow: inset 0 0 0 1px rgba(59, 130, 246, 0.08);
 }
 
-.app-sidebar-menu__item-icon .el-icon {
-  font-size: 16px;
+.app-sidebar-menu__icon-svg {
+  width: 16px;
+  height: 16px;
+  display: block;
+  stroke-width: 2;
 }
 
 .app-sidebar-menu__item-label {
@@ -1725,4 +1728,11 @@ body {
   height: 34px;
   flex-basis: 34px;
   border-radius: 12px;
+}
+
+
+.app-sidebar-menu__icon-svg svg {
+  width: 100%;
+  height: 100%;
+  display: block;
 }
