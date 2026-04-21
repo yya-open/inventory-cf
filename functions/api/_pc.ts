@@ -8,6 +8,8 @@ import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
+let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
+const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 
 /**
  * Runtime schema self-healing performs DDL and can slow down cold starts.
@@ -25,9 +27,17 @@ export function shouldHealPcSchema(env: any, url: URL) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  const settings = await getSystemSettings(db).catch(() => null as any);
-  const allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
-  if (!(allowBySettings || shouldHealPcSchema(env, url))) return;
+  const runtimeHealAllowed = shouldHealPcSchema(env, url);
+  let allowBySettings = false;
+  const cached = __pcRuntimeDdlAllowedCache;
+  if (cached && cached.expiresAt > Date.now()) {
+    allowBySettings = cached.value;
+  } else {
+    const settings = await getSystemSettings(db).catch(() => null as any);
+    allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
+    __pcRuntimeDdlAllowedCache = { expiresAt: Date.now() + PC_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
+  }
+  if (!(allowBySettings || runtimeHealAllowed)) return;
   return ensurePcSchema(db);
 }
 

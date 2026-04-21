@@ -8,6 +8,8 @@ import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
+let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
+const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 
 export function shouldHealMonitorSchema(env: any, url: URL) {
   const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
@@ -18,9 +20,17 @@ export function shouldHealMonitorSchema(env: any, url: URL) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  const settings = await getSystemSettings(db).catch(() => null as any);
-  const allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
-  if (!(allowBySettings || shouldHealMonitorSchema(env, url))) return;
+  const runtimeHealAllowed = shouldHealMonitorSchema(env, url);
+  let allowBySettings = false;
+  const cached = __monitorRuntimeDdlAllowedCache;
+  if (cached && cached.expiresAt > Date.now()) {
+    allowBySettings = cached.value;
+  } else {
+    const settings = await getSystemSettings(db).catch(() => null as any);
+    allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
+    __monitorRuntimeDdlAllowedCache = { expiresAt: Date.now() + MONITOR_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
+  }
+  if (!(allowBySettings || runtimeHealAllowed)) return;
   return ensureMonitorSchema(db);
 }
 

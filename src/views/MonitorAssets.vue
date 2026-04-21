@@ -730,7 +730,7 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 }
 
 const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
-const LEDGER_BATCH_REFRESH_DELAY_MS = 2200;
+const LEDGER_BATCH_REFRESH_DELAY_MS = 4500;
 
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
@@ -760,6 +760,25 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
   } catch (error) {
     console.warn('monitor inventory summary failed', error);
   }
+}
+
+function scheduleDeferredInventoryBatchRefresh(task: () => void | Promise<void>) {
+  if (typeof window === 'undefined') return;
+  const start = () => {
+    window.setTimeout(() => {
+      runWhenBrowserIdle(task, 2500);
+    }, LEDGER_BATCH_REFRESH_DELAY_MS);
+  };
+  if (document.visibilityState === 'visible') {
+    start();
+    return;
+  }
+  const onVisible = () => {
+    if (document.visibilityState !== 'visible') return;
+    document.removeEventListener('visibilitychange', onVisible);
+    start();
+  };
+  document.addEventListener('visibilitychange', onVisible, { passive: true, once: true });
 }
 
 function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
@@ -1949,15 +1968,13 @@ async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean }
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
-  window.setTimeout(() => {
-    runWhenBrowserIdle(async () => {
-      try {
-        await refreshInventoryBatch();
-        const nextFilters = currentFiltersForList();
-        if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
-      } catch {}
-    }, 2200);
-  }, LEDGER_BATCH_REFRESH_DELAY_MS);
+  scheduleDeferredInventoryBatchRefresh(async () => {
+    try {
+      await refreshInventoryBatch();
+      const nextFilters = currentFiltersForList();
+      if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
+    } catch {}
+  });
 }
 
 function handleViewportResize() {
