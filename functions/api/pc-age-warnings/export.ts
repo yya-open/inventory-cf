@@ -1,6 +1,7 @@
-import { requireAuth, errorResponse } from '../../_auth';
+import { errorResponse } from '../../_auth';
 import { ensurePcSchemaIfAllowed } from '../_pc';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from '../services/asset-ledger';
+import { requireAuthWithDataScope } from '../services/data-scope';
 
 const MAX_EXPORT_ROWS = 10000;
 const CHUNK_SIZE = 200;
@@ -23,7 +24,7 @@ async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limi
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
@@ -31,7 +32,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const scope = String(url.searchParams.get('scope') || 'all').trim().toLowerCase();
     const maxRows = Math.max(1, Math.min(MAX_EXPORT_ROWS, Number(url.searchParams.get('max_rows') || MAX_EXPORT_ROWS)));
-    const query = buildPcAssetQuery(url);
+    const query = buildPcAssetQuery(url, user);
     const total = await countByWhere(env.DB, 'pc_assets a', query);
 
     const isCurrent = scope === 'current';

@@ -1,4 +1,4 @@
-import { errorResponse, requireAuth } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
 import { ensureMonitorSchemaIfAllowed, monitorTxNo } from '../_monitor';
 import { normalizeText } from '../_pc';
@@ -11,6 +11,7 @@ import {
   monitorMovementAuditAction,
   type MonitorMovementType,
 } from './asset-write';
+import { assertAssetWarehouseAccess, assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from './data-scope';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -34,7 +35,7 @@ type MonitorMovementHandlerOptions = {
 export function createMonitorMovementHandler(options: MonitorMovementHandlerOptions): PagesFunction<Env> {
   return async ({ env, request }) => {
     try {
-      const user = await requireAuth(env, request, 'operator');
+      const user = await requireAuthWithDataScope(env, request, 'operator');
       if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
       const url = new URL(request.url);
       await ensureMonitorSchemaIfAllowed(env.DB, env, url);
@@ -58,8 +59,10 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
       const assetCode = normalizeText(body?.asset_code, 120);
       if (!assetId && !assetCode) throw Object.assign(new Error('缺少资产ID/资产编号'), { status: 400 });
 
+      assertAssetWarehouseAccess(user, '显示器仓', '显示器流转');
       const asset = await getMonitorAssetByIdOrCode(env.DB, assetId, assetCode);
       assertMonitorMovementAllowed(asset, options.type);
+      assertMonitorAssetDataScopeAccess(user, asset?.department, '显示器流转');
 
       const prepared = await options.prepare({ env, request, body, asset, user });
       await applyMonitorMovement({

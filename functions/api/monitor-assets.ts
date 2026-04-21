@@ -21,7 +21,7 @@ import {
   purgeArchivedAsset,
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { requireAuthWithDataScope } from './services/data-scope';
+import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { assertMonitorBrandDictionaryValue } from './services/master-data';
 import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
@@ -75,13 +75,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await requireAuthWithDataScope(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
     const body = await request.json<any>().catch(() => ({} as any));
+    assertAssetWarehouseAccess(user, '显示器仓', '显示器台账');
     const payload = parseMonitorAssetInput(body);
     await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
     await assertUnique(env.DB, 'SELECT id FROM monitor_assets WHERE asset_code=?', [payload.asset_code], '资产编号已存在');

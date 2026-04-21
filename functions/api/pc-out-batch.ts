@@ -1,4 +1,4 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import {
   ensurePcSchemaIfAllowed,
@@ -14,6 +14,7 @@ import { createTiming } from './_timing';
 import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
 type Item = {
   employee_no: string;
@@ -30,7 +31,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
   const t = env.__timing || createTiming();
   const url = new URL(request.url);
   try {
-    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
+    const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
@@ -64,6 +65,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
 
         const asset = await getPcAssetByIdOrSerial(env.DB, it?.asset_id, it?.serial_no);
         if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
+        await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑批量出库');
         if (!isInStockStatus(asset.status)) throw new Error('该电脑当前不是“在库”，无法出库');
 
         const afterStatus = toAssetStatusAfterOut();

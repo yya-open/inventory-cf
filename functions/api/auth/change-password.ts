@@ -1,6 +1,8 @@
-import { json, requireAuth, errorResponse, signJwt, getJwtTtlSeconds } from "../../_auth";
+import { json, requireAuth, errorResponse, signJwt, getJwtTtlSeconds, invalidateCachedAuthUser } from "../../_auth";
 import { verifyPassword, hashPassword } from "../../_password";
 import { validatePassword } from "../../_password_policy";
+import { invalidateCachedMe } from "./me";
+import { invalidateUserDataScopeCache } from "../services/data-scope";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
@@ -24,6 +26,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .prepare("UPDATE users SET password_hash=?, must_change_password=0, token_version=token_version+1 WHERE id=?")
       .bind(ph, user.id)
       .run();
+
+    invalidateCachedAuthUser(user.id);
+    invalidateCachedMe(user.id);
+    invalidateUserDataScopeCache(user.id);
 
     // Issue a new token for the current session so the user won't be kicked out.
     const tvRow = await env.DB.prepare("SELECT token_version, username, role FROM users WHERE id=?").bind(user.id).first<any>();

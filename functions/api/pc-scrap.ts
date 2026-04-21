@@ -1,14 +1,16 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchema, optional, pcScrapNo } from './_pc';
 import { applyPcScrap } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { assertAssetWarehouseAccess, assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
+    assertAssetWarehouseAccess(user, '电脑仓', '电脑报废');
 
     const url = new URL(request.url);
     const scrap_no = (url.searchParams.get('scrap_no') || '').trim();
@@ -23,6 +25,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
        ORDER BY id ASC`
     ).bind(scrap_no).all<any>();
 
+    const assetIds = (rows as any)?.results?.map((row: any) => Number(row?.asset_id || 0)).filter((id: number) => id > 0) || [];
+    if (assetIds.length) await assertPcAssetIdsDataScopeAccess(env.DB, user, assetIds, '电脑报废记录');
+
     return Response.json({ ok: true, data: (rows as any)?.results || [] });
   } catch (e: any) {
     return errorResponse(e);
@@ -31,7 +36,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await requireAuthWithDataScope(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
 
@@ -43,6 +48,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     const assetIds: number[] = Array.isArray(body?.asset_ids) ? body.asset_ids.map((x: any) => Number(x)).filter((x: any) => Number.isFinite(x) && x > 0) : [];
+    await assertPcAssetIdsDataScopeAccess(env.DB, user, assetIds, '电脑报废');
     if (!assetIds.length) return Response.json({ ok: false, message: 'asset_ids 不能为空' }, { status: 400 });
 
     const reason = optional(body?.reason, 200);

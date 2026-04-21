@@ -1,12 +1,13 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
 import { ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { toSqlRange } from "./_date";
 import { buildKeywordWhere } from "./_search";
+import { applyDepartmentDataScopeClause, requireAuthWithDataScope, scopeAllowsAssetWarehouse } from "./services/data-scope";
 
 // GET /api/monitor-inventory-log-count
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    const user = await requireAuthWithDataScope(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     const url = new URL(request.url);
@@ -35,6 +36,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       wh.push("l.batch_id=?");
       binds.push(batchId);
     }
+    if (!scopeAllowsAssetWarehouse(user, "显示器仓")) wh.push("1=0");
+    applyDepartmentDataScopeClause(wh, binds, "a.department", user);
 
     if (keyword) {
       const kw = buildKeywordWhere(keyword, {

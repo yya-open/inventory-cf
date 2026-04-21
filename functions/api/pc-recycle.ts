@@ -1,9 +1,10 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { createTiming } from './_timing';
+import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
 function assertAssigned(status: any) {
   return String(status) === 'ASSIGNED';
@@ -23,7 +24,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
   const t = env.__timing || createTiming();
   const url = new URL(request.url);
   try {
-    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
+    const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
@@ -38,6 +39,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     }
 
     if (!asset) return Response.json({ ok: false, message: '未找到该电脑资产' }, { status: 404 });
+    await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑回收/归还');
     if (!assertAssigned(asset.status)) {
       return Response.json({ ok: false, message: '该电脑当前不是“已领用”，无法回收/归还' }, { status: 400 });
     }

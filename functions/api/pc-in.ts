@@ -1,4 +1,4 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, pcInNo } from './_pc';
 import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
@@ -6,14 +6,16 @@ import { createTiming } from './_timing';
 import { assertDateText, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
   try {
-    const user = await t.measure('auth', () => requireAuth(env, request, 'operator'));
+    const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url)));
+    assertAssetWarehouseAccess(user, '电脑仓', '电脑入库');
 
     const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
     const { no } = buildWriteNo('PCIN', pcInNo, body?.client_request_id);

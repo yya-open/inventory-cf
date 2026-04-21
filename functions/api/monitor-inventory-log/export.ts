@@ -1,8 +1,9 @@
-import { requireAuth, errorResponse } from '../../_auth';
+import { errorResponse } from '../../_auth';
 import { ensureMonitorSchemaIfAllowed } from '../_monitor';
 import { logAudit } from '../_audit';
 import { beijingDateStampCompact } from '../_time';
 import { buildMonitorInventoryLogExportSql, buildMonitorInventoryLogQuery } from '../services/asset-events';
+import { requireAuthWithDataScope } from '../services/data-scope';
 
 function statusText(s: string) {
   if (s === 'IN_STOCK') return '在库';
@@ -30,12 +31,12 @@ function csvEscape(v: any) {
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const actor = await requireAuth(env, request, 'viewer');
+    const actor = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
-    const query = buildMonitorInventoryLogQuery(url);
+    const query = buildMonitorInventoryLogQuery(url, actor);
     const maxRows = Math.min(100000, Math.max(1000, Number(url.searchParams.get('max') || 50000)));
     const pageSize = 1000;
 

@@ -1,8 +1,9 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { errorResponse } from '../_auth';
 import { logAudit } from './_audit';
 import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
 function assertAssigned(status: any) {
   return String(status) === 'ASSIGNED';
@@ -28,7 +29,7 @@ type Item = {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await requireAuthWithDataScope(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
 
@@ -53,6 +54,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
         const asset = await getPcAssetByIdOrSerial(env.DB, it?.asset_id, it?.serial_no);
         if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
+        await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑批量回收/归还');
         if (!assertAssigned(asset.status)) throw new Error('该电脑当前不是“已领用”，无法回收/归还');
 
         const action = normalizeAction(it?.action);

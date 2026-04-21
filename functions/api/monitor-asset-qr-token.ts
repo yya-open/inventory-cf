@@ -1,10 +1,11 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
 import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { getOrCreateAssetQr } from "./services/asset-qr";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    const user = await requireAuthWithDataScope(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     const url = new URL(request.url);
@@ -14,6 +15,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
 
     await ensureMonitorQrColumns(env.DB);
     const id = Number(url.searchParams.get("id") || 0);
+    const asset = await env.DB.prepare('SELECT id, department FROM monitor_assets WHERE id=?').bind(id).first<any>().catch(() => null);
+    if (asset) assertMonitorAssetDataScopeAccess(user, asset.department, '显示器二维码');
     const result = await getOrCreateAssetQr(env.DB, {
       assetTable: "monitor_assets",
       notFoundMessage: "显示器台账不存在或已删除",

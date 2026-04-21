@@ -1,12 +1,13 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { requireAuth, errorResponse, invalidateCachedAuthUser } from "../_auth";
 import { apiFail, apiOk } from "./_response";
 import { logAudit } from "./_audit";
 import { sqlNowStored } from "./_time";
 import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
+import { invalidateCachedMe } from "./auth/me";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
-import { getUserDataScope, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
+import { getUserDataScope, invalidateUserDataScopeCache, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
 import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
@@ -218,6 +219,10 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       changes.data_scope = scope;
     }
 
+    invalidateCachedAuthUser(uid);
+    invalidateCachedMe(uid);
+    invalidateUserDataScopeCache(uid);
+
     const after = await env.DB
       .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?")
       .bind(uid)
@@ -260,6 +265,9 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     }
 
     await env.DB.prepare("DELETE FROM users WHERE id=?").bind(uid).run();
+    invalidateCachedAuthUser(uid);
+    invalidateCachedMe(uid);
+    invalidateUserDataScopeCache(uid);
     await logAudit(env.DB, request, actor, "USER_DELETE", "users", uid, { before: target });
 
     return apiOk({});

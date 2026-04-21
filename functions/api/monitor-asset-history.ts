@@ -1,11 +1,14 @@
-import { requireAuth, errorResponse, json } from "../_auth";
+import { errorResponse, json } from "../_auth";
+import { assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     const url = new URL(request.url);
     const assetId = Number(url.searchParams.get('id') || 0);
     if (!assetId) return Response.json({ ok: false, message: '缺少资产 ID' }, { status: 400 });
+    const asset = await env.DB.prepare('SELECT id, department FROM monitor_assets WHERE id=?').bind(assetId).first<any>().catch(() => null);
+    if (asset) assertMonitorAssetDataScopeAccess(user, asset.department, '显示器资产历史');
     const row = await env.DB.prepare(`
       SELECT
         t.employee_no AS previous_employee_no,

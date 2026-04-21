@@ -1,10 +1,11 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
+import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { getOrCreateAssetQrBulk } from "./services/asset-qr";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, 'viewer');
+    const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
@@ -13,6 +14,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
     const body = await request.json<any>().catch(() => ({} as any));
+    await assertPcAssetIdsDataScopeAccess(env.DB, user, Array.isArray(body?.ids) ? body.ids : [], '电脑二维码');
     const data = await getOrCreateAssetQrBulk(env.DB, {
       assetTable: 'pc_assets',
       notFoundMessage: '电脑台账不存在或已删除',

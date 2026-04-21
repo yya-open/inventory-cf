@@ -1,13 +1,14 @@
-import { requireAuth, errorResponse } from "../_auth";
+import { errorResponse } from "../_auth";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { toSqlRange } from "./_date";
 import { buildKeywordWhere } from "./_search";
+import { applyDepartmentDataScopeClause, requireAuthWithDataScope, scopeAllowsAssetWarehouse } from "./services/data-scope";
 
 // GET /api/pc-inventory-log-count
 // 仅用于统计 total：前端列表首屏用 fast=1 跳过 COUNT(*)，然后异步请求该接口补齐。
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "viewer");
+    const user = await requireAuthWithDataScope(env, request, "viewer");
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
     const url = new URL(request.url);
@@ -38,6 +39,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       wh.push("l.batch_id=?");
       binds.push(batchId);
     }
+    if (!scopeAllowsAssetWarehouse(user, "电脑仓")) wh.push("1=0");
+    applyDepartmentDataScopeClause(wh, binds, "s.current_department", user);
 
     if (keyword) {
       const kw = buildKeywordWhere(keyword, {
@@ -77,6 +80,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const fromSqlBase = `
       FROM pc_inventory_log l
       JOIN pc_assets a ON a.id = l.asset_id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
       LEFT JOIN (
         SELECT asset_id, MAX(id) AS max_id
         FROM pc_out

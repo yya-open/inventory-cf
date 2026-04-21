@@ -21,7 +21,7 @@ import {
   purgeArchivedAsset,
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { requireAuthWithDataScope } from './services/data-scope';
+import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
@@ -75,7 +75,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
 export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'operator');
+    const user = await requireAuthWithDataScope(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
@@ -90,6 +90,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const old = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
     if (!old) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
     if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该电脑已归档，请先恢复归档后再编辑'), { status: 400 });
+    await assertPcAssetDataScopeAccess(env.DB, user, id, '电脑台账');
 
     const payload = parsePcAssetInput(body);
     await assertPcBrandDictionaryValue(env.DB, payload.brand, '电脑品牌');

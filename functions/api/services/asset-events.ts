@@ -1,6 +1,7 @@
 import { toSqlRange } from '../_date';
 import { buildKeywordWhere } from '../_search';
 import { sqlBjDateTime } from '../_time';
+import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
 type PagedQuery = {
   page: number;
@@ -114,7 +115,7 @@ const PC_TX_UNION_SQL = `
   FROM pc_scrap s
 `;
 
-export function buildPcTxQuery(url: URL): PcTxQuery {
+export function buildPcTxQuery(url: URL, scope?: UserDataScope | null): PcTxQuery {
   const type = (url.searchParams.get('type') || '').trim().toUpperCase();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const date_from = url.searchParams.get('date_from');
@@ -131,6 +132,8 @@ export function buildPcTxQuery(url: URL): PcTxQuery {
     wh.push('x.type=?');
     binds.push(type);
   }
+  if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) wh.push('1=0');
+  applyDepartmentDataScopeClause(wh, binds, 's.current_department', scope);
 
   if (keyword) {
     const kw = buildKeywordWhere(keyword, {
@@ -191,6 +194,7 @@ export async function countPcTxRows(db: D1Database, query: Pick<PcTxQuery, 'wher
         CASE WHEN l.asset_id IS NOT NULL AND l.id = x.id AND l.type = x.type THEN 1 ELSE 0 END AS is_current_effective
       FROM tx x
       LEFT JOIN latest l ON l.asset_id = x.asset_id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = x.asset_id
       ${query.where}
     )
     SELECT COUNT(*) as c
@@ -222,6 +226,7 @@ export async function listPcTxRows(db: D1Database, query: PcTxQuery) {
         CASE WHEN l.asset_id IS NOT NULL AND l.id = x.id AND l.type = x.type THEN 1 ELSE 0 END AS is_current_effective
       FROM tx x
       LEFT JOIN latest l ON l.asset_id = x.asset_id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = x.asset_id
       ${query.where}
     )
     SELECT y.*
@@ -241,7 +246,7 @@ export type MonitorTxQuery = PagedQuery & {
   effective: '' | 'current' | 'history';
 };
 
-export function buildMonitorTxQuery(url: URL): MonitorTxQuery {
+export function buildMonitorTxQuery(url: URL, scope?: UserDataScope | null): MonitorTxQuery {
   const type = (url.searchParams.get('type') || url.searchParams.get('tx_type') || '').trim().toUpperCase();
   const keyword = (url.searchParams.get('keyword') || '').trim();
   const date_from = url.searchParams.get('date_from') || url.searchParams.get('start') || url.searchParams.get('date_start');
@@ -258,6 +263,8 @@ export function buildMonitorTxQuery(url: URL): MonitorTxQuery {
     wh.push('t.tx_type=?');
     binds.push(type);
   }
+  if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) wh.push('1=0');
+  applyDepartmentDataScopeClause(wh, binds, 'm.department', scope);
   const fromSql = toSqlRange(date_from, false);
   const toSql = toSqlRange(date_to, true);
   if (fromSql) {
@@ -311,6 +318,7 @@ export async function countMonitorTxRows(db: D1Database, query: Pick<MonitorTxQu
         CASE WHEN l.asset_id IS NOT NULL AND l.id = t.id THEN 1 ELSE 0 END AS is_current_effective
       FROM monitor_tx t
       LEFT JOIN latest l ON l.asset_id = t.asset_id
+      LEFT JOIN monitor_assets m ON m.id = t.asset_id
       ${query.where}
     )
     SELECT COUNT(*) AS c FROM scoped y ${effectiveWhere}
@@ -358,6 +366,7 @@ export async function listMonitorTxRows(db: D1Database, query: MonitorTxQuery) {
         CASE WHEN l.asset_id IS NOT NULL AND l.id = t.id THEN 1 ELSE 0 END AS is_current_effective
       FROM monitor_tx t
       LEFT JOIN latest l ON l.asset_id = t.asset_id
+      LEFT JOIN monitor_assets m ON m.id = t.asset_id
       LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
       LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
       LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
@@ -398,6 +407,7 @@ export function buildMonitorTxExportSql(query: Pick<MonitorTxQuery, 'where'>) {
       fp.name AS from_parent_location,
       tp.name AS to_parent_location
     FROM monitor_tx t
+    LEFT JOIN monitor_assets m ON m.id = t.asset_id
     LEFT JOIN pc_locations fl ON fl.id = t.from_location_id
     LEFT JOIN pc_locations tl ON tl.id = t.to_location_id
     LEFT JOIN pc_locations fp ON fp.id = fl.parent_id
@@ -415,7 +425,7 @@ export type InventoryLogQuery = PagedQuery & {
   issue_type: string;
 };
 
-export function buildPcInventoryLogQuery(url: URL): InventoryLogQuery {
+export function buildPcInventoryLogQuery(url: URL, scope?: UserDataScope | null): InventoryLogQuery {
   const action = (url.searchParams.get('action') || '').trim().toUpperCase();
   const issue_type = (url.searchParams.get('issue_type') || '').trim().toUpperCase();
   const keyword = (url.searchParams.get('keyword') || '').trim();
@@ -437,6 +447,8 @@ export function buildPcInventoryLogQuery(url: URL): InventoryLogQuery {
     wh.push('l.issue_type=?');
     binds.push(issue_type);
   }
+  if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) wh.push('1=0');
+  applyDepartmentDataScopeClause(wh, binds, 's.current_department', scope);
   if (keyword) {
     const kw = buildKeywordWhere(keyword, {
       numericId: 'l.id',
@@ -478,6 +490,7 @@ const PC_INVENTORY_LOG_COUNT_SQL = `
   SELECT COUNT(*) as c
   FROM pc_inventory_log l
   JOIN pc_assets a ON a.id = l.asset_id
+  LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
   LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
   LEFT JOIN pc_out o ON o.id = lo.max_id
 `;
@@ -493,6 +506,7 @@ export async function listPcInventoryLogRows(db: D1Database, query: InventoryLog
       SELECT l.id, l.asset_id, l.created_at
       FROM pc_inventory_log l
       JOIN pc_assets a ON a.id = l.asset_id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
       LEFT JOIN (
         SELECT asset_id, MAX(id) AS max_id
         FROM pc_out
@@ -528,6 +542,7 @@ export async function listPcInventoryLogRows(db: D1Database, query: InventoryLog
     FROM pc_inventory_log l
     JOIN page_l p ON p.id = l.id
     JOIN pc_assets a ON a.id = l.asset_id
+    LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
     LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
     LEFT JOIN pc_out o ON o.id = lo.max_id
     ORDER BY l.created_at DESC, l.id DESC
@@ -561,6 +576,7 @@ export function buildPcInventoryLogExportSql(query: Pick<InventoryLogQuery, 'whe
       o.department    AS department
     FROM pc_inventory_log l
     JOIN pc_assets a ON a.id = l.asset_id
+    LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
     LEFT JOIN latest_out lo ON lo.asset_id = l.asset_id
     LEFT JOIN pc_out o ON o.id = lo.max_id
     ${where}
@@ -569,7 +585,7 @@ export function buildPcInventoryLogExportSql(query: Pick<InventoryLogQuery, 'whe
   `;
 }
 
-export function buildMonitorInventoryLogQuery(url: URL): InventoryLogQuery {
+export function buildMonitorInventoryLogQuery(url: URL, scope?: UserDataScope | null): InventoryLogQuery {
   const action = (url.searchParams.get('action') || '').trim().toUpperCase();
   const issue_type = (url.searchParams.get('issue_type') || '').trim().toUpperCase();
   const keyword = (url.searchParams.get('keyword') || '').trim();
@@ -591,6 +607,8 @@ export function buildMonitorInventoryLogQuery(url: URL): InventoryLogQuery {
     wh.push('l.issue_type=?');
     binds.push(issue_type);
   }
+  if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) wh.push('1=0');
+  applyDepartmentDataScopeClause(wh, binds, 'a.department', scope);
   if (keyword) {
     const kw = buildKeywordWhere(keyword, {
       numericId: 'l.id',

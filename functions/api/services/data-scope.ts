@@ -113,6 +113,71 @@ export function applyDepartmentDataScopeClause(clauses: string[], binds: any[], 
   binds.push(scope.data_scope_value);
 }
 
+export function getRequiredDepartment(scope?: UserDataScope | null) {
+  if (!scope || !['department', 'department_warehouse'].includes(scope.data_scope_type)) return null;
+  return normalizeDepartmentScopeValue(scope.data_scope_value);
+}
+
+export function scopeAllowsDepartment(scope: UserDataScope | null | undefined, departmentValue?: string | null) {
+  const required = getRequiredDepartment(scope);
+  if (!required) return true;
+  return normalizeDepartmentScopeValue(departmentValue) === required;
+}
+
+export function assertDepartmentScopeAccess(scope: UserDataScope | null | undefined, departmentValue?: string | null, moduleLabel?: string) {
+  const required = getRequiredDepartment(scope);
+  if (!required) return;
+  if (normalizeDepartmentScopeValue(departmentValue) === required) return;
+  const suffix = moduleLabel ? `，无法访问${moduleLabel}` : '';
+  throw Object.assign(new Error(`当前账号的数据范围未包含部门「${required}」${suffix}`), { status: 403 });
+}
+
+export async function getPcAssetCurrentDepartment(db: D1Database, assetId: number) {
+  if (!Number.isFinite(assetId) || assetId <= 0) return null;
+  const row = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id=?`).bind(assetId).first<any>().catch(() => null);
+  if (!row) return null;
+  return { id: Number(row.id || 0), current_department: normalizeDepartmentScopeValue(row.current_department) };
+}
+
+export async function assertPcAssetDataScopeAccess(db: D1Database, scope: UserDataScope | null | undefined, assetId: number, moduleLabel?: string) {
+  assertAssetWarehouseAccess(scope, '电脑仓', moduleLabel);
+  const snapshot = await getPcAssetCurrentDepartment(db, assetId);
+  if (!snapshot) return null;
+  assertDepartmentScopeAccess(scope, snapshot.current_department, moduleLabel);
+  return snapshot;
+}
+
+export function assertMonitorAssetDataScopeAccess(scope: UserDataScope | null | undefined, departmentValue?: string | null, moduleLabel?: string) {
+  assertAssetWarehouseAccess(scope, '显示器仓', moduleLabel);
+  assertDepartmentScopeAccess(scope, departmentValue, moduleLabel);
+}
+
+export async function assertPcAssetIdsDataScopeAccess(db: D1Database, scope: UserDataScope | null | undefined, assetIds: number[], moduleLabel?: string) {
+  assertAssetWarehouseAccess(scope, '电脑仓', moduleLabel);
+  const required = getRequiredDepartment(scope);
+  const ids = Array.from(new Set((Array.isArray(assetIds) ? assetIds : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+  if (!required || !ids.length) return;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
+  for (const row of Array.isArray(rows?.results) ? rows.results : []) {
+    if (scopeAllowsDepartment(scope, row?.current_department)) continue;
+    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403 });
+  }
+}
+
+export async function assertMonitorAssetIdsDataScopeAccess(db: D1Database, scope: UserDataScope | null | undefined, assetIds: number[], moduleLabel?: string) {
+  assertAssetWarehouseAccess(scope, '显示器仓', moduleLabel);
+  const required = getRequiredDepartment(scope);
+  const ids = Array.from(new Set((Array.isArray(assetIds) ? assetIds : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+  if (!required || !ids.length) return;
+  const placeholders = ids.map(() => '?').join(',');
+  const rows = await db.prepare(`SELECT id, department FROM monitor_assets WHERE id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
+  for (const row of Array.isArray(rows?.results) ? rows.results : []) {
+    if (scopeAllowsDepartment(scope, row?.department)) continue;
+    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403 });
+  }
+}
+
 export function getRequiredWarehouse(scope?: UserDataScope | null) {
   if (!scope || !['warehouse', 'department_warehouse'].includes(scope.data_scope_type)) return null;
   return normalizeWarehouseScopeValue(scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2);
