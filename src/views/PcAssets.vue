@@ -600,7 +600,7 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 }
 
 const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
-const LEDGER_BATCH_REFRESH_DELAY_MS = 4500;
+const LEDGER_BATCH_REFRESH_DELAY_MS = 12000;
 
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
@@ -632,11 +632,22 @@ async function refreshInventorySummary(filters: PcFilters = currentFiltersForLis
   }
 }
 
+let deferredInventoryBatchTimer: number | null = null;
+
+function clearDeferredInventoryBatchTimer() {
+  if (deferredInventoryBatchTimer != null && typeof window !== 'undefined') {
+    window.clearTimeout(deferredInventoryBatchTimer);
+    deferredInventoryBatchTimer = null;
+  }
+}
+
 function scheduleDeferredInventoryBatchRefresh(task: () => void | Promise<void>) {
   if (typeof window === 'undefined') return;
+  clearDeferredInventoryBatchTimer();
   const start = () => {
-    window.setTimeout(() => {
-      runWhenBrowserIdle(task, 2500);
+    deferredInventoryBatchTimer = window.setTimeout(() => {
+      deferredInventoryBatchTimer = null;
+      runWhenBrowserIdle(task, 6000);
     }, LEDGER_BATCH_REFRESH_DELAY_MS);
   };
   if (document.visibilityState === 'visible') {
@@ -1508,6 +1519,7 @@ onBeforeMount(() => {
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') window.removeEventListener('resize', handleViewportResize);
   clearQrExportProgressAutoCloseTimer();
+  clearDeferredInventoryBatchTimer();
   cleanupViewState();
 });
 
