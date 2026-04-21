@@ -6,6 +6,10 @@ const manifestPath = path.join(root, 'sql', 'migrations.manifest.json');
 const schemaStatusPath = path.join(root, 'functions', 'api', 'services', 'schema-status.ts');
 const functionsDir = path.join(root, 'functions');
 const perfBudgetScript = path.join(root, 'scripts', 'perf-budget-check.mjs');
+const backupGuardScript = path.join(root, 'scripts', 'check-backup-restore-guards.mjs');
+const dbIntegrityScript = path.join(root, 'scripts', 'db-integrity-check.mjs');
+const functionsTsconfigPath = path.join(root, 'tsconfig.functions.json');
+const packageJsonPath = path.join(root, 'package.json');
 
 function fail(message) {
   console.error(`✘ ${message}`);
@@ -26,7 +30,7 @@ function readLatestManifestVersion() {
 
 function readRequiredSchemaVersion() {
   const raw = fs.readFileSync(schemaStatusPath, 'utf8');
-  const match = raw.match(/REQUIRED_SCHEMA_VERSION\s*=\s*'([^']+)'/);
+  const match = raw.match(/REQUIRED_SCHEMA_VERSION\s*=\s*['"]([^'"]+)['"]/);
   if (!match) throw new Error('schema-status.ts 中未找到 REQUIRED_SCHEMA_VERSION');
   return match[1].trim();
 }
@@ -47,7 +51,28 @@ try {
   if (!fs.existsSync(perfBudgetScript)) fail('缺少 scripts/perf-budget-check.mjs');
   else ok('性能预算检查脚本存在');
 
+  if (!fs.existsSync(backupGuardScript)) fail('缺少 scripts/check-backup-restore-guards.mjs');
+  else ok('备份/恢复护栏检查脚本存在');
+
+  if (!fs.existsSync(dbIntegrityScript)) fail('缺少 scripts/db-integrity-check.mjs');
+  else ok('数据库一致性检查脚本存在');
+
+  if (!fs.existsSync(functionsTsconfigPath)) fail('缺少 tsconfig.functions.json');
+  else ok('Functions TypeScript 配置存在');
+
+  if (!fs.existsSync(packageJsonPath)) fail('缺少 package.json');
+  else ok('package.json 存在');
+
   ok('不依赖 wrangler.toml；Pages Functions 编译使用 CLI 参数');
+
+  if (process.exitCode) process.exit(process.exitCode);
+
+  const pkg = JSON.parse(fs.readFileSync(packageJsonPath, 'utf8'));
+  const scripts = pkg.scripts || {};
+  for (const name of ['typecheck:functions', 'test:guards', 'check:backup-restore-guards', 'db:integrity']) {
+    if (!scripts[name]) fail(`package.json 缺少脚本 ${name}`);
+    else ok(`package.json 已定义脚本 ${name}`);
+  }
 
   if (process.exitCode) process.exit(process.exitCode);
 
@@ -64,6 +89,9 @@ try {
 
   console.log('\n建议执行:');
   console.log('  npm run verify:release');
+  console.log('  npm run verify:release:strict  # 如需继续串行执行更严格的旧检查');
+  console.log('  npm run check:backup-restore-guards');
+  console.log('  npm run db:integrity -- --db <your_db> --remote');
   console.log('  npm run check:perf-budget');
   console.log('  npm run migrate:status -- --db <your_db> --remote');
 } catch (error) {

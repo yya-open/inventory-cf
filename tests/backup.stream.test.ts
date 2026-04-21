@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { createBackupJsonStream } from '../functions/api/admin/_backup_helpers';
+import { validateBackupEnvelope } from '../functions/api/admin/_backup_integrity';
 
 type TableMap = Record<string, any[]>;
 
@@ -53,7 +54,7 @@ class FakeDB {
 }
 
 describe('backup stream helper', () => {
-  it('streams valid backup json without loading whole tables first', async () => {
+  it('streams valid backup json with manifest and integrity hashes', async () => {
     const db = new FakeDB({
       warehouses: [
         { id: 1, name: '仓库A', created_at: '2026-04-01 00:00:00' },
@@ -68,12 +69,21 @@ describe('backup stream helper', () => {
     const result = await createBackupJsonStream(db, { includeTables: ['warehouses', 'public_api_throttle'], pageSize: 1, actor: 'tester', reason: 'unit' });
     const text = await new Response(result.stream).text();
     const parsed = JSON.parse(text);
+    const validation = await validateBackupEnvelope(parsed);
 
-    expect(parsed.version).toBe('inventory-cf-backup-v2');
+    expect(parsed.version).toBe('inventory-cf-backup-v3');
     expect(parsed.meta.actor).toBe('tester');
     expect(parsed.tables.warehouses).toHaveLength(2);
     expect(parsed.tables.public_api_throttle).toHaveLength(2);
     expect(parsed.stats.warehouses.rows).toBe(2);
     expect(parsed.stats.public_api_throttle.rows).toBe(2);
+    expect(parsed.manifest.table_count).toBe(2);
+    expect(parsed.manifest.total_rows).toBe(4);
+    expect(parsed.manifest.tables.warehouses.rows).toBe(2);
+    expect(parsed.integrity.table_count).toBe(2);
+    expect(typeof parsed.integrity.manifest_sha256).toBe('string');
+    expect(parsed.integrity.manifest_sha256).toHaveLength(64);
+    expect(validation.ok).toBe(true);
+    expect(validation.issues.filter((item) => item.severity === 'error')).toHaveLength(0);
   });
 });

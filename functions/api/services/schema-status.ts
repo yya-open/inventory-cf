@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202604080010_observability_retention_indexes";
+export const REQUIRED_SCHEMA_VERSION = "202604210010_backup_restore_integrity_guards";
 
 type SchemaStatus = {
   ok: boolean;
@@ -22,13 +22,15 @@ async function tableInfoColumns(db: D1Database, table: string) {
 }
 
 async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
-  const sqliteMaster = await db.prepare(`SELECT type, name FROM sqlite_master WHERE type IN ('table', 'index')`).all<any>();
+  const sqliteMaster = await db.prepare(`SELECT type, name FROM sqlite_master WHERE type IN ('table', 'index', 'trigger')`).all<any>();
   const rows = sqliteMaster?.results || [];
   const tables = new Set(rows.filter((row: any) => row?.type === 'table').map((row: any) => String(row?.name || '').trim()));
   const indexes = new Set(rows.filter((row: any) => row?.type === 'index').map((row: any) => String(row?.name || '').trim()));
-  const [userColumns, asyncJobColumns] = await Promise.all([
+  const triggers = new Set(rows.filter((row: any) => row?.type === 'trigger').map((row: any) => String(row?.name || '').trim()));
+  const [userColumns, asyncJobColumns, restoreJobColumns] = await Promise.all([
     tableInfoColumns(db, 'users'),
     tableInfoColumns(db, 'async_jobs'),
+    tableInfoColumns(db, 'restore_job'),
   ]);
 
   const checks = [
@@ -37,10 +39,20 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'system_settings_meta', label: '系统配置元信息', ok: tables.has('system_settings_meta'), need: 'system_settings_meta' },
     { key: 'users.permission_template_code', label: '用户权限模板字段', ok: userColumns.has('permission_template_code'), need: 'users.permission_template_code' },
     { key: 'users.data_scope_type', label: '用户数据范围字段', ok: userColumns.has('data_scope_type'), need: 'users.data_scope_type' },
+    { key: 'users.data_scope_value2', label: '用户双值范围字段', ok: userColumns.has('data_scope_value2'), need: 'users.data_scope_value2' },
+    { key: 'restore_job.backup_version', label: '恢复任务备份版本字段', ok: restoreJobColumns.has('backup_version'), need: 'restore_job.backup_version' },
+    { key: 'restore_job.integrity_status', label: '恢复任务校验状态字段', ok: restoreJobColumns.has('integrity_status'), need: 'restore_job.integrity_status' },
+    { key: 'restore_job.validation_json', label: '恢复任务校验摘要字段', ok: restoreJobColumns.has('validation_json'), need: 'restore_job.validation_json' },
+    { key: 'restore_job.verification_json', label: '恢复任务恢复后校验字段', ok: restoreJobColumns.has('verification_json'), need: 'restore_job.verification_json' },
     { key: 'async_jobs.retry_count', label: '异步任务重试字段', ok: asyncJobColumns.has('retry_count'), need: 'async_jobs.retry_count' },
     { key: 'async_jobs.cancel_requested', label: '异步任务取消字段', ok: asyncJobColumns.has('cancel_requested'), need: 'async_jobs.cancel_requested' },
     { key: 'async_jobs.retain_until', label: '异步任务保留期字段', ok: asyncJobColumns.has('retain_until'), need: 'async_jobs.retain_until' },
     { key: 'idx_async_jobs_created_by_status', label: '异步任务索引', ok: indexes.has('idx_async_jobs_created_by_status'), need: 'idx_async_jobs_created_by_status' },
+    { key: 'idx_restore_job_integrity_status', label: '恢复任务校验状态索引', ok: indexes.has('idx_restore_job_integrity_status'), need: 'idx_restore_job_integrity_status' },
+    { key: 'trg_users_data_scope_valid_insert', label: '用户范围约束触发器', ok: triggers.has('trg_users_data_scope_valid_insert'), need: 'trg_users_data_scope_valid_insert' },
+    { key: 'trg_stock_qty_non_negative_update', label: '库存非负约束触发器', ok: triggers.has('trg_stock_qty_non_negative_update'), need: 'trg_stock_qty_non_negative_update' },
+    { key: 'trg_pc_assets_serial_non_blank_insert', label: '电脑序列号非空约束触发器', ok: triggers.has('trg_pc_assets_serial_non_blank_insert'), need: 'trg_pc_assets_serial_non_blank_insert' },
+    { key: 'trg_monitor_assets_code_non_blank_insert', label: '显示器资产编码非空约束触发器', ok: triggers.has('trg_monitor_assets_code_non_blank_insert'), need: 'trg_monitor_assets_code_non_blank_insert' },
     { key: 'ops_scan_state', label: '运维自动巡检缓存表', ok: tables.has('ops_scan_state'), need: 'ops_scan_state' },
     { key: 'backup_drill_runs', label: '备份恢复演练记录表', ok: tables.has('backup_drill_runs'), need: 'backup_drill_runs' },
     { key: 'admin_repair_history', label: '修复历史表', ok: tables.has('admin_repair_history'), need: 'admin_repair_history' },
@@ -57,8 +69,8 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
   let currentVersion: string | null = null;
   try {
     if (tables.has('schema_migrations')) {
-      const row = await db.prepare(`SELECT migration_id FROM schema_migrations ORDER BY applied_at DESC, migration_id DESC LIMIT 1`).first<any>();
-      currentVersion = String(row?.migration_id || '').trim() || null;
+      const row = await db.prepare(`SELECT id FROM schema_migrations ORDER BY applied_at DESC, id DESC LIMIT 1`).first<any>();
+      currentVersion = String(row?.id || '').trim() || null;
     }
   } catch {}
 

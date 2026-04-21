@@ -3,6 +3,7 @@ import { ensureCoreSchema } from '../_schema';
 import { ensurePcSchema } from '../_pc';
 import { ensureMonitorSchema } from '../_monitor';
 import { ALL_TABLE_NAMES, BACKUP_VERSION, RESTORABLE_TABLE_NAMES, TABLE_BY_NAME, TABLE_COLUMNS } from './_backup_schema';
+import { validateBackupEnvelope } from './_backup_integrity';
 
 type Severity = 'error' | 'warn' | 'info';
 type Issue = { severity: Severity; type: string; table?: string; column?: string; message: string };
@@ -33,7 +34,7 @@ async function readBackup(request: Request) {
     }
     return JSON.parse(text || '{}');
   }
-  const body = await request.json<any>();
+  const body: any = await request.json();
   return body?.backup || body || {};
 }
 
@@ -48,6 +49,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const tables = backup?.tables || {};
     const issues: Issue[] = [];
     const backupTableNames = Object.keys(tables || {});
+
+    const validation = await validateBackupEnvelope(backup);
+    for (const item of validation.issues) {
+      issues.push({
+        severity: item.severity,
+        type: item.type,
+        table: item.table,
+        message: item.message,
+      });
+    }
 
     for (const t of backupTableNames) {
       if (!ALL_TABLE_NAMES.includes(t)) {
@@ -95,6 +106,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     return json(true, {
       issues,
       summary: {
+        ok: issues.every((x) => x.severity !== 'error'),
         errors: issues.filter((x) => x.severity === 'error').length,
         warnings: issues.filter((x) => x.severity === 'warn').length,
         infos: issues.filter((x) => x.severity === 'info').length,
@@ -103,6 +115,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         version: backup?.version || null,
         exported_at: backup?.exported_at || null,
         meta: backup?.meta || null,
+        manifest: backup?.manifest || null,
+        integrity: backup?.integrity || null,
+        integrity_verified: validation.ok,
         current_supported_version: BACKUP_VERSION,
         included_tables: backupTableNames,
         included_in_backup: includedInBackup,

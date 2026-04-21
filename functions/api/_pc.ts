@@ -98,6 +98,8 @@ export async function ensurePcSchema(db: D1Database) {
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run();
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run().catch(() => {});
+  await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run().catch(() => {});
   await db.prepare(`UPDATE pc_assets SET search_text_norm=LOWER(TRIM(COALESCE(serial_no,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(disk_capacity,'') || ' ' || COALESCE(memory_size,''))) WHERE COALESCE(search_text_norm,'')=''`).run();
   await db.prepare(`UPDATE pc_assets
                     SET manufacture_ts = CASE WHEN TRIM(COALESCE(manufacture_date,''))='' THEN NULL ELSE CAST(strftime('%s', TRIM(manufacture_date) || ' 00:00:00') AS INTEGER) END,

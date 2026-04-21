@@ -37,7 +37,7 @@ export const TABLE_DEFS: TableDef[] = [
   { name: 'monitor_assets', label: '显示器台账', group: 'monitor', columns: ['id','asset_code','qr_key','qr_updated_at','sn','brand','model','size_inch','remark','status','location_id','employee_no','department','employee_name','is_employed','created_at','updated_at'] },
   { name: 'monitor_tx', label: '显示器出入库明细', group: 'monitor', columns: ['id','tx_no','tx_type','asset_id','asset_code','sn','brand','model','size_inch','from_location_id','to_location_id','employee_no','department','employee_name','is_employed','remark','created_at','created_by','ip','ua'] },
   { name: 'monitor_inventory_log', label: '显示器盘点记录', group: 'monitor', columns: ['id','asset_id','action','issue_type','remark','ip','ua','created_at'] },
-  { name: 'restore_job', label: '恢复任务', group: 'system', columns: ['id','status','stage','mode','file_key','filename','created_by','total_rows','processed_rows','current_table','cursor_json','per_table_json','replaced_done','error_count','last_error','created_at','updated_at','snapshot_key','snapshot_status','snapshot_filename','snapshot_created_at','restore_points_json','completed_at'], isSystem: true, allowExport: false, allowRestore: false, skipInReplaceDelete: true },
+  { name: 'restore_job', label: '恢复任务', group: 'system', columns: ['id','status','stage','mode','file_key','filename','created_by','total_rows','processed_rows','current_table','cursor_json','per_table_json','replaced_done','error_count','last_error','backup_version','integrity_status','validation_json','verification_json','created_at','updated_at','snapshot_key','snapshot_status','snapshot_filename','snapshot_created_at','restore_points_json','completed_at'], isSystem: true, allowExport: false, allowRestore: false, skipInReplaceDelete: true },
 ];
 
 export const TABLE_BY_NAME: Record<string, TableDef> = Object.fromEntries(TABLE_DEFS.map((t) => [t.name, t]));
@@ -46,8 +46,9 @@ export const EXPORTABLE_TABLE_NAMES = TABLE_DEFS.filter((t) => t.allowExport !==
 export const RESTORABLE_TABLE_NAMES = TABLE_DEFS.filter((t) => t.allowRestore !== false).map((t) => t.name);
 export const DELETE_ORDER = TABLE_DEFS.filter((t) => !t.skipInReplaceDelete && t.allowRestore !== false).map((t) => t.name).reverse();
 export const TABLE_COLUMNS: Record<string, string[]> = Object.fromEntries(TABLE_DEFS.map((t) => [t.name, t.columns]));
-export const BACKUP_VERSION = 'inventory-cf-backup-v2';
-export const SCHEMA_VERSION = 2;
+export const BACKUP_VERSION = 'inventory-cf-backup-v3';
+export const LEGACY_BACKUP_VERSIONS = ['inventory-cf-backup-v2'] as const;
+export const SCHEMA_VERSION = 3;
 
 export function buildBackupMeta(extra?: Record<string, any>) {
   return {

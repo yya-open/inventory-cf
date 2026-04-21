@@ -114,6 +114,8 @@ export async function ensureMonitorSchema(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run();
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run().catch(() => {});
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run().catch(() => {});
     await db.prepare(`UPDATE monitor_assets SET search_text_norm=LOWER(TRIM(COALESCE(asset_code,'') || ' ' || COALESCE(sn,'') || ' ' || COALESCE(brand,'') || ' ' || COALESCE(model,'') || ' ' || COALESCE(remark,'') || ' ' || COALESCE(employee_no,'') || ' ' || COALESCE(employee_name,'') || ' ' || COALESCE(department,''))) WHERE COALESCE(search_text_norm,'')=''`).run();
 
     // monitor tx

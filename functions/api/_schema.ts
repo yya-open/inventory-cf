@@ -108,6 +108,7 @@ export async function ensureCoreSchema(db: D1Database) {
       permission_template_code TEXT,
       data_scope_type TEXT NOT NULL DEFAULT 'all',
       data_scope_value TEXT,
+      data_scope_value2 TEXT,
       created_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_users_username ON users(username)",
@@ -177,8 +178,6 @@ export async function ensureCoreSchema(db: D1Database) {
       created_at TEXT DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)",
-    "CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)",
-
     // Stocktake
     `CREATE TABLE IF NOT EXISTS stocktake (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -256,6 +255,10 @@ export async function ensureCoreSchema(db: D1Database) {
       replaced_done INTEGER NOT NULL DEFAULT 0,
       error_count INTEGER NOT NULL DEFAULT 0,
       last_error TEXT,
+      backup_version TEXT,
+      integrity_status TEXT NOT NULL DEFAULT 'PENDING',
+      validation_json TEXT,
+      verification_json TEXT,
       snapshot_key TEXT,
       snapshot_status TEXT,
       snapshot_filename TEXT,
@@ -266,6 +269,7 @@ export async function ensureCoreSchema(db: D1Database) {
       updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`,
     "CREATE INDEX IF NOT EXISTS idx_restore_job_status ON restore_job(status)",
+    "CREATE INDEX IF NOT EXISTS idx_restore_job_integrity_status ON restore_job(integrity_status, updated_at)",
   ];
 
   // Best-effort execute.
@@ -294,6 +298,16 @@ export async function ensureCoreSchema(db: D1Database) {
     if (!names.has("must_change_password")) {
       await db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1").run();
     }
+    if (!names.has("data_scope_type")) {
+      await db.prepare("ALTER TABLE users ADD COLUMN data_scope_type TEXT NOT NULL DEFAULT 'all'").run();
+    }
+    if (!names.has("data_scope_value")) {
+      await db.prepare("ALTER TABLE users ADD COLUMN data_scope_value TEXT").run();
+    }
+    if (!names.has("data_scope_value2")) {
+      await db.prepare("ALTER TABLE users ADD COLUMN data_scope_value2 TEXT").run();
+    }
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_users_data_scope_type_value_v2 ON users(data_scope_type, data_scope_value, data_scope_value2)").run();
   } catch {
     // ignore
   }
@@ -325,6 +339,86 @@ export async function ensureCoreSchema(db: D1Database) {
   } catch {}
   try {
     await db.prepare("ALTER TABLE restore_job ADD COLUMN completed_at TEXT").run();
+  } catch {}
+  try {
+    await db.prepare("ALTER TABLE restore_job ADD COLUMN backup_version TEXT").run();
+  } catch {}
+  try {
+    await db.prepare("ALTER TABLE restore_job ADD COLUMN integrity_status TEXT NOT NULL DEFAULT 'PENDING'").run();
+  } catch {}
+  try {
+    await db.prepare("ALTER TABLE restore_job ADD COLUMN validation_json TEXT").run();
+  } catch {}
+  try {
+    await db.prepare("ALTER TABLE restore_job ADD COLUMN verification_json TEXT").run();
+  } catch {}
+  try {
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_restore_job_integrity_status ON restore_job(integrity_status, updated_at)").run();
+  } catch {}
+
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_users_username_non_blank_insert
+      BEFORE INSERT ON users
+      FOR EACH ROW
+      WHEN TRIM(COALESCE(NEW.username, '')) = ''
+      BEGIN
+        SELECT RAISE(ABORT, 'username 不能为空');
+      END`).run();
+  } catch {}
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_users_username_non_blank_update
+      BEFORE UPDATE OF username ON users
+      FOR EACH ROW
+      WHEN TRIM(COALESCE(NEW.username, '')) = ''
+      BEGIN
+        SELECT RAISE(ABORT, 'username 不能为空');
+      END`).run();
+  } catch {}
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_users_data_scope_valid_insert
+      BEFORE INSERT ON users
+      FOR EACH ROW
+      WHEN NOT (
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'all' AND TRIM(COALESCE(NEW.data_scope_value, '')) = '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'department' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'warehouse' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'department_warehouse' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) <> '')
+      )
+      BEGIN
+        SELECT RAISE(ABORT, '非法的数据范围配置');
+      END`).run();
+  } catch {}
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_users_data_scope_valid_update
+      BEFORE UPDATE OF data_scope_type, data_scope_value, data_scope_value2 ON users
+      FOR EACH ROW
+      WHEN NOT (
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'all' AND TRIM(COALESCE(NEW.data_scope_value, '')) = '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'department' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'warehouse' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) = '') OR
+        (LOWER(TRIM(COALESCE(NEW.data_scope_type, 'all'))) = 'department_warehouse' AND TRIM(COALESCE(NEW.data_scope_value, '')) <> '' AND TRIM(COALESCE(NEW.data_scope_value2, '')) <> '')
+      )
+      BEGIN
+        SELECT RAISE(ABORT, '非法的数据范围配置');
+      END`).run();
+  } catch {}
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_stock_qty_non_negative_insert
+      BEFORE INSERT ON stock
+      FOR EACH ROW
+      WHEN COALESCE(NEW.qty, 0) < 0
+      BEGIN
+        SELECT RAISE(ABORT, '库存数量不能小于 0');
+      END`).run();
+  } catch {}
+  try {
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_stock_qty_non_negative_update
+      BEFORE UPDATE OF qty ON stock
+      FOR EACH ROW
+      WHEN COALESCE(NEW.qty, 0) < 0
+      BEGIN
+        SELECT RAISE(ABORT, '库存数量不能小于 0');
+      END`).run();
   } catch {}
 
 

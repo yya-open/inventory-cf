@@ -266,10 +266,12 @@ ALTER TABLE public_api_throttle__bjtmp RENAME TO public_api_throttle;
 
 -- === restore_job ===
 DROP TABLE IF EXISTS restore_job__bjtmp;
-CREATE TABLE restore_job__bjtmp (   id TEXT PRIMARY KEY,   status TEXT NOT NULL,   stage TEXT NOT NULL,   mode TEXT NOT NULL,   file_key TEXT NOT NULL,   filename TEXT,   created_by TEXT,   total_rows INTEGER NOT NULL DEFAULT 0,   processed_rows INTEGER NOT NULL DEFAULT 0,   current_table TEXT,   cursor_json TEXT NOT NULL DEFAULT '{}',   per_table_json TEXT NOT NULL DEFAULT '{}',   replaced_done INTEGER NOT NULL DEFAULT 0,   error_count INTEGER NOT NULL DEFAULT 0,   last_error TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),   updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')) );
-INSERT INTO restore_job__bjtmp SELECT * FROM restore_job;
+CREATE TABLE restore_job__bjtmp (   id TEXT PRIMARY KEY,   status TEXT NOT NULL,   stage TEXT NOT NULL,   mode TEXT NOT NULL,   file_key TEXT NOT NULL,   filename TEXT,   created_by TEXT,   total_rows INTEGER NOT NULL DEFAULT 0,   processed_rows INTEGER NOT NULL DEFAULT 0,   current_table TEXT,   cursor_json TEXT NOT NULL DEFAULT '{}',   per_table_json TEXT NOT NULL DEFAULT '{}',   replaced_done INTEGER NOT NULL DEFAULT 0,   error_count INTEGER NOT NULL DEFAULT 0,   last_error TEXT,   backup_version TEXT,   integrity_status TEXT NOT NULL DEFAULT 'PENDING',   validation_json TEXT,   verification_json TEXT,   snapshot_key TEXT,   snapshot_status TEXT,   snapshot_filename TEXT,   snapshot_created_at TEXT,   restore_points_json TEXT NOT NULL DEFAULT '[]',   completed_at TEXT,   created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')),   updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours')) );
+INSERT INTO restore_job__bjtmp (id, status, stage, mode, file_key, filename, created_by, total_rows, processed_rows, current_table, cursor_json, per_table_json, replaced_done, error_count, last_error, created_at, updated_at) SELECT id, status, stage, mode, file_key, filename, created_by, total_rows, processed_rows, current_table, cursor_json, per_table_json, replaced_done, error_count, last_error, created_at, updated_at FROM restore_job;
 DROP TABLE restore_job;
 ALTER TABLE restore_job__bjtmp RENAME TO restore_job;
+CREATE INDEX IF NOT EXISTS idx_restore_job_status ON restore_job(status);
+CREATE INDEX IF NOT EXISTS idx_restore_job_integrity_status ON restore_job(integrity_status, updated_at);
 
 -- === stock ===
 DROP TABLE IF EXISTS stock__bjtmp;

@@ -2,7 +2,9 @@ import { requireAuth, errorResponse, json } from '../../../_auth';
 import { logAudit } from '../../_audit';
 import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
 import { createBackupJsonStream } from '../_backup_helpers';
+import { validateBackupEnvelope } from '../_backup_integrity';
 import { finalizeRestoreState } from '../_restore_finalize';
+import { buildRestoreVerification } from '../../services/data-integrity';
 import { sqlNowStored } from '../../_time';
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
@@ -25,16 +27,26 @@ async function createSnapshot(env: Env, actor: string, jobId: string) {
   return { snapshotKey, snapshotFilename };
 }
 
-function buildInsertSql(mode: any, table: string, cols: string[]) {
+function buildInsertSql(mode: RestoreMode, table: string, cols: string[]) {
   const placeholders = cols.map(() => '?').join(',');
   if (mode === 'merge') return `INSERT OR IGNORE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`;
   return `INSERT OR REPLACE INTO ${table} (${cols.join(',')}) VALUES (${placeholders})`;
 }
 
+function summarizeRestoreVerification(verification: any) {
+  const rowFailures = Array.isArray(verification?.row_checks) ? verification.row_checks.filter((item: any) => !item?.ok).length : 0;
+  const integrityIssues = Number(verification?.integrity?.issue_count || 0);
+  if (rowFailures <= 0 && integrityIssues <= 0) return null;
+  const parts: string[] = [];
+  if (rowFailures > 0) parts.push(`行数核对失败 ${rowFailures} 项`);
+  if (integrityIssues > 0) parts.push(`数据一致性检查发现 ${integrityIssues} 项`);
+  return `恢复后校验未完全通过：${parts.join('，')}`;
+}
+
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, 'admin');
-    const body = await request.json<any>().catch(() => ({}));
+    const body: any = await request.json().catch(() => ({}));
     const jobId = String(body?.id || '').trim();
     const maxRows = Math.min(Math.max(Number(body?.max_rows || 800), 50), 5000);
     const maxMs = Math.min(Math.max(Number(body?.max_ms || 8000), 1000), 25000);
@@ -43,8 +55,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     const job = await env.DB.prepare(`SELECT * FROM restore_job WHERE id=?`).bind(jobId).first<any>();
     if (!job) return Response.json({ ok: false, message: '任务不存在' }, { status: 404 });
-    if (job.status === 'DONE') return json(true, { id: jobId, status: 'DONE', stage: job.stage, more: false });
-    if (job.status === 'FAILED') return json(true, { id: jobId, status: 'FAILED', stage: job.stage, more: false, last_error: job.last_error || null });
+    if (job.status === 'DONE') return json(true, { id: jobId, status: 'DONE', stage: job.stage, integrity_status: job.integrity_status || null, more: false });
+    if (job.status === 'FAILED') return json(true, { id: jobId, status: 'FAILED', stage: job.stage, integrity_status: job.integrity_status || null, more: false, last_error: job.last_error || null });
 
     await env.DB.prepare(`UPDATE restore_job SET status='RUNNING', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
 
@@ -57,21 +69,21 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
              WHERE id=?`
           ).bind(jobId).run();
           waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_SKIPPED', 'restore_job', jobId, { mode: job.mode || 'merge' }).catch(() => {}));
-          return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'SKIPPED', more: true });
+          return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'SKIPPED', integrity_status: job.integrity_status || 'PENDING', more: true });
         }
         await env.DB.prepare(`UPDATE restore_job SET snapshot_status='RUNNING', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
         const snap = await createSnapshot(env, actor.username, jobId);
         waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SNAPSHOT_DONE', 'restore_job', jobId, snap).catch(() => {}));
-        return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'DONE', more: true });
+        return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'DONE', integrity_status: job.integrity_status || 'PENDING', more: true });
       } catch (e: any) {
-        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', snapshot_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
+        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', snapshot_status='FAILED', integrity_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
         return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
       }
     }
 
     const obj = await env.BACKUP_BUCKET.get(job.file_key);
     if (!obj?.body) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind('R2 文件不存在或已被删除', jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind('R2 文件不存在或已被删除', jobId).run();
       return Response.json({ ok: false, message: 'R2 文件不存在或已被删除' }, { status: 500 });
     }
 
@@ -82,6 +94,24 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
       const sniffScan = await sniffGzipFromStream(obj.body);
       const backup = await readBackupJsonFromStream(sniffScan.stream, sniffScan.gzip);
+      const validation = await validateBackupEnvelope(backup);
+      const validationJson = {
+        ok: validation.ok,
+        version: validation.version,
+        issues: validation.issues,
+        manifest: validation.manifest,
+        integrity: validation.integrity,
+        recomputed_integrity: validation.recomputedIntegrity,
+        actual_row_counts: validation.actualRowCounts,
+      };
+      if (!validation.ok) {
+        const message = validation.issues.filter((item) => item.severity === 'error').map((item) => item.message).join('；') || '备份校验失败';
+        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', backup_version=?, validation_json=?, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`)
+          .bind(validation.version || null, JSON.stringify(validationJson), message, jobId).run();
+        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_VALIDATE_FAILED', 'restore_job', jobId, validationJson).catch(() => {}));
+        return Response.json({ ok: false, message }, { status: 400 });
+      }
+
       const tables = getBackupTablesObject(backup);
       for (const [t, rows] of Object.entries(tables)) {
         if (!TABLE_COLUMNS[t]) continue;
@@ -93,10 +123,10 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       for (const t of Object.keys(TABLE_COLUMNS)) perTable[t] = counts[t] || 0;
       const order: string[] = perTable.__order__;
       const cursor = order.length ? { table: order[0], row: 0 } : { table: '', row: 0 };
-      await env.DB.prepare(`UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, updated_at=${sqlNowStored()} WHERE id=?`)
-        .bind(total, JSON.stringify(perTable), JSON.stringify(cursor), cursor.table || null, jobId).run();
-      waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SCAN_DONE', 'restore_job', jobId, { total_rows: total }).catch(() => {}));
-      return json(true, { id: jobId, status: 'RUNNING', stage: 'RESTORE', total_rows: total, processed_rows: Number(job.processed_rows || 0), more: true });
+      await env.DB.prepare(`UPDATE restore_job SET stage='RESTORE', total_rows=?, per_table_json=?, cursor_json=?, current_table=?, backup_version=?, validation_json=?, integrity_status='VALIDATED', updated_at=${sqlNowStored()} WHERE id=?`)
+        .bind(total, JSON.stringify(perTable), JSON.stringify(cursor), cursor.table || null, validation.version || null, JSON.stringify(validationJson), jobId).run();
+      waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_SCAN_DONE', 'restore_job', jobId, { total_rows: total, validation_ok: true, backup_version: validation.version || null }).catch(() => {}));
+      return json(true, { id: jobId, status: 'RUNNING', stage: 'RESTORE', total_rows: total, processed_rows: Number(job.processed_rows || 0), integrity_status: 'VALIDATED', more: true });
     }
 
     const mode = ((job.mode as RestoreMode) || 'merge');
@@ -107,7 +137,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     }
 
     const cursor = parseJsonSafe(job.cursor_json || '{}', { table: '', row: 0 });
-    const perTable = parseJsonSafe(job.per_table_json || '{}', { __order__: [] });
+    const perTable = parseJsonSafe(job.per_table_json || '{}', { __order__: [] as string[], __present__: {} as Record<string, boolean>, __processed__: {} as Record<string, number>, __inserted__: {} as Record<string, number> });
+    const validationJson = parseJsonSafe(job.validation_json || '{}', {} as any);
     const order: string[] = Array.isArray(perTable.__order__) ? perTable.__order__ : [];
     const cursorTable = String(cursor.table || '');
     const cursorRow = Number(cursor.row || 0);
@@ -124,7 +155,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     if (!runObj?.body) throw new Error('R2 文件读取失败（RESTORE）');
 
     try {
-      let curTable = '';
       let curTableIndex = -1;
       let rowIndexInTable = -1;
       let cols: string[] | null = null;
@@ -132,7 +162,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       let batch: D1PreparedStatement[] = [];
       let batchTable = '';
       let batchRows = 0;
-      let exhaustedAllTables = true;
 
       const flush = async () => {
         if (!batch.length) return;
@@ -155,7 +184,6 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       for (const table of order) {
         if (!TABLE_COLUMNS[table] || table === 'restore_job') continue;
         const rows = Array.isArray((tables as any)[table]) ? (tables as any)[table] : [];
-        curTable = table;
         curTableIndex = order.indexOf(table);
         cols = TABLE_COLUMNS[table];
         sql = buildInsertSql(mode, table, cols);
@@ -170,7 +198,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
             const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
             if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
               await flush();
-              return json(true, { id: jobId, status: s.status, more: false });
+              return json(true, { id: jobId, status: s.status, integrity_status: job.integrity_status || 'VALIDATED', more: false });
             }
           }
           const objRow = rows[idx] as Record<string, any>;
@@ -180,8 +208,8 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
           lastTable = table;
           lastNextRow = rowIndexInTable + 1;
           if (batch.length >= 50) await flush();
-          if (processedThisRun >= maxRows) { exhaustedAllTables = false; break outer; }
-          if (Date.now() - startTime >= maxMs) { exhaustedAllTables = false; break outer; }
+          if (processedThisRun >= maxRows) break outer;
+          if (Date.now() - startTime >= maxMs) break outer;
         }
         await flush();
       }
@@ -221,10 +249,27 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       await env.DB.prepare(`UPDATE restore_job SET processed_rows=?, current_table=?, cursor_json=?, per_table_json=?, updated_at=${sqlNowStored()} WHERE id=?`)
         .bind(processedRowsNew, currentTableForSave, JSON.stringify(cursorForSave), JSON.stringify(perTable), jobId).run();
 
+      let integrityStatus = job.integrity_status || 'VALIDATED';
       if (done) {
         await finalizeRestoreState(env.DB);
-        await env.DB.prepare(`UPDATE restore_job SET status='DONE', completed_at=${sqlNowStored()}, current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=${sqlNowStored()} WHERE id=?`).bind(jobId).run();
-        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_DONE', 'restore_job', jobId, { processed_rows: processedRowsNew, total_rows: totalRows }).catch(() => {}));
+        const verification = await buildRestoreVerification(env.DB, {
+          mode,
+          manifest: validationJson?.manifest || null,
+          tableOrder: restorableOrder,
+          processedRows: processedRowsNew,
+          totalRows,
+        });
+        integrityStatus = verification.ok ? 'OK' : 'WARN';
+        const verificationSummary = summarizeRestoreVerification(verification);
+        await env.DB.prepare(`UPDATE restore_job SET status='DONE', integrity_status=?, verification_json=?, completed_at=${sqlNowStored()}, current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=${sqlNowStored()}, last_error=COALESCE(last_error, ?) WHERE id=?`)
+          .bind(integrityStatus, JSON.stringify(verification), verificationSummary, jobId).run();
+        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_DONE', 'restore_job', jobId, {
+          processed_rows: processedRowsNew,
+          total_rows: totalRows,
+          integrity_status: integrityStatus,
+          verification_ok: verification.ok,
+          integrity_issue_count: Number(verification?.integrity?.issue_count || 0),
+        }).catch(() => {}));
       }
 
       return json(true, {
@@ -236,10 +281,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         total_rows: totalRows,
         current_table: currentTableForSave,
         snapshot_status: job.snapshot_status || null,
+        integrity_status: integrityStatus,
         more: !done,
       });
     } catch (e: any) {
-      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', error_count=error_count+1, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
+      await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', error_count=error_count+1, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
       return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
     }
   } catch (e: any) {

@@ -20,14 +20,19 @@
     "build:functions": "npx --yes wrangler pages functions build functions --outdir .wrangler/pages-functions --project-directory . --build-output-directory dist",
     "test:smoke": "vitest run tests/api.schema.test.ts tests/functions.response.test.ts tests/observability.service.test.ts --pool=threads --maxWorkers=1",
     "check:release": "node scripts/release-check.mjs",
-    "verify:release": "npm run check:release && npm run check:runtime-sources && npm run check:element-usage && npm run typecheck && npm run build && npm run check:perf-budget && npm run build:functions && npm run test:smoke",
+    "verify:release": "npm run check:release && npm run check:backup-restore-guards && npm run check:runtime-sources && npm run typecheck && npm run build && npm run test:smoke && npm run test:guards",
     "check:perf-budget": "node scripts/perf-budget-check.mjs",
     "check:element-usage": "node scripts/check-element-usage.mjs",
     "check:runtime-sources": "node scripts/check-runtime-sources.mjs",
     "db:clean": "node scripts/db-clean.mjs",
     "audit:cleanup": "node scripts/audit-cleanup.mjs",
     "audit:stats": "node scripts/audit-capacity-report.mjs",
-    "obs:cleanup": "node scripts/observability-cleanup.mjs"
+    "obs:cleanup": "node scripts/observability-cleanup.mjs",
+    "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json",
+    "test:guards": "vitest run tests/auth.regressions.test.ts tests/backup.stream.test.ts tests/data-integrity.test.ts --pool=threads --maxWorkers=1",
+    "check:backup-restore-guards": "node scripts/check-backup-restore-guards.mjs",
+    "db:integrity": "node scripts/db-integrity-check.mjs",
+    "verify:release:strict": "npm run check:release && npm run check:backup-restore-guards && npm run check:runtime-sources && npm run check:element-usage && npm run typecheck && npm run typecheck:functions && npm run build && npm run check:perf-budget && npm run build:functions && npm run test:smoke && npm run test:guards"
   },
   "dependencies": {
     "element-plus": "^2.7.8",
