@@ -21,9 +21,7 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
-          if (id.endsWith('/src/utils/excel.ts')) return 'excel-utils';
-          if (id.includes('/src/views/System')) return 'system-views';
-          if (id.includes('/src/views/Pc') || id.includes('/src/views/Monitor')) return 'pc-monitor-views';
+          // 让路由页面和工具模块尽量按需拆分，避免进入电脑台账时预先拉取系统页/Excel 工具等非首屏资源。
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('jszip')) return 'jszip';
