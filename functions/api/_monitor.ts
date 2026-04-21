@@ -111,6 +111,9 @@ export async function ensureMonitorSchema(db: D1Database) {
     }
     await db.prepare("DROP INDEX IF EXISTS idx_monitor_assets_status").run().catch(() => {});
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_id ON monitor_assets(archived, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_inventory_status_id ON monitor_assets(archived, inventory_status, id)").run();
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_location_id ON monitor_assets(archived, location_id, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run();
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run();

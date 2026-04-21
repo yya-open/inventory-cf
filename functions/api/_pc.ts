@@ -91,6 +91,8 @@ export async function ensurePcSchema(db: D1Database) {
     } catch {}
   }
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_id ON pc_assets(archived, id)").run();
+  await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)").run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run();
   await db.prepare("DROP INDEX IF EXISTS idx_pc_assets_status").run().catch(() => {});
@@ -182,6 +184,8 @@ try {
       db.prepare("ALTER TABLE pc_assets_v2 RENAME TO pc_assets"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_id ON pc_assets(archived, id)"),
+      db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id)"),
       db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)"),

@@ -2,7 +2,7 @@ import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } f
 import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
-import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
+import { applyDepartmentDataScopeClause, getRequiredDepartment, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
 export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean };
 
@@ -90,9 +90,9 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
   const clauses: string[] = [];
-  if (archiveMode === 'archived') clauses.push('COALESCE(a.archived, 0)=1');
+  if (archiveMode === 'archived') clauses.push('a.archived=1');
   else if (archiveMode === 'all' || showArchived) { /* include both */ }
-  else clauses.push('COALESCE(a.archived, 0)=0');
+  else clauses.push('a.archived=0');
   const binds: any[] = [];
 
   if (status) {
@@ -141,13 +141,14 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     if (!status) clauses.push("a.status IN ('IN_STOCK','ASSIGNED','RECYCLED')");
   }
 
+  const needsDepartmentJoin = Boolean(getRequiredDepartment(scope));
   return {
     ...buildWhere(clauses, binds),
     page,
     pageSize,
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
-    joins: 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id',
+    joins: needsDepartmentJoin ? 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id' : '',
   } satisfies QueryParts;
 }
 
@@ -160,9 +161,9 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';
   const archiveMode = (url.searchParams.get('archive_mode') || '').trim();
   const clauses: string[] = [];
-  if (archiveMode === 'archived') clauses.push('COALESCE(a.archived, 0)=1');
+  if (archiveMode === 'archived') clauses.push('a.archived=1');
   else if (archiveMode === 'all' || showArchived) { /* include both */ }
-  else clauses.push('COALESCE(a.archived, 0)=0');
+  else clauses.push('a.archived=0');
   const binds: any[] = [];
 
   if (status) {
@@ -342,6 +343,13 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db);
   if (query.fast) {
     const sql = `
+      WITH page_a AS (
+        SELECT a.id
+        FROM monitor_assets a
+        ${query.where}
+        ORDER BY a.id ASC
+        LIMIT ? OFFSET ?
+      )
       SELECT
         a.*,
         l.name AS location_name,
@@ -351,11 +359,10 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
         NULL AS previous_department,
         NULL AS previous_assigned_at
       FROM monitor_assets a
+      JOIN page_a pg ON pg.id = a.id
       LEFT JOIN pc_locations l ON l.id = a.location_id
       LEFT JOIN pc_locations p ON p.id = l.parent_id
-      ${query.where}
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
     `;
     const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
     return result.results || [];
