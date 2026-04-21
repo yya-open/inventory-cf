@@ -1,5 +1,5 @@
 import { readonly, ref } from 'vue';
-import { listAllLocations, listEnabledLocations } from '../api/assetLedgers';
+import { invalidateLocationListCache, listAllLocations, listEnabledLocations } from '../api/assetLedgers';
 import type { LocationRow } from '../types/assets';
 import { readJsonStorage, writeJsonStorage } from '../utils/storage';
 
@@ -68,9 +68,9 @@ function syncAllRows(rows: LocationRow[], fetchedAt = Date.now()) {
   syncEnabledRows(normalized.filter((row) => Number(row.enabled || 0) === 1), fetchedAt);
 }
 
-async function refreshEnabledLocations() {
-  if (enabledPromise) return enabledPromise;
-  enabledPromise = listEnabledLocations()
+async function refreshEnabledLocations(force = false) {
+  if (!force && enabledPromise) return enabledPromise;
+  enabledPromise = listEnabledLocations(undefined, { force })
     .then((rows) => {
       syncEnabledRows(rows, Date.now());
       return enabledLocationsState.value;
@@ -81,9 +81,9 @@ async function refreshEnabledLocations() {
   return enabledPromise;
 }
 
-async function refreshAllLocations() {
-  if (allPromise) return allPromise;
-  allPromise = listAllLocations()
+async function refreshAllLocations(force = false) {
+  if (!force && allPromise) return allPromise;
+  allPromise = listAllLocations(undefined, { force })
     .then((rows) => {
       syncAllRows(rows, Date.now());
       return allLocationsState.value;
@@ -95,13 +95,13 @@ async function refreshAllLocations() {
 }
 
 async function ensureEnabledLocations(force = false) {
-  if (force) return refreshEnabledLocations();
+  if (force) return refreshEnabledLocations(true);
   if (!enabledLocationsState.value.length) {
     if (allLocationsState.value.length && isFresh(allFetchedAtState.value)) {
       syncEnabledRows(allLocationsState.value.filter((row) => Number(row.enabled || 0) === 1), allFetchedAtState.value);
       return enabledLocationsState.value;
     }
-    return refreshEnabledLocations();
+    return refreshEnabledLocations(true);
   }
   if (isFresh(enabledFetchedAtState.value)) return enabledLocationsState.value;
   if (allLocationsState.value.length && isFresh(allFetchedAtState.value) && allFetchedAtState.value >= enabledFetchedAtState.value) {
@@ -113,16 +113,17 @@ async function ensureEnabledLocations(force = false) {
 }
 
 async function ensureAllLocations(force = false) {
-  if (force) return refreshAllLocations();
-  if (!allLocationsState.value.length) return refreshAllLocations();
+  if (force) return refreshAllLocations(true);
+  if (!allLocationsState.value.length) return refreshAllLocations(true);
   if (isFresh(allFetchedAtState.value)) return allLocationsState.value;
-  void refreshAllLocations().catch(() => undefined);
+  void refreshAllLocations(true).catch(() => undefined);
   return allLocationsState.value;
 }
 
 function invalidateLocationCatalog() {
   enabledFetchedAtState.value = 0;
   allFetchedAtState.value = 0;
+  invalidateLocationListCache();
 }
 
 function resetLocationCatalog() {

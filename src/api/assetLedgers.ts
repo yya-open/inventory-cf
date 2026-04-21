@@ -96,16 +96,20 @@ export async function countMonitorAssets(filters: MonitorFilters, signal?: Abort
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 
-export async function listEnabledLocations(signal?: AbortSignal) {
+export async function listEnabledLocations(signal?: AbortSignal, options?: { force?: boolean }) {
   return getCachedResource(locationCacheKey(true), async () => {
     return await apiGetData('/api/pc-locations?enabled=1', (input) => asArray(input || [], (row) => asObject(row) as unknown as LocationRow, '位置列表'), { signal });
-  }, { ttlMs: LOCATION_CACHE_TTL_MS });
+  }, { ttlMs: LOCATION_CACHE_TTL_MS, force: Boolean(options?.force) });
 }
 
-export async function listAllLocations(signal?: AbortSignal) {
+export async function listAllLocations(signal?: AbortSignal, options?: { force?: boolean }) {
   return getCachedResource(locationCacheKey(false), async () => {
     return await apiGetData('/api/pc-locations', (input) => asArray(input || [], (row) => asObject(row) as unknown as LocationRow, '位置列表'), { signal });
-  }, { ttlMs: LOCATION_CACHE_TTL_MS });
+  }, { ttlMs: LOCATION_CACHE_TTL_MS, force: Boolean(options?.force) });
+}
+
+export function invalidateLocationListCache() {
+  invalidateCachedResource('asset-locations');
 }
 
 export async function getPcAssetInventorySummary(filters: PcFilters, signal?: AbortSignal, options?: { force?: boolean }) {

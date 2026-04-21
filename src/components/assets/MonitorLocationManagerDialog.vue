@@ -43,8 +43,8 @@
       border
     >
       <el-table-column
-        prop="id"
-        label="ID"
+        type="index"
+        label="序号"
         width="80"
       />
       <el-table-column
