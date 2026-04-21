@@ -9,6 +9,16 @@ async function fetchRemoteBuildId() {
   return match?.[1] || null;
 }
 
+function scheduleBuildVersionCheck(task: () => void, delayMs = 10_000) {
+  if (typeof window === 'undefined') return;
+  const runner = () => window.setTimeout(task, delayMs);
+  if (typeof window.requestIdleCallback === 'function') {
+    window.requestIdleCallback(() => runner(), { timeout: delayMs + 2_000 });
+    return;
+  }
+  window.setTimeout(task, delayMs);
+}
+
 export function startBuildVersionWatcher() {
   if (typeof window === 'undefined') return;
   let running = false;
@@ -32,5 +42,5 @@ export function startBuildVersionWatcher() {
   };
   window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void run(); });
   window.addEventListener('focus', () => { void run(); });
-  setTimeout(() => { void run(); }, 1500);
+  scheduleBuildVersionCheck(() => { void run(); });
 }

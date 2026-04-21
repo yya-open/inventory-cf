@@ -223,6 +223,8 @@ CREATE TABLE IF NOT EXISTS pc_assets (
 CREATE INDEX IF NOT EXISTS idx_pc_assets_serial ON pc_assets(serial_no);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_status_id ON pc_assets(status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status ON pc_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_id ON pc_assets(archived, id);
+CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id);
@@ -335,6 +337,8 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_sn ON monitor_assets(sn);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_location ON monitor_assets(location_id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_assets(status, location_id, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_id ON monitor_assets(archived, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_inventory_status_id ON monitor_assets(archived, inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id);
 

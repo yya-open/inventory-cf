@@ -149,6 +149,7 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     offset,
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: needsDepartmentJoin ? 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id' : '',
+    usesFts: Boolean(keyword),
   } satisfies QueryParts;
 }
 
@@ -226,61 +227,31 @@ export async function countByWhere(db: D1Database, tableWithAlias: string, query
 export async function listPcAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db);
   if (query.fast) {
-    const idSql = `
-      SELECT a.id
+    const joins = /\bpc_asset_latest_state\b/i.test(String(query.joins || ''))
+      ? String(query.joins || '')
+      : `${query.joins || ''} LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id`;
+    const sql = `
+      SELECT
+        a.*,
+        s.current_employee_no AS last_employee_no,
+        s.current_employee_name AS last_employee_name,
+        s.current_department AS last_department,
+        s.last_config_date,
+        s.last_recycle_date,
+        s.last_out_at,
+        s.last_in_at,
+        NULL AS previous_employee_no,
+        NULL AS previous_employee_name,
+        NULL AS previous_department,
+        NULL AS previous_assigned_at
       FROM pc_assets a
-      ${query.joins || ''}
+      ${joins}
       ${query.where}
       ORDER BY a.id ASC
       LIMIT ? OFFSET ?
     `;
-    const idResult = await db.prepare(idSql).bind(...query.binds, query.pageSize, query.offset).all();
-    const ids = (idResult.results || []).map((item: any) => Number(item?.id || 0)).filter((id: number) => id > 0);
-    if (!ids.length) return [];
-
-    const placeholders = ids.map(() => '?').join(',');
-    const rowsSql = `
-      SELECT a.*
-      FROM pc_assets a
-      WHERE a.id IN (${placeholders})
-      ORDER BY a.id ASC
-    `;
-    const stateSql = `
-      SELECT
-        s.asset_id,
-        s.current_employee_no,
-        s.current_employee_name,
-        s.current_department,
-        s.last_config_date,
-        s.last_recycle_date,
-        s.last_out_at,
-        s.last_in_at
-      FROM pc_asset_latest_state s
-      WHERE s.asset_id IN (${placeholders})
-    `;
-    const [rowsResult, stateResult] = await Promise.all([
-      db.prepare(rowsSql).bind(...ids).all(),
-      db.prepare(stateSql).bind(...ids).all(),
-    ]);
-    const stateMap = new Map<number, any>();
-    for (const item of stateResult.results || []) stateMap.set(Number((item as any)?.asset_id || 0), item);
-    return (rowsResult.results || []).map((row: any) => {
-      const state = stateMap.get(Number(row?.id || 0)) || {};
-      return {
-        ...row,
-        last_employee_no: state.current_employee_no || '',
-        last_employee_name: state.current_employee_name || '',
-        last_department: state.current_department || '',
-        last_config_date: state.last_config_date || null,
-        last_recycle_date: state.last_recycle_date || null,
-        last_out_at: state.last_out_at || null,
-        last_in_at: state.last_in_at || null,
-        previous_employee_no: null,
-        previous_employee_name: null,
-        previous_department: null,
-        previous_assigned_at: null,
-      };
-    });
+    const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+    return result.results || [];
   }
   const sql = `
     WITH page_a AS (
@@ -369,13 +340,6 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db);
   if (query.fast) {
     const sql = `
-      WITH page_a AS (
-        SELECT a.id
-        FROM monitor_assets a
-        ${query.where}
-        ORDER BY a.id ASC
-        LIMIT ? OFFSET ?
-      )
       SELECT
         a.*,
         l.name AS location_name,
@@ -385,10 +349,11 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
         NULL AS previous_department,
         NULL AS previous_assigned_at
       FROM monitor_assets a
-      JOIN page_a pg ON pg.id = a.id
       LEFT JOIN pc_locations l ON l.id = a.location_id
       LEFT JOIN pc_locations p ON p.id = l.parent_id
+      ${query.where}
       ORDER BY a.id ASC
+      LIMIT ? OFFSET ?
     `;
     const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
     return result.results || [];

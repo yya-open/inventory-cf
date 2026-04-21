@@ -2,11 +2,13 @@
 import sqlite3
 from pathlib import Path
 ROOT = Path(__file__).resolve().parents[1]
-SCHEMA_FILES = [ROOT / 'sql' / 'schema.sql', ROOT / 'sql' / 'migrate_public_qr_throttle_and_pc_inventory.sql', ROOT / 'sql' / 'migrate_pc_warehouse.sql', ROOT / 'sql' / 'migrate_stocktake.sql', ROOT / 'sql' / 'migrate_query_perf_v2.sql']
+SCHEMA_FILES = [ROOT / 'sql' / 'schema.sql', ROOT / 'sql' / 'migrate_public_qr_throttle_and_pc_inventory.sql', ROOT / 'sql' / 'migrate_pc_warehouse.sql', ROOT / 'sql' / 'migrate_stocktake.sql', ROOT / 'sql' / 'migrate_query_perf_v2.sql', ROOT / 'sql' / 'migrate_ledger_hot_indexes.sql']
 CHECKS = [
   {'name': 'stock_tx warehouse+type order', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM stock_tx WHERE warehouse_id=1 AND type='OUT' ORDER BY created_at DESC LIMIT 20", 'must_include': ['idx_stock_tx_wh_type_created_at']},
   {'name': 'stocktake warehouse+status count', 'sql': "EXPLAIN QUERY PLAN SELECT COUNT(*) FROM stocktake WHERE warehouse_id=1 AND status='DRAFT'", 'must_include': ['idx_stocktake_wh_status_created_at']},
-  {'name': 'pc asset status list', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM pc_assets WHERE status='IN_STOCK' ORDER BY id ASC LIMIT 50", 'must_include': ['idx_pc_assets_status_id']},
+  {'name': 'pc asset status list', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM pc_assets WHERE status='IN_STOCK' ORDER BY id ASC LIMIT 50", 'must_include': ['idx_pc_assets_status']},
+  {'name': 'pc asset default ledger first page', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM pc_assets WHERE archived=0 ORDER BY id ASC LIMIT 50", 'must_include': ['idx_pc_assets_archived_id']},
+  {'name': 'monitor asset default ledger first page', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM monitor_assets WHERE archived=0 ORDER BY id ASC LIMIT 50", 'must_include': ['idx_monitor_assets_archived_id']},
   {'name': 'monitor tx type+date', 'sql': "EXPLAIN QUERY PLAN SELECT id FROM monitor_tx WHERE tx_type='OUT' AND created_at>='2026-01-01 00:00:00' AND created_at<='2026-12-31 23:59:59'", 'must_include': ['idx_monitor_tx_type_created_at']},
   {'name': 'auth throttle lock lookup', 'sql': "EXPLAIN QUERY PLAN SELECT MAX(locked_until) FROM auth_login_throttle WHERE ip='1.1.1.1' AND (username='admin' OR username='*')", 'must_include': ['idx_auth_login_throttle_ip_username_locked']},
 ]

@@ -218,5 +218,10 @@
     "id": "202604210010_backup_restore_integrity_guards",
     "file": "sql/migrate_backup_restore_integrity_guards.sql",
     "description": "backup restore guard triggers and data integrity constraints"
+  },
+  {
+    "id": "202604210020_ledger_hot_indexes",
+    "file": "sql/migrate_ledger_hot_indexes.sql",
+    "description": "hot indexes for first-open pc and monitor ledger list pages"
   }
 ]
