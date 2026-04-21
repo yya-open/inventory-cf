@@ -11,6 +11,23 @@ let __monitorSchemaInit: Promise<void> | null = null;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 
+async function probeMonitorSchemaReady(db: D1Database) {
+  try {
+    const checks = await db.batch([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_locations'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_monitor_assets_archived_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_monitor_assets_archived_inventory_status_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_monitor_assets_archived_location_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('monitor_assets') WHERE name='inventory_status'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('monitor_assets') WHERE name='search_text_norm'"),
+    ]);
+    return checks.every((item: any) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
+  }
+}
+
 export function shouldHealMonitorSchema(env: any, url: URL) {
   const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
   if (!allow) return false;
@@ -31,6 +48,13 @@ export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url
     __monitorRuntimeDdlAllowedCache = { expiresAt: Date.now() + MONITOR_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
   }
   if (!(allowBySettings || runtimeHealAllowed)) return;
+  if (!__monitorSchemaReady) {
+    const alreadyReady = await probeMonitorSchemaReady(db);
+    if (alreadyReady) {
+      __monitorSchemaReady = true;
+      return;
+    }
+  }
   return ensureMonitorSchema(db);
 }
 

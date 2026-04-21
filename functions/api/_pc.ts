@@ -11,6 +11,22 @@ let __pcSchemaInit: Promise<void> | null = null;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 
+async function probePcSchemaReady(db: D1Database) {
+  try {
+    const checks = await db.batch([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_asset_latest_state'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_pc_assets_archived_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_pc_assets_archived_inventory_status_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('pc_assets') WHERE name='inventory_status'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('pc_assets') WHERE name='search_text_norm'"),
+    ]);
+    return checks.every((item: any) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
+  }
+}
+
 /**
  * Runtime schema self-healing performs DDL and can slow down cold starts.
  * This project now prefers *explicit migrations*.
@@ -38,6 +54,13 @@ export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL
     __pcRuntimeDdlAllowedCache = { expiresAt: Date.now() + PC_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
   }
   if (!(allowBySettings || runtimeHealAllowed)) return;
+  if (!__pcSchemaReady) {
+    const alreadyReady = await probePcSchemaReady(db);
+    if (alreadyReady) {
+      __pcSchemaReady = true;
+      return;
+    }
+  }
   return ensurePcSchema(db);
 }
 
