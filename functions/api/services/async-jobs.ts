@@ -655,24 +655,53 @@ function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
   };
 }
 
+async function readReadableStreamToBytes(stream: ReadableStream<Uint8Array>) {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value || []);
+      chunks.push(chunk);
+      total += chunk.byteLength;
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
 async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult) {
   if (!bucket) return null;
   const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
   const objectKey = buildAsyncJobResultObjectKey(row, filename);
   const contentType = String(result.contentType || 'application/octet-stream');
-  const body = result.stream != null
-    ? result.stream
-    : result.blobBase64 != null
-      ? decodeBase64ToBytes(result.blobBase64)
-      : String(result.text ?? '');
+  const shouldBufferStream = String(row?.job_type || '') === 'BACKUP_EXPORT' && result.stream != null;
+  const body = shouldBufferStream
+    ? await readReadableStreamToBytes(result.stream as ReadableStream<Uint8Array>)
+    : result.stream != null
+      ? result.stream
+      : result.blobBase64 != null
+        ? decodeBase64ToBytes(result.blobBase64)
+        : String(result.text ?? '');
   await bucket.put(objectKey, body, buildAsyncJobResultPutOptions(contentType, filename));
   const fileSize = result.fileSize != null
     ? Number(result.fileSize || 0)
-    : result.blobBase64 != null
-      ? estimateBase64DecodedByteLength(result.blobBase64)
-      : result.stream != null
-        ? null
-        : utf8ByteLength(result.text ?? '');
+    : shouldBufferStream
+      ? (body as Uint8Array).byteLength
+      : result.blobBase64 != null
+        ? estimateBase64DecodedByteLength(result.blobBase64)
+        : result.stream != null
+          ? null
+          : utf8ByteLength(result.text ?? '');
   return { objectKey, fileSize };
 }
 
