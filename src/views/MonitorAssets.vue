@@ -13,6 +13,7 @@
       :location-options="locationOptions"
       :can-operator="canOperator"
       :is-admin="isAdmin"
+      :can-bulk-operation="canBulkOperation"
       :visible-columns="displayedMonitorVisibleColumns"
       :column-order="columnOrder"
       :column-options="displayedMonitorColumnOptions"
@@ -69,6 +70,7 @@
       :page-size="pageSize"
       :can-operator="canOperator"
       :is-admin="isAdmin"
+      :can-bulk-operation="canBulkOperation"
       :can-export="canQrExport"
       :can-reset="canQrReset"
       :status-text="assetStatusText"
@@ -234,7 +236,7 @@ import { exportAssetQrLinksWorkbook, exportAssetQrPrintLocal } from '../utils/as
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
-import { can, canCapability } from '../store/auth';
+import { can, canCapability, canPerm } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
@@ -265,6 +267,7 @@ const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../com
 const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
+const canBulkOperation = computed(() => canPerm('bulk_operation'));
 const canQrExport = computed(() => canCapability('qr.export'));
 const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();

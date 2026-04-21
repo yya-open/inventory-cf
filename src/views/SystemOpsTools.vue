@@ -255,6 +255,7 @@ const scanning = ref(false);
 const running = ref('');
 const lastRepair = ref('');
 const snapshotPrecomputing = ref(false);
+const deletingJobId = ref<number | null>(null);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
 const jobDetail = reactive<any>({ visible: false, title: '任务详情', row: null });

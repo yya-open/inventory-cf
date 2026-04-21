@@ -20,7 +20,7 @@ function readSystemHealthCache() {
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, 'ops_tools', 'admin');
+    await requirePermission(env, request, 'ops_tools', 'viewer');
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === '1';
     if (!force) {

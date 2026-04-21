@@ -25,7 +25,7 @@ function issueTypeText(s: string) {
 
 function csvEscape(v: any) {
   const s = String(v ?? '');
-  if(/[\r\n,"]/g.test(s)) return `"${s.replace(/"/g, '""')}"`;
+  if (/[\r\n,"]/g.test(s)) return `"${s.replace(/"/g, '""')}"`;
   return s;
 }
 
@@ -47,45 +47,56 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         keyword: (url.searchParams.get('keyword') || '').trim() || null,
         date_from: url.searchParams.get('date_from') || null,
         date_to: url.searchParams.get('date_to') || null,
+        max: maxRows,
       }).catch(() => {})
     );
 
     const sql = buildMonitorInventoryLogExportSql(query);
-    const header = ['时间', '结果', '异常类型', '资产编号', 'SN', '品牌', '型号', '尺寸', '台账状态', '位置', '领用信息', '备注'].join(',');
-    let csv = '\ufeff' + header + '\n';
-    let exported = 0;
-
-    for (let offset = 0; offset < maxRows; offset += pageSize) {
-      const rows = (await env.DB.prepare(sql).bind(...query.binds, pageSize, offset).all<any>()).results || [];
-      if (!rows.length) break;
-      for (const r of rows) {
-        const empInfo = r.employee_no || r.employee_name || r.department ? `${r.employee_no || '-'} / ${r.employee_name || '-'} / ${r.department || '-'}` : '-';
-        const line = [
-          csvEscape(r.created_at || ''),
-          csvEscape(r.action === 'OK' ? '在位' : '异常'),
-          csvEscape(issueTypeText(String(r.issue_type || ''))),
-          csvEscape(r.asset_code || ''),
-          csvEscape(r.sn || ''),
-          csvEscape(r.brand || ''),
-          csvEscape(r.model || ''),
-          csvEscape(r.size_inch || ''),
-          csvEscape(statusText(String(r.status || ''))),
-          csvEscape(r.location_name || '-'),
-          csvEscape(empInfo),
-          csvEscape(r.remark || ''),
-        ].join(',');
-        csv += line + '\n';
-        exported += 1;
-        if (exported >= maxRows) break;
-      }
-      if (exported >= maxRows) break;
-    }
-
     const filename = `monitor_inventory_log_${beijingDateStampCompact()}.csv`;
-    return new Response(csv, {
+    const header = ['时间', '结果', '异常类型', '资产编号', 'SN', '品牌', '型号', '尺寸', '台账状态', '位置', '领用信息', '备注'];
+    const encoder = new TextEncoder();
+    const { readable, writable } = new TransformStream();
+    const writer = writable.getWriter();
+    (async () => {
+      try {
+        await writer.write(encoder.encode('\ufeff' + header.map(csvEscape).join(',') + '\n'));
+        let written = 0;
+        for (let offset = 0; written < maxRows; offset += pageSize) {
+          const rows = (await env.DB.prepare(sql).bind(...query.binds, pageSize, offset).all<any>()).results || [];
+          if (!rows.length) break;
+          for (const r of rows) {
+            const empInfo = r.employee_no || r.employee_name || r.department ? `${r.employee_no || '-'} / ${r.employee_name || '-'} / ${r.department || '-'}` : '-';
+            const line = [
+              r.created_at_bj || r.created_at,
+              r.action === 'OK' ? '在位' : '异常',
+              issueTypeText(String(r.issue_type || '')),
+              r.asset_code || '',
+              r.sn || '',
+              r.brand || '',
+              r.model || '',
+              r.size_inch || '',
+              statusText(String(r.status || '')),
+              r.location_name || '-',
+              empInfo,
+              r.remark || '',
+            ].map(csvEscape).join(',') + '\n';
+            await writer.write(encoder.encode(line));
+            written += 1;
+            if (written >= maxRows) break;
+          }
+          if (rows.length < pageSize) break;
+        }
+      } catch {
+      } finally {
+        try { await writer.close(); } catch {}
+      }
+    })();
+
+    return new Response(readable, {
       headers: {
         'Content-Type': 'text/csv; charset=utf-8',
         'Content-Disposition': `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`,
+        'Cache-Control': 'no-store',
       },
     });
   } catch (e: any) {

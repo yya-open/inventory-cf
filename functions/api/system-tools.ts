@@ -19,7 +19,7 @@ import { logAudit } from './_audit';
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, 'ops_tools', 'admin');
+    await requirePermission(env, request, 'ops_tools', 'viewer');
     const url = new URL(request.url);
     const section = String(url.searchParams.get('section') || 'all').trim().toLowerCase();
     if (section === 'base') {
@@ -61,7 +61,7 @@ async function runRepairAction(db: D1Database, action: string) {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
-    const actor = await requirePermission(env, request, 'ops_tools', 'admin');
+    const actor = await requirePermission(env, request, 'ops_tools', 'viewer');
     const { action } = await request.json<any>();
     const schema = await getSchemaStatus(env.DB);
     if (!schema.ok && !['scan_all'].includes(String(action || ''))) return json(false, schema, schema.message, 409);

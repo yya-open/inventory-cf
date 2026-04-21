@@ -30,7 +30,7 @@ function chunkIds(ids: number[], size = QR_EXPORT_CHUNK_SIZE) {
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async ({ env, request }) => {
   try {
-    const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
+    const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
     const status = await getSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
     const url = new URL(request.url);
@@ -54,7 +54,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
-    const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
+    const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
     const status = await getSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
     const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json<any>();
@@ -88,7 +88,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
 export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
-    const actor = await requirePermission(env, request, 'async_job_manage', 'admin');
+    const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
     const body = await request.json<any>().catch(() => ({}));
     const action = String(body?.action || '').trim();
     const id = Number(body?.id || 0);

@@ -11,7 +11,7 @@ import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 import * as XLSX from 'xlsx';
-import { buildBackupFilename, buildBackupPayload, parseBackupOptions } from '../admin/_backup_helpers';
+import { buildBackupFilename, buildBackupPayload, createBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
 import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
@@ -325,6 +325,8 @@ type WorkbookHeader = { key: string; title: string };
 type AsyncJobBuiltResult = {
   text?: string | null;
   blobBase64?: string | null;
+  stream?: ReadableStream<Uint8Array> | null;
+  fileSize?: number | null;
   filename: string;
   contentType: string;
   message: string;
@@ -658,9 +660,19 @@ async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, re
   const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
   const objectKey = buildAsyncJobResultObjectKey(row, filename);
   const contentType = String(result.contentType || 'application/octet-stream');
-  const body = result.blobBase64 != null ? decodeBase64ToBytes(result.blobBase64) : String(result.text ?? '');
+  const body = result.stream != null
+    ? result.stream
+    : result.blobBase64 != null
+      ? decodeBase64ToBytes(result.blobBase64)
+      : String(result.text ?? '');
   await bucket.put(objectKey, body, buildAsyncJobResultPutOptions(contentType, filename));
-  const fileSize = result.blobBase64 != null ? estimateBase64DecodedByteLength(result.blobBase64) : utf8ByteLength(result.text ?? '');
+  const fileSize = result.fileSize != null
+    ? Number(result.fileSize || 0)
+    : result.blobBase64 != null
+      ? estimateBase64DecodedByteLength(result.blobBase64)
+      : result.stream != null
+        ? null
+        : utf8ByteLength(result.text ?? '');
   return { objectKey, fileSize };
 }
 
@@ -724,7 +736,7 @@ async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: Async
     exportedAt: state.exportedAt ?? null,
   });
 }
-async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any): Promise<AsyncJobBuiltResult> {
+async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any, bucket?: AsyncJobResultBucket): Promise<AsyncJobBuiltResult> {
   if (type === 'PC_QR_KEY_INIT') {
     await ensurePcQrColumns(db);
     const batchSize = Math.max(20, Math.min(500, Number(requestJson?.batch || requestJson?.batch_size || 200)));
@@ -800,11 +812,24 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
       actor: String(requestJson?.actor || 'async_job'),
       reason: String(requestJson?.reason || 'async_backup_export'),
     });
-    const payload = await buildBackupPayload(db, backupOptions);
-    const jsonText = JSON.stringify(payload);
     const gzip = requestJson?.gzip === true || requestJson?.gzip === 1 || requestJson?.gzip === '1';
     const table = String(requestJson?.table || '').trim() || null;
     const filename = buildBackupFilename({ table, gzip });
+    if (bucket) {
+      const payload = await createBackupJsonStream(db, backupOptions);
+      if (gzip && typeof (globalThis as any).CompressionStream === 'undefined') {
+        throw new Error('当前环境不支持 gzip 压缩');
+      }
+      return {
+        stream: gzip ? payload.stream.pipeThrough(new CompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>) as any : payload.stream,
+        filename,
+        contentType: gzip ? 'application/gzip' : 'application/json; charset=utf-8',
+        message: `备份已生成（${payload.tables.length} 张表）`,
+        meta: { table_count: payload.tables.length, stats: payload.stats, version: payload.version, filters: payload.meta?.filters || null },
+      };
+    }
+    const payload = await buildBackupPayload(db, backupOptions);
+    const jsonText = JSON.stringify(payload);
     if (gzip) {
       const blobBase64 = await gzipTextToBase64(jsonText);
       return { blobBase64, filename, contentType: 'application/gzip', message: `备份已生成（${Object.keys(payload.tables || {}).length} 张表）` };
@@ -981,7 +1006,7 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
-    const result = await buildJobResult(db, jobType, req);
+    const result = await buildJobResult(db, jobType, req, bucket);
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (Number(latest?.cancel_requested || 0) === 1) {
       await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();

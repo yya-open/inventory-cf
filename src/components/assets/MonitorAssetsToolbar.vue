@@ -128,12 +128,12 @@
                       <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
                       <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
                       <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin" command="batch-status">批量修改状态</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin" command="batch-location">批量修改位置</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin" command="batch-owner">批量修改领用人</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin" command="batch-archive">批量归档</el-dropdown-item>
-                      <el-dropdown-item v-if="isAdmin" command="batch-delete" divided>批量删除选中</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-status">批量修改状态</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-location">批量修改位置</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-owner">批量修改领用人</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-archive">批量归档</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-delete" divided>批量删除选中</el-dropdown-item>
                     </el-dropdown-menu>
                   </template>
                 </el-dropdown>
@@ -284,6 +284,7 @@ const props = defineProps<{
   locationOptions: Array<{ value: number; label: string }>;
   canOperator: boolean;
   isAdmin: boolean;
+  canBulkOperation: boolean;
   visibleColumns: string[];
   columnOrder: string[];
   columnOptions: Array<{ value: string; label: string }>;

@@ -1,4 +1,5 @@
 import { errorResponse, json, requireAuth } from './_auth';
+import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import {
   createSystemDictionaryItem,
@@ -55,7 +56,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requirePermission(env, request, 'system_settings_write', 'viewer');
     const body = await request.json().catch(() => ({}));
     const item = await createSystemDictionaryItem(env.DB, body || {}, user.username || null);
     invalidateSystemSettingsCache();
@@ -73,7 +74,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 
 export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requirePermission(env, request, 'system_settings_write', 'viewer');
     const body = await request.json().catch(() => ({}));
     if (String(body?.action || '').trim() === 'reorder') {
       const dictionaryKey = parseDictionaryKey(body?.dictionary_key);
@@ -106,7 +107,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
 
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    const user = await requireAuth(env, request, 'admin');
+    const user = await requirePermission(env, request, 'system_settings_write', 'viewer');
     const body = await request.json().catch(() => ({}));
     requireConfirm(body, '删除', '二次确认不通过');
     const deleted = await deleteSystemDictionaryItem(env.DB, Number(body?.id || 0), body?.updated_at || null);

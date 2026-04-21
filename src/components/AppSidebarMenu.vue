@@ -82,6 +82,12 @@ const props = defineProps<{
   canAccessPcArea: boolean;
   canAccessPcLedger: boolean;
   canAccessMonitorLedger: boolean;
+  canAccessSystemArea: boolean;
+  systemEntryPath: string;
+  canManageSystemJobs: boolean;
+  canManageSystemTools: boolean;
+  canManageSystemSettings: boolean;
+  canAuditExport: boolean;
   canOperator: boolean;
   isAdmin: boolean;
   collapsed?: boolean;
@@ -102,18 +108,18 @@ type MenuItem = {
 const brandTitle = '出入库管理';
 
 const systemItems = computed<MenuItem[]>(() => [
-  { index: '/system/home', label: '系统首页', icon: markRaw(Setting), visible: true },
-  { index: '/system/dashboard', label: '报表与看板', icon: markRaw(DataAnalysis), visible: true },
-  { index: '/system/reports', label: '数据报表中心', icon: markRaw(Histogram), visible: true },
-  { index: '/system/tasks', label: '批量任务中心', icon: markRaw(Files), visible: true },
-  { index: '/system/backup', label: '备份/恢复', icon: markRaw(RefreshRight), visible: true },
-  { index: '/system/audit', label: '审计日志', icon: markRaw(Document), visible: true },
-  { index: '/system/users', label: '用户管理', icon: markRaw(User), visible: true },
-  { index: '/system/settings', label: '系统配置', icon: markRaw(Tools), visible: true },
-  { index: '/system/tools', label: '运维工具', icon: markRaw(Operation), visible: true },
-  { index: '/system/release-check', label: '发布前检查', icon: markRaw(FolderChecked), visible: true },
-  { index: '/system/performance', label: '性能面板', icon: markRaw(TrendCharts), visible: true },
-  { index: '/system/docs', label: '系统交付文档', icon: markRaw(Reading), visible: true },
+  { index: '/system/home', label: '系统首页', icon: markRaw(Setting), visible: props.isAdmin },
+  { index: '/system/dashboard', label: '报表与看板', icon: markRaw(DataAnalysis), visible: props.isAdmin },
+  { index: '/system/reports', label: '数据报表中心', icon: markRaw(Histogram), visible: props.isAdmin },
+  { index: '/system/tasks', label: '批量任务中心', icon: markRaw(Files), visible: props.isAdmin || props.canManageSystemJobs },
+  { index: '/system/backup', label: '备份/恢复', icon: markRaw(RefreshRight), visible: props.isAdmin },
+  { index: '/system/audit', label: '审计日志', icon: markRaw(Document), visible: props.isAdmin || props.canAuditExport },
+  { index: '/system/users', label: '用户管理', icon: markRaw(User), visible: props.isAdmin },
+  { index: '/system/settings', label: '系统配置', icon: markRaw(Tools), visible: props.isAdmin || props.canManageSystemSettings },
+  { index: '/system/tools', label: '运维工具', icon: markRaw(Operation), visible: props.isAdmin || props.canManageSystemTools },
+  { index: '/system/release-check', label: '发布前检查', icon: markRaw(FolderChecked), visible: props.isAdmin },
+  { index: '/system/performance', label: '性能面板', icon: markRaw(TrendCharts), visible: props.isAdmin || props.canManageSystemTools },
+  { index: '/system/docs', label: '系统交付文档', icon: markRaw(Reading), visible: props.isAdmin },
 ]);
 
 const partsItems = computed<MenuItem[]>(() => [
@@ -126,7 +132,7 @@ const partsItems = computed<MenuItem[]>(() => [
   { index: '/items', label: '配件管理', icon: markRaw(Management), visible: props.isAdmin },
   { index: '/import/items', label: 'Excel 导入配件', icon: markRaw(Upload), visible: props.isAdmin },
   { index: '/stocktake', label: '库存盘点', icon: markRaw(Checked), visible: props.isAdmin },
-  { index: '/system/home', label: '系统', icon: markRaw(Setting), visible: props.isAdmin },
+  { index: props.systemEntryPath, label: '系统', icon: markRaw(Setting), visible: props.canAccessSystemArea },
 ]);
 
 const pcItems = computed<MenuItem[]>(() => [
@@ -140,7 +146,7 @@ const pcItems = computed<MenuItem[]>(() => [
   { index: '/pc/in', label: '电脑入库', icon: markRaw(Plus), visible: props.canOperator && props.canAccessPcLedger },
   { index: '/pc/out', label: '电脑出库', icon: markRaw(Minus), visible: props.canOperator && props.canAccessPcLedger },
   { index: '/pc/recycle', label: '电脑回收/归还', icon: markRaw(RefreshRight), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/system/home', label: '系统', icon: markRaw(Setting), visible: props.isAdmin },
+  { index: props.systemEntryPath, label: '系统', icon: markRaw(Setting), visible: props.canAccessSystemArea },
 ]);
 
 const visibleItems = computed(() => {

@@ -174,7 +174,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     if (Number(asset.archived || 0) === 1) {
-      await requirePermission(env, request, 'asset_purge', 'admin');
+      await requirePermission(env, request, 'asset_purge', 'viewer');
       const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
       invalidateSystemDictionaryReferenceCache();
       await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);

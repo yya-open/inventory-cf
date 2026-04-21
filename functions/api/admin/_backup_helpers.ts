@@ -7,8 +7,17 @@ const OPTIONAL_TABLE_GROUPS = {
   include_throttle: ['auth_login_throttle', 'public_api_throttle'],
 } as const;
 
-const OPTIONAL_TABLE_SET = new Set(Object.values(OPTIONAL_TABLE_GROUPS).flat());
+const OPTIONAL_TABLE_SET = new Set<string>(Object.values(OPTIONAL_TABLE_GROUPS).flat());
 const BASE_EXPORTABLE_TABLES = EXPORTABLE_TABLE_NAMES.filter((table) => !OPTIONAL_TABLE_SET.has(table));
+
+type CursorKind = 'id' | 'k' | 'rowid';
+
+type BackupTableStat = {
+  group: string;
+  group_label: string;
+  label: string;
+  rows: number;
+};
 
 export type BackupBuildOptions = {
   actor?: string | null;
@@ -19,6 +28,15 @@ export type BackupBuildOptions = {
   txUntil?: string | null;
   auditSince?: string | null;
   auditUntil?: string | null;
+};
+
+export type BackupJsonStreamResult = {
+  stream: ReadableStream<Uint8Array>;
+  exportedAt: string;
+  version: string;
+  meta: Record<string, any>;
+  stats: Record<string, BackupTableStat>;
+  tables: string[];
 };
 
 function clampInt(value: any, fallback: number, min: number, max: number) {
@@ -47,7 +65,7 @@ function normalizeTableList(values: any[]) {
   return Array.from(new Set(
     values
       .map((value) => String(value || '').trim())
-      .filter((value) => EXPORTABLE_TABLE_NAMES.includes(value))
+      .filter((value): value is (typeof EXPORTABLE_TABLE_NAMES)[number] => EXPORTABLE_TABLE_NAMES.includes(value as any))
   ));
 }
 
@@ -122,50 +140,17 @@ function buildTableWhereSql(table: string, opts?: BackupBuildOptions) {
   return { whereSql: where.length ? ` WHERE ${where.join(' AND ')}` : '', binds };
 }
 
-function buildTableOrderSql(table: string) {
+function resolveCursorKind(table: string): CursorKind {
   const cols = TABLE_COLUMNS[table] || [];
-  if (cols.includes('id')) return ' ORDER BY id ASC';
-  if (cols.includes('k')) return ' ORDER BY k ASC';
-  return ' ORDER BY rowid ASC';
+  if (cols.includes('id')) return 'id';
+  if (cols.includes('k')) return 'k';
+  return 'rowid';
 }
 
-export async function fetchTableRows(DB: D1Database, table: string, opts?: BackupBuildOptions) {
-  const cols = TABLE_COLUMNS[table] || ['*'];
-  const pageSize = clampInt(opts?.pageSize, 1000, 100, 5000);
-  const { whereSql, binds } = buildTableWhereSql(table, opts);
-  const orderSql = buildTableOrderSql(table);
-  const rows: any[] = [];
-  let offset = 0;
-  while (true) {
-    const sql = `SELECT ${cols.join(',')} FROM ${table}${whereSql}${orderSql} LIMIT ? OFFSET ?`;
-    const r = await DB.prepare(sql).bind(...binds, pageSize, offset).all<any>();
-    const batch = Array.isArray(r?.results) ? r.results : [];
-    rows.push(...batch);
-    if (batch.length < pageSize) break;
-    offset += batch.length;
-  }
-  return rows;
-}
-
-export async function buildBackupPayload(DB: D1Database, opts?: BackupBuildOptions) {
-  const tables = opts?.includeTables?.length ? opts.includeTables : EXPORTABLE_TABLE_NAMES;
-  const tablePayload: Record<string, any[]> = {};
-  const stats: Record<string, any> = {};
-  for (const table of tables) {
-    const rows = await fetchTableRows(DB, table, opts);
-    tablePayload[table] = rows;
-    const def = TABLE_BY_NAME[table];
-    stats[table] = {
-      group: def?.group || 'core',
-      group_label: groupLabel(def?.group || 'core'),
-      label: def?.label || table,
-      rows: rows.length,
-    };
-  }
-
+function buildBackupMetaEnvelope(tables: string[], exportedAt: string, opts?: BackupBuildOptions) {
   return {
     version: BACKUP_VERSION,
-    exported_at: new Date().toISOString(),
+    exported_at: exportedAt,
     meta: buildBackupMeta({
       actor: opts?.actor || null,
       reason: opts?.reason || null,
@@ -179,6 +164,138 @@ export async function buildBackupPayload(DB: D1Database, opts?: BackupBuildOptio
         page_size: opts?.pageSize || null,
       },
     }),
+  };
+}
+
+export async function countTableRows(DB: D1Database, table: string, opts?: BackupBuildOptions) {
+  const { whereSql, binds } = buildTableWhereSql(table, opts);
+  const row = await DB.prepare(`SELECT COUNT(*) AS c FROM ${table}${whereSql}`).bind(...binds).first<any>();
+  return Number(row?.c || 0);
+}
+
+export async function buildBackupStats(DB: D1Database, tables: string[], opts?: BackupBuildOptions) {
+  const stats: Record<string, BackupTableStat> = {};
+  for (const table of tables) {
+    const rows = await countTableRows(DB, table, opts);
+    const def = TABLE_BY_NAME[table];
+    stats[table] = {
+      group: def?.group || 'core',
+      group_label: groupLabel(def?.group || 'core'),
+      label: def?.label || table,
+      rows,
+    };
+  }
+  return stats;
+}
+
+export async function* iterateTableRows(DB: D1Database, table: string, opts?: BackupBuildOptions) {
+  const cols = TABLE_COLUMNS[table] || ['*'];
+  const pageSize = clampInt(opts?.pageSize, 1000, 100, 5000);
+  const { whereSql, binds } = buildTableWhereSql(table, opts);
+  const cursorKind = resolveCursorKind(table);
+  let cursor: any = cursorKind === 'k' ? '' : 0;
+
+  while (true) {
+    const cursorWhere = cursorKind === 'id'
+      ? 'id > ?'
+      : cursorKind === 'k'
+        ? 'k > ?'
+        : 'rowid > ?';
+    const combinedWhere = whereSql ? `${whereSql} AND ${cursorWhere}` : ` WHERE ${cursorWhere}`;
+    const selectSql = cursorKind === 'rowid'
+      ? `SELECT rowid AS __backup_rowid, ${cols.join(',')} FROM ${table}${combinedWhere} ORDER BY rowid ASC LIMIT ?`
+      : `SELECT ${cols.join(',')} FROM ${table}${combinedWhere} ORDER BY ${cursorKind} ASC LIMIT ?`;
+    const result = await DB.prepare(selectSql).bind(...binds, cursor, pageSize).all<any>();
+    const batch = Array.isArray(result?.results) ? result.results : [];
+    if (!batch.length) break;
+
+    for (const rawRow of batch) {
+      if (cursorKind === 'rowid') {
+        cursor = Number(rawRow?.__backup_rowid || 0);
+        const { __backup_rowid, ...row } = rawRow || {};
+        yield row;
+      } else {
+        cursor = rawRow?.[cursorKind];
+        yield rawRow;
+      }
+    }
+
+    if (batch.length < pageSize) break;
+  }
+}
+
+export async function fetchTableRows(DB: D1Database, table: string, opts?: BackupBuildOptions) {
+  const rows: any[] = [];
+  for await (const row of iterateTableRows(DB, table, opts)) rows.push(row);
+  return rows;
+}
+
+export async function createBackupJsonStream(DB: D1Database, opts?: BackupBuildOptions): Promise<BackupJsonStreamResult> {
+  const tables = opts?.includeTables?.length ? opts.includeTables : EXPORTABLE_TABLE_NAMES;
+  const exportedAt = new Date().toISOString();
+  const stats = await buildBackupStats(DB, tables, opts);
+  const envelope = buildBackupMetaEnvelope(tables, exportedAt, opts);
+  const encoder = new TextEncoder();
+  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+
+  const writeChunk = async (value: string) => {
+    await writer.write(encoder.encode(value));
+  };
+
+  void (async () => {
+    try {
+      await writeChunk('{');
+      await writeChunk(`"version":${JSON.stringify(envelope.version)},`);
+      await writeChunk(`"exported_at":${JSON.stringify(envelope.exported_at)},`);
+      await writeChunk(`"meta":${JSON.stringify(envelope.meta)},`);
+      await writeChunk(`"stats":${JSON.stringify(stats)},`);
+      await writeChunk('"tables":{');
+      let firstTable = true;
+      for (const table of tables) {
+        if (!firstTable) await writeChunk(',');
+        firstTable = false;
+        await writeChunk(`${JSON.stringify(table)}:[`);
+        let firstRow = true;
+        for await (const row of iterateTableRows(DB, table, opts)) {
+          if (!firstRow) await writeChunk(',');
+          firstRow = false;
+          await writeChunk(JSON.stringify(row));
+        }
+        await writeChunk(']');
+      }
+      await writeChunk('}}');
+      await writer.close();
+    } catch (error) {
+      try {
+        await writer.abort(error);
+      } catch {}
+    }
+  })();
+
+  return {
+    stream: readable,
+    exportedAt,
+    version: BACKUP_VERSION,
+    meta: envelope.meta,
+    stats,
+    tables,
+  };
+}
+
+export async function buildBackupPayload(DB: D1Database, opts?: BackupBuildOptions) {
+  const tables = opts?.includeTables?.length ? opts.includeTables : EXPORTABLE_TABLE_NAMES;
+  const tablePayload: Record<string, any[]> = {};
+  for (const table of tables) {
+    tablePayload[table] = await fetchTableRows(DB, table, opts);
+  }
+  const exportedAt = new Date().toISOString();
+  const stats = await buildBackupStats(DB, tables, opts);
+  const envelope = buildBackupMetaEnvelope(tables, exportedAt, opts);
+  return {
+    version: envelope.version,
+    exported_at: envelope.exported_at,
+    meta: envelope.meta,
     stats,
     tables: tablePayload,
   };

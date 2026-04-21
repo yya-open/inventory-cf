@@ -17,7 +17,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 
 export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
-    const user = await requirePermission(env, request, 'system_settings_write', 'admin');
+    const user = await requirePermission(env, request, 'system_settings_write', 'viewer');
     const body = await request.json().catch(() => ({}));
     const data = await updateSystemSettings(env.DB, body || {}, user.username || null);
     return json(true, data, '保存成功');

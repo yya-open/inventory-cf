@@ -1,11 +1,12 @@
-import { requireAuth, errorResponse } from "../../_auth";
+import { errorResponse } from "../../_auth";
+import { requirePermission } from '../../_permissions';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from "../services/audit-log";
 
 const MAX_EXPORT_ROWS = 5000;
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "admin");
+    await requirePermission(env, request, 'audit_export', 'viewer');
     const url = new URL(request.url);
     const filters = parseAuditListFilters(url);
     const scope = String(url.searchParams.get('scope') || 'all').trim().toLowerCase();

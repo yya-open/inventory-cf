@@ -7,7 +7,7 @@ import { assertPartsStocktakeAccess, getUserDataScope } from '../services/data-s
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requirePermission(env, request, 'stocktake_apply', 'admin');
+    const user = await requirePermission(env, request, 'stocktake_apply', 'viewer');
     const scopedUser = Object.assign({}, user, await getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null })));
     const body = await request.json().catch(() => ({} as any));
     const previewOnly = Boolean((body as any).preview_only);

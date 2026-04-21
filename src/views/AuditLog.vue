@@ -436,7 +436,7 @@ import { ElPopconfirm, ElScrollbar } from 'element-plus';
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";
-import { can } from "../store/auth";
+import { can, canCapability, canPerm } from "../store/auth";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { exportToXlsx } from "../utils/excel";
@@ -1036,6 +1036,7 @@ async function createArchiveJob() {
 
 const selectedIds = ref<number[]>([]);
 const isAdmin = computed(() => can("admin"));
+const canAsyncJobManage = computed(() => canCapability('system.jobs.manage'));
 const route = useRoute();
 
 function onSelect(list: any[]) {
@@ -1246,6 +1247,19 @@ async function createAuditExportJob(scope: 'current' | 'all') {
   return apiPost('/api/jobs', { job_type: 'AUDIT_EXPORT', permission_scope: 'audit_export', request_json });
 }
 
+async function fetchAuditExportRows(scope: 'current' | 'all') {
+  const params = buildAuditParams(page.value, pageSize.value);
+  params.set('scope', scope);
+  if (scope === 'all') params.set('max_rows', '5000');
+  const res: any = await apiGet(`/api/audit/export?${params.toString()}`);
+  return res;
+}
+
+function buildAuditExportFilename(scope: 'current' | 'all') {
+  const stamp = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+  return scope === 'current' ? `audit_current_${stamp}.xlsx` : `audit_filtered_${stamp}.xlsx`;
+}
+
 function exportAuditRows(rowsToExport: any[], filename: string) {
   exportToXlsx({
     filename,
@@ -1273,8 +1287,14 @@ function exportAuditRows(rowsToExport: any[], filename: string) {
 
 async function exportFilteredRows() {
   try {
-    await createAuditExportJob('all');
-    ElMessage.success('已创建审计导出任务，请前往 系统 > 运维工具 下载');
+    if (canAsyncJobManage.value) {
+      await createAuditExportJob('all');
+      ElMessage.success('已创建审计导出任务，请前往 系统 > 批量任务中心 下载');
+      return;
+    }
+    const result: any = await fetchAuditExportRows('all');
+    exportAuditRows(result?.data || [], buildAuditExportFilename('all'));
+    ElMessage.success(result?.limited ? `已导出 ${result?.exported || 0} 条（达到上限）` : '筛选结果已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出筛选结果失败');
   }
@@ -1282,8 +1302,14 @@ async function exportFilteredRows() {
 
 async function exportCurrentRows() {
   try {
-    await createAuditExportJob('current');
-    ElMessage.success('已创建当前页审计导出任务，请前往 系统 > 运维工具 下载');
+    if (canAsyncJobManage.value) {
+      await createAuditExportJob('current');
+      ElMessage.success('已创建当前页审计导出任务，请前往 系统 > 批量任务中心 下载');
+      return;
+    }
+    const result: any = await fetchAuditExportRows('current');
+    exportAuditRows(result?.data || [], buildAuditExportFilename('current'));
+    ElMessage.success('当前页已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出当前页失败');
   }

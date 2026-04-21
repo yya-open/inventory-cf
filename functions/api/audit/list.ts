@@ -1,9 +1,10 @@
-import { requireAuth, errorResponse } from "../../_auth";
+import { errorResponse } from "../../_auth";
+import { requirePermission } from '../../_permissions';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from "../services/audit-log";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requireAuth(env, request, "admin");
+    await requirePermission(env, request, 'audit_export', 'viewer');
     const filters = parseAuditListFilters(new URL(request.url));
     const total = await countAuditRows(env.DB, filters);
     const data = await listAuditRows(env.DB, filters);

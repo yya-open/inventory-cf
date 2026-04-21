@@ -11,6 +11,7 @@
       v-model:show-archived="showArchived"
       :is-admin="isAdmin"
       :can-operator="canOperator"
+      :can-bulk-operation="canBulkOperation"
       :visible-columns="displayedPcVisibleColumns"
       :column-order="columnOrder"
       :column-options="displayedPcColumnOptions"
@@ -182,7 +183,7 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { getCachedSystemSettings } from '../api/systemSettings';
 import { buildQrExportFilename } from '../utils/exportNaming';
 import { isLedgerMobileViewport } from '../utils/responsive';
-import { can, canCapability } from '../store/auth';
+import { can, canCapability, canPerm } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
 import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
@@ -202,6 +203,7 @@ const PcAssetBatchArchiveDialog = defineAsyncComponent(() => import('../componen
 
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));
+const canBulkOperation = computed(() => canPerm('bulk_operation'));
 const canQrExport = computed(() => canCapability('qr.export'));
 const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();

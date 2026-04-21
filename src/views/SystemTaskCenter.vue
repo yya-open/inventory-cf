@@ -8,7 +8,7 @@
         </div>
         <div class="page-actions">
           <el-tag :type="hasActiveJobs ? 'warning' : 'success'">{{ hasActiveJobs ? '存在运行中任务' : '当前无运行中任务' }}</el-tag>
-          <el-button :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>
+          <el-button v-if="canManageSystemTools" :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>
           <el-button @click="cleanupJobs">自动清理历史</el-button>
           <el-button @click="loadJobs({ force: true, includeBase: true, reset: true })">刷新</el-button>
         </div>
@@ -128,6 +128,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { canCapability } from '../store/auth';
 import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
 
 const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
@@ -146,6 +147,8 @@ const compactMode = ref(false);
 const pollEnabled = ref(true);
 const detailVisible = ref(false);
 const detailRow = ref<any | null>(null);
+const canManageSystemTools = computed(() => canCapability('system.tools.manage'));
+const baseSummaryAvailable = ref(true);
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaseLoadedAt = 0;
 const BASE_REFRESH_MS = 60_000;
@@ -173,6 +176,13 @@ function canDelete(row: any) { return !['queued', 'running'].includes(String(row
 function displayIndex(index: number) { return index + 1; }
 function buildDownloadUrl(row: any) { const q = new URLSearchParams(); q.set('id', String(row.id)); return `/api/jobs-download?${q.toString()}`; }
 function downloadJob(row: any) { window.open(buildDownloadUrl(row), '_blank', 'noopener'); }
+function syncSummaryFromJobs(rows = jobs.value) {
+  const list = Array.isArray(rows) ? rows : [];
+  summary.async_job_count = list.length;
+  summary.queued_job_count = list.filter((row) => String(row?.status || '') === 'queued').length;
+  summary.failed_job_count = list.filter((row) => String(row?.status || '') === 'failed').length;
+  if (!baseSummaryAvailable.value) summary.slow_request_count = 0;
+}
 async function openDetail(row: any) {
   try {
     const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90`);
@@ -185,13 +195,20 @@ async function openDetail(row: any) {
   }
 }
 async function loadBase() {
-  const r:any = await apiGet('/api/system-tools?section=base');
-  const dashboard = r?.data?.dashboard || {};
-  summary.async_job_count = Number(dashboard.async_job_count || 0);
-  summary.queued_job_count = Number(dashboard.queued_job_count || 0);
-  summary.failed_job_count = Number(dashboard.failed_job_count || 0);
-  summary.slow_request_count = Number(dashboard.slow_request_count || 0);
-  lastBaseLoadedAt = Date.now();
+  try {
+    const r:any = await apiGet('/api/system-tools?section=base');
+    const dashboard = r?.data?.dashboard || {};
+    summary.async_job_count = Number(dashboard.async_job_count || 0);
+    summary.queued_job_count = Number(dashboard.queued_job_count || 0);
+    summary.failed_job_count = Number(dashboard.failed_job_count || 0);
+    summary.slow_request_count = Number(dashboard.slow_request_count || 0);
+    baseSummaryAvailable.value = true;
+    lastBaseLoadedAt = Date.now();
+  } catch {
+    baseSummaryAvailable.value = false;
+    syncSummaryFromJobs();
+    lastBaseLoadedAt = Date.now();
+  }
 }
 function clearPollTimer() {
   if (pollTimer) clearTimeout(pollTimer);
@@ -241,6 +258,7 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
     const r:any = await apiGet(`/api/jobs?${buildQuery()}`);
     const rows = normalizeJobRowsResponse(r);
     mergeJobs(rows, false);
+    if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
   } finally {
@@ -255,6 +273,7 @@ async function loadMoreJobs() {
     const r:any = await apiGet(`/api/jobs?${buildQuery(cursorId.value)}`);
     const rows = normalizeJobRowsResponse(r);
     mergeJobs(rows, true);
+    if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
   } finally {

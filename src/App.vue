@@ -28,6 +28,12 @@
             :can-access-pc-area="canAccessPcArea"
             :can-access-pc-ledger="canAccessPcLedger"
             :can-access-monitor-ledger="canAccessMonitorLedger"
+            :can-access-system-area="canAccessSystemModule"
+            :system-entry-path="systemEntryPath"
+            :can-manage-system-jobs="canCapability('system.jobs.manage')"
+            :can-manage-system-tools="canCapability('system.tools.manage')"
+            :can-manage-system-settings="canCapability('system.settings.manage')"
+            :can-audit-export="canPerm('audit_export')"
             :can-operator="can('operator')"
             :is-admin="can('admin')"
             :collapsed="desktopSidebarCollapsed"
@@ -57,6 +63,12 @@
           :can-access-pc-area="canAccessPcArea"
           :can-access-pc-ledger="canAccessPcLedger"
           :can-access-monitor-ledger="canAccessMonitorLedger"
+          :can-access-system-area="canAccessSystemModule"
+          :system-entry-path="systemEntryPath"
+          :can-manage-system-jobs="canCapability('system.jobs.manage')"
+          :can-manage-system-tools="canCapability('system.tools.manage')"
+          :can-manage-system-settings="canCapability('system.settings.manage')"
+          :can-audit-export="canPerm('audit_export')"
           :can-operator="can('operator')"
           :is-admin="can('admin')"
           :is-mobile="true"
@@ -97,7 +109,7 @@
                 {{ canAccessPcLedger && canAccessMonitorLedger ? '电脑/显示器仓' : (canAccessPcLedger ? '电脑仓' : '显示器仓') }}
               </el-button>
               <el-button
-                v-if="can('admin')"
+                v-if="canAccessSystemModule"
                 size="small"
                 :type="currentArea==='system' ? 'primary' : 'default'"
                 @click="switchToSystem"
@@ -244,10 +256,10 @@ import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
-import { can, logout, useAuth } from "./store/auth";
+import { can, canCapability, canPerm, logout, useAuth } from "./store/auth";
 import { routePageSkeletonVisible } from "./router";
 import { setWarehouse, useWarehouse, WarehouseKey, clearWarehouse } from "./store/warehouse";
-import { canAccessModuleArea, canAccessPcSection, preferredPcRoute } from "./utils/moduleAccess";
+import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleSystemRoute, preferredPcRoute } from "./utils/moduleAccess";
 import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
 import { trackUiEvent } from "./utils/browserPerf";
 import { isAppMobileViewport } from "./utils/responsive";
@@ -263,6 +275,8 @@ const canAccessPartsArea = computed(() => canAccessModuleArea(auth.user, "parts"
 const canAccessPcArea = computed(() => canAccessModuleArea(auth.user, "pc"));
 const canAccessPcLedger = computed(() => canAccessPcSection(auth.user, "pc"));
 const canAccessMonitorLedger = computed(() => canAccessPcSection(auth.user, "monitor"));
+const canAccessSystemModule = computed(() => canAccessSystemArea(auth.user));
+const systemEntryPath = computed(() => firstAccessibleSystemRoute(auth.user));
 
 const currentArea = computed<"parts" | "pc" | "system">(() => {
   if (isSystem.value) return "system";
@@ -350,7 +364,7 @@ function switchTo(k: WarehouseKey) {
 }
 
 function switchToSystem() {
-  router.push("/system/home");
+  router.push(systemEntryPath.value);
 }
 
 async function doLogout() {

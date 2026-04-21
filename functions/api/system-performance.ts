@@ -125,7 +125,7 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, 'ops_tools', 'admin');
+    await requirePermission(env, request, 'ops_tools', 'viewer');
     const url = new URL(request.url);
     const days = Math.max(1, Math.min(30, Number(url.searchParams.get('days') || 7) || 7));
     const force = url.searchParams.get('force') === '1';

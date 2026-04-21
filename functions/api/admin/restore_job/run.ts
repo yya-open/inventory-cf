@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
 import { logAudit } from '../../_audit';
 import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
-import { buildBackupPayload } from '../_backup_helpers';
+import { createBackupJsonStream } from '../_backup_helpers';
 import { finalizeRestoreState } from '../_restore_finalize';
 import { sqlNowStored } from '../../_time';
 
@@ -9,10 +9,10 @@ type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 type RestoreMode = 'merge' | 'merge_upsert' | 'replace';
 
 async function createSnapshot(env: Env, actor: string, jobId: string) {
-  const payload = await buildBackupPayload(env.DB, { actor, reason: `pre_restore_snapshot:${jobId}` });
+  const payload = await createBackupJsonStream(env.DB, { actor, reason: `pre_restore_snapshot:${jobId}` });
   const snapshotKey = `restore-point/${jobId}/pre-restore.json`;
   const snapshotFilename = `pre_restore_${jobId}.json`;
-  await env.BACKUP_BUCKET.put(snapshotKey, JSON.stringify(payload), {
+  await env.BACKUP_BUCKET.put(snapshotKey, payload.stream, {
     httpMetadata: { contentType: 'application/json' },
     customMetadata: { created_by: actor, reason: 'pre_restore_snapshot' },
   });

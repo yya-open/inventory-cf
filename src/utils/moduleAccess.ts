@@ -1,7 +1,10 @@
+import { hasPermission } from './permissions';
 import { scopeModeOptions } from './dataScope';
 
 export type ScopeLikeUser = {
   role?: string | null;
+  permissions?: Record<string, boolean>;
+  permission_template_code?: string | null;
   data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse' | string | null;
   data_scope_value?: string | null;
   data_scope_value2?: string | null;
@@ -25,15 +28,34 @@ export function canAccessPcSection(user: ScopeLikeUser, section: PcSection) {
   return modes.has(section);
 }
 
+export function canAccessSystemArea(user: ScopeLikeUser) {
+  if (!user) return false;
+  if (String(user.role || '') === 'admin') return true;
+  return hasPermission(user as any, 'async_job_manage')
+    || hasPermission(user as any, 'audit_export')
+    || hasPermission(user as any, 'system_settings_write')
+    || hasPermission(user as any, 'ops_tools');
+}
+
 export function preferredPcRoute(user: ScopeLikeUser) {
   if (canAccessPcSection(user, 'pc')) return '/pc/assets';
   if (canAccessPcSection(user, 'monitor')) return '/pc/monitors';
   return '/pc/assets';
 }
 
+export function firstAccessibleSystemRoute(user: ScopeLikeUser) {
+  if (String(user?.role || '') === 'admin') return '/system/home';
+  if (hasPermission(user as any, 'async_job_manage')) return '/system/tasks';
+  if (hasPermission(user as any, 'audit_export')) return '/system/audit';
+  if (hasPermission(user as any, 'system_settings_write')) return '/system/settings';
+  if (hasPermission(user as any, 'ops_tools')) return '/system/tools';
+  return '/login';
+}
+
 export function firstAccessibleRoute(user: ScopeLikeUser) {
   if (canAccessModuleArea(user, 'parts')) return '/stock';
   if (canAccessModuleArea(user, 'pc')) return preferredPcRoute(user);
+  if (canAccessSystemArea(user)) return firstAccessibleSystemRoute(user);
   return '/login';
 }
 

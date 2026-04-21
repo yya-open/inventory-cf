@@ -4,7 +4,7 @@ import { buildAsyncJobDownloadResponse, getAsyncJob } from './services/async-job
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
-    await requirePermission(env, request, 'async_job_manage', 'admin');
+    await requirePermission(env, request, 'async_job_manage', 'viewer');
     const id = Number(new URL(request.url).searchParams.get('id') || 0);
     if (!id) return json(false, null, 'id 无效', 400);
     const row = await getAsyncJob(env.DB, id, env.BACKUP_BUCKET);

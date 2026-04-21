@@ -14,7 +14,7 @@ const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const user = await requirePermission(env, request, 'bulk_operation', 'admin');
+    const user = await requirePermission(env, request, 'bulk_operation', 'viewer');
     const url = new URL(request.url);
     await ensurePcSchemaIfAllowed(env.DB, env, url);
     const body = await request.json<any>().catch(() => ({} as any));
@@ -148,7 +148,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         });
       }
       if (existingRows.some((row) => Number(row.archived || 0) === 1)) {
-        await requirePermission(env, request, 'asset_purge', 'admin');
+        await requirePermission(env, request, 'asset_purge', 'viewer');
       }
       const result = await bulkDeleteAssets(env.DB, 'pc', ids, {
         allowPhysicalDelete: Boolean(settings.asset_allow_physical_delete),
