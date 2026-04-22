@@ -254,6 +254,7 @@ router.beforeEach(async (to) => {
   if (to.path === '/pc' || to.path === '/pc/') {
     return { path: preferredPcRoute(auth.user) };
   }
+  prewarmTargetLedgerEarly(auth.user, to.fullPath || to.path || '');
   return true;
 });
 
@@ -383,6 +384,18 @@ function prewarmWithThrottle(kind: 'pc' | 'monitor', task: () => Promise<void>) 
   });
 }
 
+function prewarmTargetLedgerEarly(authUser: ReturnType<typeof useAuth>["user"], routePath: string) {
+  if (!shouldAllowRoutePrefetch()) return;
+  const path = String(routePath || '');
+  if ((path === '/pc/assets' || path.startsWith('/pc/assets?')) && canAccessPcSection(authUser, 'pc')) {
+    prewarmWithThrottle('pc', prewarmPcListData);
+    return;
+  }
+  if ((path === '/pc/monitors' || path.startsWith('/pc/monitors?')) && canAccessPcSection(authUser, 'monitor')) {
+    prewarmWithThrottle('monitor', prewarmMonitorListData);
+  }
+}
+
 function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _routePath: string) {
   if (!shouldAllowRoutePrefetch()) return;
   const path = String(_routePath || '');
@@ -400,7 +413,18 @@ function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _rou
     return;
   }
 
-  if (!path.startsWith('/pc')) return;
+  if (!path.startsWith('/pc')) {
+    if (canPcLedger) {
+      prefetchChunk('pc-pc-assets', preloadPcAssets);
+      scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 1200);
+      return;
+    }
+    if (canMonitorLedger) {
+      prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
+      scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 1200);
+    }
+    return;
+  }
   if (canPcLedger) prefetchChunk('pc-pc-assets', preloadPcAssets);
   if (canMonitorLedger) prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
 }
