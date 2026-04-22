@@ -43,6 +43,8 @@ import { ElMessage } from "../utils/el-services";
 import { scheduleOnIdle } from "../utils/idle";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
+import { countMonitorAssets, countPcAssets, listMonitorAssets, listPcAssets } from "../api/assetLedgers";
+import { primePagedListCache } from "../composables/usePagedAssetList";
 
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
@@ -275,13 +277,139 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
 const defaultPcFilters = { status: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 const defaultMonitorFilters = { status: '', locationId: '', keyword: '', inventoryStatus: '', archiveReason: '', showArchived: false, archiveMode: 'active' as const };
 
+const ledgerPrewarmState = {
+  pc: { at: 0, inFlight: null as Promise<void> | null },
+  monitor: { at: 0, inFlight: null as Promise<void> | null },
+};
+const LEDGER_PREWARM_TTL_MS = 45_000;
+
+function clampPageSize(value: unknown) {
+  return Math.min(200, Math.max(20, Number(value || 50) || 50));
+}
+
+function safeReadStorage<T>(key: string, fallback: T): T {
+  if (typeof window === 'undefined') return fallback;
+  try {
+    const raw = window.localStorage.getItem(key);
+    if (!raw) return fallback;
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === 'object') ? ({ ...fallback, ...parsed } as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function toBool(value: unknown, fallback = false) {
+  if (typeof value === 'boolean') return value;
+  if (value === '1' || value === 1 || value === 'true') return true;
+  if (value === '0' || value === 0 || value === 'false') return false;
+  return fallback;
+}
+
+function pcFilterKey(filters: typeof defaultPcFilters) {
+  return `status=${filters.status}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`;
+}
+
+function monitorFilterKey(filters: typeof defaultMonitorFilters) {
+  return `status=${filters.status}&location=${filters.locationId}&inventory=${filters.inventoryStatus || ''}&keyword=${filters.keyword}&archive=${filters.archiveReason || ''}&archived=${filters.showArchived ? 1 : 0}&archiveMode=${filters.archiveMode}`;
+}
+
+function readPcFiltersForPrewarm() {
+  const persisted = safeReadStorage('inventory:pc-assets:filters', defaultPcFilters as any) as any;
+  const archiveMode = ['active', 'archived', 'all'].includes(String(persisted?.archiveMode || '')) ? String(persisted.archiveMode) : 'active';
+  const showArchived = toBool(persisted?.showArchived, archiveMode !== 'active');
+  return {
+    status: String(persisted?.status || ''),
+    keyword: String(persisted?.keyword || ''),
+    inventoryStatus: String(persisted?.inventoryStatus || ''),
+    archiveReason: archiveMode !== 'active' ? String(persisted?.archiveReason || '') : '',
+    showArchived,
+    archiveMode: archiveMode as typeof defaultPcFilters.archiveMode,
+    pageSize: clampPageSize(persisted?.pageSize),
+  };
+}
+
+function readMonitorFiltersForPrewarm() {
+  const persisted = safeReadStorage('inventory:monitor-assets:filters', defaultMonitorFilters as any) as any;
+  const archiveMode = ['active', 'archived', 'all'].includes(String(persisted?.archiveMode || '')) ? String(persisted.archiveMode) : 'active';
+  const showArchived = toBool(persisted?.showArchived, archiveMode !== 'active');
+  return {
+    status: String(persisted?.status || ''),
+    locationId: String(persisted?.locationId || ''),
+    keyword: String(persisted?.keyword || ''),
+    inventoryStatus: String(persisted?.inventoryStatus || ''),
+    archiveReason: archiveMode !== 'active' ? String(persisted?.archiveReason || '') : '',
+    showArchived,
+    archiveMode: archiveMode as typeof defaultMonitorFilters.archiveMode,
+    pageSize: clampPageSize(persisted?.pageSize),
+  };
+}
+
+async function prewarmPcListData() {
+  const filters = readPcFiltersForPrewarm();
+  const key = pcFilterKey(filters);
+  const [listResult, total] = await Promise.all([
+    listPcAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
+    countPcAssets(filters).catch(() => 0),
+  ]);
+  primePagedListCache('pc-assets', key, 1, filters.pageSize, {
+    rows: Array.isArray(listResult?.rows) ? listResult.rows : [],
+    total: Number(total || listResult?.total || 0),
+    timestamp: Date.now(),
+  });
+}
+
+async function prewarmMonitorListData() {
+  const filters = readMonitorFiltersForPrewarm();
+  const key = monitorFilterKey(filters);
+  const [listResult, total] = await Promise.all([
+    listMonitorAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
+    countMonitorAssets(filters).catch(() => 0),
+  ]);
+  primePagedListCache('monitor-assets', key, 1, filters.pageSize, {
+    rows: Array.isArray(listResult?.rows) ? listResult.rows : [],
+    total: Number(total || listResult?.total || 0),
+    timestamp: Date.now(),
+  });
+}
+
+function prewarmWithThrottle(kind: 'pc' | 'monitor', task: () => Promise<void>) {
+  const state = ledgerPrewarmState[kind];
+  if (state.inFlight) return;
+  if (Date.now() - state.at < LEDGER_PREWARM_TTL_MS) return;
+  state.inFlight = task().catch(() => undefined).finally(() => {
+    state.at = Date.now();
+    state.inFlight = null;
+  });
+}
+
 function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _routePath: string) {
+  if (!shouldAllowRoutePrefetch()) return;
+  const path = String(_routePath || '');
+  const canPcLedger = canAccessPcSection(_authUser, 'pc');
+  const canMonitorLedger = canAccessPcSection(_authUser, 'monitor');
+
+  if ((path === '/pc/assets' || path.startsWith('/pc/assets?')) && canMonitorLedger) {
+    prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
+    scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 1000);
+    return;
+  }
+  if ((path === '/pc/monitors' || path.startsWith('/pc/monitors?')) && canPcLedger) {
+    prefetchChunk('pc-pc-assets', preloadPcAssets);
+    scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 1000);
+    return;
+  }
+
+  if (!path.startsWith('/pc')) return;
+  if (canPcLedger) prefetchChunk('pc-pc-assets', preloadPcAssets);
+  if (canMonitorLedger) prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
 }
 
 router.afterEach((to) => {
   requestAnimationFrame(() => finishRoutePagePending());
   if ((to.meta as any)?.public) return;
-  // 性能回退：关闭路由预取与预热，避免进入页面后追加发起非必要请求。
+  const auth = useAuth();
+  prewarmPcLedgerData(auth.user, to.fullPath || to.path || '');
 });
 
 
