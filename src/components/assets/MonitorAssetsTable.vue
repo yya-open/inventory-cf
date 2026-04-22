@@ -372,6 +372,31 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
 
+.ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
+
+.ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
+
+.ledger-mobile-card { border-radius: 18px; }
+
+.ledger-mobile-card__head,
+.ledger-mobile-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+
+.ledger-mobile-card__head { margin-bottom: 10px; }
+
+.ledger-mobile-card__select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+
+.ledger-mobile-card__title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+
+.ledger-mobile-card__meta { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+
+.ledger-mobile-card__grid { display: grid; gap: 6px; font-size: 13px; color: #334155; margin-bottom: 8px; }
+
+.ledger-mobile-card__inventory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+
+.ledger-mobile-card__inventory-tip { font-size: 12px; color: #64748b; }
+
+.ledger-mobile-card__actions { justify-content: flex-start; }
+
 .pager-wrap--mobile { justify-content: center; margin-top: 4px; }
 
 .pager-wrap {

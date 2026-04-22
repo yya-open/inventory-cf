@@ -971,6 +971,11 @@ function handleBatchCommand(command: string | number | object) {
   .inventory-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
   }
+
+  .toolbar-lazy-actions-placeholder {
+    flex-direction: column;
+    align-items: flex-start;
+  }
 }
 
 :deep(.ledger-toolbar-settings-dialog .el-dialog__body) {
@@ -993,7 +998,6 @@ function handleBatchCommand(command: string | number | object) {
   min-width: 180px;
 }
 
-</style>
 .toolbar-lazy-actions-placeholder {
   display: flex;
   align-items: center;
@@ -1004,9 +1008,4 @@ function handleBatchCommand(command: string | number | object) {
   padding: 2px 0;
 }
 
-@media (max-width: 768px) {
-  .toolbar-lazy-actions-placeholder {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
+</style>
