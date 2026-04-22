@@ -20,7 +20,7 @@
         </template>
       </el-table-column>
 
-      <template v-for="key in orderedVisibleColumns" :key="key">
+      <template v-for="key in renderVisibleColumns" :key="key">
         <el-table-column
           v-if="key === 'computer'"
           column-key="computer"
@@ -33,7 +33,7 @@
             <div class="table-cell asset-cell" @click="emit('open-info', row)">
               <div class="asset-main ellipsis">{{ [row.brand, row.model].filter(Boolean).join(' · ') || '-' }}</div>
               <div class="asset-meta ellipsis">SN：{{ row.serial_no || '-' }}</div>
-              <div v-if="Number(row.archived || 0) === 1" class="asset-tags">
+              <div v-if="!isLightweightStage && Number(row.archived || 0) === 1" class="asset-tags">
                 <el-popover placement="top" trigger="hover" :width="280">
                   <template #reference>
                     <span class="status-chip status-chip--archived status-chip--soft">已归档</span>
@@ -63,7 +63,7 @@
           <template #default="{ row }">
             <div class="table-cell status-cell">
               <span class="status-chip" :class="assetStatusClass(row.status)">{{ assetStatusText(row.status) }}</span>
-              <el-popover v-if="Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
+              <el-popover v-if="!isLightweightStage && Number(row.archived || 0) === 1" placement="top" trigger="hover" :width="280">
                 <template #reference>
                   <span class="status-chip status-chip--archived status-chip--soft">已归档</span>
                 </template>
@@ -178,7 +178,7 @@
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
 import { ArrowDown } from '@element-plus/icons-vue';
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
@@ -213,12 +213,38 @@ const emit = defineEmits<{
   'reset-filters': [];
 }>();
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
+const CORE_VISIBLE_KEYS = ['computer', 'status'] as const;
 const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
+const isLightweightStage = ref(true);
+let revealColumnsTimer: number | null = null;
+
+const renderVisibleColumns = computed(() => {
+  if (!isLightweightStage.value) return orderedVisibleColumns.value;
+  const core = orderedVisibleColumns.value.filter((key) => CORE_VISIBLE_KEYS.includes(key as any));
+  if (core.length) return core;
+  return orderedVisibleColumns.value.slice(0, Math.min(2, orderedVisibleColumns.value.length));
+});
+
+function clearRevealColumnsTimer() {
+  if (revealColumnsTimer != null && typeof window !== 'undefined') {
+    window.clearTimeout(revealColumnsTimer);
+    revealColumnsTimer = null;
+  }
+}
+
+function scheduleRevealColumns() {
+  if (!isLightweightStage.value || typeof window === 'undefined') return;
+  clearRevealColumnsTimer();
+  revealColumnsTimer = window.setTimeout(() => {
+    revealColumnsTimer = null;
+    isLightweightStage.value = false;
+  }, 180);
+}
 
 function assetStatusClass(status: string) {
   switch (String(status || '')) {
@@ -267,6 +293,24 @@ async function syncSelection() {
 watch(() => [renderRows.value, props.selectedIds], () => {
   nextTick(syncSelection);
 }, { deep: true, immediate: true });
+
+watch(() => [props.initialLoading, props.loading, renderRows.value.length, mobileMode.value], ([initialLoading, loading, rowCount, isMobile]) => {
+  if (isMobile) {
+    isLightweightStage.value = false;
+    clearRevealColumnsTimer();
+    return;
+  }
+  if (initialLoading || loading || Number(rowCount || 0) <= 0) {
+    isLightweightStage.value = true;
+    clearRevealColumnsTimer();
+    return;
+  }
+  scheduleRevealColumns();
+}, { immediate: true });
+
+onBeforeUnmount(() => {
+  clearRevealColumnsTimer();
+});
 
 function handleSelectionChange(value: Record<string, any>[]) {
   if (syncingSelection.value) return;
