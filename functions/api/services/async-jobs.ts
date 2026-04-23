@@ -17,47 +17,36 @@ import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
-export async function ensureAsyncJobsTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS async_jobs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      job_type TEXT NOT NULL,
-      status TEXT NOT NULL DEFAULT 'queued',
-      created_by INTEGER,
-      created_by_name TEXT,
-      permission_scope TEXT,
-      request_json TEXT,
-      result_text TEXT,
-      result_blob_base64 TEXT,
-      result_object_key TEXT,
-      result_file_size INTEGER,
-      result_content_type TEXT,
-      result_filename TEXT,
-      message TEXT,
-      error_text TEXT,
-      started_at TEXT,
-      finished_at TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  const alters = [
-    `ALTER TABLE async_jobs ADD COLUMN result_blob_base64 TEXT`,
-    `ALTER TABLE async_jobs ADD COLUMN result_object_key TEXT`,
-    `ALTER TABLE async_jobs ADD COLUMN result_file_size INTEGER`,
-    `ALTER TABLE async_jobs ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0`,
-    `ALTER TABLE async_jobs ADD COLUMN max_retries INTEGER NOT NULL DEFAULT 1`,
-    `ALTER TABLE async_jobs ADD COLUMN cancel_requested INTEGER NOT NULL DEFAULT 0`,
-    `ALTER TABLE async_jobs ADD COLUMN canceled_at TEXT`,
-    `ALTER TABLE async_jobs ADD COLUMN retain_until TEXT`,
-    `ALTER TABLE async_jobs ADD COLUMN result_deleted_at TEXT`,
-  ];
-  for (const sql of alters) {
-    try { await db.prepare(sql).run(); } catch {}
+function createAsyncJobSchemaMissingError() {
+  return Object.assign(new Error('异步任务数据库结构未就绪，请先执行迁移（npm run migrate:apply -- --db <db> --remote）'), { status: 503, code: 'SCHEMA_NOT_READY' });
+}
+
+async function probeAsyncJobsTableReady(db: D1Database) {
+  try {
+    const checks = await db.batch([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='async_jobs'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='result_object_key'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='result_file_size'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='retry_count'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='max_retries'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='cancel_requested'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='canceled_at'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='retain_until'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('async_jobs') WHERE name='result_deleted_at'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_async_jobs_status_created_at'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_async_jobs_created_by_status'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_async_jobs_retain_until'"),
+    ]);
+    return checks.every((item: any) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
   }
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_status_created_at ON async_jobs(status, created_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_status ON async_jobs(created_by, status, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_retain_until ON async_jobs(retain_until, id DESC)`).run();
+}
+
+export async function ensureAsyncJobsTable(db: D1Database) {
+  const ready = await probeAsyncJobsTableReady(db);
+  if (ready) return;
+  throw createAsyncJobSchemaMissingError();
 }
 
 function csvEscape(v: any) {

@@ -102,20 +102,40 @@ function nowSql() {
 let ensureUserPermissionsTablePromise: Promise<void> | null = null;
 let ensureUserPermissionTemplateColumnPromise: Promise<void> | null = null;
 
+function createPermissionSchemaMissingError() {
+  return Object.assign(new Error('权限数据库结构未就绪，请先执行迁移（npm run migrate:apply -- --db <db> --remote）'), { status: 503, code: 'SCHEMA_NOT_READY' });
+}
+
+async function probeUserPermissionsTableReady(db: D1Database) {
+  try {
+    const checks = await db.batch([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='user_permissions'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('user_permissions') WHERE name='user_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('user_permissions') WHERE name='permission_code'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('user_permissions') WHERE name='allowed'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('user_permissions') WHERE name='updated_at'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('user_permissions') WHERE name='updated_by'"),
+    ]);
+    return checks.every((item: any) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
+  }
+}
+
+async function probeUserPermissionTemplateColumnReady(db: D1Database) {
+  try {
+    const row = await db.prepare("SELECT 1 AS ok FROM pragma_table_info('users') WHERE name='permission_template_code'").first<any>();
+    return Number(row?.ok || 0) === 1;
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureUserPermissionsTable(db: D1Database) {
   if (!ensureUserPermissionsTablePromise) {
     ensureUserPermissionsTablePromise = (async () => {
-      await db.prepare(
-        `CREATE TABLE IF NOT EXISTS user_permissions (
-          user_id INTEGER NOT NULL,
-          permission_code TEXT NOT NULL,
-          allowed INTEGER NOT NULL DEFAULT 1,
-          updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
-          updated_by TEXT,
-          PRIMARY KEY (user_id, permission_code),
-          FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
-        )`
-      ).run();
+      const ready = await probeUserPermissionsTableReady(db);
+      if (!ready) throw createPermissionSchemaMissingError();
     })().catch((error) => {
       ensureUserPermissionsTablePromise = null;
       throw error;
@@ -127,9 +147,8 @@ export async function ensureUserPermissionsTable(db: D1Database) {
 export async function ensureUserPermissionTemplateColumn(db: D1Database) {
   if (!ensureUserPermissionTemplateColumnPromise) {
     ensureUserPermissionTemplateColumnPromise = (async () => {
-      try {
-        await db.prepare(`ALTER TABLE users ADD COLUMN permission_template_code TEXT`).run();
-      } catch {}
+      const ready = await probeUserPermissionTemplateColumnReady(db);
+      if (!ready) throw createPermissionSchemaMissingError();
     })().catch((error) => {
       ensureUserPermissionTemplateColumnPromise = null;
       throw error;

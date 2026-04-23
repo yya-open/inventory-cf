@@ -127,95 +127,41 @@ export async function clearInventoryLogsForNewBatch(
 }
 
 let schemaReady = false;
-let schemaInit: Promise<void> | null = null;
+
+function createInventoryBatchSchemaMissingError() {
+  return Object.assign(new Error('盘点批次数据库结构未就绪，请先执行迁移（npm run migrate:apply -- --db <db> --remote）'), { status: 503, code: 'SCHEMA_NOT_READY' });
+}
+
+async function probeInventoryBatchSchemaReady(db: D1Database) {
+  try {
+    const checks = await db.batch([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='asset_inventory_batch'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_asset_inventory_batch_kind_status_started'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('asset_inventory_batch') WHERE name='summary_issue_breakdown'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('asset_inventory_batch') WHERE name='snapshot_object_key'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('pc_assets') WHERE name='inventory_batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('monitor_assets') WHERE name='inventory_batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('pc_inventory_log') WHERE name='batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM pragma_table_info('monitor_inventory_log') WHERE name='batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_pc_assets_inventory_batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_monitor_assets_inventory_batch_id'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_pc_inventory_log_batch_id_asset_created'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_monitor_inventory_log_batch_id_asset_created'"),
+    ]);
+    return checks.every((item: any) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
+  }
+}
 
 export async function ensureAssetInventoryBatchSchema(db: D1Database) {
   if (schemaReady) return;
-  if (schemaInit) return schemaInit;
-  schemaInit = (async () => {
-    await db
-      .prepare(
-        `CREATE TABLE IF NOT EXISTS asset_inventory_batch (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind TEXT NOT NULL CHECK(kind IN ('pc','monitor')),
-        name TEXT NOT NULL,
-        status TEXT NOT NULL DEFAULT 'ACTIVE' CHECK(status IN ('ACTIVE','CLOSED')),
-        started_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-        closed_at TEXT,
-        created_by TEXT,
-        closed_by TEXT,
-        summary_total INTEGER NOT NULL DEFAULT 0,
-        summary_checked_ok INTEGER NOT NULL DEFAULT 0,
-        summary_checked_issue INTEGER NOT NULL DEFAULT 0,
-        summary_unchecked INTEGER NOT NULL DEFAULT 0,
-        summary_issue_breakdown TEXT,
-        snapshot_job_id INTEGER,
-        snapshot_job_status TEXT,
-        snapshot_error_message TEXT,
-        snapshot_filename TEXT,
-        snapshot_object_key TEXT,
-        snapshot_file_size INTEGER,
-        snapshot_exported_at TEXT,
-        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-      )`,
-      )
-      .run();
-    await db
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_asset_inventory_batch_kind_status_started ON asset_inventory_batch(kind, status, started_at DESC, id DESC)`,
-      )
-      .run();
-
-    for (const ddl of [
-      `ALTER TABLE asset_inventory_batch ADD COLUMN closed_by TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_total INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_checked_ok INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_checked_issue INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_unchecked INTEGER NOT NULL DEFAULT 0`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN summary_issue_breakdown TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_job_id INTEGER`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_job_status TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_error_message TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_filename TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_object_key TEXT`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_file_size INTEGER`,
-      `ALTER TABLE asset_inventory_batch ADD COLUMN snapshot_exported_at TEXT`,
-      `ALTER TABLE pc_assets ADD COLUMN inventory_batch_id INTEGER`,
-      `ALTER TABLE monitor_assets ADD COLUMN inventory_batch_id INTEGER`,
-      `ALTER TABLE pc_inventory_log ADD COLUMN batch_id INTEGER`,
-      `ALTER TABLE monitor_inventory_log ADD COLUMN batch_id INTEGER`,
-    ]) {
-      try {
-        await db.prepare(ddl).run();
-      } catch {
-        // ignore duplicate-column errors
-      }
-    }
-    await db
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_batch_id ON pc_assets(inventory_batch_id, id)`,
-      )
-      .run();
-    await db
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_batch_id ON monitor_assets(inventory_batch_id, id)`,
-      )
-      .run();
-    await db
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_pc_inventory_log_batch_id_asset_created ON pc_inventory_log(batch_id, asset_id, created_at DESC, id DESC)`,
-      )
-      .run();
-    await db
-      .prepare(
-        `CREATE INDEX IF NOT EXISTS idx_monitor_inventory_log_batch_id_asset_created ON monitor_inventory_log(batch_id, asset_id, created_at DESC, id DESC)`,
-      )
-      .run();
+  const ready = await probeInventoryBatchSchemaReady(db);
+  if (ready) {
     schemaReady = true;
-  })().finally(() => {
-    schemaInit = null;
-  });
-  return schemaInit;
+    return;
+  }
+  throw createInventoryBatchSchemaMissingError();
 }
 
 function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
