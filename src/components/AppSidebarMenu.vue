@@ -1,5 +1,5 @@
 <template>
-  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed }">
+  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }">
     <div class="app-sidebar-menu__brand" :title="brandTitle">
       <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
         <el-icon><Box /></el-icon>
