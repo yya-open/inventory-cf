@@ -295,8 +295,9 @@ const desktopSidebarCollapsed = ref(false);
 const desktopSidebarPreview = ref(false);
 const sidebarHovered = ref(false);
 const sidebarToggleHovered = ref(false);
-const isMobile = ref(false);
+const isMobile = ref(typeof window !== 'undefined' ? isAppMobileViewport() : false);
 const mobileSidebarVisible = ref(false);
+let mobileMediaQuery: MediaQueryList | null = null;
 
 const activeMenu = computed(() => route.path);
 const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
@@ -387,12 +388,28 @@ onMounted(() => {
     desktopSidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
     updateViewport();
     window.addEventListener("resize", updateViewport, { passive: true });
+    if (typeof window.matchMedia === 'function') {
+      mobileMediaQuery = window.matchMedia(`(max-width: 900px)`);
+      if (typeof mobileMediaQuery.addEventListener === 'function') {
+        mobileMediaQuery.addEventListener('change', updateViewport);
+      } else if (typeof (mobileMediaQuery as any).addListener === 'function') {
+        (mobileMediaQuery as any).addListener(updateViewport);
+      }
+    }
   } catch {}
 });
 onBeforeUnmount(() => {
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
   window.removeEventListener("resize", updateViewport);
+  if (mobileMediaQuery) {
+    if (typeof mobileMediaQuery.removeEventListener === 'function') {
+      mobileMediaQuery.removeEventListener('change', updateViewport);
+    } else if (typeof (mobileMediaQuery as any).removeListener === 'function') {
+      (mobileMediaQuery as any).removeListener(updateViewport);
+    }
+    mobileMediaQuery = null;
+  }
 });
 
 watch(desktopSidebarCollapsed, (value, previous) => {
@@ -414,7 +431,10 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 });
 
 function updateViewport() {
-  const nextMobile = isAppMobileViewport();
+  const matched = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
+    ? window.matchMedia('(max-width: 900px)').matches
+    : false;
+  const nextMobile = matched || isAppMobileViewport();
   isMobile.value = nextMobile;
   mobileSidebarVisible.value = false;
   if (nextMobile) {

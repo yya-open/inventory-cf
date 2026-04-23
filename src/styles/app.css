@@ -1128,6 +1128,16 @@ body {
   position: relative;
 }
 
+.app-layout--mobile .app-aside,
+.app-layout--mobile .app-aside-toggle,
+.app-layout--mobile .app-aside-toggle-zone {
+  display: none !important;
+}
+
+.app-layout--mobile .app-content {
+  width: 100%;
+}
+
 .app-aside {
   position: relative;
   overflow: hidden;
