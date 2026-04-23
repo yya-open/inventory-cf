@@ -389,7 +389,7 @@ onMounted(() => {
     updateViewport();
     window.addEventListener("resize", updateViewport, { passive: true });
     if (typeof window.matchMedia === 'function') {
-      mobileMediaQuery = window.matchMedia(`(max-width: 900px)`);
+      mobileMediaQuery = window.matchMedia(`(max-width: 1200px)`);
       if (typeof mobileMediaQuery.addEventListener === 'function') {
         mobileMediaQuery.addEventListener('change', updateViewport);
       } else if (typeof (mobileMediaQuery as any).addListener === 'function') {
@@ -432,7 +432,7 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 
 function updateViewport() {
   const matched = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia('(max-width: 900px)').matches
+    ? window.matchMedia('(max-width: 1200px)').matches
     : false;
   const nextMobile = matched || isAppMobileViewport();
   isMobile.value = nextMobile;

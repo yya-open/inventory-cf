@@ -1128,6 +1128,14 @@ body {
   position: relative;
 }
 
+@media (max-width: 1200px) {
+  .app-aside,
+  .app-aside-toggle,
+  .app-aside-toggle-zone {
+    display: none !important;
+  }
+}
+
 .app-layout--mobile .app-aside,
 .app-layout--mobile .app-aside-toggle,
 .app-layout--mobile .app-aside-toggle-zone {
