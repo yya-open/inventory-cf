@@ -13,6 +13,7 @@
       class="app-sidebar-menu__menu"
       :collapse="collapsed"
       :collapse-transition="false"
+      @select="handleMenuSelect"
     >
       <el-menu-item
         v-for="item in visibleItems"
@@ -94,9 +95,14 @@ const props = defineProps<{
   isMobile?: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   (e: 'toggle-collapse'): void;
+  (e: 'menu-select', index: string): void;
 }>();
+
+function handleMenuSelect(index: string) {
+  emit('menu-select', String(index || ''));
+}
 
 type MenuItem = {
   index: string;

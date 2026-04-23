@@ -10,9 +10,46 @@ import { invalidateSchemaStatusCache } from './services/schema-status';
 let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
 let __monitorGuardEnsuredAt = 0;
+let __monitorColumnsEnsuredAt = 0;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const MONITOR_GUARD_TRIGGER_TTL_MS = 120_000;
+const MONITOR_GUARD_COLUMNS_TTL_MS = 120_000;
+
+async function ensureMonitorQueryColumns(db: D1Database) {
+  if (Date.now() - __monitorColumnsEnsuredAt < MONITOR_GUARD_COLUMNS_TTL_MS) return;
+  __monitorColumnsEnsuredAt = Date.now();
+  try {
+    const tableRow = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'").first<any>();
+    if (Number(tableRow?.ok || 0) !== 1) return;
+    const { results } = await db.prepare("PRAGMA table_info('monitor_assets')").all<any>();
+    const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
+    const ddls: string[] = [];
+    if (!columns.has('search_text_norm')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT");
+    if (!columns.has('archived')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+    if (!columns.has('archived_at')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT");
+    if (!columns.has('archived_reason')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT");
+    if (!columns.has('archived_note')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT");
+    if (!columns.has('archived_by')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT");
+    if (!columns.has('inventory_status')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'");
+    if (!columns.has('inventory_at')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT");
+    if (!columns.has('inventory_issue_type')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT");
+    for (const ddl of ddls) {
+      try { await db.prepare(ddl).run(); } catch {}
+    }
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_id ON monitor_assets(archived, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_inventory_status_id ON monitor_assets(archived, inventory_status, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_location_id ON monitor_assets(archived, location_id, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run().catch(() => {});
+    await db.prepare("UPDATE monitor_assets SET archived=0 WHERE archived IS NULL").run().catch(() => {});
+    await db.prepare("UPDATE monitor_assets SET inventory_status='UNCHECKED' WHERE COALESCE(TRIM(inventory_status),'')=''").run().catch(() => {});
+    invalidateSchemaStatusCache();
+  } catch {
+    // best-effort column guard
+  }
+}
 
 async function ensureMonitorGuardTriggers(db: D1Database) {
   if (Date.now() - __monitorGuardEnsuredAt < MONITOR_GUARD_TRIGGER_TTL_MS) return;
@@ -54,6 +91,7 @@ export function shouldHealMonitorSchema(env: any, url: URL) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+  await ensureMonitorQueryColumns(db);
   await ensureMonitorGuardTriggers(db);
   const runtimeHealAllowed = shouldHealMonitorSchema(env, url);
   let allowBySettings = false;

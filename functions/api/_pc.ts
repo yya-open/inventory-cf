@@ -10,9 +10,47 @@ import { invalidateSchemaStatusCache } from './services/schema-status';
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
 let __pcGuardEnsuredAt = 0;
+let __pcColumnsEnsuredAt = 0;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const PC_GUARD_TRIGGER_TTL_MS = 120_000;
+const PC_GUARD_COLUMNS_TTL_MS = 120_000;
+
+async function ensurePcQueryColumns(db: D1Database) {
+  if (Date.now() - __pcColumnsEnsuredAt < PC_GUARD_COLUMNS_TTL_MS) return;
+  __pcColumnsEnsuredAt = Date.now();
+  try {
+    const tableRow = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
+    if (Number(tableRow?.ok || 0) !== 1) return;
+    const { results } = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
+    const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
+    const ddls: string[] = [];
+    if (!columns.has('search_text_norm')) ddls.push("ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT");
+    if (!columns.has('archived')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
+    if (!columns.has('archived_at')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_at TEXT");
+    if (!columns.has('archived_reason')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT");
+    if (!columns.has('archived_note')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_note TEXT");
+    if (!columns.has('archived_by')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_by TEXT");
+    if (!columns.has('inventory_status')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'");
+    if (!columns.has('inventory_at')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT");
+    if (!columns.has('inventory_issue_type')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT");
+    if (!columns.has('manufacture_ts')) ddls.push("ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER");
+    if (!columns.has('warranty_end_ts')) ddls.push("ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER");
+    for (const ddl of ddls) {
+      try { await db.prepare(ddl).run(); } catch {}
+    }
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_id ON pc_assets(archived, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run().catch(() => {});
+    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run().catch(() => {});
+    await db.prepare("UPDATE pc_assets SET archived=0 WHERE archived IS NULL").run().catch(() => {});
+    await db.prepare("UPDATE pc_assets SET inventory_status='UNCHECKED' WHERE COALESCE(TRIM(inventory_status),'')=''").run().catch(() => {});
+    invalidateSchemaStatusCache();
+  } catch {
+    // best-effort column guard
+  }
+}
 
 async function ensurePcGuardTriggers(db: D1Database) {
   if (Date.now() - __pcGuardEnsuredAt < PC_GUARD_TRIGGER_TTL_MS) return;
@@ -60,6 +98,7 @@ export function shouldHealPcSchema(env: any, url: URL) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+  await ensurePcQueryColumns(db);
   await ensurePcGuardTriggers(db);
   const runtimeHealAllowed = shouldHealPcSchema(env, url);
   let allowBySettings = false;
