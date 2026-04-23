@@ -1491,9 +1491,6 @@ body {
 .app-mobile-drawer .el-drawer__body {
   padding: 0;
   background: #ffffff;
-  display: flex;
-  flex-direction: column;
-  overflow: auto;
 }
 
 .app-mobile-drawer .el-drawer {
@@ -1521,33 +1518,6 @@ body {
 
 .app-mobile-drawer__close {
   flex: 0 0 auto;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile {
-  min-height: 100%;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile .app-sidebar-menu__brand {
-  display: none;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile .app-sidebar-menu__menu {
-  padding: 8px 6px 4px;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile .app-sidebar-menu__item {
-  margin: 4px 8px;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile .el-menu-item,
-.app-mobile-drawer .app-sidebar-menu--mobile .el-sub-menu__title {
-  height: 44px;
-  line-height: 44px;
-}
-
-.app-mobile-drawer .app-sidebar-menu--mobile .app-sidebar-menu__meta {
-  margin-top: 8px;
-  padding: 10px 16px 18px;
 }
 
 @media (max-width: 900px) {

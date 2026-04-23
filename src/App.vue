@@ -38,7 +38,6 @@
             :is-admin="can('admin')"
             :collapsed="desktopSidebarCollapsed"
             @toggle-collapse="toggleSidebar"
-            @menu-select="handleSidebarMenuSelect"
           />
         </div>
       </el-aside>
@@ -51,7 +50,6 @@
         :with-header="false"
         :append-to-body="true"
         class="app-mobile-drawer"
-        @close="handleMobileDrawerClose"
       >
         <div class="app-mobile-drawer__header">
           <div class="app-mobile-drawer__title">导航菜单</div>
@@ -74,7 +72,6 @@
           :can-operator="can('operator')"
           :is-admin="can('admin')"
           :is-mobile="true"
-          @menu-select="handleSidebarMenuSelect"
         />
       </el-drawer>
 
@@ -459,15 +456,6 @@ function toggleSidebar() {
     return;
   }
   desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value;
-}
-
-function handleSidebarMenuSelect() {
-  if (!isMobile.value) return;
-  mobileSidebarVisible.value = false;
-}
-
-function handleMobileDrawerClose() {
-  mobileSidebarVisible.value = false;
 }
 
 watch(() => route.fullPath, () => {

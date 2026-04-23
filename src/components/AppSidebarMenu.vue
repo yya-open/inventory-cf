@@ -1,5 +1,5 @@
 <template>
-  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }">
+  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed }">
     <div class="app-sidebar-menu__brand" :title="brandTitle">
       <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
         <el-icon><Box /></el-icon>
@@ -13,7 +13,6 @@
       class="app-sidebar-menu__menu"
       :collapse="collapsed"
       :collapse-transition="false"
-      @select="handleMenuSelect"
     >
       <el-menu-item
         v-for="item in visibleItems"
@@ -21,7 +20,6 @@
         :index="item.index"
         :title="collapsed ? item.label : undefined"
         class="app-sidebar-menu__item"
-        @click="handleMenuItemClick(item.index)"
       >
         <div class="app-sidebar-menu__item-inner">
           <span class="app-sidebar-menu__item-icon" aria-hidden="true">
@@ -98,16 +96,7 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'toggle-collapse'): void;
-  (e: 'menu-select', index: string): void;
 }>();
-
-function handleMenuSelect(index: string) {
-  emit('menu-select', String(index || ''));
-}
-
-function handleMenuItemClick(index: string) {
-  emit('menu-select', String(index || ''));
-}
 
 type MenuItem = {
   index: string;
