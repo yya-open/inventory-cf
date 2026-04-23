@@ -1,5 +1,6 @@
 import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
+import { invalidateSchemaStatusCache } from './services/schema-status';
 
 /**
  * Monitor warehouse (仓库2：显示器) - optional runtime schema helper
@@ -8,8 +9,24 @@ import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
+let __monitorGuardEnsuredAt = 0;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
+const MONITOR_GUARD_TRIGGER_TTL_MS = 120_000;
+
+async function ensureMonitorGuardTriggers(db: D1Database) {
+  if (Date.now() - __monitorGuardEnsuredAt < MONITOR_GUARD_TRIGGER_TTL_MS) return;
+  __monitorGuardEnsuredAt = Date.now();
+  try {
+    const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'").first<any>();
+    if (Number(row?.ok || 0) !== 1) return;
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
+    invalidateSchemaStatusCache();
+  } catch {
+    // best-effort guard creation
+  }
+}
 
 async function probeMonitorSchemaReady(db: D1Database) {
   try {
@@ -37,6 +54,7 @@ export function shouldHealMonitorSchema(env: any, url: URL) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+  await ensureMonitorGuardTriggers(db);
   const runtimeHealAllowed = shouldHealMonitorSchema(env, url);
   let allowBySettings = false;
   const cached = __monitorRuntimeDdlAllowedCache;

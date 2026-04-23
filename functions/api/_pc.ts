@@ -1,5 +1,6 @@
 import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
+import { invalidateSchemaStatusCache } from './services/schema-status';
 
 /**
  * PC warehouse (仓库2：电脑仓) - self-healing schema helper
@@ -8,8 +9,24 @@ import { SQL_STORED_NOW_DEFAULT } from './_time';
 
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
+let __pcGuardEnsuredAt = 0;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
+const PC_GUARD_TRIGGER_TTL_MS = 120_000;
+
+async function ensurePcGuardTriggers(db: D1Database) {
+  if (Date.now() - __pcGuardEnsuredAt < PC_GUARD_TRIGGER_TTL_MS) return;
+  __pcGuardEnsuredAt = Date.now();
+  try {
+    const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
+    if (Number(row?.ok || 0) !== 1) return;
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
+    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
+    invalidateSchemaStatusCache();
+  } catch {
+    // best-effort guard creation
+  }
+}
 
 async function probePcSchemaReady(db: D1Database) {
   try {
@@ -43,6 +60,7 @@ export function shouldHealPcSchema(env: any, url: URL) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+  await ensurePcGuardTriggers(db);
   const runtimeHealAllowed = shouldHealPcSchema(env, url);
   let allowBySettings = false;
   const cached = __pcRuntimeDdlAllowedCache;
