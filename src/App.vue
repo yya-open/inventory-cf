@@ -46,7 +46,7 @@
         v-if="isMobile"
         v-model="mobileSidebarVisible"
         direction="ltr"
-        size="82%"
+        size="min(88vw, 360px)"
         :with-header="false"
         :append-to-body="true"
         class="app-mobile-drawer"
@@ -72,6 +72,7 @@
           :can-operator="can('operator')"
           :is-admin="can('admin')"
           :is-mobile="true"
+          @navigate="mobileSidebarVisible = false"
         />
       </el-drawer>
 

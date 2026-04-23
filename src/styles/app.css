@@ -1490,11 +1490,15 @@ body {
 
 .app-mobile-drawer .el-drawer__body {
   padding: 0;
-  background: #ffffff;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
 }
 
 .app-mobile-drawer .el-drawer {
-  background: #ffffff;
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+  border-top-right-radius: 20px;
+  border-bottom-right-radius: 20px;
+  overflow: hidden;
+  box-shadow: 18px 0 34px rgba(15, 23, 42, 0.2);
 }
 
 .app-mobile-drawer__header {
@@ -1507,7 +1511,7 @@ body {
   background: #ffffff;
   position: sticky;
   top: 0;
-  z-index: 2;
+  z-index: 6;
 }
 
 .app-mobile-drawer__title {
@@ -1518,6 +1522,55 @@ body {
 
 .app-mobile-drawer__close {
   flex: 0 0 auto;
+  width: 34px;
+  height: 34px;
+}
+
+.app-sidebar-menu--mobile {
+  min-height: 100%;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__brand {
+  padding: 16px 14px 10px;
+  font-size: 16px;
+  font-weight: 800;
+  color: #0f172a;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__menu {
+  padding: 4px 0 8px;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__item {
+  margin: 4px 10px;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__item-label {
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu .el-menu-item,
+.app-sidebar-menu--mobile .app-sidebar-menu .el-sub-menu__title {
+  height: 50px;
+  line-height: 50px;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__item-icon {
+  width: 32px;
+  height: 32px;
+  flex-basis: 32px;
+}
+
+.app-sidebar-menu--mobile .app-sidebar-menu__meta {
+  position: sticky;
+  bottom: 0;
+  z-index: 4;
+  padding: 10px 14px calc(12px + env(safe-area-inset-bottom));
+  color: #64748b;
+  background: linear-gradient(180deg, rgba(248, 251, 255, 0.2), rgba(248, 251, 255, 0.98) 38%, rgba(248, 251, 255, 1));
+  backdrop-filter: blur(8px);
+  border-top: 1px solid rgba(148, 163, 184, 0.18);
 }
 
 @media (max-width: 900px) {
@@ -1641,6 +1694,22 @@ body {
 }
 
 @media (max-width: 640px) {
+  .app-mobile-drawer .el-drawer {
+    border-radius: 0;
+  }
+
+  .app-mobile-drawer__header {
+    padding: 12px 12px 8px;
+  }
+
+  .app-sidebar-menu--mobile .app-sidebar-menu__item {
+    margin-inline: 8px;
+  }
+
+  .app-sidebar-menu--mobile .app-sidebar-menu__item-label {
+    font-size: 13px;
+  }
+
   .app-header__actions {
     align-items: stretch;
   }

@@ -1,5 +1,5 @@
 <template>
-  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed }">
+  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }">
     <div class="app-sidebar-menu__brand" :title="brandTitle">
       <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
         <el-icon><Box /></el-icon>
@@ -13,6 +13,7 @@
       class="app-sidebar-menu__menu"
       :collapse="collapsed"
       :collapse-transition="false"
+      @select="handleMenuSelect"
     >
       <el-menu-item
         v-for="item in visibleItems"
@@ -96,7 +97,12 @@ const props = defineProps<{
 
 const emit = defineEmits<{
   (e: 'toggle-collapse'): void;
+  (e: 'navigate', index: string): void;
 }>();
+
+function handleMenuSelect(index: string) {
+  emit('navigate', index);
+}
 
 type MenuItem = {
   index: string;
