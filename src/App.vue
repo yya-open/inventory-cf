@@ -416,7 +416,11 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 function updateViewport() {
   const nextMobile = isAppMobileViewport();
   isMobile.value = nextMobile;
-  if (!nextMobile) mobileSidebarVisible.value = false;
+  mobileSidebarVisible.value = false;
+  if (nextMobile) {
+    sidebarToggleHovered.value = false;
+    desktopSidebarPreview.value = false;
+  }
 }
 
 function handleSidebarToggleHover(next: boolean) {
