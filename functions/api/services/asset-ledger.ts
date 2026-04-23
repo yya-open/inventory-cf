@@ -83,7 +83,8 @@ function applyArchiveReasonFilter(clauses: string[], binds: any[], url: URL) {
 
 export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
-  const keyword = (url.searchParams.get('keyword') || '').trim();
+  const keywordRaw = (url.searchParams.get('keyword') || '').trim();
+  const keyword = (keywordRaw.length >= 2 || /^\d+$/.test(keywordRaw)) ? keywordRaw : '';
   const ageYears = Math.max(0, Number(url.searchParams.get('age_years') || 0));
   const inventoryStatus = (url.searchParams.get('inventory_status') || '').trim().toUpperCase();
   const { page, pageSize, offset } = getPageParams(url);

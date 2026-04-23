@@ -1,5 +1,5 @@
 import { errorResponse } from '../_auth';
-import { ensurePcSchemaIfAllowed } from './_pc';
+import { ensurePcReadFastGuards } from './_pc';
 import { buildPcAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
 import { isDefaultInventorySummaryRequest, readDefaultInventorySummaryCache } from './services/asset-inventory-summary-cache';
@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
-    await ensurePcSchemaIfAllowed(env.DB, env, url);
+    await ensurePcReadFastGuards(env.DB);
 
     if (isDefaultInventorySummaryRequest(url, 'pc')) {
       const data = await readDefaultInventorySummaryCache(env.DB, 'pc', user);

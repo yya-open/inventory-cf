@@ -2,7 +2,7 @@ import { requireAuth, errorResponse } from '../_auth';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
-import { ensurePcSchemaIfAllowed } from './_pc';
+import { ensurePcReadFastGuards, ensurePcSchemaIfAllowed } from './_pc';
 import {
   assertUnique,
   buildPcAssetQuery,
@@ -57,7 +57,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
-    await ensureSchemaTimed(env as any, 'schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
+    await ensureSchemaTimed(env as any, 'schema', () => ensurePcReadFastGuards(env.DB));
     const query = buildPcAssetQuery(url, user);
     const cacheable = query.fast && !query.usesFts;
     const cacheKey = cacheable ? buildAssetListCacheKey(user, url) : '';

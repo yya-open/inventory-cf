@@ -11,12 +11,31 @@ let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
 let __pcGuardEnsuredAt = 0;
 let __pcColumnsEnsuredAt = 0;
+let __pcColumnsReady = false;
+let __pcGuardTriggersReady = false;
+let __pcSchemaProbeAt = 0;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
-const PC_GUARD_TRIGGER_TTL_MS = 120_000;
-const PC_GUARD_COLUMNS_TTL_MS = 120_000;
+const PC_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
+const PC_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
+const PC_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
+
+const PC_REQUIRED_QUERY_COLUMNS = [
+  'search_text_norm',
+  'archived',
+  'archived_at',
+  'archived_reason',
+  'archived_note',
+  'archived_by',
+  'inventory_status',
+  'inventory_at',
+  'inventory_issue_type',
+  'manufacture_ts',
+  'warranty_end_ts',
+];
 
 async function ensurePcQueryColumns(db: D1Database) {
+  if (__pcColumnsReady) return;
   if (Date.now() - __pcColumnsEnsuredAt < PC_GUARD_COLUMNS_TTL_MS) return;
   __pcColumnsEnsuredAt = Date.now();
   try {
@@ -46,13 +65,17 @@ async function ensurePcQueryColumns(db: D1Database) {
     await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run().catch(() => {});
     await db.prepare("UPDATE pc_assets SET archived=0 WHERE archived IS NULL").run().catch(() => {});
     await db.prepare("UPDATE pc_assets SET inventory_status='UNCHECKED' WHERE COALESCE(TRIM(inventory_status),'')=''").run().catch(() => {});
-    invalidateSchemaStatusCache();
+    const verify = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
+    const verifyColumns = new Set((verify?.results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
+    __pcColumnsReady = PC_REQUIRED_QUERY_COLUMNS.every((column) => verifyColumns.has(column));
+    if (__pcColumnsReady) invalidateSchemaStatusCache();
   } catch {
     // best-effort column guard
   }
 }
 
 async function ensurePcGuardTriggers(db: D1Database) {
+  if (__pcGuardTriggersReady) return;
   if (Date.now() - __pcGuardEnsuredAt < PC_GUARD_TRIGGER_TTL_MS) return;
   __pcGuardEnsuredAt = Date.now();
   try {
@@ -60,10 +83,17 @@ async function ensurePcGuardTriggers(db: D1Database) {
     if (Number(row?.ok || 0) !== 1) return;
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
-    invalidateSchemaStatusCache();
+    const triggerRow = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_pc_assets_serial_non_blank_insert','trg_pc_assets_serial_non_blank_update')").first<any>();
+    __pcGuardTriggersReady = Number(triggerRow?.c || 0) >= 2;
+    if (__pcGuardTriggersReady) invalidateSchemaStatusCache();
   } catch {
     // best-effort guard creation
   }
+}
+
+export async function ensurePcReadFastGuards(db: D1Database) {
+  await ensurePcQueryColumns(db);
+  await ensurePcGuardTriggers(db);
 }
 
 async function probePcSchemaReady(db: D1Database) {
@@ -98,8 +128,16 @@ export function shouldHealPcSchema(env: any, url: URL) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  await ensurePcQueryColumns(db);
-  await ensurePcGuardTriggers(db);
+  await ensurePcReadFastGuards(db);
+  if (__pcSchemaReady) return;
+  if (Date.now() - __pcSchemaProbeAt >= PC_SCHEMA_PROBE_TTL_MS) {
+    __pcSchemaProbeAt = Date.now();
+    const alreadyReady = await probePcSchemaReady(db);
+    if (alreadyReady) {
+      __pcSchemaReady = true;
+      return;
+    }
+  }
   const runtimeHealAllowed = shouldHealPcSchema(env, url);
   let allowBySettings = false;
   const cached = __pcRuntimeDdlAllowedCache;
@@ -111,13 +149,6 @@ export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL
     __pcRuntimeDdlAllowedCache = { expiresAt: Date.now() + PC_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
   }
   if (!(allowBySettings || runtimeHealAllowed)) return;
-  if (!__pcSchemaReady) {
-    const alreadyReady = await probePcSchemaReady(db);
-    if (alreadyReady) {
-      __pcSchemaReady = true;
-      return;
-    }
-  }
   return ensurePcSchema(db);
 }
 
