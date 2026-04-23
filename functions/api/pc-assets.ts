@@ -116,7 +116,6 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     invalidateSystemDictionaryReferenceCache();
     invalidateAssetListCache();
-    invalidateAssetListCache();
     await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']);
     await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
       before: {

@@ -325,6 +325,9 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     initialLoading.value = shouldShowInitialLoading;
     refreshing.value = !shouldShowInitialLoading && !opts.silent;
     activePageRequestKey = pageKey;
+    clearTotalTimer();
+    totalController?.abort();
+    totalController = null;
 
     try {
       let result: LoadResult<TItem>;
@@ -395,8 +398,11 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         return;
       }
 
-      if (!options.fetchTotal) {
-        total.value = resolveKnownTotal(filterKey, 0);
+      const shouldFetchTotal = Boolean(options.fetchTotal)
+        && (!opts.keepPage || opts.forceRefresh || !totalCache.has(filterKey));
+
+      if (!shouldFetchTotal) {
+        total.value = resolveKnownTotal(filterKey, knownTotal);
         patchPageCacheTotal(cachePrefix, total.value);
         persistTotal(options, filterKey, total.value);
         prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
@@ -410,8 +416,6 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       }
 
       prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
-      clearTotalTimer();
-      totalController?.abort();
       totalController = new AbortController();
       totalTimer = setTimeout(async () => {
         const totalSeq = requestSeq;

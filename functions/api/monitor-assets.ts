@@ -94,7 +94,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 
     invalidateSystemDictionaryReferenceCache();
     invalidateAssetListCache();
-    invalidateAssetListCache();
     await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
     const id = Number(result.meta.last_row_id || 0);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);
