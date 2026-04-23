@@ -1,13 +1,13 @@
 <template>
   <el-card shadow="never" class="pc-toolbar-card ledger-toolbar-card">
-    <div class="pc-toolbar">
+    <div :class="['pc-toolbar', { 'is-mobile': mobileMode }]">
       <div class="toolbar-left">
         <div class="toolbar-block toolbar-block--filters">
           <div class="toolbar-head toolbar-head--filters">
             <div class="toolbar-title-wrap">
               <div class="toolbar-kicker">PC ASSETS</div>
               <div class="toolbar-block-title">筛选查询</div>
-              <div class="toolbar-subtle">按状态、盘点结果或关键词快速定位设备，保持列表页高效、稳定、可复用。</div>
+              <div v-if="!mobileMode" class="toolbar-subtle">按状态、盘点结果或关键词快速定位设备，保持列表页高效、稳定、可复用。</div>
             </div>
             <el-segmented
               :model-value="archiveMode"
@@ -17,7 +17,13 @@
             />
           </div>
 
-          <div class="toolbar-row toolbar-row--dense">
+          <div v-if="mobileMode" class="toolbar-mobile-filter-toggle">
+            <el-button text class="toolbar-link-button" @click="mobileFiltersExpanded = !mobileFiltersExpanded">
+              {{ mobileFiltersExpanded ? '收起筛选条件' : '展开筛选条件' }}
+            </el-button>
+          </div>
+
+          <div v-if="!mobileMode || mobileFiltersExpanded" class="toolbar-row toolbar-row--dense">
             <el-select
               :model-value="status"
               placeholder="状态"
@@ -49,6 +55,7 @@
               clearable
               placeholder="关键词：序列号/品牌/型号/备注"
               class="toolbar-input"
+              inputmode="search"
               @update:model-value="emit('update:keyword', $event || '')"
               @keyup.enter="emit('search')"
             />
@@ -72,7 +79,7 @@
             </div>
           </div>
 
-          <div v-if="hasActiveBatch" class="inventory-summary-row">
+            <div v-if="(!mobileMode || mobileFiltersExpanded) && hasActiveBatch" class="inventory-summary-row">
             <button type="button" class="summary-card" :class="{ active: inventoryStatus === '' }" @click="emit('set-inventory-filter', '')">
               <span class="summary-label">全部设备</span>
               <strong>{{ summary.total }}</strong>
@@ -89,8 +96,13 @@
               <span class="summary-label">未盘</span>
               <strong>{{ summary.unchecked }}</strong>
             </button>
+            </div>
+
+            <div v-if="mobileMode" class="toolbar-mobile-dock" :style="mobileStickyStyle">
+              <el-button type="primary" class="toolbar-primary-btn" @click="emit('search')">查询</el-button>
+              <el-button class="toolbar-soft-btn" @click="emit('reset')">重置</el-button>
+            </div>
           </div>
-        </div>
       </div>
 
       <div class="toolbar-right">
@@ -99,13 +111,13 @@
             <div class="toolbar-title-wrap">
               <div class="toolbar-kicker">WORKSPACE</div>
               <div class="toolbar-block-title">快捷工具</div>
-              <div class="toolbar-subtle">批量操作、导出与表格偏好都收进同一工作区，低频能力统一放到更多菜单。</div>
+              <div v-if="!mobileMode" class="toolbar-subtle">批量操作、导出与表格偏好都收进同一工作区，低频能力统一放到更多菜单。</div>
             </div>
             <span class="toolbar-inline-badge" :class="{ 'is-active': selectedCount > 0 }">{{ selectionStateText }}</span>
           </div>
 
           <div class="toolbar-selection-row">
-            <template v-if="bulkWorkspaceMounted">
+            <template v-if="bulkWorkspaceMounted && !mobileMode">
               <div class="toolbar-action-group">
                 <el-dropdown trigger="click" @command="handleBatchCommand">
                   <el-button type="primary" class="toolbar-primary-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy">
@@ -150,8 +162,8 @@
                 </div>
               </div>
             </template>
-            <div v-else class="toolbar-lazy-actions-placeholder">
-              <span class="toolbar-subtle">批量工具默认按需展开，减少首屏渲染与无关交互。</span>
+            <div v-else-if="!mobileMode" class="toolbar-lazy-actions-placeholder">
+              <span v-if="!mobileMode" class="toolbar-subtle">批量工具默认按需展开，减少首屏渲染与无关交互。</span>
               <el-button class="toolbar-soft-btn" @click="bulkWorkspaceExpanded = true">展开工具</el-button>
             </div>
             <el-upload
@@ -164,9 +176,40 @@
               :on-change="(file: unknown) => emit('import-file', file)"
             />
           </div>
+
+          <div v-if="mobileMode" class="toolbar-mobile-action-dock" :style="mobileStickyStyle">
+            <el-button class="toolbar-soft-btn" :disabled="selectedCount === 0 || exportBusy || importBusy || initQrBusy || batchBusy" @click="mobileBatchSheetVisible = true">批量</el-button>
+            <el-button class="toolbar-soft-btn" :disabled="exportBusy || importBusy || initQrBusy || batchBusy" @click="mobileMoreSheetVisible = true">更多</el-button>
+          </div>
         </div>
       </div>
     </div>
+
+    <el-drawer v-model="mobileBatchSheetVisible" direction="btt" size="auto" :with-header="false" class="toolbar-mobile-sheet" append-to-body>
+      <div class="toolbar-mobile-sheet__title">批量操作</div>
+      <div class="toolbar-mobile-sheet__list">
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('export-qr')">导出二维码链接</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('export-qr-cards')">导出二维码卡片</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('export-qr-png')">导出二维码图版</el-button>
+        <el-button v-if="canBulkOperation && showArchived" class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('batch-restore')">批量恢复归档</el-button>
+        <el-button v-if="canBulkOperation" class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('batch-status')">批量修改状态</el-button>
+        <el-button v-if="canBulkOperation" class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('batch-owner')">批量修改领用人</el-button>
+        <el-button v-if="canBulkOperation" class="toolbar-mobile-sheet__item" @click="handleMobileBatchCommand('batch-archive')">批量归档</el-button>
+        <el-button v-if="canBulkOperation" class="toolbar-mobile-sheet__item is-danger" @click="handleMobileBatchCommand('batch-delete')">批量删除选中</el-button>
+      </div>
+    </el-drawer>
+
+    <el-drawer v-model="mobileMoreSheetVisible" direction="btt" size="auto" :with-header="false" class="toolbar-mobile-sheet" append-to-body>
+      <div class="toolbar-mobile-sheet__title">更多工具</div>
+      <div class="toolbar-mobile-sheet__list">
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('table-settings')">表格设置</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('export')">导出Excel</el-button>
+        <el-button v-if="showArchived" class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('export-archive')">导出归档记录</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('init-qr')">初始化二维码Key</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('download-template')">下载导入模板</el-button>
+        <el-button class="toolbar-mobile-sheet__item" @click="handleMobileMoreCommand('import')">Excel导入</el-button>
+      </div>
+    </el-drawer>
 
     <el-dialog v-model="settingsVisible" title="表格设置" width="420px" class="ledger-toolbar-settings-dialog" append-to-body>
       <div class="column-panel-head">
@@ -246,10 +289,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElDialog, ElSegmented, ElUpload } from 'element-plus';
+import { ElDialog, ElDrawer, ElSegmented, ElUpload } from 'element-plus';
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus';
-import { computed, ref } from 'vue';
-import type { ComponentPublicInstance } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
+import type { ComponentPublicInstance, CSSProperties } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import type { AssetInventorySummary } from '../../types/assets';
 import type { LedgerSavedView, LedgerTableDensity } from '../../utils/ledgerViewPrefs';
@@ -325,13 +368,26 @@ const orderedVisibleOptions = computed(() => {
   return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
 });
 
-const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
+const selectionStateText = computed(() => {
+  if (props.selectedCount > 0) return `已选 ${props.selectedCount} 项`;
+  return props.mobileMode ? '暂未选择' : '未选择设备';
+});
 const importUploadRef = ref<ComponentPublicInstance | null>(null);
 const viewDraftName = ref('');
 const settingsVisible = ref(false);
 const bulkWorkspaceExpanded = ref(false);
-const bulkWorkspaceVisible = computed(() => bulkWorkspaceExpanded.value || props.selectedCount > 0 || props.exportBusy || props.importBusy || props.initQrBusy || props.batchBusy);
+const mobileFiltersExpanded = ref(false);
+const mobileBatchSheetVisible = ref(false);
+const mobileMoreSheetVisible = ref(false);
+const keyboardOffset = ref(0);
+const bulkWorkspaceVisible = computed(() => props.mobileMode || bulkWorkspaceExpanded.value || props.selectedCount > 0 || props.exportBusy || props.importBusy || props.initQrBusy || props.batchBusy);
 const bulkWorkspaceMounted = computed(() => bulkWorkspaceVisible.value);
+const mobileStickyStyle = computed<CSSProperties | undefined>(() => {
+  if (!props.mobileMode) return undefined;
+  return {
+    '--mobile-kb-offset': `${keyboardOffset.value}px`,
+  } as CSSProperties;
+});
 
 const archiveModeOptions = [
   { label: '在用', value: 'active' },
@@ -395,6 +451,45 @@ function handleBatchCommand(command: string | number | object) {
   if (value === 'export-qr-cards') return emit('export-selected-qr-cards');
   if (value === 'batch-delete') return emit('batch-delete');
 }
+
+function handleMobileBatchCommand(command: string) {
+  handleBatchCommand(command);
+  mobileBatchSheetVisible.value = false;
+}
+
+function handleMobileMoreCommand(command: string) {
+  handleMoreCommand(command);
+  mobileMoreSheetVisible.value = false;
+}
+
+function updateKeyboardOffset() {
+  if (!props.mobileMode || typeof window === 'undefined') {
+    keyboardOffset.value = 0;
+    return;
+  }
+  const viewport = window.visualViewport;
+  if (!viewport) {
+    keyboardOffset.value = 0;
+    return;
+  }
+  const raw = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
+  keyboardOffset.value = raw > 70 ? raw : 0;
+}
+
+onMounted(() => {
+  if (typeof window === 'undefined') return;
+  updateKeyboardOffset();
+  window.addEventListener('resize', updateKeyboardOffset, { passive: true });
+  window.visualViewport?.addEventListener('resize', updateKeyboardOffset, { passive: true });
+  window.visualViewport?.addEventListener('scroll', updateKeyboardOffset, { passive: true });
+});
+
+onBeforeUnmount(() => {
+  if (typeof window === 'undefined') return;
+  window.removeEventListener('resize', updateKeyboardOffset);
+  window.visualViewport?.removeEventListener('resize', updateKeyboardOffset);
+  window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset);
+});
 </script>
 
 <style scoped>
@@ -552,6 +647,16 @@ function handleBatchCommand(command: string | number | object) {
 .toolbar-minor-group {
   flex-wrap: nowrap;
   margin-left: auto;
+}
+
+.toolbar-lazy-actions-placeholder {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  min-height: 48px;
+  padding: 2px 0;
 }
 
 .toolbar-select,
@@ -922,6 +1027,35 @@ function handleBatchCommand(command: string | number | object) {
     flex-wrap: wrap;
   }
 
+  .toolbar-actions-inline {
+    display: none;
+  }
+
+  .toolbar-mobile-action-dock {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom) + var(--mobile-kb-offset, 0px));
+    z-index: 24;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 10px;
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(8px);
+    transform: translateZ(0);
+  }
+
+  .toolbar-mobile-action-dock :deep(.el-button) {
+    width: 100%;
+  }
+
+  .toolbar-minor-group {
+    margin-left: 0;
+  }
+
   .toolbar-spacer {
     display: none;
   }
@@ -936,6 +1070,90 @@ function handleBatchCommand(command: string | number | object) {
 
   .inventory-summary-row {
     grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .toolbar-lazy-actions-placeholder {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .toolbar-mobile-dock {
+    position: sticky;
+    bottom: calc(8px + env(safe-area-inset-bottom) + var(--mobile-kb-offset, 0px));
+    z-index: 22;
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+    margin-top: 8px;
+    padding: 8px;
+    border: 1px solid rgba(148, 163, 184, 0.2);
+    border-radius: 14px;
+    background: rgba(255, 255, 255, 0.94);
+    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
+    backdrop-filter: blur(8px);
+    transform: translateZ(0);
+  }
+
+  .toolbar-mobile-dock :deep(.el-button) {
+    width: 100%;
+  }
+}
+
+:deep(.toolbar-mobile-sheet .el-drawer__body) {
+  padding: 12px 12px calc(12px + env(safe-area-inset-bottom));
+  border-top-left-radius: 16px;
+  border-top-right-radius: 16px;
+}
+
+.toolbar-mobile-sheet__title {
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 700;
+  color: #334155;
+}
+
+.toolbar-mobile-sheet__list {
+  display: grid;
+  gap: 8px;
+}
+
+.toolbar-mobile-sheet__item {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 42px;
+  border-radius: 12px;
+}
+
+.toolbar-mobile-sheet__item.is-danger {
+  color: #c23d3d;
+}
+
+@media (max-width: 520px) {
+  .toolbar-kicker,
+  .toolbar-subtle {
+    display: none;
+  }
+
+  .inventory-summary-row {
+    grid-template-columns: 1fr;
+  }
+
+  .summary-card strong {
+    font-size: 20px;
+  }
+
+  .toolbar-mobile-action-dock,
+  .toolbar-mobile-dock {
+    gap: 6px;
+    padding: 6px;
+    border-radius: 12px;
+  }
+}
+
+@media (max-width: 390px) {
+  .toolbar-mobile-action-dock,
+  .toolbar-mobile-dock {
+    grid-template-columns: 1fr;
   }
 }
 
@@ -952,19 +1170,3 @@ function handleBatchCommand(command: string | number | object) {
 }
 
 </style>
-.toolbar-lazy-actions-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 2px 0;
-}
-
-@media (max-width: 768px) {
-  .toolbar-lazy-actions-placeholder {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
