@@ -1,6 +1,6 @@
 import { errorResponse } from "../_auth";
 import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
-import { ensurePcSchemaIfAllowed } from "./_pc";
+import { ensurePcQrColumns, ensurePcSchemaIfAllowed } from "./_pc";
 import { getOrCreateAssetQrBulk } from "./services/asset-qr";
 
 export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
@@ -12,6 +12,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     const timing = (env as any).__timing;
     if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
+
+    await ensurePcQrColumns(env.DB);
 
     const body = await request.json<any>().catch(() => ({} as any));
     await assertPcAssetIdsDataScopeAccess(env.DB, user, Array.isArray(body?.ids) ? body.ids : [], '电脑二维码');

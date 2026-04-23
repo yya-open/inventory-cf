@@ -1,6 +1,6 @@
 import { errorResponse } from "../_auth";
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
-import { ensurePcSchemaIfAllowed } from "./_pc";
+import { ensurePcQrColumns, ensurePcSchemaIfAllowed } from "./_pc";
 import { getOrCreateAssetQr } from "./services/asset-qr";
 
 export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, request }) => {
@@ -12,6 +12,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env, req
     const t = (env as any).__timing;
     if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
+
+    await ensurePcQrColumns(env.DB);
 
     const id = Number(url.searchParams.get("id") || 0);
     await assertPcAssetDataScopeAccess(env.DB, user, id, "电脑二维码");
