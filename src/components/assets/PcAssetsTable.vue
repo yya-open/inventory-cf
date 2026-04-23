@@ -1,7 +1,7 @@
 <template>
   <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
     <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <el-table v-else-if="!mobileMode"
+    <el-table v-else
       ref="tableRef"
       class="ledger-table"
       v-loading="loading"
@@ -159,8 +159,8 @@
         </el-empty>
       </template>
     </el-table>
-    <div v-if="!mobileMode && isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
-    <div v-if="!mobileMode" class="pager-wrap">
+    <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
+    <div class="pager-wrap">
       <el-pagination
         :current-page="page"
         :page-size="pageSize"
@@ -172,78 +172,13 @@
         @update:page-size="(value: number) => emit('page-size-change', value)"
       />
     </div>
-    <div v-if="mobileMode" class="ledger-mobile-list">
-      <div class="ledger-mobile-selection-bar" :style="mobileStickyStyle">
-        <span class="ledger-mobile-selection-bar__text">已选 {{ selectedSet.size }} 项</span>
-        <div class="ledger-mobile-selection-bar__actions">
-          <el-button text @click="toggleMobileSelectAll">{{ mobileAllSelected ? '取消全选本页' : '全选本页' }}</el-button>
-          <el-button text :disabled="selectedSet.size === 0" @click="clearMobileSelection">清空选择</el-button>
-        </div>
-      </div>
-      <div v-if="loading" class="ledger-mobile-loading">加载中...</div>
-      <el-empty v-else-if="!renderRows.length" :description="hasFilters ? '暂无匹配结果' : '暂无台账数据'">
-        <template #default>
-          <div class="empty-wrap">
-            <div class="empty-tip">{{ hasFilters ? '可尝试调整筛选条件后重试。' : '当前还没有电脑台账记录。' }}</div>
-            <el-button v-if="hasFilters" link type="primary" @click="emit('reset-filters')">清空筛选</el-button>
-          </div>
-        </template>
-      </el-empty>
-      <el-card v-for="(row, index) in renderRows" :key="row.id" shadow="never" class="ledger-mobile-card">
-        <div class="ledger-mobile-card__head">
-          <label class="ledger-mobile-card__select"><input type="checkbox" :checked="selectedSet.has(String(row.id))" @change="toggleMobileSelection(row, ($event.target as HTMLInputElement).checked)" /><span>#{{ mobileSequence(index) }}</span></label>
-          <span class="status-chip" :class="assetStatusClass(row.status)">{{ assetStatusText(row.status) }}</span>
-        </div>
-        <div class="ledger-mobile-card__title" @click="emit('open-info', row)">{{ [row.brand, row.model].filter(Boolean).join(' · ') || '-' }}</div>
-        <div class="ledger-mobile-card__meta">SN：{{ row.serial_no || '-' }}</div>
-        <div class="ledger-mobile-card__grid">
-          <span>配置：{{ [row.disk_capacity || '-', row.memory_size || '-'].join(' / ') }}</span>
-          <span>保修至：{{ row.warranty_end || '-' }}</span>
-        </div>
-        <div class="ledger-mobile-card__grid ledger-mobile-card__grid--muted">
-          <span>领用人：{{ row.status === 'ASSIGNED' ? (row.last_employee_name || '-') : '-' }}</span>
-          <span>部门：{{ row.status === 'ASSIGNED' ? (row.last_department || '-') : '-' }}</span>
-        </div>
-        <div v-if="showInventoryColumn" class="ledger-mobile-card__inventory">
-          <span class="status-chip" :class="inventoryStatusClass(row.inventory_status)">{{ inventoryStatusText(row.inventory_status) }}</span>
-          <span class="ledger-mobile-card__inventory-tip">{{ mobileInventoryText(row) }}</span>
-        </div>
-        <div class="ledger-mobile-card__actions">
-          <el-button size="small" @click="emit('open-info', row)">详情</el-button>
-          <el-dropdown trigger="click" @command="(command) => handleRowMore(String(command), row)">
-            <el-button size="small">更多</el-button>
-            <template #dropdown>
-              <el-dropdown-menu>
-                <el-dropdown-item v-if="showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
-                <el-dropdown-item v-if="showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
-                <el-dropdown-item command="edit">修改</el-dropdown-item>
-                <el-dropdown-item command="qr">二维码</el-dropdown-item>
-                <el-dropdown-item v-if="isAdmin && Number(row.archived || 0) === 1" command="restore">恢复归档</el-dropdown-item>
-                <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>
-              </el-dropdown-menu>
-            </template>
-          </el-dropdown>
-        </div>
-      </el-card>
-      <div class="pager-wrap pager-wrap--mobile" :style="mobileStickyStyle">
-        <el-pagination
-          :current-page="page"
-          :page-size="pageSize"
-          :total="total"
-          background
-          layout="prev, pager, next"
-          @update:current-page="(value: number) => emit('page-change', value)"
-        />
-      </div>
-    </div>
   </div>
 </template>
 <script setup lang="ts">
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
 import { ArrowDown } from '@element-plus/icons-vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { CSSProperties } from 'vue';
+import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../../types/assets';
 const props = defineProps<{
@@ -282,14 +217,6 @@ const CORE_VISIBLE_KEYS = ['computer', 'status'] as const;
 const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
-const mobileAllSelected = computed(() => renderRows.value.length > 0 && renderRows.value.every((row) => selectedSet.value.has(String(row.id))));
-const keyboardOffset = ref(0);
-const mobileStickyStyle = computed<CSSProperties | undefined>(() => {
-  if (!mobileMode.value) return undefined;
-  return {
-    '--mobile-kb-offset': `${keyboardOffset.value}px`,
-  } as CSSProperties;
-});
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
@@ -383,19 +310,6 @@ watch(() => [props.initialLoading, props.loading, renderRows.value.length, mobil
 
 onBeforeUnmount(() => {
   clearRevealColumnsTimer();
-  if (typeof window !== 'undefined') {
-    window.removeEventListener('resize', updateKeyboardOffset);
-    window.visualViewport?.removeEventListener('resize', updateKeyboardOffset);
-    window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset);
-  }
-});
-
-onMounted(() => {
-  if (typeof window === 'undefined') return;
-  updateKeyboardOffset();
-  window.addEventListener('resize', updateKeyboardOffset, { passive: true });
-  window.visualViewport?.addEventListener('resize', updateKeyboardOffset, { passive: true });
-  window.visualViewport?.addEventListener('scroll', updateKeyboardOffset, { passive: true });
 });
 
 function handleSelectionChange(value: Record<string, any>[]) {
@@ -443,34 +357,6 @@ function toggleMobileSelection(row: Record<string, any>, checked: boolean) {
   emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
 }
 
-function toggleMobileSelectAll() {
-  const next = new Set(selectedSet.value);
-  if (mobileAllSelected.value) {
-    renderRows.value.forEach((row) => next.delete(String(row.id)));
-  } else {
-    renderRows.value.forEach((row) => next.add(String(row.id)));
-  }
-  emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
-}
-
-function clearMobileSelection() {
-  emit('selection-change', []);
-}
-
-function updateKeyboardOffset() {
-  if (!mobileMode.value || typeof window === 'undefined') {
-    keyboardOffset.value = 0;
-    return;
-  }
-  const viewport = window.visualViewport;
-  if (!viewport) {
-    keyboardOffset.value = 0;
-    return;
-  }
-  const raw = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-  keyboardOffset.value = raw > 70 ? raw : 0;
-}
-
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -488,150 +374,24 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
 
-.ledger-mobile-list {
-  display: flex;
-  flex-direction: column;
-  gap: 12px;
-}
+.ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
 
-.ledger-mobile-selection-bar {
-  position: sticky;
-  top: calc(0px + env(safe-area-inset-top));
-  z-index: 26;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.11);
-  backdrop-filter: blur(8px);
-  transform: translateZ(0);
-}
+.ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
 
-.ledger-mobile-selection-bar__text {
-  font-size: 12px;
-  color: #475569;
-  font-weight: 600;
-}
+.ledger-mobile-card { border-radius: 18px; }
 
-.ledger-mobile-selection-bar__actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
+.ledger-mobile-card__head, .ledger-mobile-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.ledger-mobile-card__head { margin-bottom: 10px; }
+.ledger-mobile-card__select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
+.ledger-mobile-card__title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
+.ledger-mobile-card__meta { font-size: 12px; color: #64748b; margin-bottom: 8px; }
+.ledger-mobile-card__grid { display: grid; gap: 6px; font-size: 13px; color: #334155; margin-bottom: 8px; }
+.ledger-mobile-card__grid--muted { color: #64748b; }
+.ledger-mobile-card__inventory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
+.ledger-mobile-card__inventory-tip { font-size: 12px; color: #64748b; }
+.ledger-mobile-card__actions { justify-content: flex-start; }
 
-.ledger-mobile-loading {
-  padding: 24px 0;
-  text-align: center;
-  color: #64748b;
-}
-
-.ledger-mobile-card {
-  border-radius: 18px;
-}
-
-.ledger-mobile-card__head,
-.ledger-mobile-card__actions {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-}
-
-.ledger-mobile-card__head {
-  margin-bottom: 10px;
-}
-
-.ledger-mobile-card__select {
-  display: inline-flex;
-  align-items: center;
-  gap: 8px;
-  font-size: 13px;
-  color: #475569;
-}
-
-.ledger-mobile-card__title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #0f172a;
-  margin-bottom: 6px;
-}
-
-.ledger-mobile-card__meta {
-  font-size: 12px;
-  color: #64748b;
-  margin-bottom: 8px;
-}
-
-.ledger-mobile-card__grid {
-  display: grid;
-  gap: 6px;
-  font-size: 13px;
-  color: #334155;
-  margin-bottom: 8px;
-}
-
-.ledger-mobile-card__grid--muted {
-  color: #64748b;
-}
-
-.ledger-mobile-card__inventory {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.ledger-mobile-card__inventory-tip {
-  font-size: 12px;
-  color: #64748b;
-}
-
-.ledger-mobile-card__actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  justify-content: stretch;
-}
-
-.ledger-mobile-card__actions :deep(.el-button) {
-  width: 100%;
-  min-height: 38px;
-}
-
-.pager-wrap--mobile {
-  justify-content: center;
-  margin-top: 6px;
-  position: sticky;
-  bottom: calc(8px + env(safe-area-inset-bottom) + var(--mobile-kb-offset, 0px));
-  z-index: 25;
-  padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(8px);
-  transform: translateZ(0);
-}
-
-@media (max-width: 520px) {
-  .ledger-mobile-selection-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .ledger-mobile-selection-bar__actions {
-    justify-content: space-between;
-  }
-
-  .pager-wrap--mobile {
-    padding: 6px;
-    border-radius: 12px;
-  }
-}
+.pager-wrap--mobile { justify-content: center; margin-top: 4px; }
 
 .pager-wrap {
   display: flex;

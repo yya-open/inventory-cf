@@ -38,6 +38,7 @@
             :is-admin="can('admin')"
             :collapsed="desktopSidebarCollapsed"
             @toggle-collapse="toggleSidebar"
+            @menu-select="handleSidebarMenuSelect"
           />
         </div>
       </el-aside>
@@ -46,10 +47,11 @@
         v-if="isMobile"
         v-model="mobileSidebarVisible"
         direction="ltr"
-        size="min(88vw, 360px)"
+        size="82%"
         :with-header="false"
         :append-to-body="true"
         class="app-mobile-drawer"
+        @close="handleMobileDrawerClose"
       >
         <div class="app-mobile-drawer__header">
           <div class="app-mobile-drawer__title">导航菜单</div>
@@ -72,7 +74,7 @@
           :can-operator="can('operator')"
           :is-admin="can('admin')"
           :is-mobile="true"
-          @navigate="mobileSidebarVisible = false"
+          @menu-select="handleSidebarMenuSelect"
         />
       </el-drawer>
 
@@ -295,9 +297,8 @@ const desktopSidebarCollapsed = ref(false);
 const desktopSidebarPreview = ref(false);
 const sidebarHovered = ref(false);
 const sidebarToggleHovered = ref(false);
-const isMobile = ref(typeof window !== 'undefined' ? isAppMobileViewport() : false);
+const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
-let mobileMediaQuery: MediaQueryList | null = null;
 
 const activeMenu = computed(() => route.path);
 const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
@@ -388,28 +389,12 @@ onMounted(() => {
     desktopSidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
     updateViewport();
     window.addEventListener("resize", updateViewport, { passive: true });
-    if (typeof window.matchMedia === 'function') {
-      mobileMediaQuery = window.matchMedia(`(max-width: 1200px)`);
-      if (typeof mobileMediaQuery.addEventListener === 'function') {
-        mobileMediaQuery.addEventListener('change', updateViewport);
-      } else if (typeof (mobileMediaQuery as any).addListener === 'function') {
-        (mobileMediaQuery as any).addListener(updateViewport);
-      }
-    }
   } catch {}
 });
 onBeforeUnmount(() => {
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
   window.removeEventListener("resize", updateViewport);
-  if (mobileMediaQuery) {
-    if (typeof mobileMediaQuery.removeEventListener === 'function') {
-      mobileMediaQuery.removeEventListener('change', updateViewport);
-    } else if (typeof (mobileMediaQuery as any).removeListener === 'function') {
-      (mobileMediaQuery as any).removeListener(updateViewport);
-    }
-    mobileMediaQuery = null;
-  }
 });
 
 watch(desktopSidebarCollapsed, (value, previous) => {
@@ -431,16 +416,9 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 });
 
 function updateViewport() {
-  const matched = typeof window !== 'undefined' && typeof window.matchMedia === 'function'
-    ? window.matchMedia('(max-width: 1200px)').matches
-    : false;
-  const nextMobile = matched || isAppMobileViewport();
+  const nextMobile = isAppMobileViewport();
   isMobile.value = nextMobile;
-  mobileSidebarVisible.value = false;
-  if (nextMobile) {
-    sidebarToggleHovered.value = false;
-    desktopSidebarPreview.value = false;
-  }
+  if (!nextMobile) mobileSidebarVisible.value = false;
 }
 
 function handleSidebarToggleHover(next: boolean) {
@@ -481,6 +459,15 @@ function toggleSidebar() {
     return;
   }
   desktopSidebarCollapsed.value = !desktopSidebarCollapsed.value;
+}
+
+function handleSidebarMenuSelect() {
+  if (!isMobile.value) return;
+  mobileSidebarVisible.value = false;
+}
+
+function handleMobileDrawerClose() {
+  mobileSidebarVisible.value = false;
 }
 
 watch(() => route.fullPath, () => {

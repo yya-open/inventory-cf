@@ -179,13 +179,6 @@
     </div>
   </el-card>
     <div v-else-if="mobileMode" class="ledger-mobile-list">
-      <div class="ledger-mobile-selection-bar" :style="mobileStickyStyle">
-        <span class="ledger-mobile-selection-bar__text">已选 {{ selectedSet.size }} 项</span>
-        <div class="ledger-mobile-selection-bar__actions">
-          <el-button text @click="toggleMobileSelectAll">{{ mobileAllSelected ? '取消全选本页' : '全选本页' }}</el-button>
-          <el-button text :disabled="selectedSet.size === 0" @click="clearMobileSelection">清空选择</el-button>
-        </div>
-      </div>
       <div v-if="loading" class="ledger-mobile-loading">加载中...</div>
       <el-empty v-else-if="!renderRows.length" :description="hasFilters ? '暂无匹配结果' : '暂无台账数据'">
         <template #default>
@@ -227,7 +220,7 @@
           </el-dropdown>
         </div>
       </el-card>
-      <div class="pager-wrap pager-wrap--mobile" :style="mobileStickyStyle">
+      <div class="pager-wrap pager-wrap--mobile">
         <el-pagination :total="total" :page-size="pageSize" :current-page="page" background layout="prev, pager, next" @update:current-page="(value: number) => emit('page-change', value)" />
       </div>
     </div>
@@ -236,8 +229,7 @@
 <script setup lang="ts">
 import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
 import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
-import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import type { CSSProperties } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useChunkedRows } from '../../composables/useChunkedRows';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { inventoryIssueTypeText, inventoryStatusText } from '../../types/assets';
@@ -279,14 +271,6 @@ const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.v
 const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
-const mobileAllSelected = computed(() => renderRows.value.length > 0 && renderRows.value.every((row) => selectedSet.value.has(String(row.id))));
-const keyboardOffset = ref(0);
-const mobileStickyStyle = computed<CSSProperties | undefined>(() => {
-  if (!mobileMode.value) return undefined;
-  return {
-    '--mobile-kb-offset': `${keyboardOffset.value}px`,
-  } as CSSProperties;
-});
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
 const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
@@ -371,49 +355,6 @@ function toggleMobileSelection(row: Record<string, any>, checked: boolean) {
   emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
 }
 
-function toggleMobileSelectAll() {
-  const next = new Set(selectedSet.value);
-  if (mobileAllSelected.value) {
-    renderRows.value.forEach((row) => next.delete(String(row.id)));
-  } else {
-    renderRows.value.forEach((row) => next.add(String(row.id)));
-  }
-  emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
-}
-
-function clearMobileSelection() {
-  emit('selection-change', []);
-}
-
-function updateKeyboardOffset() {
-  if (!mobileMode.value || typeof window === 'undefined') {
-    keyboardOffset.value = 0;
-    return;
-  }
-  const viewport = window.visualViewport;
-  if (!viewport) {
-    keyboardOffset.value = 0;
-    return;
-  }
-  const raw = Math.max(0, window.innerHeight - viewport.height - viewport.offsetTop);
-  keyboardOffset.value = raw > 70 ? raw : 0;
-}
-
-onMounted(() => {
-  if (typeof window === 'undefined') return;
-  updateKeyboardOffset();
-  window.addEventListener('resize', updateKeyboardOffset, { passive: true });
-  window.visualViewport?.addEventListener('resize', updateKeyboardOffset, { passive: true });
-  window.visualViewport?.addEventListener('scroll', updateKeyboardOffset, { passive: true });
-});
-
-onBeforeUnmount(() => {
-  if (typeof window === 'undefined') return;
-  window.removeEventListener('resize', updateKeyboardOffset);
-  window.visualViewport?.removeEventListener('resize', updateKeyboardOffset);
-  window.visualViewport?.removeEventListener('scroll', updateKeyboardOffset);
-});
-
 function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   const key = String(column?.columnKey || '');
   if (!key) return;
@@ -432,35 +373,6 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 .ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
-
-.ledger-mobile-selection-bar {
-  position: sticky;
-  top: calc(0px + env(safe-area-inset-top));
-  z-index: 26;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  padding: 8px 10px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.11);
-  backdrop-filter: blur(8px);
-  transform: translateZ(0);
-}
-
-.ledger-mobile-selection-bar__text {
-  font-size: 12px;
-  color: #475569;
-  font-weight: 600;
-}
-
-.ledger-mobile-selection-bar__actions {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-}
 
 .ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
 
@@ -483,47 +395,9 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 
 .ledger-mobile-card__inventory-tip { font-size: 12px; color: #64748b; }
 
-.ledger-mobile-card__actions {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  justify-content: stretch;
-}
+.ledger-mobile-card__actions { justify-content: flex-start; }
 
-.ledger-mobile-card__actions :deep(.el-button) {
-  width: 100%;
-  min-height: 38px;
-}
-
-.pager-wrap--mobile {
-  justify-content: center;
-  margin-top: 6px;
-  position: sticky;
-  bottom: calc(8px + env(safe-area-inset-bottom) + var(--mobile-kb-offset, 0px));
-  z-index: 25;
-  padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.2);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.12);
-  backdrop-filter: blur(8px);
-  transform: translateZ(0);
-}
-
-@media (max-width: 520px) {
-  .ledger-mobile-selection-bar {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .ledger-mobile-selection-bar__actions {
-    justify-content: space-between;
-  }
-
-  .pager-wrap--mobile {
-    padding: 6px;
-    border-radius: 12px;
-  }
-}
+.pager-wrap--mobile { justify-content: center; margin-top: 4px; }
 
 .pager-wrap {
   margin-top: 16px;
