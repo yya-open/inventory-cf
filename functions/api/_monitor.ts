@@ -11,12 +11,29 @@ let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
 let __monitorGuardEnsuredAt = 0;
 let __monitorColumnsEnsuredAt = 0;
+let __monitorColumnsReady = false;
+let __monitorGuardTriggersReady = false;
+let __monitorSchemaProbeAt = 0;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
-const MONITOR_GUARD_TRIGGER_TTL_MS = 120_000;
-const MONITOR_GUARD_COLUMNS_TTL_MS = 120_000;
+const MONITOR_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
+const MONITOR_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
+const MONITOR_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
+
+const MONITOR_REQUIRED_QUERY_COLUMNS = [
+  'search_text_norm',
+  'archived',
+  'archived_at',
+  'archived_reason',
+  'archived_note',
+  'archived_by',
+  'inventory_status',
+  'inventory_at',
+  'inventory_issue_type',
+];
 
 async function ensureMonitorQueryColumns(db: D1Database) {
+  if (__monitorColumnsReady) return;
   if (Date.now() - __monitorColumnsEnsuredAt < MONITOR_GUARD_COLUMNS_TTL_MS) return;
   __monitorColumnsEnsuredAt = Date.now();
   try {
@@ -24,45 +41,60 @@ async function ensureMonitorQueryColumns(db: D1Database) {
     if (Number(tableRow?.ok || 0) !== 1) return;
     const { results } = await db.prepare("PRAGMA table_info('monitor_assets')").all<any>();
     const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    const ddls: string[] = [];
-    if (!columns.has('search_text_norm')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT");
-    if (!columns.has('archived')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
-    if (!columns.has('archived_at')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT");
-    if (!columns.has('archived_reason')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT");
-    if (!columns.has('archived_note')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT");
-    if (!columns.has('archived_by')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT");
-    if (!columns.has('inventory_status')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'");
-    if (!columns.has('inventory_at')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT");
-    if (!columns.has('inventory_issue_type')) ddls.push("ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT");
+    const missingColumns = MONITOR_REQUIRED_QUERY_COLUMNS.filter((column) => !columns.has(column));
+    if (!missingColumns.length) {
+      __monitorColumnsReady = true;
+      return;
+    }
+    const ddlMap: Record<string, string> = {
+      search_text_norm: "ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT",
+      archived: "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+      archived_at: "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
+      archived_reason: "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
+      archived_note: "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
+      archived_by: "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
+      inventory_status: "ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+      inventory_at: "ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT",
+      inventory_issue_type: "ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT",
+    };
+    const ddls = missingColumns.map((column) => ddlMap[column]).filter(Boolean);
     for (const ddl of ddls) {
       try { await db.prepare(ddl).run(); } catch {}
     }
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_id ON monitor_assets(archived, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_inventory_status_id ON monitor_assets(archived, inventory_status, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_location_id ON monitor_assets(archived, location_id, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_search_text_norm ON monitor_assets(search_text_norm)").run().catch(() => {});
-    await db.prepare("UPDATE monitor_assets SET archived=0 WHERE archived IS NULL").run().catch(() => {});
-    await db.prepare("UPDATE monitor_assets SET inventory_status='UNCHECKED' WHERE COALESCE(TRIM(inventory_status),'')=''").run().catch(() => {});
-    invalidateSchemaStatusCache();
+    const verify = await db.prepare("PRAGMA table_info('monitor_assets')").all<any>();
+    const verifyColumns = new Set((verify?.results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
+    __monitorColumnsReady = MONITOR_REQUIRED_QUERY_COLUMNS.every((column) => verifyColumns.has(column));
+    if (__monitorColumnsReady) invalidateSchemaStatusCache();
   } catch {
     // best-effort column guard
   }
 }
 
 async function ensureMonitorGuardTriggers(db: D1Database) {
+  if (__monitorGuardTriggersReady) return;
   if (Date.now() - __monitorGuardEnsuredAt < MONITOR_GUARD_TRIGGER_TTL_MS) return;
   __monitorGuardEnsuredAt = Date.now();
   try {
     const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'").first<any>();
     if (Number(row?.ok || 0) !== 1) return;
+    const before = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_monitor_assets_code_non_blank_insert','trg_monitor_assets_code_non_blank_update')").first<any>();
+    if (Number(before?.c || 0) >= 2) {
+      __monitorGuardTriggersReady = true;
+      return;
+    }
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
-    invalidateSchemaStatusCache();
+    const triggerRow = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_monitor_assets_code_non_blank_insert','trg_monitor_assets_code_non_blank_update')").first<any>();
+    __monitorGuardTriggersReady = Number(triggerRow?.c || 0) >= 2;
+    if (__monitorGuardTriggersReady) invalidateSchemaStatusCache();
   } catch {
     // best-effort guard creation
   }
+}
+
+export async function ensureMonitorReadFastGuards(db: D1Database) {
+  await ensureMonitorQueryColumns(db);
+  await ensureMonitorGuardTriggers(db);
 }
 
 async function probeMonitorSchemaReady(db: D1Database) {
@@ -91,8 +123,16 @@ export function shouldHealMonitorSchema(env: any, url: URL) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
-  await ensureMonitorQueryColumns(db);
-  await ensureMonitorGuardTriggers(db);
+  await ensureMonitorReadFastGuards(db);
+  if (__monitorSchemaReady) return;
+  if (Date.now() - __monitorSchemaProbeAt >= MONITOR_SCHEMA_PROBE_TTL_MS) {
+    __monitorSchemaProbeAt = Date.now();
+    const alreadyReady = await probeMonitorSchemaReady(db);
+    if (alreadyReady) {
+      __monitorSchemaReady = true;
+      return;
+    }
+  }
   const runtimeHealAllowed = shouldHealMonitorSchema(env, url);
   let allowBySettings = false;
   const cached = __monitorRuntimeDdlAllowedCache;
@@ -104,13 +144,6 @@ export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url
     __monitorRuntimeDdlAllowedCache = { expiresAt: Date.now() + MONITOR_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
   }
   if (!(allowBySettings || runtimeHealAllowed)) return;
-  if (!__monitorSchemaReady) {
-    const alreadyReady = await probeMonitorSchemaReady(db);
-    if (alreadyReady) {
-      __monitorSchemaReady = true;
-      return;
-    }
-  }
   return ensureMonitorSchema(db);
 }
 

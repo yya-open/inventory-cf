@@ -12,6 +12,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     await ensureSchemaTimed(env as any, 'schema', () => ensurePcReadFastGuards(env.DB));
     const query = buildPcAssetQuery(url, user);
+    if (query.fast) {
+      return Response.json({ ok: true, total: null });
+    }
     const total = await countAssetPage(env.DB, env as any, 'pc_assets a', query);
     return Response.json({ ok: true, total });
   } catch (error: any) {

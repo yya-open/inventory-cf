@@ -808,7 +808,7 @@ function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters) {
   });
 }
 
-async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean } = {}) {
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
   if (options.keepPage) {
@@ -817,7 +817,7 @@ async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean
     await reload(filters, { silent: options.silent });
   }
   lastRefreshAt = Date.now();
-  scheduleAuxiliaryRefresh(filters);
+  if (!options.skipAuxiliary) scheduleAuxiliaryRefresh(filters);
 }
 
 const reloadList = () => {
@@ -1964,7 +1964,7 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 
-async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean } = {}) {
+async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
@@ -1984,7 +1984,10 @@ function handleViewportResize() {
 onBeforeMount(() => {
   handleViewportResize();
   if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
-  void hydrateViewData();
+  void hydrateViewData({ skipAuxiliary: true }).finally(() => {
+    const filters = currentFiltersForList();
+    scheduleAuxiliaryRefresh(filters);
+  });
 });
 
 onMounted(() => {

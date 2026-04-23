@@ -1,5 +1,5 @@
 import { errorResponse } from '../_auth';
-import { ensureMonitorSchemaIfAllowed } from './_monitor';
+import { ensureMonitorReadFastGuards } from './_monitor';
 import { buildMonitorAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
 import { isDefaultInventorySummaryRequest, readDefaultInventorySummaryCache } from './services/asset-inventory-summary-cache';
@@ -11,7 +11,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
     const url = new URL(request.url);
-    await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+    await ensureMonitorReadFastGuards(env.DB);
 
     if (isDefaultInventorySummaryRequest(url, 'monitor')) {
       const data = await readDefaultInventorySummaryCache(env.DB, 'monitor', user);

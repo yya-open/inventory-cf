@@ -43,28 +43,28 @@ async function ensurePcQueryColumns(db: D1Database) {
     if (Number(tableRow?.ok || 0) !== 1) return;
     const { results } = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
     const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    const ddls: string[] = [];
-    if (!columns.has('search_text_norm')) ddls.push("ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT");
-    if (!columns.has('archived')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0");
-    if (!columns.has('archived_at')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_at TEXT");
-    if (!columns.has('archived_reason')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT");
-    if (!columns.has('archived_note')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_note TEXT");
-    if (!columns.has('archived_by')) ddls.push("ALTER TABLE pc_assets ADD COLUMN archived_by TEXT");
-    if (!columns.has('inventory_status')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'");
-    if (!columns.has('inventory_at')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT");
-    if (!columns.has('inventory_issue_type')) ddls.push("ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT");
-    if (!columns.has('manufacture_ts')) ddls.push("ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER");
-    if (!columns.has('warranty_end_ts')) ddls.push("ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER");
+    const missingColumns = PC_REQUIRED_QUERY_COLUMNS.filter((column) => !columns.has(column));
+    if (!missingColumns.length) {
+      __pcColumnsReady = true;
+      return;
+    }
+    const ddlMap: Record<string, string> = {
+      search_text_norm: "ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT",
+      archived: "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+      archived_at: "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
+      archived_reason: "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
+      archived_note: "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
+      archived_by: "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
+      inventory_status: "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+      inventory_at: "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
+      inventory_issue_type: "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
+      manufacture_ts: "ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER",
+      warranty_end_ts: "ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER",
+    };
+    const ddls = missingColumns.map((column) => ddlMap[column]).filter(Boolean);
     for (const ddl of ddls) {
       try { await db.prepare(ddl).run(); } catch {}
     }
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_id ON pc_assets(archived, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(inventory_status, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id)").run().catch(() => {});
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_search_text_norm ON pc_assets(search_text_norm)").run().catch(() => {});
-    await db.prepare("UPDATE pc_assets SET archived=0 WHERE archived IS NULL").run().catch(() => {});
-    await db.prepare("UPDATE pc_assets SET inventory_status='UNCHECKED' WHERE COALESCE(TRIM(inventory_status),'')=''").run().catch(() => {});
     const verify = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
     const verifyColumns = new Set((verify?.results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
     __pcColumnsReady = PC_REQUIRED_QUERY_COLUMNS.every((column) => verifyColumns.has(column));
@@ -81,6 +81,11 @@ async function ensurePcGuardTriggers(db: D1Database) {
   try {
     const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
     if (Number(row?.ok || 0) !== 1) return;
+    const before = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_pc_assets_serial_non_blank_insert','trg_pc_assets_serial_non_blank_update')").first<any>();
+    if (Number(before?.c || 0) >= 2) {
+      __pcGuardTriggersReady = true;
+      return;
+    }
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
     await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
     const triggerRow = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_pc_assets_serial_non_blank_insert','trg_pc_assets_serial_non_blank_update')").first<any>();

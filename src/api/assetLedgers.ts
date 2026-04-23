@@ -72,7 +72,7 @@ export function listPcAssets(filters: PcFilters, page: number, pageSize: number,
 }
 
 export async function countPcAssets(filters: PcFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus })}`, { signal });
+  const result: any = await apiGet(`/api/pc-assets-count?${toQueryString({ status: filters.status, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus, fast: '0' })}`, { signal });
   return Number(result?.total || 0);
 }
 
@@ -92,7 +92,7 @@ export function listMonitorAssets(filters: MonitorFilters, page: number, pageSiz
 }
 
 export async function countMonitorAssets(filters: MonitorFilters, signal?: AbortSignal) {
-  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus })}`, { signal });
+  const result: any = await apiGet(`/api/monitor-assets-count?${toQueryString({ status: filters.status, location_id: filters.locationId, keyword: filters.keyword, archive_reason: filters.archiveReason, archive_mode: filters.archiveMode && filters.archiveMode !== 'active' ? filters.archiveMode : undefined, show_archived: filters.showArchived || filters.archiveMode !== 'active' ? '1' : undefined, inventory_status: filters.inventoryStatus, fast: '0' })}`, { signal });
   return Number((result?.total ?? result?.data?.total) || 0);
 }
 

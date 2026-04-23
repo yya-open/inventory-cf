@@ -157,7 +157,8 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
 export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
   const status = (url.searchParams.get('status') || '').trim();
   const locationId = Number(url.searchParams.get('location_id') || 0) || 0;
-  const keyword = (url.searchParams.get('keyword') || '').trim();
+  const keywordRaw = (url.searchParams.get('keyword') || '').trim();
+  const keyword = (keywordRaw.length >= 2 || /^\d+$/.test(keywordRaw)) ? keywordRaw : '';
   const inventoryStatus = (url.searchParams.get('inventory_status') || '').trim().toUpperCase();
   const { page, pageSize, offset } = getPageParams(url);
   const showArchived = (url.searchParams.get('show_archived') || '').trim() === '1';

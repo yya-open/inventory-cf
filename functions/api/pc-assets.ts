@@ -27,6 +27,7 @@ import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 
 const ASSET_LIST_CACHE_TTL_MS = 30_000;
 const assetListCache = new Map<string, { expiresAt: number; payload: any }>();
+const assetListPending = new Map<string, Promise<any>>();
 
 function buildAssetListCacheKey(user: any, url: URL) {
   return [String(user?.id || 0), String(user?.role || ''), String(user?.data_scope_type || ''), String(user?.data_scope_value || ''), String(user?.data_scope_value2 || ''), url.searchParams.toString()].join('::');
@@ -49,6 +50,7 @@ function writeAssetListCache(key: string, payload: any) {
 
 function invalidateAssetListCache() {
   assetListCache.clear();
+  assetListPending.clear();
 }
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
@@ -64,8 +66,18 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (cacheable) {
       const cached = readAssetListCache(cacheKey);
       if (cached) return Response.json({ ok: true, ...cached });
+      const pending = assetListPending.get(cacheKey);
+      if (pending) {
+        const payload = await pending;
+        return Response.json({ ok: true, ...payload });
+      }
     }
-    const payload = await listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets);
+    const task = listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets)
+      .finally(() => {
+        if (cacheable && assetListPending.get(cacheKey) === task) assetListPending.delete(cacheKey);
+      });
+    if (cacheable) assetListPending.set(cacheKey, task);
+    const payload = await task;
     if (cacheable) writeAssetListCache(cacheKey, payload);
     return Response.json({ ok: true, ...payload });
   } catch (error: any) {
