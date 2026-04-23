@@ -1500,6 +1500,10 @@ body {
   background: #ffffff;
 }
 
+.app-mobile-drawer .el-overlay {
+  cursor: pointer;
+}
+
 .app-mobile-drawer__header {
   display: flex;
   align-items: center;

@@ -363,10 +363,12 @@ function switchTo(k: WarehouseKey) {
   // 在系统页面也允许跳回仓库，即使当前 activeWarehouse 与目标一致
   if (!isSystem.value && warehouse.active === k) return;
   setWarehouse(k);
+  if (isMobile.value) mobileSidebarVisible.value = false;
   router.push(k === "pc" ? preferredPcRoute(auth.user) : "/stock");
 }
 
 function switchToSystem() {
+  if (isMobile.value) mobileSidebarVisible.value = false;
   router.push(systemEntryPath.value);
 }
 
@@ -463,7 +465,13 @@ function toggleSidebar() {
 
 function handleSidebarMenuSelect() {
   if (!isMobile.value) return;
+  if (!mobileSidebarVisible.value) return;
   mobileSidebarVisible.value = false;
+  trackUiEvent('mobile_sidebar_auto_close', {
+    path: route.path,
+    fullPath: route.fullPath,
+    metadata: { reason: 'menu-select', area: currentArea.value },
+  });
 }
 
 function handleMobileDrawerClose() {

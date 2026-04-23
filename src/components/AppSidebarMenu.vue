@@ -1,5 +1,5 @@
 <template>
-  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }">
+  <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }" @click.capture="handleRootClick">
     <div class="app-sidebar-menu__brand" :title="brandTitle">
       <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
         <el-icon><Box /></el-icon>
@@ -106,6 +106,13 @@ function handleMenuSelect(index: string) {
 }
 
 function handleMenuItemClick(index: string) {
+  emit('menu-select', String(index || ''));
+}
+
+function handleRootClick(event: MouseEvent) {
+  const target = event.target as HTMLElement | null;
+  if (!target?.closest('.el-menu-item')) return;
+  const index = target.closest('.el-menu-item')?.getAttribute('index') || '';
   emit('menu-select', String(index || ''));
 }
 
