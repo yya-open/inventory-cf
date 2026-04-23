@@ -21,6 +21,7 @@
         :index="item.index"
         :title="collapsed ? item.label : undefined"
         class="app-sidebar-menu__item"
+        @click="handleMenuItemClick(item.index)"
       >
         <div class="app-sidebar-menu__item-inner">
           <span class="app-sidebar-menu__item-icon" aria-hidden="true">
@@ -101,6 +102,10 @@ const emit = defineEmits<{
 }>();
 
 function handleMenuSelect(index: string) {
+  emit('menu-select', String(index || ''));
+}
+
+function handleMenuItemClick(index: string) {
   emit('menu-select', String(index || ''));
 }
 

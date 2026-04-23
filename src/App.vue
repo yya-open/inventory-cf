@@ -51,6 +51,7 @@
         :with-header="false"
         :append-to-body="true"
         class="app-mobile-drawer"
+        @close="handleMobileDrawerClose"
       >
         <div class="app-mobile-drawer__header">
           <div class="app-mobile-drawer__title">导航菜单</div>
@@ -462,6 +463,10 @@ function toggleSidebar() {
 
 function handleSidebarMenuSelect() {
   if (!isMobile.value) return;
+  mobileSidebarVisible.value = false;
+}
+
+function handleMobileDrawerClose() {
   mobileSidebarVisible.value = false;
 }
 
