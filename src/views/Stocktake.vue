@@ -425,6 +425,7 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
+import { buildDirtyImportLines, normalizeCountedQtyValue } from '../utils/stocktakeDirtyLines';
 
 const warehouseId = ref(1);
 const isAdmin = computed(() => can("admin"));
@@ -472,6 +473,7 @@ const saving = ref(false);
 const applyPreviewVisible = ref(false);
 const detailTableRef = ref<any>(null);
 const selectedIds = ref<Set<number>>(new Set());
+const baselineCountedById = ref<Map<number, string>>(new Map());
 const workbenchScope = ref<'selected' | 'filtered'>('selected');
 const workbenchSetQty = ref<number | null>(null);
 const workbenchScopeOptions = [
@@ -580,6 +582,11 @@ function applyBatchCountedQty(rows: any[], updater: (row: any) => any) {
     return;
   }
   ElMessage.success(`已批量更新 ${changed} 行`);
+}
+
+function collectDirtyImportLines() {
+  if (!detail.value?.lines?.length) return [] as Array<{ id: number; sku: string; counted_qty: number | null }>;
+  return buildDirtyImportLines(detail.value.lines, dirty.value, baselineCountedById.value);
 }
 
 function batchUseSystemQty() {
@@ -717,8 +724,8 @@ async function loadList(){
     if (listSortBy.value) params.set('sort_by', listSortBy.value);
     if (listSortDir.value) params.set('sort_dir', listSortDir.value);
     const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`);
-    listTotal.value = Number(r.total || 0);
-    list.value = r.data || [];
+    listTotal.value = Number(r?.meta?.total || 0);
+    list.value = Array.isArray(r?.data) ? r.data : [];
   }catch(e:any){
     ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点单失败");
   }
@@ -735,8 +742,10 @@ async function openStocktake(row:any){
 async function loadDetail(id:number){
   try{
     const r:any = await apiGet(`/api/stocktake/detail?id=${id}`);
-    detail.value = r;
+    detail.value = r?.data || r;
+    baselineCountedById.value = new Map((detail.value?.lines || []).map((line: any) => [Number(line?.id || 0), normalizeCountedQtyValue(line?.counted_qty)]));
     dirty.value = new Set();
+    selectedIds.value = new Set();
   }catch(e:any){
     ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点明细失败");
   }
@@ -751,10 +760,12 @@ async function createStocktake(){
   creating.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
+    const createdId = Number(r?.data?.id || 0);
+    if (!createdId) throw new Error('创建返回缺少盘点单 id');
     ElMessage.success("盘点单已创建");
     await loadList();
-	    selectedId.value = Number(r.id);
-	    await loadDetail(Number(r.id));
+	    selectedId.value = createdId;
+	    await loadDetail(createdId);
 	    await nextTick();
 	    scrollToSelected();
   }catch(e:any){
@@ -922,8 +933,10 @@ function beforeUpload(file: File){
       }
 
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
-      ElMessage.success(`导入完成：更新 ${r.updated} 行`);
-      if (r.unknown?.length) ElMessage.warning(`有 ${r.unknown.length} 个 SKU 未识别（已跳过）`);
+      const updated = Number(r?.data?.updated || 0);
+      const unknown = Array.isArray(r?.data?.unknown) ? r.data.unknown : [];
+      ElMessage.success(`导入完成：更新 ${updated} 行`);
+      if (unknown.length) ElMessage.warning(`有 ${unknown.length} 个 SKU 未识别（已跳过）`);
 
       if (errors.length) {
         const preview = errors.slice(0, 8).map((x) => `第${x.row}行【${x.col}】${x.msg}`).join("；");
@@ -948,20 +961,23 @@ function beforeUpload(file: File){
 	  }
   saving.value = true;
   try{
-    const lines = detail.value.lines
-      .filter((l:any)=>dirty.value.has(l.id))
-      .map((l:any)=>{
-        const raw = l.counted_qty;
-        const isEmpty = raw === null || raw === undefined || raw === "";
-        return {
-          sku: l.sku,
-          // When user clears the input, explicitly send null so backend clears counted_qty/diff_qty.
-          counted_qty: isEmpty ? null : Number(raw),
-        };
-      })
-      .filter((x:any)=>x.sku && (x.counted_qty === null || !Number.isNaN(x.counted_qty)));
-    const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
-    ElMessage.success(`已保存：${r.updated} 行`);
+    const lines = collectDirtyImportLines();
+    if (!lines.length) {
+      ElMessage.info('没有需要提交的变更');
+      dirty.value = new Set();
+      return;
+    }
+    const CHUNK_SIZE = 200;
+    let totalUpdated = 0;
+    const unknownSet = new Set<string>();
+    for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
+      const chunk = lines.slice(i, i + CHUNK_SIZE).map((line: { sku: string; counted_qty: number | null }) => ({ sku: line.sku, counted_qty: line.counted_qty }));
+      const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines: chunk });
+      totalUpdated += Number(r?.data?.updated || 0);
+      for (const sku of Array.isArray(r?.data?.unknown) ? r.data.unknown : []) unknownSet.add(String(sku));
+    }
+    ElMessage.success(`已保存：${totalUpdated} 行（共 ${lines.length} 条变更，分 ${Math.ceil(lines.length / CHUNK_SIZE)} 批）`);
+    if (unknownSet.size) ElMessage.warning(`有 ${unknownSet.size} 个 SKU 未识别（已跳过）`);
     await refreshDetail();
   }catch(e:any){
     ElMessage.error(stocktakeErrorHint(e) || e.message || "保存失败");
@@ -983,7 +999,7 @@ async function confirmApplyStocktake(){
     const info = preview?.data || {};
     await ElMessageBox.confirm(`将应用盘点单 ${info.st_no || detail.value.stocktake.st_no}。预检结果：已录入 ${info.counted_rows || 0} 行，其中需调整 ${info.adjusted_rows || 0} 行，盘盈 ${info.increase_rows || 0} 行，盘亏 ${info.decrease_rows || 0} 行。确认继续？`, '应用盘点预检', { type: 'warning', confirmButtonText: '确认应用', cancelButtonText: '取消' });
     const r:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id });
-    ElMessage.success(`已应用：生成 ${r.adjusted} 条调整记录`);
+    ElMessage.success(`已应用：生成 ${Number(r?.data?.adjusted || 0)} 条调整记录`);
     applyPreviewVisible.value = false;
     await refreshDetail();
   }catch(e:any){
@@ -1011,7 +1027,7 @@ async function rollbackStocktake(){
   rolling.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id });
-    ElMessage.success(`撤销成功：恢复 ${r.reversed} 条差异库存`);
+    ElMessage.success(`撤销成功：恢复 ${Number(r?.data?.reversed || 0)} 条差异库存`);
     await loadList();
     await refreshDetail();
   }catch(e:any){
