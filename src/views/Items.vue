@@ -208,6 +208,20 @@
               :value="item"
             />
           </el-select>
+          <div
+            v-if="isAdmin && categoryOptions.length"
+            style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap"
+          >
+            <el-tag
+              v-for="item in categoryOptions"
+              :key="item"
+              closable
+              :disable-transitions="true"
+              @close="onDeleteCategory(item)"
+            >
+              {{ item }}
+            </el-tag>
+          </div>
         </el-form-item>
         <el-form-item label="单位">
           <el-input
@@ -255,6 +269,7 @@ const sortDir = ref<string>("asc");
 const rows = ref<any[]>([]);
 const loading = ref(false);
 const categoryOptions = ref<string[]>([]);
+const deletingCategory = ref<string>("");
 
 const page = ref(1);
 const pageSize = ref(50);
@@ -358,6 +373,44 @@ async function loadCategories(force = false) {
     const j = await apiGet<{ ok: boolean; data: string[] }>("/api/meta/categories");
     categoryOptions.value = Array.isArray(j.data) ? j.data.filter(Boolean) : [];
   } catch {}
+}
+
+async function onDeleteCategory(name: string) {
+  const category = String(name || '').trim();
+  if (!category || deletingCategory.value) return;
+
+  let usageCount = 0;
+  try {
+    const usage = await apiGet<{ ok: boolean; data?: { usage_count?: number } }>(
+      `/api/meta/category-usage?name=${encodeURIComponent(category)}`
+    );
+    usageCount = Number(usage?.data?.usage_count || 0);
+  } catch (e: any) {
+    ElMessage.error(e?.message || '读取分类使用数量失败');
+    return;
+  }
+
+  try {
+    await ElMessageBox.confirm(
+      `确认删除分类：${category}？\n当前分类下配件数量：${usageCount}。\n删除后不可恢复。若数量大于 0，系统将阻止删除。`,
+      '删除分类确认',
+      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+    );
+  } catch {
+    return;
+  }
+
+  try {
+    deletingCategory.value = category;
+    await apiDelete('/api/meta/categories', { name: category });
+    if (String(form.category || '').trim() === category) form.category = '';
+    await loadCategories(true);
+    ElMessage.success('分类已删除');
+  } catch (e: any) {
+    ElMessage.error(e?.message || '删除分类失败');
+  } finally {
+    deletingCategory.value = '';
+  }
 }
 
 async function load() {

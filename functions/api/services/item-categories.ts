@@ -71,3 +71,54 @@ export async function listItemCategories(db: D1Database) {
   ).all<any>();
   return (results || []).map((row) => ({ id: Number(row?.id || 0) || 0, name: String(row?.name || '') }));
 }
+
+export async function countEnabledItemsByCategoryName(db: D1Database, categoryName: unknown) {
+  await ensureItemCategorySchema(db);
+  const normalized = normalizeCategoryName(categoryName);
+  if (!normalized) {
+    throw Object.assign(new Error('分类名称无效'), { status: 400, error_code: 'INVALID_PARAMS' });
+  }
+
+  const row = await db.prepare(`SELECT id, name FROM item_categories WHERE name=? LIMIT 1`).bind(normalized).first<any>();
+  if (!row?.id) return { id: null as number | null, name: normalized, usage_count: 0 };
+
+  const stat = await db.prepare(
+    `SELECT COUNT(*) AS c
+     FROM items
+     WHERE enabled=1
+       AND (category_id=? OR (category_id IS NULL AND TRIM(category)=?))`
+  ).bind(Number(row.id), String(row.name)).first<any>();
+
+  return {
+    id: Number(row.id),
+    name: String(row.name),
+    usage_count: Number(stat?.c || 0),
+  };
+}
+
+export async function deleteItemCategoryByName(db: D1Database, categoryName: unknown) {
+  await ensureItemCategorySchema(db);
+  const normalized = normalizeCategoryName(categoryName);
+  if (!normalized) {
+    throw Object.assign(new Error('分类名称无效'), { status: 400, error_code: 'INVALID_PARAMS' });
+  }
+
+  const row = await db.prepare(`SELECT id, name FROM item_categories WHERE name=? LIMIT 1`).bind(normalized).first<any>();
+  if (!row?.id) {
+    throw Object.assign(new Error('分类不存在'), { status: 404, error_code: 'CATEGORY_NOT_FOUND' });
+  }
+
+  const inUse = await db.prepare(
+    `SELECT COUNT(*) AS c
+     FROM items
+     WHERE enabled=1
+       AND (category_id=? OR (category_id IS NULL AND TRIM(category)=?))`
+  ).bind(Number(row.id), String(row.name)).first<any>();
+
+  if (Number(inUse?.c || 0) > 0) {
+    throw Object.assign(new Error('该分类下仍有配件，不能删除'), { status: 409, error_code: 'CATEGORY_IN_USE' });
+  }
+
+  await db.prepare(`DELETE FROM item_categories WHERE id=?`).bind(Number(row.id)).run();
+  return { id: Number(row.id), name: String(row.name) };
+}
