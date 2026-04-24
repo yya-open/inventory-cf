@@ -1,6 +1,6 @@
 import { errorResponse, json } from '../_auth';
 import { requirePermission } from '../_permissions';
-import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, deleteAsyncJob, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
+import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
 import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';
@@ -97,22 +97,34 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CLEANUP', 'async_jobs', 'housekeeping', result);
       return json(true, result, `已清理：过期结果 ${result.expired_results}，删除旧任务 ${result.purged_rows}，自动取消超时任务 ${result.auto_canceled}`);
     }
-    if (!id) return json(false, null, '缺少任务 id', 400);
     if (action === 'cancel') {
+      if (!id) return json(false, null, '缺少任务 id', 400);
       await cancelAsyncJob(env.DB, id, env.BACKUP_BUCKET);
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CANCEL', 'async_jobs', id, {});
       return json(true, { id }, '已发出取消请求');
     }
     if (action === 'retry') {
+      if (!id) return json(false, null, '缺少任务 id', 400);
       await retryAsyncJob(env.DB, id, env.BACKUP_BUCKET);
       await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
       return json(true, { id }, '任务已重试，后台将继续处理');
     }
     if (action === 'delete') {
+      if (!id) return json(false, null, '缺少任务 id', 400);
       await deleteAsyncJob(env.DB, id, env.BACKUP_BUCKET);
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE', 'async_jobs', id, {});
       return json(true, { id }, '任务已删除');
+    }
+    if (action === 'delete_batch') {
+      const ids = Array.isArray(body?.ids)
+        ? body.ids.map((value: any) => Math.trunc(Number(value || 0))).filter((value: number, index: number, arr: number[]) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index).slice(0, 500)
+        : [];
+      if (!ids.length) return json(false, null, '缺少有效任务 ids', 400);
+      const result = await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
+      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
+      const summary = `批量删除完成：删除 ${result.deleted} 条，跳过运行中 ${result.blocked} 条，缺失 ${result.missing} 条，失败 ${result.failed} 条`;
+      return json(true, result, summary);
     }
     return json(false, null, '不支持的操作', 400);
   } catch (e: any) {

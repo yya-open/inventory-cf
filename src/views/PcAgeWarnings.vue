@@ -347,22 +347,69 @@ async function exportExcel(all: boolean) {
   try {
     loadingRef.value = true;
     const filters = currentFilters();
-    const request_json: Record<string, any> = {
-      scope: all ? 'all' : 'current',
-      age_years: filters.ageYears,
-      page: page.value,
-      page_size: pageSize.value,
-      max_rows: all ? 10000 : undefined,
-    };
-    if (filters.status) request_json.status = filters.status;
-    if (filters.keyword) request_json.keyword = filters.keyword;
-    await apiPost('/api/jobs', { job_type: 'PC_AGE_WARNING_EXPORT', permission_scope: 'async_job_manage', request_json });
-    ElMessage.success(all ? '已创建筛选结果导出任务，请前往 系统 > 运维工具 下载' : '已创建当前页导出任务，请前往 系统 > 运维工具 下载');
+    const rowsToExport = all ? await fetchAllWarningRows(filters) : rows.value;
+    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的报废预警数据');
+    exportToXlsx({
+      filename: `电脑报废预警_${all ? '全部' : '当前页'}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`,
+      sheetName: '报废预警',
+      headers: [
+        { key: 'brand', title: '品牌' },
+        { key: 'model', title: '型号' },
+        { key: 'serial_no', title: '序列号' },
+        { key: 'manufacture_date', title: '出厂时间' },
+        { key: 'age_years', title: '机龄(年)' },
+        { key: 'warranty_end', title: '保修到期' },
+        { key: 'status_text', title: '状态' },
+        { key: 'last_employee_name', title: '当前领用人' },
+        { key: 'last_employee_no', title: '工号' },
+        { key: 'last_department', title: '部门' },
+        { key: 'remark', title: '备注' },
+      ],
+      rows: rowsToExport.map((row: any) => ({
+        brand: row.brand || '',
+        model: row.model || '',
+        serial_no: row.serial_no || '',
+        manufacture_date: row.manufacture_date || '',
+        age_years: calcAgeYears(row.manufacture_date),
+        warranty_end: row.warranty_end || '',
+        status_text: statusLabel(String(row.status || '')),
+        last_employee_name: row.last_employee_name || '',
+        last_employee_no: row.last_employee_no || '',
+        last_department: row.last_department || '',
+        remark: row.remark || '',
+      })),
+    });
+    ElMessage.success(all ? `已导出筛选结果（${rowsToExport.length} 条）` : `已导出当前页（${rowsToExport.length} 条）`);
   } catch (e: any) {
     ElMessage.error(e?.message || '导出失败');
   } finally {
     loadingRef.value = false;
   }
+}
+
+async function fetchAllWarningRows(filters: WarningFilters) {
+  const MAX_ROWS = 10000;
+  const CHUNK = 200;
+  const allRows: any[] = [];
+  let currentPage = 1;
+
+  while (allRows.length < MAX_ROWS) {
+    const qs = new URLSearchParams();
+    qs.set('age_years', String(filters.ageYears));
+    qs.set('page', String(currentPage));
+    qs.set('page_size', String(CHUNK));
+    if (filters.status) qs.set('status', filters.status);
+    if (filters.keyword) qs.set('keyword', filters.keyword);
+    const result = await apiGet<{ data: any[] }>(`/api/pc-assets?${qs.toString()}`);
+    const chunkRows = Array.isArray((result as any)?.data) ? (result as any).data : [];
+    if (!chunkRows.length) break;
+    const remain = MAX_ROWS - allRows.length;
+    allRows.push(...chunkRows.slice(0, remain));
+    if (chunkRows.length < CHUNK) break;
+    currentPage += 1;
+  }
+
+  return allRows;
 }
 
 onMounted(async () => {

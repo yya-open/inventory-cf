@@ -1208,3 +1208,50 @@ export async function deleteAsyncJob(db: D1Database, id: number, bucket?: AsyncJ
   await db.prepare(`DELETE FROM async_jobs WHERE id=?`).bind(id).run();
   return true;
 }
+
+export async function deleteAsyncJobs(db: D1Database, ids: number[], bucket?: AsyncJobResultBucket) {
+  await ensureAsyncJobsTable(db);
+  const normalized = Array.from(new Set((Array.isArray(ids) ? ids : [])
+    .map((value) => Math.trunc(Number(value || 0)))
+    .filter((value) => Number.isFinite(value) && value > 0)));
+
+  const deletedIds: number[] = [];
+  const blockedIds: number[] = [];
+  const missingIds: number[] = [];
+  const failedIds: number[] = [];
+
+  for (const id of normalized) {
+    try {
+      const row = await getAsyncJob(db, id, bucket);
+      if (!row) {
+        missingIds.push(id);
+        continue;
+      }
+      if (['queued', 'running'].includes(String(row.status || ''))) {
+        blockedIds.push(id);
+        continue;
+      }
+      const objectKey = String(row.result_object_key || '').trim();
+      if (objectKey && bucket && typeof bucket.delete === 'function') {
+        try { await bucket.delete(objectKey); } catch {}
+      }
+      await db.prepare(`UPDATE asset_inventory_batch SET snapshot_job_id=NULL WHERE snapshot_job_id=?`).bind(id).run();
+      await db.prepare(`DELETE FROM async_jobs WHERE id=?`).bind(id).run();
+      deletedIds.push(id);
+    } catch {
+      failedIds.push(id);
+    }
+  }
+
+  return {
+    requested: normalized.length,
+    deleted: deletedIds.length,
+    blocked: blockedIds.length,
+    missing: missingIds.length,
+    failed: failedIds.length,
+    deleted_ids: deletedIds,
+    blocked_ids: blockedIds,
+    missing_ids: missingIds,
+    failed_ids: failedIds,
+  };
+}

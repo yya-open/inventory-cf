@@ -711,18 +711,14 @@ async function deleteSelectedJobs() {
     { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
   );
 
+  const loading = ElMessage({ type: 'info', message: '正在批量删除任务，请稍候…', duration: 0, showClose: false });
   batchDeletingJobs.value = true;
   let success = 0;
   let failed = 0;
   try {
-    for (const row of deletableRows) {
-      try {
-        await apiPut('/api/jobs', { action: 'delete', id: row.id });
-        success += 1;
-      } catch {
-        failed += 1;
-      }
-    }
+    const result: any = await apiPut('/api/jobs', { action: 'delete_batch', ids: deletableRows.map((row: any) => Number(row.id)) });
+    success = Number(result?.data?.deleted ?? result?.deleted ?? 0);
+    failed = Number(result?.data?.failed ?? result?.failed ?? 0);
     if (Number(jobDetail.row?.id || 0) > 0 && selected.has(Number(jobDetail.row?.id || 0))) {
       jobDetail.visible = false;
       jobDetail.row = null;
@@ -732,7 +728,10 @@ async function deleteSelectedJobs() {
     selectedJobIds.value = [];
     jobsTableRef.value?.clearSelection?.();
     await loadJobs();
+  } catch (error: any) {
+    ElMessage.error(error?.message || '批量删除任务失败');
   } finally {
+    loading.close();
     batchDeletingJobs.value = false;
   }
 }
