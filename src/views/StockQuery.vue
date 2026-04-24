@@ -107,7 +107,7 @@ import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";
-import { useRouter } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
@@ -120,6 +120,7 @@ type StockFilters = {
 };
 
 const router = useRouter();
+const route = useRoute();
 const warehouseId = useFixedWarehouseId();
 
 const keyword = ref("");
@@ -237,6 +238,11 @@ onBeforeMount(() => {
 });
 
 onActivated(() => {
+  if (route.query.force_refresh === '1') {
+    void router.replace({ path: '/stock', query: {} });
+    void loadView({ forceRefresh: true });
+    return;
+  }
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   void loadView({ silent: rows.value.length > 0, forceRefresh: true });
 });

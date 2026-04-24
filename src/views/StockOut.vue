@@ -74,7 +74,7 @@
         >
           出库
         </el-button>
-        <el-button @click="$router.push('/stock')">
+        <el-button @click="backToStock">
           返回库存
         </el-button>
       </el-form-item>
@@ -86,11 +86,12 @@
 import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { apiGet, apiPost, isApiErrorCode } from "../api/client";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import { useFixedWarehouseId } from "../utils/warehouse";
 
 const route = useRoute();
+const router = useRouter();
 const warehouseId = useFixedWarehouseId();
 
 const items = ref<any[]>([]);
@@ -197,6 +198,10 @@ async function submit() {
   } finally {
     submitting.value = false;
   }
+}
+
+function backToStock() {
+  void router.push({ path: '/stock', query: { force_refresh: '1' } });
 }
 
 onMounted(async () => {
