@@ -10,6 +10,7 @@
     "lint": "eslint src tests eslint.config.js vite.config.ts",
     "typecheck": "vue-tsc --noEmit -p tsconfig.app.json",
     "test": "vitest run --pool=threads --maxWorkers=1",
+    "test:file": "vitest run",
     "test:e2e": "vitest run tests/functions.response.test.ts tests/inventory.store.test.ts --pool=threads --maxWorkers=1",
     "migrate:verify": "node scripts/migrations.mjs verify",
     "migrate:plan": "node scripts/migrations.mjs plan",
