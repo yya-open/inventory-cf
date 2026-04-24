@@ -293,6 +293,9 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
+  } catch (error: any) {
+    if (!opts.silent) ElMessage.error(error?.message || '加载任务列表失败');
+    hasMore.value = false;
   } finally {
     loading.value = false;
     schedulePoll();
@@ -308,6 +311,8 @@ async function loadMoreJobs() {
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
+  } catch (error: any) {
+    ElMessage.error(error?.message || '加载更多任务失败');
   } finally {
     loadingMore.value = false;
   }
