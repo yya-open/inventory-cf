@@ -42,7 +42,7 @@
       <el-input
         v-model="keyword"
         clearable
-        placeholder="关键词：单号/SKU/名称/备注"
+        placeholder="关键词：SKU/名称/备注"
         style="width: 220px"
       />
 
@@ -53,7 +53,6 @@
         @change="onSearch"
       >
         <el-option label="时间" value="created_at" />
-        <el-option label="单号" value="tx_no" />
         <el-option label="数量" value="qty" />
         <el-option label="SKU" value="sku" />
       </el-select>
@@ -107,10 +106,9 @@
       >
         <el-table-column label="时间" width="170">
           <template #default="{row}">
-            {{ formatBeijingDateTime(row.created_at) }}
+            {{ formatBeijingDateTime(row.created_at_bj || row.created_at) }}
           </template>
         </el-table-column>
-        <el-table-column prop="tx_no" label="单号" width="190" />
         <el-table-column prop="type" label="类型" width="120">
           <template #default="{row}">
             <el-tag
@@ -388,11 +386,11 @@ async function doExport() {
 }
 
 function exportCsv() {
-  const headers = ["时间","单号","类型","SKU","名称","仓库","数量","变动","来源","去向","备注"];
+  const headers = ["时间","类型","SKU","名称","仓库","数量","变动","来源","去向","备注"];
   const lines = [headers.map(toCsvCell).join(",")];
   for (const r of rows.value) {
     lines.push([
-      formatBeijingDateTime(r.created_at), r.tx_no, r.type, r.sku, r.name, r.warehouse_name, r.qty,
+      formatBeijingDateTime(r.created_at_bj || r.created_at), r.type, r.sku, r.name, r.warehouse_name, r.qty,
       signedDelta(r),
       r.source || "", r.target || "", r.remark || ""
     ].map(toCsvCell).join(","));

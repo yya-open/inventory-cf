@@ -38,7 +38,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     };
 
     const filename = `stock_tx_${beijingDateStampCompact()}.csv`;
-    const header = ['时间', '单号', '类型', 'SKU', '名称', '仓库', '数量', '变动', '来源', '去向', '备注'];
+    const header = ['时间', '类型', 'SKU', '名称', '仓库', '数量', '变动', '来源', '去向', '备注'];
 
     const { readable, writable } = new TransformStream();
     const writer = writable.getWriter();
@@ -58,7 +58,6 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
           for (const r of rows) {
             const line = [
               r.created_at_bj || r.created_at,
-              r.tx_no,
               r.type,
               r.sku,
               r.name,

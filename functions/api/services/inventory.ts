@@ -348,7 +348,7 @@ export async function countTxRows(db: D1Database, query: TxListQuery) {
 
 export async function listTxRows(db: D1Database, query: TxListQuery) {
   const sql = `
-    SELECT t.*, i.sku, i.name, i.unit, w.name as warehouse_name
+    SELECT t.*, ${sqlBjDateTime('t.created_at')} AS created_at_bj, i.sku, i.name, i.unit, w.name as warehouse_name
     FROM stock_tx t
     JOIN items i ON i.id=t.item_id
     JOIN warehouses w ON w.id=t.warehouse_id
