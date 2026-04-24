@@ -85,8 +85,7 @@ export async function countEnabledItemsByCategoryName(db: D1Database, categoryNa
   const stat = await db.prepare(
     `SELECT COUNT(*) AS c
      FROM items
-     WHERE enabled=1
-       AND (category_id=? OR (category_id IS NULL AND TRIM(category)=?))`
+     WHERE category_id=? OR TRIM(category)=?`
   ).bind(Number(row.id), String(row.name)).first<any>();
 
   return {
@@ -111,8 +110,7 @@ export async function deleteItemCategoryByName(db: D1Database, categoryName: unk
   const inUse = await db.prepare(
     `SELECT COUNT(*) AS c
      FROM items
-     WHERE enabled=1
-       AND (category_id=? OR (category_id IS NULL AND TRIM(category)=?))`
+     WHERE category_id=? OR TRIM(category)=?`
   ).bind(Number(row.id), String(row.name)).first<any>();
 
   if (Number(inUse?.c || 0) > 0) {
