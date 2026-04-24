@@ -220,7 +220,15 @@ export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataSc
   const requested = Number(requestedWarehouseId || 1) || 1;
   if (requested > 0) {
     const row = await db.prepare(`SELECT id, name FROM warehouses WHERE id=?`).bind(requested).first<any>().catch(() => null);
-    if (row) return Number(row.id || requested);
+    if (row) {
+      const normalized = normalizeWarehouseScopeValue(row?.name);
+      if (normalized === '配件仓') return Number(row.id || requested);
+      return -1;
+    }
+  }
+  const fallback = await db.prepare(`SELECT id, name FROM warehouses ORDER BY id ASC`).all<any>().catch(() => ({ results: [] as any[] }));
+  for (const row of Array.isArray(fallback?.results) ? fallback.results : []) {
+    if (normalizeWarehouseScopeValue(row?.name) === '配件仓') return Number(row?.id || 0) || 1;
   }
   return 1;
 }

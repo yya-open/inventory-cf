@@ -2,9 +2,11 @@ import fs from 'node:fs';
 import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
+import { fileURLToPath } from 'node:url';
 import { spawnSync } from 'node:child_process';
 
-const root = path.resolve(path.dirname(new URL(import.meta.url).pathname), '..');
+const scriptPath = fileURLToPath(import.meta.url);
+const root = path.resolve(path.dirname(scriptPath), '..');
 const manifestPath = path.join(root, 'sql', 'migrations.manifest.json');
 const registrySql = `
 CREATE TABLE IF NOT EXISTS schema_migrations (

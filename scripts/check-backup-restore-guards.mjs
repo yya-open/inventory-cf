@@ -25,6 +25,15 @@ function requireIncludes(text, pattern, label) {
   else ok(`${label} 存在`);
 }
 
+function readRequiredSchemaVersion(text) {
+  const match = text.match(/REQUIRED_SCHEMA_VERSION\s*=\s*['"]([^'"]+)['"]/);
+  if (!match) {
+    fail('schema-status.ts 中未找到 REQUIRED_SCHEMA_VERSION');
+    return '';
+  }
+  return String(match[1] || '').trim();
+}
+
 const pkg = JSON.parse(fs.readFileSync(packagePath, 'utf8'));
 const scripts = pkg.scripts || {};
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
@@ -32,6 +41,7 @@ const latest = manifest[manifest.length - 1]?.id || '';
 const schemaStatusText = fs.readFileSync(schemaStatusPath, 'utf8');
 const runtimeSchemaText = fs.readFileSync(runtimeSchemaPath, 'utf8');
 const backupSchemaText = fs.readFileSync(backupSchemaPath, 'utf8');
+const requiredVersion = readRequiredSchemaVersion(schemaStatusText);
 
 console.log('备份/恢复与发布护栏静态检查');
 console.log('------------------------------');
@@ -50,13 +60,17 @@ for (const name of ['typecheck:functions', 'test:guards', 'check:backup-restore-
   else ok(`package.json 已定义脚本 ${name}`);
 }
 
-if (String(latest).trim() !== '202604210010_backup_restore_integrity_guards') {
-  fail(`最新迁移版本应为 202604210010_backup_restore_integrity_guards，当前为 ${latest || '(空)'}`);
+if (!String(latest).trim()) {
+  fail('迁移清单为空，无法确定最新迁移版本');
+} else if (!requiredVersion) {
+  fail(`Schema 状态要求版本为空，当前最新迁移为 ${latest}`);
+} else if (String(latest).trim() !== requiredVersion) {
+  fail(`最新迁移版本与 Schema 状态要求版本不一致：latest=${latest}，required=${requiredVersion}`);
 } else {
   ok('迁移清单已指向最新完整性版本');
 }
 
-requireIncludes(schemaStatusText, 'REQUIRED_SCHEMA_VERSION = "202604210010_backup_restore_integrity_guards"', 'Schema 状态要求版本');
+requireIncludes(schemaStatusText, `REQUIRED_SCHEMA_VERSION = "${requiredVersion}"`, 'Schema 状态要求版本');
 requireIncludes(schemaStatusText, 'restore_job.integrity_status', '恢复任务完整性状态检查');
 requireIncludes(schemaStatusText, 'trg_users_data_scope_valid_insert', '用户范围触发器检查');
 requireIncludes(runtimeSchemaText, 'idx_restore_job_integrity_status', '恢复任务完整性索引');

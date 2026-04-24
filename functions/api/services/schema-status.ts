@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202604210010_backup_restore_integrity_guards";
+export const REQUIRED_SCHEMA_VERSION = "202604210020_ledger_hot_indexes";
 
 type SchemaStatus = {
   ok: boolean;
