@@ -116,13 +116,27 @@ wrangler d1 execute <你的D1库名> --file=sql/migrate_auth_token_version.sql
 
 
 ## 测试与发布前检查
+
+### 全量测试
 ```bash
-npm run test          # 单元 + 工作流级 E2E 风格测试
-npm run test:file -- tests/data-scope.parts-warehouse.test.ts --pool=threads --maxWorkers=1  # 定向执行单个测试文件
-npm run test:e2e      # 只跑关键业务流程测试
+npm run test
+```
+
+### 定向测试（单文件）
+```bash
+npm run test:file -- tests/data-scope.parts-warehouse.test.ts --pool=threads --maxWorkers=1
+```
+
+### E2E 关键流程
+```bash
+npm run test:e2e
+```
+
+### 其它发布前检查
+```bash
 npm run typecheck
 npm run lint
-npm run perf:explain  # 本地用 sqlite explain 检查关键查询是否命中索引
+npm run perf:explain
 ```
 
 当前已覆盖的关键流程测试：
