@@ -1264,8 +1264,10 @@ async function submitBatchOwner() {
 
 async function batchRestoreSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  const restorable = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
+  if (!restorable) return ElMessage.warning('当前选中项中没有已归档电脑');
   try {
-    await confirmBatchRisk('批量恢复归档', `预计恢复 ${selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length} 台电脑。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
+    await confirmBatchRisk('批量恢复归档', `预计恢复 ${restorable} 台电脑。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
     batchBusy.value = true;
     const result: any = await apiPost('/api/pc-assets-bulk', {
       action: 'restore',

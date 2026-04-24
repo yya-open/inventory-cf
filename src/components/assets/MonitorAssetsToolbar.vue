@@ -128,7 +128,7 @@
                       <el-dropdown-item command="export-qr">导出二维码链接</el-dropdown-item>
                       <el-dropdown-item command="export-qr-cards">导出二维码卡片</el-dropdown-item>
                       <el-dropdown-item command="export-qr-png">导出二维码图版</el-dropdown-item>
-                      <el-dropdown-item v-if="canBulkOperation && showArchived" command="batch-restore">批量恢复归档</el-dropdown-item>
+                      <el-dropdown-item v-if="canBulkOperation" command="batch-restore">批量恢复归档</el-dropdown-item>
                       <el-dropdown-item v-if="canBulkOperation" command="batch-status">批量修改状态</el-dropdown-item>
                       <el-dropdown-item v-if="canBulkOperation" command="batch-location">批量修改位置</el-dropdown-item>
                       <el-dropdown-item v-if="canBulkOperation" command="batch-owner">批量修改领用人</el-dropdown-item>
