@@ -85,7 +85,8 @@ export async function countEnabledItemsByCategoryName(db: D1Database, categoryNa
   const stat = await db.prepare(
     `SELECT COUNT(*) AS c
      FROM items
-     WHERE category_id=? OR TRIM(category)=?`
+     WHERE enabled=1
+       AND (category_id=? OR TRIM(category)=?)`
   ).bind(Number(row.id), String(row.name)).first<any>();
 
   return {
@@ -110,12 +111,21 @@ export async function deleteItemCategoryByName(db: D1Database, categoryName: unk
   const inUse = await db.prepare(
     `SELECT COUNT(*) AS c
      FROM items
-     WHERE category_id=? OR TRIM(category)=?`
+     WHERE enabled=1
+       AND (category_id=? OR TRIM(category)=?)`
   ).bind(Number(row.id), String(row.name)).first<any>();
 
   if (Number(inUse?.c || 0) > 0) {
     throw Object.assign(new Error('该分类下仍有配件，不能删除'), { status: 409, error_code: 'CATEGORY_IN_USE' });
   }
+
+  await db.prepare(
+    `UPDATE items
+     SET category_id = NULL,
+         category = CASE WHEN TRIM(category)=? THEN NULL ELSE category END
+     WHERE enabled=0
+       AND (category_id=? OR TRIM(category)=?)`
+  ).bind(String(row.name), Number(row.id), String(row.name)).run();
 
   await db.prepare(`DELETE FROM item_categories WHERE id=?`).bind(Number(row.id)).run();
   return { id: Number(row.id), name: String(row.name) };
