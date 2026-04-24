@@ -78,7 +78,7 @@
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
 import { ElMessage } from "../utils/el-services";
-import { apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useRoute } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -153,6 +153,14 @@ async function submit() {
     form.value.remark = "";
     formRef.value?.clearValidate();
   } catch (e: any) {
+    if (isApiErrorCode(e, 'WRITE_CONFLICT')) {
+      ElMessage.warning('检测到并发写入冲突，请稍后重试');
+      return;
+    }
+    if (isApiErrorCode(e, 'INVALID_PARAMS')) {
+      ElMessage.warning('入库参数无效，请检查配件和数量');
+      return;
+    }
     ElMessage.error(e?.message || "入库失败");
   } finally {
     submitting.value = false;

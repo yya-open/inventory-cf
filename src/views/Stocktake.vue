@@ -277,23 +277,45 @@
                 :options="lineFilterOptions"
                 size="small"
               />
+              <el-segmented
+                v-model="workbenchScope"
+                :options="workbenchScopeOptions"
+                size="small"
+              />
+              <el-input-number
+                v-model="workbenchSetQty"
+                :min="0"
+                :precision="0"
+                size="small"
+                controls-position="right"
+                style="width: 120px"
+                placeholder="数量"
+                :disabled="detail.stocktake.status!=='DRAFT'"
+              />
+              <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchSetCountedQty">批量设为数量</el-button>
+              <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchUseSystemQty">批量等于系统</el-button>
+              <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchClearCountedQty">批量标记未盘</el-button>
               <el-button size="small" @click="exportStocktakeReport">导出结果报表</el-button>
               <div
                 class="muted"
                 style="margin-left:auto;"
               >
-                共 {{ filteredLines.length }} 条明细
+                共 {{ filteredLines.length }} 条明细，已选 {{ selectedRows.length }} 条
               </div>
             </div>
 
             <el-table
+              ref="detailTableRef"
               :data="filteredLines"
               height="520"
               stripe
               size="small"
               border
+              row-key="id"
               :row-class-name="detailRowClassName"
+              @selection-change="onDetailSelectionChange"
             >
+              <el-table-column type="selection" width="46" reserve-selection />
               <el-table-column
                 prop="sku"
                 label="SKU"
@@ -400,7 +422,7 @@ import { ref, computed, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
-import { apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
 
@@ -448,6 +470,14 @@ const applying = ref(false);
 const rolling = ref(false);
 const saving = ref(false);
 const applyPreviewVisible = ref(false);
+const detailTableRef = ref<any>(null);
+const selectedIds = ref<Set<number>>(new Set());
+const workbenchScope = ref<'selected' | 'filtered'>('selected');
+const workbenchSetQty = ref<number | null>(null);
+const workbenchScopeOptions = [
+  { label: '处理已选', value: 'selected' },
+  { label: '处理筛选结果', value: 'filtered' },
+];
 
 const dirty = ref<Set<number>>(new Set());
 
@@ -465,6 +495,12 @@ const filteredLines = computed(()=>{
     if (lineFilter.value === 'pending') return !counted;
     return true;
   });
+});
+
+const selectedRows = computed(() => {
+  const ids = selectedIds.value;
+  if (!ids.size) return [] as any[];
+  return filteredLines.value.filter((row: any) => ids.has(Number(row?.id || 0)));
 });
 
 const stocktakePreview = computed(() => {
@@ -500,6 +536,74 @@ const applyPreviewRows = computed(() => {
     .filter((line: any) => line.diffType !== 'same')
     .slice(0, 20);
 });
+
+function stocktakeErrorHint(e: unknown) {
+  if (isApiErrorCode(e, 'MISSING_STOCKTAKE_ID')) return '缺少盘点单标识，请刷新后重试';
+  if (isApiErrorCode(e, 'STOCKTAKE_NOT_FOUND')) return '盘点单不存在或已删除，请刷新列表';
+  if (isApiErrorCode(e, 'STOCKTAKE_NOT_DRAFT')) return '当前盘点单不是草稿状态，无法执行该操作';
+  if (isApiErrorCode(e, 'STOCKTAKE_ALREADY_APPLIED')) return '该盘点单已被应用，请先刷新详情';
+  if (isApiErrorCode(e, 'STOCKTAKE_NOT_APPLIED')) return '仅已应用盘点单可撤销';
+  if (isApiErrorCode(e, 'STOCKTAKE_INVALID_STATUS')) return '盘点单状态异常，请刷新后重试';
+  if (isApiErrorCode(e, 'STOCKTAKE_STATUS_CHANGED')) return '盘点单状态已变化，请刷新后重试';
+  if (isApiErrorCode(e, 'STOCKTAKE_APPLY_NOT_FINALIZED')) return '盘点应用未完成，请稍后刷新核对';
+  if (isApiErrorCode(e, 'EMPTY_IMPORT_LINES')) return '导入内容为空，请检查文件后重试';
+  if (isApiErrorCode(e, 'EMPTY_SKU')) return '导入数据缺少有效 SKU，请检查模板内容';
+  return '';
+}
+
+function onDetailSelectionChange(rows: any[]) {
+  selectedIds.value = new Set((rows || []).map((row: any) => Number(row?.id || 0)).filter((id: number) => Number.isFinite(id) && id > 0));
+}
+
+function resolveWorkbenchRows() {
+  if (workbenchScope.value === 'filtered') return filteredLines.value;
+  const rows = selectedRows.value;
+  if (!rows.length) {
+    ElMessage.warning('请先勾选要处理的盘点明细');
+    return null;
+  }
+  return rows;
+}
+
+function applyBatchCountedQty(rows: any[], updater: (row: any) => any) {
+  let changed = 0;
+  for (const row of rows) {
+    const before = row?.counted_qty;
+    const next = updater(row);
+    if (String(before ?? '') === String(next ?? '')) continue;
+    row.counted_qty = next;
+    markDirty(row);
+    changed += 1;
+  }
+  if (!changed) {
+    ElMessage.info('没有需要更新的行');
+    return;
+  }
+  ElMessage.success(`已批量更新 ${changed} 行`);
+}
+
+function batchUseSystemQty() {
+  const rows = resolveWorkbenchRows();
+  if (!rows) return;
+  applyBatchCountedQty(rows, (row) => Number(row?.system_qty || 0));
+}
+
+function batchClearCountedQty() {
+  const rows = resolveWorkbenchRows();
+  if (!rows) return;
+  applyBatchCountedQty(rows, () => '');
+}
+
+function batchSetCountedQty() {
+  const rows = resolveWorkbenchRows();
+  if (!rows) return;
+  const qty = Number(workbenchSetQty.value);
+  if (!Number.isFinite(qty) || qty < 0) {
+    ElMessage.warning('请输入有效的批量数量（>= 0）');
+    return;
+  }
+  applyBatchCountedQty(rows, () => qty);
+}
 
 
 
@@ -555,7 +659,7 @@ async function deleteStocktake(row:any){
     }
     await loadList();
   }catch(e:any){
-    ElMessage.error(e.message || "删除失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "删除失败");
   }
 }
 
@@ -616,7 +720,7 @@ async function loadList(){
     listTotal.value = Number(r.total || 0);
     list.value = r.data || [];
   }catch(e:any){
-    ElMessage.error(e.message || "加载盘点单失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点单失败");
   }
 }
 
@@ -634,7 +738,7 @@ async function loadDetail(id:number){
     detail.value = r;
     dirty.value = new Set();
   }catch(e:any){
-    ElMessage.error(e.message || "加载盘点明细失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点明细失败");
   }
 }
 
@@ -654,7 +758,7 @@ async function createStocktake(){
 	    await nextTick();
 	    scrollToSelected();
   }catch(e:any){
-    ElMessage.error(e.message || "创建失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "创建失败");
   }finally{
     creating.value = false;
   }
@@ -828,7 +932,7 @@ function beforeUpload(file: File){
 
       await refreshDetail();
     }catch(err:any){
-      ElMessage.error(err.message || "导入失败");
+      ElMessage.error(stocktakeErrorHint(err) || err.message || "导入失败");
     }
   };
   reader.readAsArrayBuffer(file);
@@ -860,7 +964,7 @@ function beforeUpload(file: File){
     ElMessage.success(`已保存：${r.updated} 行`);
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(e.message || "保存失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "保存失败");
   }finally{
     saving.value = false;
   }
@@ -884,7 +988,7 @@ async function confirmApplyStocktake(){
     await refreshDetail();
   }catch(e:any){
     if (e === 'cancel' || e === 'close') return;
-    ElMessage.error(e.message || "应用失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "应用失败");
   }finally{
     applying.value = false;
   }
@@ -911,7 +1015,7 @@ async function rollbackStocktake(){
     await loadList();
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(e.message || "撤销失败");
+    ElMessage.error(stocktakeErrorHint(e) || e.message || "撤销失败");
   }finally{
     rolling.value = false;
   }

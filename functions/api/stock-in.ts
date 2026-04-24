@@ -4,6 +4,7 @@ import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
 import { GuardRollbackError, isGuardRollback } from "./_write";
 import { sqlNowStored } from "./_time";
+import { apiFail, apiOk } from './_response';
 
 function txNo() {
   return `IN-${crypto.randomUUID()}`;
@@ -16,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, user, Number(warehouse_id || 1), "配件入库");
 
     const q = Number(qty);
-    if (!item_id || !q || q <= 0) return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
+    if (!item_id || !q || q <= 0) return apiFail('参数错误', { status: 400, errorCode: 'INVALID_PARAMS' });
 
     const no = txNo();
     const rid = normalizeClientRequestId(client_request_id);
@@ -72,9 +73,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!insertedRow?.tx_no) {
       if (refNo) {
         const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
-        if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
+        if (exist?.tx_no) return apiOk({ tx_no: exist.tx_no, duplicate: true });
       }
-      return Response.json({ ok: false, message: "入库失败" }, { status: 500 });
+      return apiFail('入库失败', { status: 500, errorCode: 'STOCK_IN_FAILED' });
     }
 
     // Best-effort audit (don't fail the already-committed business operation)
@@ -86,10 +87,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       source: source ?? null,
       remark: remark ?? null,
     }).catch(() => {}));
-    return Response.json({ ok: true, tx_no: no });
+    return apiOk({ tx_no: no });
   } catch (e: any) {
     if (e instanceof GuardRollbackError) {
-      return Response.json({ ok: false, message: "入库写入发生并发冲突，本次已回滚，请重试" }, { status: 409 });
+      return apiFail('入库写入发生并发冲突，本次已回滚，请重试', { status: 409, errorCode: 'WRITE_CONFLICT' });
     }
     return errorResponse(e);
   }

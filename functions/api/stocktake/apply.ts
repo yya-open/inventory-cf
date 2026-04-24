@@ -4,6 +4,7 @@ import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeAdjustTxNo } from '../services/stocktake';
 import { assertPartsStocktakeAccess, getUserDataScope } from '../services/data-scope';
+import { apiFail, apiOk } from '../_response';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
@@ -12,16 +13,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const body = await request.json().catch(() => ({} as any));
     const previewOnly = Boolean((body as any).preview_only);
     const st_id = Number((body as any).id);
-    if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
+    if (!st_id) return apiFail('缺少盘点单 id', { status: 400, errorCode: 'MISSING_STOCKTAKE_ID' });
 
     await assertPartsStocktakeAccess(env.DB, scopedUser as any, st_id, '库存盘点');
     const st = await getStocktakeById(env.DB, st_id);
-    if (!st) return Response.json({ ok: false, message: '盘点单不存在' }, { status: 404 });
+    if (!st) return apiFail('盘点单不存在', { status: 404, errorCode: 'STOCKTAKE_NOT_FOUND' });
 
     const status = String(st.status || '');
-    if (status === 'APPLIED') return Response.json({ ok: false, message: '盘点单已应用' }, { status: 409 });
+    if (status === 'APPLIED') return apiFail('盘点单已应用', { status: 409, errorCode: 'STOCKTAKE_ALREADY_APPLIED' });
     if (status !== 'DRAFT' && status !== 'APPLYING') {
-      return Response.json({ ok: false, message: '盘点单状态异常，无法应用' }, { status: 409 });
+      return apiFail('盘点单状态异常，无法应用', { status: 409, errorCode: 'STOCKTAKE_INVALID_STATUS' });
     }
 
     if (status === 'DRAFT') {
@@ -29,9 +30,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       if ((up as any)?.meta?.changes !== 1) {
         const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
         if (String(cur?.status) === 'APPLIED') {
-          return Response.json({ ok: false, message: '盘点单已应用' }, { status: 409 });
+          return apiFail('盘点单已应用', { status: 409, errorCode: 'STOCKTAKE_ALREADY_APPLIED' });
         }
-        return Response.json({ ok: false, message: '盘点单状态已变化，请刷新后重试' }, { status: 409 });
+        return apiFail('盘点单状态已变化，请刷新后重试', { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
       }
     }
 
@@ -46,12 +47,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       decrease_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) < 0).length,
     };
     if (previewOnly) {
-      return Response.json({ ok: true, preview: true, data: {
+      return apiOk({ preview: true,
         stocktake_id: st_id,
         st_no: st.st_no,
         status,
         ...preview,
-      } });
+      });
     }
 
     let adjusted = 0;
@@ -100,7 +101,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if ((done as any)?.meta?.changes !== 1) {
       const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
       if (String(cur?.status) !== 'APPLIED') {
-        return Response.json({ ok: false, message: '盘点单状态异常，未能完成应用' }, { status: 409 });
+        return apiFail('盘点单状态异常，未能完成应用', { status: 409, errorCode: 'STOCKTAKE_APPLY_NOT_FINALIZED' });
       }
     }
 
@@ -111,7 +112,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }).catch(() => {})
     );
 
-    return Response.json({ ok: true, adjusted });
+    return apiOk({ adjusted });
   } catch (e: any) {
     return errorResponse(e);
   }

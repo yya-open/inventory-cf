@@ -4,6 +4,7 @@ import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
 import { GuardRollbackError, isGuardRollback } from "./_write";
 import { sqlNowStored } from "./_time";
+import { apiFail, apiOk } from './_response';
 
 function txNo() {
   const d = new Date();
@@ -25,7 +26,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const tgt = String(target ?? "").trim();
 
     if (!item_id || !q || q <= 0 || !tgt) {
-      return Response.json({ ok: false, message: "参数错误" }, { status: 400 });
+      return apiFail('参数错误', { status: 400, errorCode: 'INVALID_PARAMS' });
     }
 
     const no = txNo();
@@ -88,9 +89,9 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!insertedRow?.tx_no) {
       if (refNo) {
         const exist = await env.DB.prepare(`SELECT tx_no FROM stock_tx WHERE ref_no=? LIMIT 1`).bind(refNo).first<any>();
-        if (exist?.tx_no) return Response.json({ ok: true, tx_no: exist.tx_no, duplicate: true });
+        if (exist?.tx_no) return apiOk({ tx_no: exist.tx_no, duplicate: true });
       }
-      return Response.json({ ok: false, message: "库存不足，无法出库" }, { status: 409 });
+      return apiFail('库存不足，无法出库', { status: 409, errorCode: 'INSUFFICIENT_STOCK' });
     }
 
     // Best-effort audit (do not block main flow)
@@ -101,10 +102,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       target: tgt,
       remark: remark ?? null,
     }).catch(() => {}));
-    return Response.json({ ok: true, tx_no: no });
+    return apiOk({ tx_no: no });
   } catch (e: any) {
     if (e instanceof GuardRollbackError) {
-      return Response.json({ ok: false, message: "并发出库冲突，本次已回滚，请重试" }, { status: 409 });
+      return apiFail('并发出库冲突，本次已回滚，请重试', { status: 409, errorCode: 'WRITE_CONFLICT' });
     }
     return errorResponse(e);
   }

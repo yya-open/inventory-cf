@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
+import { apiFail } from '../../_response';
 import { logAudit } from '../../_audit';
 import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
 import { createBackupJsonStream } from '../_backup_helpers';
@@ -50,11 +51,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     const jobId = String(body?.id || '').trim();
     const maxRows = Math.min(Math.max(Number(body?.max_rows || 800), 50), 5000);
     const maxMs = Math.min(Math.max(Number(body?.max_ms || 8000), 1000), 25000);
-    if (!jobId) return Response.json({ ok: false, message: '缺少 id' }, { status: 400 });
-    if (!env.BACKUP_BUCKET) return Response.json({ ok: false, message: '未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。' }, { status: 500 });
+    if (!jobId) return apiFail('缺少 id', { status: 400, errorCode: 'RESTORE_JOB_ID_REQUIRED' });
+    if (!env.BACKUP_BUCKET) return apiFail('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。', { status: 500, errorCode: 'BACKUP_BUCKET_NOT_BOUND' });
 
     const job = await env.DB.prepare(`SELECT * FROM restore_job WHERE id=?`).bind(jobId).first<any>();
-    if (!job) return Response.json({ ok: false, message: '任务不存在' }, { status: 404 });
+    if (!job) return apiFail('任务不存在', { status: 404, errorCode: 'RESTORE_JOB_NOT_FOUND' });
     if (job.status === 'DONE') return json(true, { id: jobId, status: 'DONE', stage: job.stage, integrity_status: job.integrity_status || null, more: false });
     if (job.status === 'FAILED') return json(true, { id: jobId, status: 'FAILED', stage: job.stage, integrity_status: job.integrity_status || null, more: false, last_error: job.last_error || null });
 
@@ -77,14 +78,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         return json(true, { id: jobId, status: 'RUNNING', stage: 'SCAN', snapshot_status: 'DONE', integrity_status: job.integrity_status || 'PENDING', more: true });
       } catch (e: any) {
         await env.DB.prepare(`UPDATE restore_job SET status='FAILED', snapshot_status='FAILED', integrity_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
-        return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
+        return apiFail(String(e?.message || e), { status: 500, errorCode: 'RESTORE_SNAPSHOT_FAILED' });
       }
     }
 
     const obj = await env.BACKUP_BUCKET.get(job.file_key);
     if (!obj?.body) {
       await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind('R2 文件不存在或已被删除', jobId).run();
-      return Response.json({ ok: false, message: 'R2 文件不存在或已被删除' }, { status: 500 });
+      return apiFail('R2 文件不存在或已被删除', { status: 500, errorCode: 'RESTORE_R2_FILE_MISSING' });
     }
 
     if (job.stage === 'SCAN') {
@@ -104,13 +105,13 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
         recomputed_integrity: validation.recomputedIntegrity,
         actual_row_counts: validation.actualRowCounts,
       };
-      if (!validation.ok) {
-        const message = validation.issues.filter((item) => item.severity === 'error').map((item) => item.message).join('；') || '备份校验失败';
-        await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', backup_version=?, validation_json=?, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`)
-          .bind(validation.version || null, JSON.stringify(validationJson), message, jobId).run();
-        waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_VALIDATE_FAILED', 'restore_job', jobId, validationJson).catch(() => {}));
-        return Response.json({ ok: false, message }, { status: 400 });
-      }
+        if (!validation.ok) {
+          const message = validation.issues.filter((item) => item.severity === 'error').map((item) => item.message).join('；') || '备份校验失败';
+          await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', backup_version=?, validation_json=?, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`)
+            .bind(validation.version || null, JSON.stringify(validationJson), message, jobId).run();
+          waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_VALIDATE_FAILED', 'restore_job', jobId, validationJson).catch(() => {}));
+          return apiFail(message, { status: 400, errorCode: 'BACKUP_VALIDATE_FAILED' });
+        }
 
       const tables = getBackupTablesObject(backup);
       for (const [t, rows] of Object.entries(tables)) {
@@ -286,7 +287,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       });
     } catch (e: any) {
       await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', error_count=error_count+1, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
-      return Response.json({ ok: false, message: String(e?.message || e) }, { status: 500 });
+      return apiFail(String(e?.message || e), { status: 500, errorCode: 'RESTORE_RUN_FAILED' });
     }
   } catch (e: any) {
     return errorResponse(e);

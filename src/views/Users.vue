@@ -234,7 +234,7 @@ import { computed, onMounted, ref, watch } from "vue";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import { apiGet, apiPost, apiPut, apiDelete } from "../api/client";
+import { apiGet, apiPost, apiPut, apiDelete, isApiErrorCode } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
 import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
@@ -323,6 +323,19 @@ function roleText(r: string) {
   return r==="admin" ? "管理员" : r==="operator" ? "操作员" : "只读";
 }
 
+function userErrorHint(e: unknown) {
+  if (isApiErrorCode(e, 'USER_USERNAME_REQUIRED')) return '请先填写用户账号';
+  if (isApiErrorCode(e, 'USER_PASSWORD_POLICY_INVALID')) return '密码不符合规则，请检查复杂度要求';
+  if (isApiErrorCode(e, 'USER_ROLE_INVALID')) return '角色配置无效，请刷新页面后重试';
+  if (isApiErrorCode(e, 'USERNAME_ALREADY_EXISTS')) return '该账号已存在，请更换用户名';
+  if (isApiErrorCode(e, 'USER_NOT_FOUND')) return '目标用户不存在，可能已被删除';
+  if (isApiErrorCode(e, 'USER_ID_INVALID')) return '用户标识无效，请刷新后重试';
+  if (isApiErrorCode(e, 'USER_SELF_DISABLE_FORBIDDEN')) return '不能禁用当前登录账号';
+  if (isApiErrorCode(e, 'USER_SELF_DELETE_FORBIDDEN')) return '不能删除当前登录账号';
+  if (isApiErrorCode(e, 'USER_LAST_ADMIN_REQUIRED')) return '系统至少需要保留一个启用的管理员账号';
+  return '';
+}
+
 async function load() {
   loading.value = true;
   try {
@@ -337,7 +350,7 @@ async function load() {
     rows.value = r.data || [];
     total.value = Number((r as any).meta?.total || 0);
   } catch (e:any) {
-    ElMessage.error(e.message || "加载失败");
+    ElMessage.error(userErrorHint(e) || e.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -373,7 +386,7 @@ async function previewScope(payload: { data_scope_type: string; data_scope_value
     previewTargetPath.value = scopePreview.value?.route_checks?.find((item:any) => item.enabled)?.path || scopePreview.value?.route_checks?.[0]?.path || '';
     showScopePreview.value = true;
   } catch (e: any) {
-    ElMessage.error(e.message || '预览失败');
+    ElMessage.error(userErrorHint(e) || e.message || '预览失败');
   }
 }
 
@@ -422,7 +435,7 @@ async function createUser() {
     showCreate.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(e.message || "创建失败");
+    ElMessage.error(userErrorHint(e) || e.message || "创建失败");
   } finally {
     saving.value = false;
   }
@@ -456,7 +469,7 @@ async function saveEdit() {
     showEdit.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(e.message || "更新失败");
+    ElMessage.error(userErrorHint(e) || e.message || "更新失败");
   } finally {
     saving.value = false;
   }
@@ -479,7 +492,7 @@ async function doReset() {
     showReset.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(e.message || "重置失败");
+    ElMessage.error(userErrorHint(e) || e.message || "重置失败");
   } finally {
     saving.value = false;
   }
@@ -498,7 +511,7 @@ async function delUser(row: Row) {
     ElMessage.success("已删除");
     await load();
   } catch (e: any) {
-    ElMessage.error(e.message || "删除失败");
+    ElMessage.error(userErrorHint(e) || e.message || "删除失败");
   } finally {
     saving.value = false;
   }

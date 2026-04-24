@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse, json } from '../../../_auth';
+import { apiFail } from '../../_response';
 import { logAudit } from '../../_audit';
 import { ensureCoreSchema } from '../../_schema';
 import { nowIso } from './_util';
@@ -19,7 +20,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
 
     const ct = request.headers.get('content-type') || '';
     if (!ct.includes('multipart/form-data')) {
-      return Response.json({ ok: false, message: '请使用 multipart/form-data 上传备份文件' }, { status: 400 });
+      return apiFail('请使用 multipart/form-data 上传备份文件', { status: 400, errorCode: 'RESTORE_MULTIPART_REQUIRED' });
     }
 
     const form = await request.formData();
@@ -28,12 +29,12 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     const confirm = String(form.get('confirm') || '').trim();
     const expected = expectedConfirmText(mode);
     if (confirm !== expected) {
-      return Response.json({ ok: false, message: '二次确认不通过', expected }, { status: 400 });
+      return apiFail('二次确认不通过', { status: 400, errorCode: 'RESTORE_CONFIRM_INVALID', meta: { expected } });
     }
 
     const file = form.get('file');
-    if (!(file instanceof File)) return Response.json({ ok: false, message: '缺少 file' }, { status: 400 });
-    if (!env.BACKUP_BUCKET) return Response.json({ ok: false, message: '未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。' }, { status: 500 });
+    if (!(file instanceof File)) return apiFail('缺少 file', { status: 400, errorCode: 'RESTORE_FILE_MISSING' });
+    if (!env.BACKUP_BUCKET) return apiFail('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。', { status: 500, errorCode: 'BACKUP_BUCKET_NOT_BOUND' });
 
     const jobId = crypto.randomUUID();
     const key = `restore/${jobId}/${file.name || 'backup.json'}`;

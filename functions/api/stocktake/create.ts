@@ -1,5 +1,6 @@
 import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
+import { apiOk } from '../_response';
 import { createStocktake, generateStocktakeNo } from '../services/stocktake';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
@@ -21,7 +22,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       );
     }
 
-    return Response.json({ ok: true, id, st_no: stNo });
+    return apiOk({ id, st_no: stNo });
   } catch (e: any) {
     return errorResponse(e);
   }

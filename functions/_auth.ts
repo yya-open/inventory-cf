@@ -236,12 +236,13 @@ async function requireAuthInternal(
   return user;
 }
 
-export function json(ok: boolean, data?: any, message?: string, status = 200) {
-  return Response.json({ ok, data, message }, { status });
+export function json(ok: boolean, data?: any, message?: string, status = 200, errorCode?: string) {
+  return Response.json({ ok, data, message, error_code: errorCode }, { status });
 }
 
 export function errorResponse(e: any) {
   const status = Number(e?.status || 500);
   const msg = e?.message || "服务异常";
-  return json(false, null, msg, status);
+  const errorCode = String(e?.error_code || e?.code || '').trim() || undefined;
+  return json(false, null, msg, status, errorCode);
 }

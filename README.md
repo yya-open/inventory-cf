@@ -132,6 +132,8 @@ npm run test:file -- tests/data-scope.parts-warehouse.test.ts --pool=threads --m
 npm run test:e2e
 ```
 
+错误码约定与前端处理方式请参考：`docs/error-codes.md`
+
 ### 其它发布前检查
 ```bash
 npm run typecheck

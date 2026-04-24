@@ -1,5 +1,6 @@
 import { errorResponse } from '../_auth';
 import { logAudit } from '../_audit';
+import { apiFail, apiOk } from '../_response';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeRollbackTxNo } from '../services/stocktake';
 import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
@@ -9,16 +10,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requireAuthWithDataScope(env, request, 'admin');
     const { id } = await request.json();
     const st_id = Number(id);
-    if (!st_id) return Response.json({ ok: false, message: '缺少盘点单 id' }, { status: 400 });
+    if (!st_id) return apiFail('缺少盘点单 id', { status: 400, errorCode: 'MISSING_STOCKTAKE_ID' });
 
     try {
       await assertPartsStocktakeAccess(env.DB, user, st_id, '库存盘点');
       const st = await getStocktakeById(env.DB, st_id);
-      if (!st) return Response.json({ ok: false, message: '盘点单不存在' }, { status: 404 });
+      if (!st) return apiFail('盘点单不存在', { status: 404, errorCode: 'STOCKTAKE_NOT_FOUND' });
 
       const status = String(st.status || '');
       if (status !== 'APPLIED' && status !== 'ROLLING') {
-        return Response.json({ ok: false, message: '仅已应用盘点单可撤销' }, { status: 400 });
+        return apiFail('仅已应用盘点单可撤销', { status: 400, errorCode: 'STOCKTAKE_NOT_APPLIED' });
       }
 
       if (status === 'APPLIED') {
@@ -26,7 +27,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
         if ((up as any)?.meta?.changes !== 1) {
           const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
           if (String(cur?.status) !== 'ROLLING') {
-            return Response.json({ ok: false, message: '盘点单状态已变化，请刷新后重试' }, { status: 409 });
+            return apiFail('盘点单状态已变化，请刷新后重试', { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
           }
         }
       }
@@ -84,10 +85,10 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       waitUntil(
         logAudit(env.DB, request, user, 'STOCKTAKE_ROLLBACK', 'stocktake', st_id, { st_no: stNo, reversed }).catch(() => {})
       );
-      return Response.json({ ok: true, reversed });
+      return apiOk({ reversed });
     } catch (e: any) {
       if (String(e?.message || '').includes('状态已变化')) {
-        return Response.json({ ok: false, message: e.message }, { status: 409 });
+        return apiFail(e.message, { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
       }
       throw e;
     }

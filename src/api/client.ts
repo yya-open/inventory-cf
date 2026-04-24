@@ -3,8 +3,60 @@ import { getAuthRequestEpoch, getAuthSessionKey, useAuth } from "../store/auth";
 import type { Schema } from './schema';
 
 type RequestOptions = { handleUnauthorized?: boolean; credentials?: RequestCredentials };
-type ApiError = Error & { status?: number; response?: any };
-export type ApiEnvelope<T> = { ok: boolean; data?: T; message?: string; meta?: Record<string, unknown> };
+type ApiError = Error & { status?: number; response?: any; error_code?: string };
+export type ApiEnvelope<T> = { ok: boolean; data?: T; message?: string; error_code?: string; meta?: Record<string, unknown> };
+export type ApiErrorCode =
+  | 'SCOPE_DEPARTMENT_DENIED'
+  | 'SCOPE_WAREHOUSE_DENIED'
+  | 'SCOPE_PARTS_WAREHOUSE_DENIED'
+  | 'INVALID_PARAMS'
+  | 'STOCK_IN_FAILED'
+  | 'INSUFFICIENT_STOCK'
+  | 'WRITE_CONFLICT'
+  | 'MISSING_STOCKTAKE_ID'
+  | 'STOCKTAKE_NOT_FOUND'
+  | 'STOCKTAKE_ALREADY_APPLIED'
+  | 'STOCKTAKE_INVALID_STATUS'
+  | 'STOCKTAKE_STATUS_CHANGED'
+  | 'STOCKTAKE_APPLY_NOT_FINALIZED'
+  | 'STOCKTAKE_NOT_DRAFT'
+  | 'STOCKTAKE_NOT_APPLIED'
+  | 'EMPTY_IMPORT_LINES'
+  | 'EMPTY_SKU'
+  | 'USER_USERNAME_REQUIRED'
+  | 'USER_PASSWORD_POLICY_INVALID'
+  | 'USER_ROLE_INVALID'
+  | 'USERNAME_ALREADY_EXISTS'
+  | 'USER_ID_INVALID'
+  | 'USER_NOT_FOUND'
+  | 'USER_SELF_DISABLE_FORBIDDEN'
+  | 'USER_LAST_ADMIN_REQUIRED'
+  | 'USER_SELF_DELETE_FORBIDDEN'
+  | 'RESTORE_MULTIPART_REQUIRED'
+  | 'RESTORE_CONFIRM_INVALID'
+  | 'RESTORE_FILE_MISSING'
+  | 'BACKUP_BUCKET_NOT_BOUND'
+  | 'RESTORE_JOB_ID_REQUIRED'
+  | 'RESTORE_JOB_NOT_FOUND'
+  | 'RESTORE_SNAPSHOT_FAILED'
+  | 'RESTORE_R2_FILE_MISSING'
+  | 'BACKUP_VALIDATE_FAILED'
+  | 'RESTORE_RUN_FAILED';
+
+const API_ERROR_MESSAGE_MAP: Record<string, string> = {
+  SCOPE_DEPARTMENT_DENIED: '当前账号的数据范围不包含该部门，请联系管理员调整权限范围。',
+  SCOPE_WAREHOUSE_DENIED: '当前账号的数据范围不包含该仓库，请联系管理员调整权限范围。',
+  SCOPE_PARTS_WAREHOUSE_DENIED: '当前账号未授权访问该配件仓，请联系管理员调整权限范围。',
+  USER_LAST_ADMIN_REQUIRED: '系统至少需要保留一个启用的管理员账号。',
+  USER_SELF_DISABLE_FORBIDDEN: '不能禁用当前登录账号。',
+  USER_SELF_DELETE_FORBIDDEN: '不能删除当前登录账号。',
+  USER_ROLE_INVALID: '角色无效，请刷新页面后重试。',
+  USER_NOT_FOUND: '目标用户不存在，可能已被删除。',
+  BACKUP_BUCKET_NOT_BOUND: '系统未绑定备份存储桶，请联系管理员检查部署配置。',
+  RESTORE_CONFIRM_INVALID: '恢复任务二次确认未通过，请按提示输入确认文本。',
+  BACKUP_VALIDATE_FAILED: '备份文件校验失败，请检查版本和完整性后重试。',
+  WRITE_CONFLICT: '检测到并发写入冲突，请刷新数据后重试。',
+};
 
 function handleUnauthorized(message: string | undefined, requestEpoch?: number, sessionKey?: string): never {
   if ((typeof requestEpoch === "number" && requestEpoch !== getAuthRequestEpoch()) || (typeof sessionKey === 'string' && sessionKey && sessionKey !== getAuthSessionKey())) {
@@ -29,10 +81,12 @@ async function parseJson(r: Response) {
   }
 }
 
-function buildError(message: string, status: number, response: any): ApiError {
-  const err = new Error(message) as ApiError;
+function buildError(message: string, status: number, response: any, errorCode?: string): ApiError {
+  const mapped = errorCode ? API_ERROR_MESSAGE_MAP[errorCode] : '';
+  const err = new Error(mapped || message) as ApiError;
   err.status = status;
   err.response = response;
+  if (errorCode) err.error_code = errorCode;
   return err;
 }
 
@@ -43,7 +97,7 @@ export async function apiRequestJson<T>(path: string, init: RequestInit = {}, op
   const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
   const j = await parseJson(r);
   if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch, sessionKey);
-  if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j);
+  if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j, j?.error_code);
   return j as T;
 }
 
@@ -109,7 +163,7 @@ export async function apiFetchFile(path: string, filename?: string, options: Req
   }
   if (!r.ok) {
     const j = await parseJson(r);
-    throw buildError(j?.message || '下载失败', r.status, j);
+    throw buildError(j?.message || '下载失败', r.status, j, j?.error_code);
   }
   return {
     blob: await r.blob(),
@@ -135,4 +189,8 @@ export function triggerFileDownload(file: ApiFetchedFile, filename?: string) {
 export async function apiDownload(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {
   const file = await apiFetchFile(path, filename, options, init);
   triggerFileDownload(file, filename || file.filename);
+}
+
+export function isApiErrorCode(error: unknown, code: ApiErrorCode) {
+  return String((error as any)?.error_code || '').trim() === code;
 }

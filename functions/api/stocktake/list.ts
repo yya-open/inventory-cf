@@ -1,4 +1,5 @@
 import { errorResponse } from '../_auth';
+import { apiOk } from '../_response';
 import { buildStocktakeListQuery, countStocktakes, listStocktakes } from '../services/stocktake';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 
@@ -13,14 +14,14 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       listStocktakes(env.DB, query),
     ]);
 
-    return Response.json({
-      ok: true,
-      data,
-      total,
-      page: query.page,
-      pageSize: query.pageSize,
-      sort_by: query.sort_by,
-      sort_dir: query.sort_dir,
+    return apiOk(data, {
+      meta: {
+        total,
+        page: query.page,
+        pageSize: query.pageSize,
+        sort_by: query.sort_by,
+        sort_dir: query.sort_dir,
+      },
     });
   } catch (e: any) {
     return errorResponse(e);

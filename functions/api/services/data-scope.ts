@@ -129,7 +129,7 @@ export function assertDepartmentScopeAccess(scope: UserDataScope | null | undefi
   if (!required) return;
   if (normalizeDepartmentScopeValue(departmentValue) === required) return;
   const suffix = moduleLabel ? `，无法访问${moduleLabel}` : '';
-  throw Object.assign(new Error(`当前账号的数据范围未包含部门「${required}」${suffix}`), { status: 403 });
+  throw Object.assign(new Error(`当前账号的数据范围未包含部门「${required}」${suffix}`), { status: 403, error_code: 'SCOPE_DEPARTMENT_DENIED' });
 }
 
 export async function getPcAssetCurrentDepartment(db: D1Database, assetId: number) {
@@ -161,7 +161,7 @@ export async function assertPcAssetIdsDataScopeAccess(db: D1Database, scope: Use
   const rows = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
   for (const row of Array.isArray(rows?.results) ? rows.results : []) {
     if (scopeAllowsDepartment(scope, row?.current_department)) continue;
-    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403 });
+    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403, error_code: 'SCOPE_DEPARTMENT_DENIED' });
   }
 }
 
@@ -174,7 +174,7 @@ export async function assertMonitorAssetIdsDataScopeAccess(db: D1Database, scope
   const rows = await db.prepare(`SELECT id, department FROM monitor_assets WHERE id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
   for (const row of Array.isArray(rows?.results) ? rows.results : []) {
     if (scopeAllowsDepartment(scope, row?.department)) continue;
-    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403 });
+    throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403, error_code: 'SCOPE_DEPARTMENT_DENIED' });
   }
 }
 
@@ -192,14 +192,14 @@ export function scopeAllowsAssetWarehouse(scope: UserDataScope | null | undefine
 export function assertAssetWarehouseAccess(scope: UserDataScope | null | undefined, warehouseName: '电脑仓' | '显示器仓' | '配件仓', moduleLabel?: string) {
   if (scopeAllowsAssetWarehouse(scope, warehouseName)) return;
   const suffix = moduleLabel ? `，无法访问${moduleLabel}` : '';
-  throw Object.assign(new Error(`当前账号的数据范围未包含${warehouseName}${suffix}`), { status: 403 });
+  throw Object.assign(new Error(`当前账号的数据范围未包含${warehouseName}${suffix}`), { status: 403, error_code: 'SCOPE_WAREHOUSE_DENIED' });
 }
 
 export async function assertPartsWarehouseAccess(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null, moduleLabel?: string) {
   assertAssetWarehouseAccess(scope, '配件仓', moduleLabel);
   const warehouseId = await resolvePartsWarehouseId(db, scope, requestedWarehouseId);
   if (warehouseId <= 0) {
-    throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403 });
+    throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403, error_code: 'SCOPE_PARTS_WAREHOUSE_DENIED' });
   }
   return warehouseId;
 }
