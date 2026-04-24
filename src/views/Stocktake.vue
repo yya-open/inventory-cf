@@ -282,17 +282,6 @@
                 :options="workbenchScopeOptions"
                 size="small"
               />
-              <el-input-number
-                v-model="workbenchSetQty"
-                :min="0"
-                :precision="0"
-                size="small"
-                controls-position="right"
-                style="width: 120px"
-                placeholder="数量"
-                :disabled="detail.stocktake.status!=='DRAFT'"
-              />
-              <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchSetCountedQty">批量设为数量</el-button>
               <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchUseSystemQty">批量等于系统</el-button>
               <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchClearCountedQty">批量标记未盘</el-button>
               <el-button size="small" @click="exportStocktakeReport">导出结果报表</el-button>
@@ -475,7 +464,6 @@ const detailTableRef = ref<any>(null);
 const selectedIds = ref<Set<number>>(new Set());
 const baselineCountedById = ref<Map<number, string>>(new Map());
 const workbenchScope = ref<'selected' | 'filtered'>('selected');
-const workbenchSetQty = ref<number | null>(null);
 const workbenchScopeOptions = [
   { label: '处理已选', value: 'selected' },
   { label: '处理筛选结果', value: 'filtered' },
@@ -599,17 +587,6 @@ function batchClearCountedQty() {
   const rows = resolveWorkbenchRows();
   if (!rows) return;
   applyBatchCountedQty(rows, () => '');
-}
-
-function batchSetCountedQty() {
-  const rows = resolveWorkbenchRows();
-  if (!rows) return;
-  const qty = Number(workbenchSetQty.value);
-  if (!Number.isFinite(qty) || qty < 0) {
-    ElMessage.warning('请输入有效的批量数量（>= 0）');
-    return;
-  }
-  applyBatchCountedQty(rows, () => qty);
 }
 
 
@@ -988,11 +965,19 @@ function beforeUpload(file: File){
 
 function openApplyPreview() {
   if (!detail.value) return;
+  if (dirty.value.size) {
+    ElMessage.warning('检测到未保存的盘点数据，请先点击“保存”后再应用盘点。本次不会执行应用。');
+    return;
+  }
   applyPreviewVisible.value = true;
 }
 
 async function confirmApplyStocktake(){
   if (!detail.value) return;
+  if (dirty.value.size) {
+    ElMessage.warning('检测到未保存的盘点数据，请先保存后再应用盘点。');
+    return;
+  }
   applying.value = true;
   try{
     const preview:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id, preview_only: true });
