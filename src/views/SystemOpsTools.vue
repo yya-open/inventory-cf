@@ -93,11 +93,15 @@
           </el-select>
           <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
+          <el-button type="danger" plain :disabled="batchDeletingJobs || deletableSelectedJobsCount===0" :loading="batchDeletingJobs" @click="deleteSelectedJobs">
+            {{ batchDeletingJobs ? '批量删除中' : `批量删除（${deletableSelectedJobsCount}）` }}
+          </el-button>
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
           <span style="margin-left:auto; color:#999; font-size:12px">{{ jobAutoRefreshText }}</span>
         </div>
 
-        <el-table :data="jobs" border>
+        <el-table ref="jobsTableRef" :data="jobs" border row-key="id" @selection-change="onJobsSelectionChange">
+          <el-table-column type="selection" width="46" reserve-selection />
           <el-table-column label="序号" width="78" align="center">
             <template #default="{ $index }">{{ $index + 1 }}</template>
           </el-table-column>
@@ -139,7 +143,7 @@
                 <el-button v-if="row.status==='success' && canPrintJob(row)" link type="warning" @click="printJob(row)">打印</el-button>
                 <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
                 <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
-                <el-button v-if="canDeleteJob(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id)" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
+                <el-button v-if="canDeleteJob(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeletingJobs" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
               </div>
             </template>
           </el-table-column>
@@ -232,7 +236,7 @@
 <script setup lang="ts">
 import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
 import { ElProgress } from 'element-plus';
-import { ref, reactive, onMounted, onBeforeUnmount, computed } from 'vue';
+import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
@@ -256,7 +260,10 @@ const running = ref('');
 const lastRepair = ref('');
 const snapshotPrecomputing = ref(false);
 const deletingJobId = ref<number | null>(null);
+const batchDeletingJobs = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
+const jobsTableRef = ref<any>(null);
+const selectedJobIds = ref<number[]>([]);
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
 const jobDetail = reactive<any>({ visible: false, title: '任务详情', row: null });
 const asyncJobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
@@ -269,6 +276,11 @@ const jobPollTimer = ref<number | null>(null);
 const jobPollInFlight = ref(false);
 const jobsLastSyncedAt = ref('');
 const jobsLastSyncMode = ref<'full' | 'delta'>('full');
+const deletableSelectedJobsCount = computed(() => {
+  if (!selectedJobIds.value.length) return 0;
+  const selected = new Set(selectedJobIds.value);
+  return jobs.value.filter((row: any) => selected.has(Number(row?.id || 0)) && canDeleteJob(row)).length;
+});
 const jobAutoRefreshText = computed(() => {
   const mode = jobsLastSyncMode.value === 'delta' ? '增量刷新' : '全量刷新';
   const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
@@ -660,6 +672,7 @@ async function openJobDetail(row:any) {
 }
 
 async function deleteJob(row:any) {
+  if (batchDeletingJobs.value) return;
   await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
   deletingJobId.value = Number(row?.id || 0) || null;
   try {
@@ -672,6 +685,55 @@ async function deleteJob(row:any) {
     await loadJobs();
   } finally {
     deletingJobId.value = null;
+  }
+}
+
+function onJobsSelectionChange(rows: any[]) {
+  selectedJobIds.value = (rows || [])
+    .map((row: any) => Number(row?.id || 0))
+    .filter((id: number) => Number.isFinite(id) && id > 0);
+}
+
+async function deleteSelectedJobs() {
+  if (batchDeletingJobs.value) return;
+  const selected = new Set(selectedJobIds.value);
+  const selectedRows = jobs.value.filter((row: any) => selected.has(Number(row?.id || 0)));
+  if (!selectedRows.length) return ElMessage.warning('请先勾选任务');
+  const deletableRows = selectedRows.filter((row: any) => canDeleteJob(row));
+  const blocked = Math.max(0, selectedRows.length - deletableRows.length);
+  if (!deletableRows.length) return ElMessage.warning('选中任务均为运行中/排队中，无法删除');
+
+  await ElMessageBox.confirm(
+    blocked
+      ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
+      : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
+    '批量删除任务',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+  );
+
+  batchDeletingJobs.value = true;
+  let success = 0;
+  let failed = 0;
+  try {
+    for (const row of deletableRows) {
+      try {
+        await apiPut('/api/jobs', { action: 'delete', id: row.id });
+        success += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    if (Number(jobDetail.row?.id || 0) > 0 && selected.has(Number(jobDetail.row?.id || 0))) {
+      jobDetail.visible = false;
+      jobDetail.row = null;
+    }
+    if (failed) ElMessage.warning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
+    else ElMessage.success(`批量删除完成：共删除 ${success} 条`);
+    selectedJobIds.value = [];
+    jobsTableRef.value?.clearSelection?.();
+    await loadJobs();
+  } finally {
+    batchDeletingJobs.value = false;
   }
 }
 
@@ -688,6 +750,12 @@ function openDiff(row:any) {
   diffDialog.columns = diffDialog.rows.length ? Object.keys(diffDialog.rows[0]) : [];
   diffDialog.visible = true;
 }
+
+watch(jobs, () => {
+  if (!selectedJobIds.value.length) return;
+  const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
+  selectedJobIds.value = selectedJobIds.value.filter((id) => keep.has(id));
+});
 
 onMounted(() => {
   ensureTabLoaded('repair');

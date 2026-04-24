@@ -47,6 +47,15 @@
         <el-switch v-model="filter.mine" active-text="仅看我发起" @change="applyFilters" />
         <el-switch v-model="pollEnabled" active-text="自动刷新" @change="handlePollToggle" />
         <el-switch v-model="compactMode" active-text="精简视图" @change="persistCompactMode" />
+        <el-button
+          type="danger"
+          plain
+          :disabled="batchDeleting || deletableSelectedCount===0"
+          :loading="batchDeleting"
+          @click="deleteSelectedJobs"
+        >
+          {{ batchDeleting ? '批量删除中' : `批量删除（${deletableSelectedCount}）` }}
+        </el-button>
         <div class="toolbar-meta">{{ refreshHint }}</div>
       </div>
 
@@ -55,7 +64,17 @@
         <span v-if="hasMore">可继续加载更早任务</span>
       </div>
 
-      <el-table :data="renderedJobs" border v-loading="loading" max-height="640" row-key="id" table-layout="fixed">
+      <el-table
+        ref="jobsTableRef"
+        :data="renderedJobs"
+        border
+        v-loading="loading"
+        max-height="640"
+        row-key="id"
+        table-layout="fixed"
+        @selection-change="onJobSelectionChange"
+      >
+        <el-table-column type="selection" width="46" reserve-selection />
         <el-table-column label="序号" width="78" align="center">
           <template #default="{ $index }">{{ displayIndex($index) }}</template>
         </el-table-column>
@@ -87,7 +106,7 @@
               <el-button v-if="canDownload(row)" link type="primary" @click="downloadJob(row)">下载</el-button>
               <el-button v-if="row.status==='failed'" link type="warning" @click="retryJob(row)">重试</el-button>
               <el-button v-if="row.status==='queued' || row.status==='running'" link type="danger" @click="cancelJob(row)">取消</el-button>
-              <el-button v-if="canDelete(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id)" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
+              <el-button v-if="canDelete(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -136,7 +155,10 @@ const loading = ref(false);
 const loadingMore = ref(false);
 const snapshotSubmitting = ref(false);
 const deletingJobId = ref<number | null>(null);
+const batchDeleting = ref(false);
 const jobs = ref<any[]>([]);
+const jobsTableRef = ref<any>(null);
+const selectedJobIds = ref<number[]>([]);
 const summary = reactive({ async_job_count: 0, queued_job_count: 0, failed_job_count: 0, slow_request_count: 0 });
 const filter = reactive({ status: '', job_type: '', days: 7, mine: false });
 const lastSyncedAt = ref('');
@@ -158,6 +180,11 @@ const RENDER_LIMIT_COMPACT = 30;
 const jobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const hasActiveJobs = computed(() => jobs.value.some((row) => ['queued', 'running'].includes(String(row?.status || ''))));
 const renderedJobs = computed(() => compactMode.value ? jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT)) : jobs.value);
+const deletableSelectedCount = computed(() => {
+  if (!selectedJobIds.value.length) return 0;
+  const selected = new Set(selectedJobIds.value);
+  return jobs.value.filter((row) => selected.has(Number(row?.id || 0)) && canDelete(row)).length;
+});
 const refreshHint = computed(() => {
   if (!pollEnabled.value) return lastSyncedAt.value ? `自动刷新已关闭 · 上次 ${formatTime(lastSyncedAt.value)}` : '自动刷新已关闭';
   const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
@@ -173,6 +200,11 @@ function formatDuration(ms: any) { const value = Number(ms || 0); if (!value || 
 function formatBytes(value: any) { const num = Number(value || 0); if (!num) return '-'; if (num < 1024) return `${num} B`; if (num < 1024*1024) return `${(num/1024).toFixed(1)} KB`; return `${(num/(1024*1024)).toFixed(1)} MB`; }
 function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (row?.result_content_type || row?.result_blob_base64 || row?.result_object_key); }
 function canDelete(row: any) { return !['queued', 'running'].includes(String(row?.status || '')); }
+function onJobSelectionChange(rows: any[]) {
+  selectedJobIds.value = (rows || [])
+    .map((row: any) => Number(row?.id || 0))
+    .filter((id: number) => Number.isFinite(id) && id > 0);
+}
 function displayIndex(index: number) { return index + 1; }
 function buildDownloadUrl(row: any) { const q = new URLSearchParams(); q.set('id', String(row.id)); return `/api/jobs-download?${q.toString()}`; }
 function downloadJob(row: any) { window.open(buildDownloadUrl(row), '_blank', 'noopener'); }
@@ -309,6 +341,7 @@ async function cleanupJobs() {
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function deleteJob(row: any) {
+  if (batchDeleting.value) return;
   await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
   deletingJobId.value = Number(row?.id || 0) || null;
   try {
@@ -321,6 +354,49 @@ async function deleteJob(row: any) {
     await loadJobs({ force: true, includeBase: true, reset: true });
   } finally {
     deletingJobId.value = null;
+  }
+}
+
+async function deleteSelectedJobs() {
+  if (batchDeleting.value) return;
+  const selected = new Set(selectedJobIds.value);
+  const selectedRows = jobs.value.filter((row) => selected.has(Number(row?.id || 0)));
+  if (!selectedRows.length) return ElMessage.warning('请先勾选任务');
+  const deletableRows = selectedRows.filter((row) => canDelete(row));
+  const blocked = Math.max(0, selectedRows.length - deletableRows.length);
+  if (!deletableRows.length) return ElMessage.warning('选中任务均为运行中/排队中，无法删除');
+
+  await ElMessageBox.confirm(
+    blocked
+      ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
+      : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
+    '批量删除任务',
+    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
+  );
+
+  batchDeleting.value = true;
+  let success = 0;
+  let failed = 0;
+  try {
+    for (const row of deletableRows) {
+      try {
+        await apiPut('/api/jobs', { action: 'delete', id: row.id });
+        success += 1;
+      } catch {
+        failed += 1;
+      }
+    }
+    if (detailVisible.value && selected.has(Number(detailRow.value?.id || 0))) {
+      detailVisible.value = false;
+      detailRow.value = null;
+    }
+    if (failed) ElMessage.warning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
+    else ElMessage.success(`批量删除完成：共删除 ${success} 条`);
+    selectedJobIds.value = [];
+    jobsTableRef.value?.clearSelection?.();
+    await loadJobs({ force: true, includeBase: true, reset: true });
+  } finally {
+    batchDeleting.value = false;
   }
 }
 
@@ -349,6 +425,11 @@ function onVisibilityChange() {
 watch(() => [filter.status, filter.job_type, filter.days, filter.mine, pageSize.value], () => {
   hasMore.value = false;
   cursorId.value = null;
+});
+watch(jobs, () => {
+  if (!selectedJobIds.value.length) return;
+  const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
+  selectedJobIds.value = selectedJobIds.value.filter((id) => keep.has(id));
 });
 onMounted(() => {
   try {

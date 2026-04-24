@@ -24,7 +24,6 @@
 
       <div style="color:#888; font-size:12px; margin-bottom: 12px">以下功能为系统级配置/维护项，已从侧边栏主菜单收纳到此页面。</div>
       <el-row :gutter="12">
-        <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="Excel 导入配件" desc="批量导入配件基础数据（SKU/名称/品牌/型号…）" @open="go('/import/items')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="备份 / 恢复" desc="创建备份、恢复任务、下载备份文件" @open="go('/system/backup')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="数据报表中心" desc="集中查看看板、盘点和预警报表入口" @open="go('/system/reports')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="批量任务中心" desc="查看异步导出、预计算和巡检任务进度" @open="go('/system/tasks')" /></el-col>
