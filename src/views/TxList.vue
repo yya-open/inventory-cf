@@ -169,7 +169,7 @@ import { ref, onBeforeMount, onActivated, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
-import { useRoute } from "vue-router";
+import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
@@ -205,6 +205,7 @@ type TxFilters = {
 };
 
 const route = useRoute();
+const router = useRouter();
 const warehouseId = useFixedWarehouseId();
 const initialRouteItemId = Number(route.query.item_id || 0);
 
@@ -223,7 +224,7 @@ const sortDir = ref<string>("desc");
 
 const auth = useAuth();
 const isAdmin = computed(() => auth.user?.role === "admin");
-const SOFT_REFRESH_TTL_MS = 30_000;
+const SOFT_REFRESH_TTL_MS = 5_000;
 const ITEMS_CACHE_TTL_MS = 10 * 60_000;
 let lastRefreshAt = 0;
 let itemsRequestPromise: Promise<void> | null = null;
@@ -342,6 +343,8 @@ async function load(options: { keepPage?: boolean; silent?: boolean; forceRefres
 
 function onSearch() {
   page.value = 1;
+  invalidateCache();
+  clearTotalCache();
   void load({ keepPage: false, forceRefresh: true });
 }
 
@@ -521,13 +524,40 @@ async function clearTx() {
   }
 }
 
+function clearForceRefreshQuery() {
+  const query = { ...route.query } as Record<string, any>;
+  let changed = false;
+  if (Object.prototype.hasOwnProperty.call(query, 'force_refresh')) {
+    delete query.force_refresh;
+    changed = true;
+  }
+  if (Object.prototype.hasOwnProperty.call(query, 'force_refresh_tx')) {
+    delete query.force_refresh_tx;
+    changed = true;
+  }
+  if (!changed) return;
+  void router.replace({ path: route.path, query });
+}
+
 onBeforeMount(() => {
+  if (route.query.force_refresh === '1' || route.query.force_refresh_tx === '1') {
+    invalidateCache();
+    clearTotalCache();
+    clearForceRefreshQuery();
+  }
   const tasks: Promise<unknown>[] = [load({ keepPage: false })];
   if (item_id.value) tasks.push(loadItems());
   void Promise.allSettled(tasks);
 });
 
 onActivated(() => {
+  if (route.query.force_refresh === '1' || route.query.force_refresh_tx === '1') {
+    invalidateCache();
+    clearTotalCache();
+    clearForceRefreshQuery();
+    void load({ keepPage: true, forceRefresh: true });
+    return;
+  }
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   void load({ keepPage: true, silent: rows.value.length > 0, forceRefresh: true });
 });

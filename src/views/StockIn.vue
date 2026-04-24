@@ -169,7 +169,7 @@ async function submit() {
 }
 
 function backToStock() {
-  void router.push({ path: '/stock', query: { force_refresh: '1' } });
+  void router.push({ path: '/stock', query: { force_refresh: '1', force_refresh_tx: '1' } });
 }
 
 onMounted(async () => {

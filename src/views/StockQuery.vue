@@ -183,7 +183,7 @@ function goOut(item_id: number) {
   router.push({ path: "/out", query: { item_id: String(item_id) } });
 }
 function goTx(item_id: number) {
-  router.push({ path: "/tx", query: { item_id: String(item_id) } });
+  router.push({ path: "/tx", query: { item_id: String(item_id), force_refresh: '1' } });
 }
 
 async function loadView(opts: { silent?: boolean; forceRefresh?: boolean } = {}) {

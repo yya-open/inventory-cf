@@ -348,7 +348,7 @@ export async function countTxRows(db: D1Database, query: TxListQuery) {
 
 export async function listTxRows(db: D1Database, query: TxListQuery) {
   const sql = `
-    SELECT t.*, ${sqlBjDateTime('t.created_at')} AS created_at_bj, i.sku, i.name, i.unit, w.name as warehouse_name
+    SELECT t.*, datetime(t.created_at, '+8 hours') AS created_at_bj, i.sku, i.name, i.unit, w.name as warehouse_name
     FROM stock_tx t
     JOIN items i ON i.id=t.item_id
     JOIN warehouses w ON w.id=t.warehouse_id
@@ -363,7 +363,7 @@ export async function listTxRows(db: D1Database, query: TxListQuery) {
 export function buildTxExportSql(query: TxListQuery) {
   const where = query.where ? `${query.where} AND t.id < ?` : 'WHERE t.id < ?';
   return `
-    SELECT t.id, t.created_at, ${sqlBjDateTime('t.created_at')} AS created_at_bj, t.tx_no, t.type, t.qty, t.delta_qty, t.source, t.target, t.remark,
+    SELECT t.id, t.created_at, datetime(t.created_at, '+8 hours') AS created_at_bj, t.tx_no, t.type, t.qty, t.delta_qty, t.source, t.target, t.remark,
            i.sku, i.name, w.name as warehouse_name
     FROM stock_tx t
     JOIN items i ON i.id=t.item_id
