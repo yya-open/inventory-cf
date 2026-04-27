@@ -105,6 +105,7 @@ export async function ensureCoreSchema(db: D1Database) {
       is_active INTEGER NOT NULL DEFAULT 1,
       must_change_password INTEGER NOT NULL DEFAULT 1,
       token_version INTEGER NOT NULL DEFAULT 0,
+      acl_version INTEGER NOT NULL DEFAULT 0,
       permission_template_code TEXT,
       data_scope_type TEXT NOT NULL DEFAULT 'all',
       data_scope_value TEXT,
@@ -294,6 +295,9 @@ export async function ensureCoreSchema(db: D1Database) {
     const names = new Set((cols?.results || []).map((r: any) => String(r?.name || '').trim()));
     if (!names.has("token_version")) {
       await db.prepare("ALTER TABLE users ADD COLUMN token_version INTEGER NOT NULL DEFAULT 0").run();
+    }
+    if (!names.has("acl_version")) {
+      await db.prepare("ALTER TABLE users ADD COLUMN acl_version INTEGER NOT NULL DEFAULT 0").run();
     }
     if (!names.has("must_change_password")) {
       await db.prepare("ALTER TABLE users ADD COLUMN must_change_password INTEGER NOT NULL DEFAULT 1").run();

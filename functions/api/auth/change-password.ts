@@ -28,7 +28,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .run();
 
     invalidateCachedAuthUser(user.id);
-    invalidateCachedMe(user.id);
+    await invalidateCachedMe(env.DB, user.id, 'auth_change_password', (env as any).__timing);
     invalidateUserDataScopeCache(user.id);
 
     // Issue a new token for the current session so the user won't be kicked out.

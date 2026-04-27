@@ -19,10 +19,10 @@ export function getJwtRefreshThresholdSeconds(env?: { JWT_REFRESH_THRESHOLD_SECO
 }
 export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
-export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
+export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; acl_version?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
 const AUTH_USER_CACHE_TTL_MS = 30_000;
-type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; expiresAt: number };
+type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; acl_version?: number; expiresAt: number };
 const authUserCache = new Map<number, CachedAuthUserRow>();
 
 function readCachedAuthUserRow(userId: number) {
@@ -187,18 +187,30 @@ async function requireAuthInternal(
   if (!u) {
     try {
       u = await env.DB
-        .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
+        .prepare("SELECT id, username, role, is_active, must_change_password, token_version, acl_version FROM users WHERE id=?")
         .bind(userId)
         .first<any>();
     } catch (e: any) {
-      if (String(e?.message || "").includes("no such column") && String(e?.message || "").includes("token_version")) {
+      const msg = String(e?.message || "");
+      const noSuchColumn = msg.includes("no such column");
+      if (!noSuchColumn) throw e;
+      try {
+        u = await env.DB
+          .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
+          .bind(userId)
+          .first<any>();
+        if (u) u.acl_version = 0;
+      } catch (e2: any) {
+        const msg2 = String(e2?.message || "");
+        if (!(msg2.includes("no such column") && msg2.includes("token_version"))) throw e2;
         u = await env.DB
           .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
           .bind(userId)
           .first<any>();
-        if (u) u.token_version = 0;
-      } else {
-        throw e;
+        if (u) {
+          u.token_version = 0;
+          u.acl_version = 0;
+        }
       }
     }
     if (u) {
@@ -209,12 +221,13 @@ async function requireAuthInternal(
         is_active: Number(u.is_active || 0),
         must_change_password: Number(u.must_change_password || 0),
         token_version: Number((u as any).token_version || 0),
+        acl_version: Number((u as any).acl_version || 0),
       });
     }
   }
   if (!u || Number(u.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });
 
-  const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password };
+  const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password, acl_version: Number((u as any).acl_version || 0) };
   const tv = Number((payload as any)?.tv || 0);
   const dbTv = Number((u as any).token_version || 0);
   if (tv !== dbTv) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });

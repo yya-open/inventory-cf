@@ -105,7 +105,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await clearAuthFail(env.DB, ip, u);
 
     invalidateCachedAuthUser(Number(row.id));
-    invalidateCachedMe(Number(row.id));
+    await invalidateCachedMe(env.DB, Number(row.id), 'auth_login', (env as any).__timing);
 
     const ttlSeconds = getJwtTtlSeconds(env as any);
     const token = await signJwt({ sub: row.id, u: row.username, r: row.role, tv: row.token_version || 0 }, env.JWT_SECRET, ttlSeconds);

@@ -7,7 +7,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requireAuth(env, request, "viewer");
     await env.DB.prepare("UPDATE users SET token_version=token_version+1 WHERE id=?").bind(user.id).run();
     invalidateCachedAuthUser(user.id);
-    invalidateCachedMe(user.id);
+    await invalidateCachedMe(env.DB, user.id, 'auth_logout', (env as any).__timing);
     (env as any).__refresh_token = null;
     (env as any).__clear_auth_cookie = true;
     const res = json(true);

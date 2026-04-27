@@ -197,7 +197,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     }
     if (role) {
       if (!["admin", "operator", "viewer"].includes(role)) return apiFail('role 无效', { status: 400, errorCode: 'USER_ROLE_INVALID' });
-      await env.DB.prepare("UPDATE users SET role=? WHERE id=?").bind(role, uid).run();
+      await env.DB.prepare("UPDATE users SET role=?, acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(role, uid).run();
       changes.role = role;
     }
     if (typeof is_active !== "undefined") {
@@ -207,20 +207,23 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const finalRole = role ? String(role) : String(target.role);
     if (typeof permission_template_code !== 'undefined') {
       const template = await setUserPermissionTemplate(env.DB, uid, finalRole, permission_template_code);
+      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.permission_template_code = template;
     }
     if (permissions && typeof permissions === 'object') {
       await setUserPermissions(env.DB, uid, permissions, actor.username);
+      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.permissions = permissions;
     }
     if (typeof data_scope_type !== 'undefined' || typeof data_scope_value !== 'undefined' || typeof data_scope_value2 !== 'undefined') {
       const validatedScope = await assertScopeDictionaryConstraints(env.DB, data_scope_type, data_scope_value, data_scope_value2);
       const scope = await setUserDataScope(env.DB, uid, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
+      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.data_scope = scope;
     }
 
     invalidateCachedAuthUser(uid);
-    invalidateCachedMe(uid);
+    await invalidateCachedMe(env.DB, uid, 'users_update', (env as any).__timing);
     invalidateUserDataScopeCache(uid);
 
     const after = await env.DB
@@ -266,7 +269,7 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
 
     await env.DB.prepare("DELETE FROM users WHERE id=?").bind(uid).run();
     invalidateCachedAuthUser(uid);
-    invalidateCachedMe(uid);
+    await invalidateCachedMe(env.DB, uid, 'users_delete', (env as any).__timing);
     invalidateUserDataScopeCache(uid);
     await logAudit(env.DB, request, actor, "USER_DELETE", "users", uid, { before: target });
 

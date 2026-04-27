@@ -21,6 +21,7 @@ CREATE INDEX IF NOT EXISTS idx_schema_migrations_applied_at ON schema_migrations
 const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 function sha256(text) { return crypto.createHash('sha256').update(text).digest('hex'); }
+function sqlEscape(text) { return String(text).replace(/'/g, "''"); }
 function parseArgs(argv) {
   const out = { command: 'plan', db: '', remote: false, local: false, wrangler: process.env.WRANGLER_BIN || 'wrangler' };
   const args = [...argv];
@@ -64,9 +65,27 @@ function listApplied(args) {
   const first = rows[0] || {};
   return Array.isArray(first.results) ? first.results : [];
 }
+function listTableColumns(args, tableName) {
+  const out = runWrangler({ ...args, json: true, command: `PRAGMA table_info(${tableName})` });
+  const parsed = JSON.parse(out || '[]');
+  const rows = Array.isArray(parsed) ? parsed : [parsed];
+  const first = rows[0] || {};
+  const cols = Array.isArray(first.results) ? first.results : [];
+  return new Set(cols.map((row) => String(row?.name || '').trim()).filter(Boolean));
+}
+function migrationSql(entry) {
+  return fs.readFileSync(path.join(root, entry.file), 'utf8').trim();
+}
+function migrationChecksum(entry) {
+  return sha256(migrationSql(entry));
+}
+function markApplied(args, entry) {
+  const command = `INSERT OR REPLACE INTO schema_migrations (id, name, checksum, applied_at) VALUES ('${sqlEscape(entry.id)}', '${sqlEscape(entry.file)}', '${migrationChecksum(entry)}', datetime('now','+8 hours'));`;
+  runWrangler({ ...args, command });
+}
 function renderWrappedSql(entry) {
-  const sql = fs.readFileSync(path.join(root, entry.file), 'utf8').trim();
-  return `-- ${entry.id} ${entry.description || ''}\nBEGIN;\n${sql}\nINSERT OR REPLACE INTO schema_migrations (id, name, checksum, applied_at) VALUES ('${entry.id}', '${entry.file}', '${sha256(sql)}', datetime('now','+8 hours'));\nCOMMIT;\n`;
+  const sql = migrationSql(entry);
+  return `-- ${entry.id} ${entry.description || ''}\nBEGIN;\n${sql}\nINSERT OR REPLACE INTO schema_migrations (id, name, checksum, applied_at) VALUES ('${sqlEscape(entry.id)}', '${sqlEscape(entry.file)}', '${migrationChecksum(entry)}', datetime('now','+8 hours'));\nCOMMIT;\n`;
 }
 function printPlan(appliedRows = []) {
   const applied = new Set(appliedRows.map((row) => String(row.id)));
@@ -95,6 +114,14 @@ if (args.command === 'verify') {
   ensureRegistry(args);
   const rows = listApplied(args);
   for (const entry of pending(rows)) {
+    if (entry.id === '202604270010_users_acl_version') {
+      const userColumns = listTableColumns(args, 'users');
+      if (userColumns.has('acl_version')) {
+        console.log(`Skipping ${entry.id} ${entry.file} (users.acl_version already exists); marking applied`);
+        markApplied(args, entry);
+        continue;
+      }
+    }
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inventory-migration-'));
     const file = path.join(dir, `${entry.id}.sql`);
     fs.writeFileSync(file, renderWrappedSql(entry));

@@ -88,6 +88,7 @@ type UserRow = {
   is_active: number;
   must_change_password: number;
   token_version: number;
+  acl_version: number;
   password_hash: string;
   permission_template_code: string | null;
   data_scope_type: string | null;
@@ -155,7 +156,7 @@ class FakeDB {
       return mode === 'all' ? [] : null;
     }
 
-    if (normalized === 'select id, username, role, is_active, must_change_password, token_version from users where id=?') {
+    if (normalized === 'select id, username, role, is_active, must_change_password, token_version, acl_version from users where id=?') {
       const user = getUser(params[0]);
       if (!user) return null;
       return {
@@ -165,6 +166,20 @@ class FakeDB {
         is_active: user.is_active,
         must_change_password: user.must_change_password,
         token_version: user.token_version,
+        acl_version: user.acl_version,
+      };
+    }
+
+    if (normalized === 'select id, username, role, is_active, must_change_password, acl_version from users where id=?') {
+      const user = getUser(params[0]);
+      if (!user) return null;
+      return {
+        id: user.id,
+        username: user.username,
+        role: user.role,
+        is_active: user.is_active,
+        must_change_password: user.must_change_password,
+        acl_version: user.acl_version,
       };
     }
 
@@ -215,9 +230,18 @@ class FakeDB {
       return { c: count };
     }
 
-    if (normalized === 'update users set role=? where id=?') {
+    if (normalized === 'update users set role=?, acl_version=coalesce(acl_version,0)+1 where id=?') {
       const user = getUser(params[1]);
-      if (user) user.role = String(params[0]) as UserRow['role'];
+      if (user) {
+        user.role = String(params[0]) as UserRow['role'];
+        user.acl_version += 1;
+      }
+      return null;
+    }
+
+    if (normalized === 'update users set acl_version=coalesce(acl_version,0)+1 where id=?') {
+      const user = getUser(params[0]);
+      if (user) user.acl_version += 1;
       return null;
     }
 
@@ -281,6 +305,7 @@ async function makeEnv(): Promise<TestEnv> {
         is_active: 1,
         must_change_password: 0,
         token_version: 0,
+        acl_version: 0,
         password_hash: adminHash,
         permission_template_code: 'admin_full',
         data_scope_type: 'all',
@@ -295,6 +320,7 @@ async function makeEnv(): Promise<TestEnv> {
         is_active: 1,
         must_change_password: 0,
         token_version: 0,
+        acl_version: 0,
         password_hash: aliceHash,
         permission_template_code: 'readonly',
         data_scope_type: 'all',
@@ -417,5 +443,6 @@ describe('auth regression fixes', () => {
     expect(afterBody.data.user.role).toBe('operator');
     expect(afterBody.data.user.data_scope_type).toBe('department');
     expect(afterBody.data.user.data_scope_value).toBe('IT');
+    expect(env.DB.__getUser(2)?.acl_version).toBeGreaterThan(0);
   });
 });
