@@ -4,6 +4,8 @@ import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
 
 type Env = { DB: D1Database; JWT_SECRET?: string };
 
+type TimingLike = { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
+
 let batchCache: { expiresAt: number; row: any | null } | null = null;
 const BATCH_CACHE_TTL_MS = 3000;
 
@@ -39,29 +41,53 @@ function sanitizeMonitorAsset(asset: any) {
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+    const timing = ((env as any).__timing || null) as TimingLike;
 
     const url = new URL(request.url);
     const token = (url.searchParams.get("token") || "").trim();
-    await rateLimitPublic(env.DB, request, "public_monitor_asset", publicAssetSubject(url), token ? 10 : 20);
-    const id = await resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true });
+    if (timing?.measure) {
+      await timing.measure('public_monitor_rate_limit', () => rateLimitPublic(env.DB, request, "public_monitor_asset", publicAssetSubject(url), token ? 10 : 20));
+    } else {
+      await rateLimitPublic(env.DB, request, "public_monitor_asset", publicAssetSubject(url), token ? 10 : 20);
+    }
+    const id = timing?.measure
+      ? await timing.measure('public_monitor_resolve_id', () => resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true }))
+      : await resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true });
 
-    const asset = await env.DB.prepare(
-      `
-      SELECT
-        a.id, a.asset_code, a.sn, a.brand, a.model, a.size_inch, a.remark, a.status,
-        a.department, a.employee_no, a.employee_name, a.is_employed,
-        l.name AS location_name,
-        p.name AS parent_location_name
-      FROM monitor_assets a
-      LEFT JOIN pc_locations l ON l.id = a.location_id
-      LEFT JOIN pc_locations p ON p.id = l.parent_id
-      WHERE a.id=?
-      LIMIT 1
-      `
-    ).bind(id).first<any>();
+    const asset = timing?.measure
+      ? await timing.measure('public_monitor_asset_query', () => env.DB.prepare(
+        `
+        SELECT
+          a.id, a.asset_code, a.sn, a.brand, a.model, a.size_inch, a.remark, a.status,
+          a.department, a.employee_no, a.employee_name, a.is_employed,
+          l.name AS location_name,
+          p.name AS parent_location_name
+        FROM monitor_assets a
+        LEFT JOIN pc_locations l ON l.id = a.location_id
+        LEFT JOIN pc_locations p ON p.id = l.parent_id
+        WHERE a.id=?
+        LIMIT 1
+        `
+      ).bind(id).first<any>())
+      : await env.DB.prepare(
+        `
+        SELECT
+          a.id, a.asset_code, a.sn, a.brand, a.model, a.size_inch, a.remark, a.status,
+          a.department, a.employee_no, a.employee_name, a.is_employed,
+          l.name AS location_name,
+          p.name AS parent_location_name
+        FROM monitor_assets a
+        LEFT JOIN pc_locations l ON l.id = a.location_id
+        LEFT JOIN pc_locations p ON p.id = l.parent_id
+        WHERE a.id=?
+        LIMIT 1
+        `
+      ).bind(id).first<any>();
 
     if (!asset) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
-    const activeBatch = await getCachedActiveBatch(env.DB);
+    const activeBatch = timing?.measure
+      ? await timing.measure('public_monitor_active_batch', () => getCachedActiveBatch(env.DB))
+      : await getCachedActiveBatch(env.DB);
     return Response.json({
       ok: true,
       data: sanitizeMonitorAsset({

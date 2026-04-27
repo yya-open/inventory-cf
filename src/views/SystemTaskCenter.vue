@@ -173,6 +173,8 @@ const canManageSystemTools = computed(() => canCapability('system.tools.manage')
 const baseSummaryAvailable = ref(true);
 let pollTimer: ReturnType<typeof setTimeout> | null = null;
 let lastBaseLoadedAt = 0;
+let jobsRequestSeq = 0;
+let jobsAbortController: AbortController | null = null;
 const BASE_REFRESH_MS = 60_000;
 const ACTIVE_POLL_MS = 8_000;
 const IDLE_POLL_MS = 180_000;
@@ -254,14 +256,15 @@ function schedulePoll() {
     void loadJobs({ silent: true, includeBase: Date.now() - lastBaseLoadedAt > BASE_REFRESH_MS, reset: true });
   }, hasActiveJobs.value ? ACTIVE_POLL_MS : IDLE_POLL_MS);
 }
-function buildQuery(afterId?: number | null) {
+function buildQuery(options: { afterId?: number | null; ids?: number[] } = {}) {
   const q = new URLSearchParams();
   q.set('limit', String(pageSize.value || 40));
   q.set('days', String(filter.days || 7));
   if (filter.status) q.set('status', filter.status);
   if (filter.job_type) q.set('job_type', filter.job_type);
   if (filter.mine) q.set('mine', '1');
-  if (afterId) q.set('after_id', String(afterId));
+  if (options.afterId) q.set('after_id', String(options.afterId));
+  if (Array.isArray(options.ids) && options.ids.length) q.set('ids', options.ids.join(','));
   return q.toString();
 }
 function normalizeJobRowsResponse(payload: any) {
@@ -282,22 +285,62 @@ function mergeJobs(rows: any[], append = false) {
   });
   cursorId.value = jobs.value.length ? Number(jobs.value[jobs.value.length - 1]?.id || 0) : null;
 }
+
+function mergeJobsDelta(rows: any[]) {
+  const map = new Map<number, any>();
+  for (const row of jobs.value) {
+    const id = Number(row?.id || 0);
+    if (id > 0) map.set(id, row);
+  }
+  for (const row of rows) {
+    const id = Number(row?.id || 0);
+    if (id > 0) map.set(id, row);
+  }
+  jobs.value = Array.from(map.values()).sort((a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0));
+  cursorId.value = jobs.value.length ? Number(jobs.value[jobs.value.length - 1]?.id || 0) : null;
+}
+
 async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?: boolean; reset?: boolean } = {}) {
   if (loading.value && !opts.silent) return;
+  const requestSeq = ++jobsRequestSeq;
+  if (jobsAbortController) {
+    try { jobsAbortController.abort(); } catch {}
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  jobsAbortController = controller;
   if (!opts.silent) loading.value = true;
   try {
     if (opts.includeBase && (opts.force || !lastBaseLoadedAt || (Date.now() - lastBaseLoadedAt) > BASE_REFRESH_MS)) await loadBase();
-    const r:any = await apiGet(`/api/jobs?${buildQuery()}`);
+    const activeIds = Array.from(new Set(
+      jobs.value
+        .filter((row) => ['queued', 'running'].includes(String(row?.status || '')))
+        .map((row) => Number(row?.id || 0))
+        .filter((id) => Number.isFinite(id) && id > 0)
+    )).slice(0, 200);
+    const maxId = jobs.value.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
+    const useDelta = !opts.force && jobs.value.length > 0 && (maxId > 0 || activeIds.length > 0);
+    const query = useDelta
+      ? buildQuery({ afterId: maxId > 0 ? maxId : undefined, ids: activeIds })
+      : buildQuery();
+    const r:any = await apiGet(`/api/jobs?${query}`, controller ? { signal: controller.signal } : {});
+    if (requestSeq !== jobsRequestSeq) return;
     const rows = normalizeJobRowsResponse(r);
-    mergeJobs(rows, false);
+    if (useDelta) {
+      mergeJobsDelta(rows);
+    } else {
+      mergeJobs(rows, false);
+      hasMore.value = rows.length >= Number(pageSize.value || 40);
+    }
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
-    hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
   } catch (error: any) {
+    if (requestSeq !== jobsRequestSeq) return;
+    if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
     if (!opts.silent) ElMessage.error(error?.message || '加载任务列表失败');
     hasMore.value = false;
   } finally {
-    loading.value = false;
+    if (jobsAbortController === controller) jobsAbortController = null;
+    if (requestSeq === jobsRequestSeq) loading.value = false;
     schedulePoll();
   }
 }
@@ -305,7 +348,7 @@ async function loadMoreJobs() {
   if (!hasMore.value || !cursorId.value || loadingMore.value) return;
   loadingMore.value = true;
   try {
-    const r:any = await apiGet(`/api/jobs?${buildQuery(cursorId.value)}`);
+    const r:any = await apiGet(`/api/jobs?${buildQuery({ afterId: cursorId.value })}`);
     const rows = normalizeJobRowsResponse(r);
     mergeJobs(rows, true);
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
@@ -446,6 +489,10 @@ onMounted(() => {
 });
 onBeforeUnmount(() => {
   clearPollTimer();
+  if (jobsAbortController) {
+    try { jobsAbortController.abort(); } catch {}
+    jobsAbortController = null;
+  }
   document.removeEventListener('visibilitychange', onVisibilityChange);
 });
 </script>

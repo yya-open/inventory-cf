@@ -93,6 +93,8 @@ export function usePublicInventoryPage(options: {
 
   let cooldownTimer: ReturnType<typeof setInterval> | null = null;
   let scannerTimer: ReturnType<typeof setTimeout> | null = null;
+  let refreshRequestSeq = 0;
+  let submitRequestSeq = 0;
   const cooldownStorageKey = `inventory-public-submit-cooldown:${options.kind}`;
   const recentResultStorageKey = `inventory-public-last-result:${options.kind}`;
   const sessionSummaryStorageKey = `inventory-public-session-summary:${options.kind}`;
@@ -446,6 +448,7 @@ export function usePublicInventoryPage(options: {
   }
 
   async function refresh() {
+    const requestSeq = ++refreshRequestSeq;
     loading.value = true;
     error.value = '';
     clearRetry();
@@ -459,6 +462,7 @@ export function usePublicInventoryPage(options: {
       if (id.value && key.value) apiUrl = `${options.detailPath}?id=${encodeURIComponent(id.value)}&key=${encodeURIComponent(key.value)}`;
       else if (token.value) apiUrl = `${options.detailPath}?token=${encodeURIComponent(token.value)}`;
       else {
+        if (requestSeq !== refreshRequestSeq) return;
         row.value = null;
         syncCooldownForCurrentTarget();
         recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
@@ -466,6 +470,7 @@ export function usePublicInventoryPage(options: {
         return;
       }
       const result: any = await apiGetPublic(apiUrl);
+      if (requestSeq !== refreshRequestSeq) return;
       row.value = result.data;
       ensureSessionSummary(row.value?.inventory_batch_name);
       syncCooldownForCurrentTarget();
@@ -473,13 +478,14 @@ export function usePublicInventoryPage(options: {
       recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
       refreshPendingQueue();
     } catch (err: any) {
+      if (requestSeq !== refreshRequestSeq) return;
       error.value = err?.message || '获取失败';
       if (isNetworkError(err)) {
         retryMessage.value = '网络请求失败，请检查网络后重试。';
         retryAction.value = 'refresh';
       }
     } finally {
-      loading.value = false;
+      if (requestSeq === refreshRequestSeq) loading.value = false;
     }
   }
 
@@ -549,6 +555,7 @@ export function usePublicInventoryPage(options: {
   }
 
   async function submitOk() {
+    const requestSeq = ++submitRequestSeq;
     try {
       clearRetry();
       if (!inventoryReady.value) {
@@ -559,8 +566,10 @@ export function usePublicInventoryPage(options: {
       submittingOk.value = true;
       const payload = { action: 'OK' } as const;
       await sendInventoryPayload(undefined, payload);
+      if (requestSeq !== submitRequestSeq) return;
       await onSubmitSuccess('已记录：盘点通过', payload);
     } catch (err: any) {
+      if (requestSeq !== submitRequestSeq) return;
       if (Number(err?.status || 0) === 409) {
         const existing = err?.response?.data || null;
         if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
@@ -574,11 +583,12 @@ export function usePublicInventoryPage(options: {
       }
       ElMessage.error(err?.message || '提交失败');
     } finally {
-      submittingOk.value = false;
+      if (requestSeq === submitRequestSeq) submittingOk.value = false;
     }
   }
 
   async function submitIssue() {
+    const requestSeq = ++submitRequestSeq;
     try {
       clearRetry();
       if (!inventoryReady.value) {
@@ -590,10 +600,12 @@ export function usePublicInventoryPage(options: {
       submittingIssue.value = true;
       const payload = { action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark } as const;
       await sendInventoryPayload(undefined, payload);
+      if (requestSeq !== submitRequestSeq) return;
       issueVisible.value = false;
       issueForm.value = { issue_type: '', remark: '' };
       await onSubmitSuccess('已提交：异常', payload);
     } catch (err: any) {
+      if (requestSeq !== submitRequestSeq) return;
       if (Number(err?.status || 0) === 409) {
         const existing = err?.response?.data || null;
         if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
@@ -607,7 +619,7 @@ export function usePublicInventoryPage(options: {
       }
       ElMessage.error(err?.message || '提交失败');
     } finally {
-      submittingIssue.value = false;
+      if (requestSeq === submitRequestSeq) submittingIssue.value = false;
     }
   }
 

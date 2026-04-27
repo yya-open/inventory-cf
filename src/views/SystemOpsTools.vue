@@ -85,14 +85,14 @@
 
       <el-tab-pane label="异步任务" name="jobs">
         <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-          <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="loadJobs"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:260px" @change="loadJobs">
+          <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="applyJobFilters"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:260px" @change="applyJobFilters">
             <el-option-group v-for="group in asyncJobTypeGroups" :key="group.label" :label="group.label">
               <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
             </el-option-group>
           </el-select>
-          <el-select v-model="jobFilter.days" style="width:140px" @change="loadJobs"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
-          <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="loadJobs" />
+          <el-select v-model="jobFilter.days" style="width:140px" @change="applyJobFilters"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
+          <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="applyJobFilters" />
           <el-button type="danger" plain :disabled="batchDeletingJobs || deletableSelectedJobsCount===0" :loading="batchDeletingJobs" @click="deleteSelectedJobs">
             {{ batchDeletingJobs ? '批量删除中' : `批量删除（${deletableSelectedJobsCount}）` }}
           </el-button>
@@ -276,6 +276,8 @@ const jobPollTimer = ref<number | null>(null);
 const jobPollInFlight = ref(false);
 const jobsLastSyncedAt = ref('');
 const jobsLastSyncMode = ref<'full' | 'delta'>('full');
+let jobsRequestSeq = 0;
+let jobsAbortController: AbortController | null = null;
 const deletableSelectedJobsCount = computed(() => {
   if (!selectedJobIds.value.length) return 0;
   const selected = new Set(selectedJobIds.value);
@@ -517,6 +519,11 @@ function shouldUseIncrementalJobsRefresh() {
   return !String(jobFilter.status || '').trim();
 }
 
+function applyJobFilters() {
+  jobsLastSyncMode.value = 'full';
+  void loadJobs({ incremental: false });
+}
+
 function currentJobsPollDelay() {
   if (document.hidden) return JOB_POLL_HIDDEN_MS;
   const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
@@ -557,6 +564,13 @@ function handleJobsVisibilityChange() {
 }
 
 async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {}) {
+  const requestSeq = ++jobsRequestSeq;
+  if (jobsAbortController) {
+    try { jobsAbortController.abort(); } catch {}
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  jobsAbortController = controller;
+
   const q = new URLSearchParams();
   if (jobFilter.status) q.set('status', jobFilter.status);
   if (jobFilter.job_type) q.set('job_type', jobFilter.job_type);
@@ -574,14 +588,20 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
 
   jobPollInFlight.value = true;
   try {
-    const r:any = await apiGet(`/api/jobs?${q.toString()}`);
+    const r:any = await apiGet(`/api/jobs?${q.toString()}`, controller ? { signal: controller.signal } : {});
+    if (requestSeq !== jobsRequestSeq) return;
     const rows = Array.isArray(r.data) ? r.data : [];
     const usedDelta = allowDelta && (q.has('after_id') || q.has('ids'));
     jobs.value = usedDelta ? mergeJobsRows(jobs.value, rows, JOB_LIST_LIMIT) : rows;
     jobsLastSyncMode.value = usedDelta ? 'delta' : 'full';
     jobsLastSyncedAt.value = new Date().toISOString();
     loadedTabs.jobs = true;
+  } catch (error: any) {
+    if (requestSeq !== jobsRequestSeq) return;
+    if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
+    if (!options.silent) ElMessage.error(error?.message || '加载任务列表失败');
   } finally {
+    if (jobsAbortController === controller) jobsAbortController = null;
     jobPollInFlight.value = false;
     if (String(tab.value || '') === 'jobs') scheduleJobsPolling();
   }
@@ -764,6 +784,10 @@ onMounted(() => {
 
 onBeforeUnmount(() => {
   clearJobsPollTimer();
+  if (jobsAbortController) {
+    try { jobsAbortController.abort(); } catch {}
+    jobsAbortController = null;
+  }
   document.removeEventListener('visibilitychange', handleJobsVisibilityChange);
   window.removeEventListener('focus', handleJobsVisibilityChange);
 });

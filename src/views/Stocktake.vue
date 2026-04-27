@@ -407,7 +407,7 @@
 
 <script setup lang="ts">
 import { ElSegmented, ElUpload } from 'element-plus';
-import { ref, computed, onMounted, nextTick, watch } from "vue";
+import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
@@ -669,6 +669,8 @@ watch(warehouseId, async ()=>{
 });
 
 let _kwTimer: any = null;
+let listAbortController: AbortController | null = null;
+let listRequestSeq = 0;
 watch(listKeyword, () => {
   if (_kwTimer) clearTimeout(_kwTimer);
   _kwTimer = setTimeout(() => {
@@ -692,6 +694,12 @@ function onListSortChange(){
 }
 
 async function loadList(){
+  const requestSeq = ++listRequestSeq;
+  if (listAbortController) {
+    try { listAbortController.abort(); } catch {}
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  listAbortController = controller;
   try{
     const params = new URLSearchParams();
     params.set('warehouse_id', String(warehouseId.value));
@@ -700,11 +708,16 @@ async function loadList(){
     if (listKeyword.value.trim()) params.set('keyword', listKeyword.value.trim());
     if (listSortBy.value) params.set('sort_by', listSortBy.value);
     if (listSortDir.value) params.set('sort_dir', listSortDir.value);
-    const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`);
+    const r:any = await apiGet(`/api/stocktake/list?${params.toString()}`, controller ? { signal: controller.signal } : {});
+    if (requestSeq !== listRequestSeq) return;
     listTotal.value = Number(r?.meta?.total || 0);
     list.value = Array.isArray(r?.data) ? r.data : [];
   }catch(e:any){
+    if (requestSeq !== listRequestSeq) return;
+    if (controller?.signal?.aborted || String(e?.name || '') === 'AbortError') return;
     ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点单失败");
+  }finally{
+    if (listAbortController === controller) listAbortController = null;
   }
 }
 
@@ -1034,6 +1047,17 @@ async function rollbackStocktakeByRow(row:any){
 
 onMounted(async ()=>{
   await loadList();
+});
+
+onBeforeUnmount(() => {
+  if (_kwTimer) {
+    clearTimeout(_kwTimer);
+    _kwTimer = null;
+  }
+  if (listAbortController) {
+    try { listAbortController.abort(); } catch {}
+    listAbortController = null;
+  }
 });
 </script>
 
