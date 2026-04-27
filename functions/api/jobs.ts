@@ -30,8 +30,11 @@ function chunkIds(ids: number[], size = QR_EXPORT_CHUNK_SIZE) {
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async ({ env, request }) => {
   try {
+    const timing = (env as any).__timing;
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-    const status = await getSchemaStatus(env.DB);
+    const status = timing?.measure
+      ? await timing.measure('jobs_schema', () => getSchemaStatus(env.DB))
+      : await getSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
     const url = new URL(request.url);
     const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 100)));
@@ -45,7 +48,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
       .map((value) => Math.trunc(Number(value || 0)))
       .filter((value, index, arr) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index)
       .slice(0, 200);
-    return json(true, await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids }, env.BACKUP_BUCKET));
+    const data = timing?.measure
+      ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids }, env.BACKUP_BUCKET))
+      : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids }, env.BACKUP_BUCKET);
+    return json(true, data);
   } catch (e: any) {
     return errorResponse(e);
   }

@@ -4,13 +4,20 @@ import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services
 
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
+    const timing = (env as any).__timing;
     const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return json(false, null, '未绑定 D1 数据库(DB)');
 
     const query = buildWarningsQuery(new URL(request.url));
     query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '预警中心');
-    const rows = await listWarningsRows(env.DB, query);
-    const total = query.fast ? undefined : await countWarningsRows(env.DB, query);
+    const rows = timing?.measure
+      ? await timing.measure('warnings_query', () => listWarningsRows(env.DB, query))
+      : await listWarningsRows(env.DB, query);
+    const total = query.fast
+      ? undefined
+      : timing?.measure
+        ? await timing.measure('warnings_count', () => countWarningsRows(env.DB, query))
+        : await countWarningsRows(env.DB, query);
 
     return Response.json({
       ok: true,

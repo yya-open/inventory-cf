@@ -1104,12 +1104,28 @@ function utf8ByteLength(value: any) {
   return utf8Encoder.encode(String(value ?? '')).length;
 }
 
+function estimateBase64DecodedByteLengthByCharLength(base64Length: any) {
+  const length = Math.max(0, Number(base64Length || 0));
+  if (!length) return 0;
+  return Math.floor((length * 3) / 4);
+}
+
 function mapAsyncJobRow(row: any) {
   const createdMs = toMs(row?.created_at);
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
   const durationMs = startedMs && finishedMs && finishedMs >= startedMs ? finishedMs - startedMs : 0;
-  const resultSize = row?.result_file_size != null ? Number(row.result_file_size || 0) : row?.result_blob_base64 ? estimateBase64DecodedByteLength(row.result_blob_base64) : row?.result_text == null ? 0 : utf8ByteLength(row.result_text);
+  const resultSize = row?.result_file_size != null
+    ? Number(row.result_file_size || 0)
+    : Number(row?.result_blob_base64_len || 0) > 0
+      ? estimateBase64DecodedByteLengthByCharLength(row.result_blob_base64_len)
+      : Number(row?.result_text_len || 0) > 0
+        ? Math.max(0, Number(row.result_text_len || 0))
+        : row?.result_blob_base64
+          ? estimateBase64DecodedByteLength(row.result_blob_base64)
+          : row?.result_text == null
+            ? 0
+            : utf8ByteLength(row.result_text);
   const progress = String(row?.status) === 'success' ? 100
     : String(row?.status) === 'failed' ? 100
     : String(row?.status) === 'canceled' ? 100
@@ -1156,7 +1172,11 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
     binds.push(...deltaBinds);
   }
 
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_text, result_blob_base64, result_object_key, result_file_size, request_json, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at,
+    CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
+    LENGTH(result_blob_base64) AS result_blob_base64_len,
+    LENGTH(result_text) AS result_text_len
+    FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return (results || []).map(mapAsyncJobRow);
 }

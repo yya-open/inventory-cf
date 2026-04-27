@@ -72,7 +72,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
         return Response.json({ ok: true, ...payload });
       }
     }
-    const task = listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets)
+    const task = listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets, 'pc_assets')
       .finally(() => {
         if (cacheable && assetListPending.get(cacheKey) === task) assetListPending.delete(cacheKey);
       });

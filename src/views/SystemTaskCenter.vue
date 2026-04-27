@@ -198,7 +198,7 @@ function statusText(status: string) { return ({ queued: '排队中', running: '�
 function formatTime(value: any) { if (!value) return '-'; const d = new Date(value); if (Number.isNaN(d.getTime())) return String(value); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
 function formatDuration(ms: any) { const value = Number(ms || 0); if (!value || value < 0) return '-'; if (value < 1000) return `${value} ms`; const sec = value/1000; if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`; const min = Math.floor(sec/60); return `${min} 分 ${Math.round(sec % 60)} 秒`; }
 function formatBytes(value: any) { const num = Number(value || 0); if (!num) return '-'; if (num < 1024) return `${num} B`; if (num < 1024*1024) return `${(num/1024).toFixed(1)} KB`; return `${(num/(1024*1024)).toFixed(1)} MB`; }
-function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (row?.result_content_type || row?.result_blob_base64 || row?.result_object_key); }
+function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (Number(row?.result_available || 0) === 1 || !!row?.result_content_type); }
 function canDelete(row: any) { return !['queued', 'running'].includes(String(row?.status || '')); }
 function onJobSelectionChange(rows: any[]) {
   selectedJobIds.value = (rows || [])
@@ -407,7 +407,7 @@ async function deleteSelectedJobs() {
 function applyFilters(forceBase = false) {
   hasMore.value = false;
   cursorId.value = null;
-  void loadJobs({ force: true, includeBase: forceBase || true, reset: true });
+  void loadJobs({ force: true, includeBase: forceBase, reset: true });
 }
 function persistCompactMode() {
   try { localStorage.setItem(COMPACT_STORAGE_KEY, compactMode.value ? '1' : '0'); } catch {}

@@ -438,26 +438,36 @@ export function buildWarningsQuery(url: URL): WarningsListQuery {
 
 export function buildWarningsBaseSql() {
   return `
+    WITH latest_tx AS (
+      SELECT
+        tx.item_id,
+        tx.created_at,
+        ROW_NUMBER() OVER (PARTITION BY tx.item_id ORDER BY tx.created_at DESC, tx.id DESC) AS rn
+      FROM stock_tx tx
+      WHERE tx.warehouse_id=?
+    )
     SELECT
       i.id as item_id,
       i.sku, i.name, i.brand, i.model, i.category, i.unit,
       COALESCE(i.warning_qty,0) as warning_qty,
       COALESCE(s.qty,0) as qty,
       (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap,
-      (
-        SELECT MAX(tx.created_at)
-        FROM stock_tx tx
-        WHERE tx.warehouse_id = ? AND tx.item_id = i.id
-      ) as last_tx_at
+      lt.created_at as last_tx_at
     FROM items i
     LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
+    LEFT JOIN latest_tx lt ON lt.item_id=i.id AND lt.rn=1
     WHERE %WHERE%
   `;
 }
 
 export async function countWarningsRows(db: D1Database, query: WarningsListQuery) {
-  const countSql = `SELECT COUNT(*) as c FROM ( ${buildWarningsBaseSql().replace('%WHERE%', query.whereSql)} ) x`;
-  const row = await db.prepare(countSql).bind(query.warehouse_id, query.warehouse_id, ...query.binds).first<any>();
+  const countSql = `
+    SELECT COUNT(*) as c
+    FROM items i
+    LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
+    WHERE ${query.whereSql}
+  `;
+  const row = await db.prepare(countSql).bind(query.warehouse_id, ...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
@@ -469,28 +479,28 @@ export async function listWarningsRows(db: D1Database, query: WarningsListQuery)
 
 export async function listWarningsExportRows(db: D1Database, query: WarningsListQuery) {
   const sql = `
+    WITH latest_tx AS (
+      SELECT
+        tx.item_id,
+        tx.created_at,
+        ROW_NUMBER() OVER (PARTITION BY tx.item_id ORDER BY tx.created_at DESC, tx.id DESC) AS rn
+      FROM stock_tx tx
+      WHERE tx.warehouse_id=?
+    )
     SELECT
       i.sku, i.name, i.brand, i.model, i.category,
       COALESCE(s.qty,0) as qty,
       COALESCE(i.warning_qty,0) as warning_qty,
       (COALESCE(i.warning_qty,0) - COALESCE(s.qty,0)) as gap,
-      (
-        SELECT MAX(tx.created_at)
-        FROM stock_tx tx
-        WHERE tx.warehouse_id = ? AND tx.item_id = i.id
-      ) as last_tx_at,
-      (
-        SELECT ${sqlBjDateTime('tx.created_at')}
-        FROM stock_tx tx
-        WHERE tx.warehouse_id = ? AND tx.item_id = i.id
-        ORDER BY tx.id DESC LIMIT 1
-      ) as last_tx_at_bj
+      lt.created_at as last_tx_at,
+      ${sqlBjDateTime('lt.created_at')} as last_tx_at_bj
     FROM items i
     LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
+    LEFT JOIN latest_tx lt ON lt.item_id=i.id AND lt.rn=1
     WHERE ${query.whereSql}
     ORDER BY ${query.orderBy}
   `;
-  const result = await db.prepare(sql).bind(query.warehouse_id, query.warehouse_id, query.warehouse_id, ...query.binds).all<any>();
+  const result = await db.prepare(sql).bind(query.warehouse_id, query.warehouse_id, ...query.binds).all<any>();
   return result.results || [];
 }
 

@@ -7,14 +7,19 @@ export async function ensureSchemaTimed(env: TimedEnv, label: string, fn: () => 
   return measure ? measure(label, fn) : fn();
 }
 
-export async function listAssetPage<T>(db: D1Database, env: TimedEnv, tableName: string, query: QueryParts, listFn: (db: D1Database, query: QueryParts) => Promise<T[]>) {
+function withPrefix(prefix: string | undefined, name: string) {
+  const safe = String(prefix || '').trim();
+  return safe ? `${safe}_${name}` : name;
+}
+
+export async function listAssetPage<T>(db: D1Database, env: TimedEnv, tableName: string, query: QueryParts, listFn: (db: D1Database, query: QueryParts) => Promise<T[]>, labelPrefix?: string) {
   const total = query.fast
     ? null
     : env?.__timing?.measure
-      ? await env.__timing.measure('count', () => countByWhere(db, tableName, query))
+      ? await env.__timing.measure(withPrefix(labelPrefix, 'count'), () => countByWhere(db, tableName, query))
       : await countByWhere(db, tableName, query);
   const data = env?.__timing?.measure
-    ? await env.__timing.measure('query', () => listFn(db, query))
+    ? await env.__timing.measure(withPrefix(labelPrefix, 'query'), () => listFn(db, query))
     : await listFn(db, query);
   return { data, total, page: query.page, pageSize: query.pageSize };
 }
