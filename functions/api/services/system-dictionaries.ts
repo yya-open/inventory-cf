@@ -1,5 +1,4 @@
 import { sqlNowStored } from '../_time';
-import { ensurePcLatestStateTable } from './pc-latest-state';
 
 export type SystemDictionaryKey = 'asset_archive_reason' | 'pc_brand' | 'monitor_brand' | 'asset_warehouse';
 
@@ -314,28 +313,32 @@ function addCounts(target: Record<string, number>, rows: any[] | undefined | nul
   }
 }
 
-async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCountMap> {
-  await ensurePcLatestStateTable(db);
-  const counts: ReferenceCountMap = {
-    pc_brand: {},
-    monitor_brand: {},
-    asset_archive_reason: {},
-    department: {},
-    asset_warehouse: {},
-  };
+async function computeReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
+  const wanted = Array.from(new Set((keys || []).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
+  const counts: ReferenceCountMap = {};
+  for (const key of wanted) counts[key] = {};
+  if (!wanted.length) return counts;
 
-  const [{ results: pcBrandRows }, { results: monitorBrandRows }, { results: archiveReasonRows }, { results: departmentRows }, { results: assetWarehouseRows }] = await Promise.all([
-    db.prepare(
+  if (wanted.includes('pc_brand')) {
+    const { results } = await db.prepare(
       `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
        FROM pc_assets
        GROUP BY TRIM(COALESCE(brand, ''))`
-    ).all<any>(),
-    db.prepare(
+    ).all<any>();
+    addCounts(counts.pc_brand as Record<string, number>, results);
+  }
+
+  if (wanted.includes('monitor_brand')) {
+    const { results } = await db.prepare(
       `SELECT TRIM(COALESCE(brand, '')) AS label, COUNT(*) AS c
        FROM monitor_assets
        GROUP BY TRIM(COALESCE(brand, ''))`
-    ).all<any>(),
-    db.prepare(
+    ).all<any>();
+    addCounts(counts.monitor_brand as Record<string, number>, results);
+  }
+
+  if (wanted.includes('asset_archive_reason')) {
+    const { results } = await db.prepare(
       `SELECT label, SUM(c) AS c
        FROM (
          SELECT TRIM(COALESCE(archived_reason, '')) AS label, COUNT(*) AS c
@@ -349,48 +352,35 @@ async function computeAllReferenceCounts(db: D1Database): Promise<ReferenceCount
          GROUP BY TRIM(COALESCE(archived_reason, ''))
        ) t
        GROUP BY label`
-    ).all<any>(),
-    db.prepare(
-      `SELECT label, SUM(c) AS c
-       FROM (
-         SELECT TRIM(COALESCE(current_department, '')) AS label, COUNT(*) AS c
-         FROM pc_asset_latest_state
-         GROUP BY TRIM(COALESCE(current_department, ''))
-         UNION ALL
-         SELECT TRIM(COALESCE(department, '')) AS label, COUNT(*) AS c
-         FROM monitor_assets
-         GROUP BY TRIM(COALESCE(department, ''))
-       ) t
-       GROUP BY label`
-    ).all<any>(),
-    db.prepare(
-      `SELECT label, SUM(c) AS c
-       FROM (
-         SELECT '电脑仓' AS label, COUNT(*) AS c FROM pc_assets
-         UNION ALL
-         SELECT '显示器仓' AS label, COUNT(*) AS c FROM monitor_assets
-         UNION ALL
-         SELECT '配件仓' AS label, COUNT(*) AS c FROM warehouses
-         UNION ALL
-         SELECT TRIM(COALESCE(data_scope_value, '')) AS label, COUNT(*) AS c
-         FROM users
-         WHERE data_scope_type='warehouse'
-         GROUP BY TRIM(COALESCE(data_scope_value, ''))
-         UNION ALL
-         SELECT TRIM(COALESCE(data_scope_value2, '')) AS label, COUNT(*) AS c
-         FROM users
-         WHERE data_scope_type='department_warehouse'
-         GROUP BY TRIM(COALESCE(data_scope_value2, ''))
-       ) t
-       GROUP BY label`
-    ).all<any>(),
-  ]);
+    ).all<any>();
+    addCounts(counts.asset_archive_reason as Record<string, number>, results);
+  }
 
-  addCounts(counts.pc_brand as Record<string, number>, pcBrandRows);
-  addCounts(counts.monitor_brand as Record<string, number>, monitorBrandRows);
-  addCounts(counts.asset_archive_reason as Record<string, number>, archiveReasonRows);
-  addCounts(counts.department as Record<string, number>, departmentRows);
-  addCounts(counts.asset_warehouse as Record<string, number>, assetWarehouseRows);
+  if (wanted.includes('asset_warehouse')) {
+    const { results } = await db.prepare(
+      `SELECT label, SUM(c) AS c
+       FROM (
+          SELECT '电脑仓' AS label, COUNT(*) AS c FROM pc_assets
+          UNION ALL
+          SELECT '显示器仓' AS label, COUNT(*) AS c FROM monitor_assets
+          UNION ALL
+          SELECT '配件仓' AS label, COUNT(*) AS c FROM warehouses
+          UNION ALL
+          SELECT TRIM(COALESCE(data_scope_value, '')) AS label, COUNT(*) AS c
+          FROM users
+          WHERE data_scope_type='warehouse'
+          GROUP BY TRIM(COALESCE(data_scope_value, ''))
+          UNION ALL
+          SELECT TRIM(COALESCE(data_scope_value2, '')) AS label, COUNT(*) AS c
+          FROM users
+          WHERE data_scope_type='department_warehouse'
+          GROUP BY TRIM(COALESCE(data_scope_value2, ''))
+        ) t
+        GROUP BY label`
+    ).all<any>();
+    addCounts(counts.asset_warehouse as Record<string, number>, results);
+  }
+
   return counts;
 }
 
@@ -399,7 +389,7 @@ export async function refreshSystemDictionaryUsageCounters(db: D1Database, keys?
   await ensureDictionaryUsageDirtyTable(db);
   const wanted = Array.from(new Set((keys && keys.length ? keys : ALL_DICTIONARY_KEYS).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
   if (!wanted.length) return 0;
-  const allCounts = await computeAllReferenceCounts(db);
+  const allCounts = await computeReferenceCounts(db, wanted);
   const statements: D1PreparedStatement[] = [];
   for (const key of wanted) {
     statements.push(db.prepare(`DELETE FROM dictionary_usage_counters WHERE dictionary_key=?`).bind(key));
@@ -452,11 +442,12 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
      WHERE dictionary_key IN (${placeholders})`
   ).bind(...wanted).all<any>();
   const existingKeys = new Set((results || []).map((row: any) => String(row?.dictionary_key || '')).filter(Boolean));
-  const dirtyKeys = await listDirtyDictionaryKeys(db, wanted);
+  const refreshedDirty = await refreshDirtySystemDictionaryUsageCounters(db, wanted);
   const missingKeys = wanted.filter((key) => !existingKeys.has(key));
-  const refreshKeys = Array.from(new Set([...dirtyKeys, ...missingKeys]));
-  if (refreshKeys.length) {
-    await refreshSystemDictionaryUsageCounters(db, refreshKeys);
+  if (missingKeys.length) {
+    await refreshSystemDictionaryUsageCounters(db, missingKeys);
+  }
+  if (refreshedDirty > 0 || missingKeys.length) {
     ({ results } = await db.prepare(
       `SELECT dictionary_key, label, reference_count
        FROM dictionary_usage_counters

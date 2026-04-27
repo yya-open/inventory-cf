@@ -4,6 +4,17 @@ import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
 
 type Env = { DB: D1Database; JWT_SECRET?: string };
 
+let batchCache: { expiresAt: number; row: any | null } | null = null;
+const BATCH_CACHE_TTL_MS = 3000;
+
+async function getCachedActiveBatch(db: D1Database) {
+  const now = Date.now();
+  if (batchCache && batchCache.expiresAt > now) return batchCache.row;
+  const row = await getActiveInventoryBatch(db, 'monitor');
+  batchCache = { row: row || null, expiresAt: now + BATCH_CACHE_TTL_MS };
+  return batchCache.row;
+}
+
 function sanitizeMonitorAsset(asset: any) {
   return {
     id: asset.id,
@@ -50,7 +61,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     ).bind(id).first<any>();
 
     if (!asset) throw Object.assign(new Error("显示器台账不存在或已删除"), { status: 404 });
-    const activeBatch = await getActiveInventoryBatch(env.DB, 'monitor');
+    const activeBatch = await getCachedActiveBatch(env.DB);
     return Response.json({
       ok: true,
       data: sanitizeMonitorAsset({

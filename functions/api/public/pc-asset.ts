@@ -1,8 +1,35 @@
 import { errorResponse } from "../../_auth";
 import { publicAssetSubject, rateLimitPublic, resolvePublicAssetId } from "../services/public-assets";
 import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
+import { ensurePcLatestStateTable } from '../services/pc-latest-state';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
+
+let latestStateReady = false;
+let latestStateReadyPending: Promise<void> | null = null;
+let batchCache: { expiresAt: number; row: any | null } | null = null;
+const BATCH_CACHE_TTL_MS = 3000;
+
+async function ensureLatestStateReady(db: D1Database) {
+  if (latestStateReady) return;
+  if (latestStateReadyPending) return latestStateReadyPending;
+  latestStateReadyPending = ensurePcLatestStateTable(db)
+    .then(() => {
+      latestStateReady = true;
+    })
+    .finally(() => {
+      latestStateReadyPending = null;
+    });
+  return latestStateReadyPending;
+}
+
+async function getCachedActiveBatch(db: D1Database) {
+  const now = Date.now();
+  if (batchCache && batchCache.expiresAt > now) return batchCache.row;
+  const row = await getActiveInventoryBatch(db, 'pc');
+  batchCache = { row: row || null, expiresAt: now + BATCH_CACHE_TTL_MS };
+  return batchCache.row;
+}
 
 function sanitizePcAsset(asset: any) {
   return {
@@ -34,42 +61,28 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const token = (url.searchParams.get("token") || "").trim();
     await rateLimitPublic(env.DB, request, "public_pc_asset", publicAssetSubject(url), token ? 10 : 20);
     const id = await resolvePublicAssetId({ env, request, kind: "pc", allowToken: true });
+    await ensureLatestStateReady(env.DB);
 
     const asset = await env.DB.prepare(
       `
-      WITH latest_out AS (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_out
-        WHERE asset_id=?
-        GROUP BY asset_id
-      ),
-      latest_recycle AS (
-        SELECT asset_id, MAX(id) AS max_id
-        FROM pc_recycle
-        WHERE asset_id=?
-        GROUP BY asset_id
-      )
       SELECT
         a.id, a.brand, a.serial_no, a.model,
         a.manufacture_date, a.warranty_end, a.disk_capacity, a.memory_size,
         a.remark, a.status,
-        o.employee_no AS last_employee_no,
-        o.employee_name AS last_employee_name,
-        o.department AS last_department,
-        o.config_date AS last_config_date,
-        r.recycle_date AS last_recycle_date
+        s.current_employee_no AS last_employee_no,
+        s.current_employee_name AS last_employee_name,
+        s.current_department AS last_department,
+        s.last_config_date,
+        s.last_recycle_date
       FROM pc_assets a
-      LEFT JOIN latest_out lo ON lo.asset_id = a.id
-      LEFT JOIN pc_out o ON o.id = lo.max_id
-      LEFT JOIN latest_recycle lr ON lr.asset_id = a.id
-      LEFT JOIN pc_recycle r ON r.id = lr.max_id
+      LEFT JOIN pc_asset_latest_state s ON s.asset_id = a.id
       WHERE a.id=?
       LIMIT 1
       `
-    ).bind(id, id, id).first<any>();
+    ).bind(id).first<any>();
 
     if (!asset) throw Object.assign(new Error("电脑台账不存在或已删除"), { status: 404 });
-    const activeBatch = await getActiveInventoryBatch(env.DB, 'pc');
+    const activeBatch = await getCachedActiveBatch(env.DB);
     return Response.json({
       ok: true,
       data: sanitizePcAsset({
