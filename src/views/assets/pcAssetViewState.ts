@@ -1,12 +1,13 @@
 import { ref, watch, type Ref } from 'vue';
 import type { PcFilters } from '../../types/assets';
-import { getCachedSystemSettings } from '../../api/systemSettings';
 import { readJsonStorage, writeJsonStorage } from '../../utils/storage';
 import { createIdleDebounced } from '../../utils/idleDebounce';
 import { moveColumnKey, normalizeColumnOrder, normalizeColumnWidths, normalizeVisibleColumns, orderVisibleColumns, setColumnWidth } from '../../utils/tableColumns';
 import { findLedgerSavedView, normalizeLedgerDensity, removeLedgerSavedView, sanitizeLedgerViewName, upsertLedgerSavedView, type LedgerSavedView, type LedgerTableDensity } from '../../utils/ledgerViewPrefs';
 
 const STORAGE_KEY = 'inventory:pc-assets:filters';
+const LEDGER_DEFAULT_PAGE_SIZE = 20;
+const LEGACY_DEFAULT_PAGE_SIZE = 50;
 export const PC_COLUMN_OPTIONS = [
   { value: 'computer', label: '电脑' },
   { value: 'inventory', label: '盘点状态' },
@@ -47,7 +48,7 @@ type PersistedPcAssetViewState = {
 };
 
 function clampPageSize(value: unknown) {
-  return Math.min(200, Math.max(20, Number(value || getCachedSystemSettings().ui_default_page_size || 50) || 50));
+  return Math.min(200, Math.max(20, Number(value || LEDGER_DEFAULT_PAGE_SIZE) || LEDGER_DEFAULT_PAGE_SIZE));
 }
 
 export function usePcAssetViewState(onAutoSearch: () => void) {
@@ -58,7 +59,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     archiveReason: '',
     archiveMode: 'active',
     showArchived: false,
-    pageSize: getCachedSystemSettings().ui_default_page_size,
+    pageSize: LEDGER_DEFAULT_PAGE_SIZE,
     visibleColumns: PC_COLUMN_KEYS,
     columnOrder: PC_COLUMN_KEYS,
     columnWidths: {},
@@ -95,6 +96,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   const activeViewName = ref(sanitizeLedgerViewName(persistedState.activeViewName) || 'default');
 
   const initialPageSize = clampPageSize(persistedState.pageSize);
+  const shouldMigrateLegacyDefaultPageSize = Number(persistedState.pageSize || 0) === LEGACY_DEFAULT_PAGE_SIZE;
   const pcColumnOptions = [...PC_COLUMN_OPTIONS];
 
   let suppressAutoSearch = false;
@@ -148,6 +150,9 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
 
   function bindPersistence(pageSize: Ref<number>) {
     pageSizeRef = pageSize;
+    if (shouldMigrateLegacyDefaultPageSize && Number(pageSize.value || 0) === LEGACY_DEFAULT_PAGE_SIZE) {
+      pageSize.value = LEDGER_DEFAULT_PAGE_SIZE;
+    }
     watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths, density, savedViews, activeViewName], () => schedulePersistState(), { deep: true });
     watch(keyword, (_value, oldValue) => {
       if (suppressAutoSearch || oldValue === undefined) return;

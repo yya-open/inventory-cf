@@ -109,7 +109,7 @@ export async function requireAuthWithDataScope(env: { DB: D1Database; JWT_SECRET
 
 export function applyDepartmentDataScopeClause(clauses: string[], binds: any[], columnExpr: string, scope?: UserDataScope | null) {
   if (!scope || !['department', 'department_warehouse'].includes(scope.data_scope_type) || !scope.data_scope_value) return;
-  clauses.push(`TRIM(COALESCE(${columnExpr}, ''))=?`);
+  clauses.push(`COALESCE(${columnExpr}, '')=?`);
   binds.push(scope.data_scope_value);
 }
 

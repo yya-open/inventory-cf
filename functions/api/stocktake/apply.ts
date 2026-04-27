@@ -36,15 +36,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
-    const rows = (
-      await env.DB.prepare(`SELECT * FROM stocktake_line WHERE stocktake_id=? AND counted_qty IS NOT NULL`).bind(st_id).all<any>()
-    ).results || [];
+    const previewRow = await env.DB.prepare(
+      `SELECT
+         COUNT(*) AS counted_rows,
+         SUM(CASE WHEN COALESCE(diff_qty, 0) <> 0 THEN 1 ELSE 0 END) AS adjusted_rows,
+         SUM(CASE WHEN COALESCE(diff_qty, 0) > 0 THEN 1 ELSE 0 END) AS increase_rows,
+         SUM(CASE WHEN COALESCE(diff_qty, 0) < 0 THEN 1 ELSE 0 END) AS decrease_rows
+       FROM stocktake_line
+       WHERE stocktake_id=? AND counted_qty IS NOT NULL`
+    ).bind(st_id).first<any>();
 
     const preview = {
-      counted_rows: rows.length,
-      adjusted_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) !== 0).length,
-      increase_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) > 0).length,
-      decrease_rows: rows.filter((r:any) => Number(r?.diff_qty || 0) < 0).length,
+      counted_rows: Number(previewRow?.counted_rows || 0),
+      adjusted_rows: Number(previewRow?.adjusted_rows || 0),
+      increase_rows: Number(previewRow?.increase_rows || 0),
+      decrease_rows: Number(previewRow?.decrease_rows || 0),
     };
     if (previewOnly) {
       return apiOk({ preview: true,
@@ -58,13 +64,30 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     let adjusted = 0;
     const warehouseId = Number(st.warehouse_id);
     const CHUNK_LINES = 20;
+    const READ_PAGE_SIZE = 200;
+    let cursorId = 0;
 
-    for (let i = 0; i < rows.length; i += CHUNK_LINES) {
-      const part = rows.slice(i, i + CHUNK_LINES);
-      const stmts: D1PreparedStatement[] = [];
-      for (const r of part) {
-        const itemId = Number(r.item_id);
-        const diff = Number(r.diff_qty || 0);
+    while (true) {
+      const page = (
+        await env.DB.prepare(
+          `SELECT id, item_id, diff_qty
+             FROM stocktake_line
+            WHERE stocktake_id=?
+              AND counted_qty IS NOT NULL
+              AND id > ?
+            ORDER BY id ASC
+            LIMIT ?`
+        ).bind(st_id, cursorId, READ_PAGE_SIZE).all<any>()
+      ).results || [];
+      if (!page.length) break;
+      cursorId = Number(page[page.length - 1]?.id || cursorId);
+
+      for (let i = 0; i < page.length; i += CHUNK_LINES) {
+        const part = page.slice(i, i + CHUNK_LINES);
+        const stmts: D1PreparedStatement[] = [];
+        for (const r of part) {
+          const itemId = Number(r.item_id);
+          const diff = Number(r.diff_qty || 0);
         if (!itemId || !diff) continue;
         const txNo = stocktakeAdjustTxNo(String(st.st_no), itemId);
         stmts.push(
@@ -88,10 +111,11 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
           ).bind(txNo, itemId, warehouseId, Math.abs(diff), diff, st_id, String(st.st_no), '盘点调整', user.username)
         );
       }
-      if (!stmts.length) continue;
-      const res = await env.DB.batch(stmts);
-      for (let k = 0; k < res.length; k += 3) {
-        if (((res[k + 2] as any)?.meta?.changes || 0) > 0) adjusted += 1;
+        if (!stmts.length) continue;
+        const res = await env.DB.batch(stmts);
+        for (let k = 0; k < res.length; k += 3) {
+          if (((res[k + 2] as any)?.meta?.changes || 0) > 0) adjusted += 1;
+        }
       }
     }
 

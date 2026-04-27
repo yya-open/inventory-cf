@@ -83,9 +83,9 @@ export async function buildGovernance(db: D1Database, scope?: UserDataScope | nu
   const pcAllowed = scopeAllowsAssetWarehouse(scope, '电脑仓');
   const monitorAllowed = scopeAllowsAssetWarehouse(scope, '显示器仓');
   const pcDeptJoin = departmentScope ? `LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id` : '';
-  const pcDeptWhere = departmentScope ? `WHERE TRIM(COALESCE(s.current_department,''))=?` : '';
+  const pcDeptWhere = departmentScope ? `WHERE COALESCE(s.current_department,'')=?` : '';
   const pcBind = departmentScope ? [departmentScope] : [];
-  const monitorWhere = departmentScope ? `WHERE TRIM(COALESCE(a.department,''))=?` : '';
+  const monitorWhere = departmentScope ? `WHERE COALESCE(a.department,'')=?` : '';
   const monitorBind = departmentScope ? [departmentScope] : [];
   const archiveActions = [pcAllowed ? 'PC_ASSET_ARCHIVE' : null, monitorAllowed ? 'MONITOR_ASSET_ARCHIVE' : null].filter(Boolean) as string[];
   const restoreActions = [pcAllowed ? 'PC_ASSET_RESTORE' : null, monitorAllowed ? 'MONITOR_ASSET_RESTORE' : null].filter(Boolean) as string[];
@@ -208,7 +208,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
   if (mode === 'pc') {
     if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throw Object.assign(new Error('当前账号的数据范围未包含电脑仓，看板不可访问'), { status: 403 });
     const scopeJoin = departmentScope ? `JOIN pc_asset_latest_state s ON s.asset_id=t.asset_id` : '';
-    const scopeWhere = departmentScope ? ` AND TRIM(COALESCE(s.current_department,''))=?` : '';
+    const scopeWhere = departmentScope ? ` AND COALESCE(s.current_department,'')=?` : '';
     const scopeBinds = departmentScope ? [departmentScope] : [];
     const qTopPc = (table: string, whereExtra = '') => db.prepare(
       `SELECT COALESCE(NULLIF(model,''),'(未填型号)') AS sku,
@@ -243,7 +243,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
 
   if (mode === 'monitor') {
     if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throw Object.assign(new Error('当前账号的数据范围未包含显示器仓，看板不可访问'), { status: 403 });
-    const scopeWhere = departmentScope ? ` AND TRIM(COALESCE(t.department,''))=?` : '';
+    const scopeWhere = departmentScope ? ` AND COALESCE(t.department,'')=?` : '';
     const scopeBinds = departmentScope ? [departmentScope] : [];
     const qTopMonitor = (txType: string) => db.prepare(
       `SELECT COALESCE(NULLIF(t.model,''),'(未填型号)') AS sku,

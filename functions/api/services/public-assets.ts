@@ -155,12 +155,12 @@ async function getExistingInventoryLog(
     ? `SELECT id, action, issue_type, remark, created_at, batch_id
          FROM ${table}
         WHERE asset_id=? AND batch_id IS NULL
-        ORDER BY datetime(created_at) DESC, id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1`
     : `SELECT id, action, issue_type, remark, created_at, batch_id
          FROM ${table}
         WHERE asset_id=? AND batch_id=?
-        ORDER BY datetime(created_at) DESC, id DESC
+        ORDER BY created_at DESC, id DESC
         LIMIT 1`;
   const stmt = batchId == null ? db.prepare(sql).bind(assetId) : db.prepare(sql).bind(assetId, batchId);
   return stmt.first<any>();

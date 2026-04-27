@@ -93,7 +93,7 @@ async function computePcRange(db: D1Database, from: string, to: string, scope?: 
   const dept = scope?.data_scope_type === 'department' || scope?.data_scope_type === 'department_warehouse' ? String(scope?.data_scope_value || '').trim() : '';
   const { startAt, endExclusive } = dayBounds(from, to);
   const join = dept ? `JOIN pc_asset_latest_state s ON s.asset_id=t.asset_id` : '';
-  const scopeWhere = dept ? ` AND TRIM(COALESCE(s.current_department,''))=?` : '';
+  const scopeWhere = dept ? ` AND COALESCE(s.current_department,'')=?` : '';
   const scopeBinds = dept ? [dept] : [];
   const rowsFor = async (table: string, key: string, extraWhere = '') => {
     const { results } = await db.prepare(
@@ -124,7 +124,7 @@ async function computeMonitorRange(db: D1Database, from: string, to: string, sco
   if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) return metrics;
   const dept = scope?.data_scope_type === 'department' || scope?.data_scope_type === 'department_warehouse' ? String(scope?.data_scope_value || '').trim() : '';
   const { startAt, endExclusive } = dayBounds(from, to);
-  const where = dept ? ` AND TRIM(COALESCE(department,''))=?` : '';
+  const where = dept ? ` AND COALESCE(department,'')=?` : '';
   const binds = dept ? [dept] : [];
   const { results } = await db.prepare(
     `SELECT substr(created_at,1,10) AS day,
