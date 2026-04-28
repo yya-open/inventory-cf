@@ -230,12 +230,9 @@ class FakeDB {
       return { c: count };
     }
 
-    if (normalized === 'update users set role=?, acl_version=coalesce(acl_version,0)+1 where id=?') {
+    if (normalized === 'update users set role=? where id=?') {
       const user = getUser(params[1]);
-      if (user) {
-        user.role = String(params[0]) as UserRow['role'];
-        user.acl_version += 1;
-      }
+      if (user) user.role = String(params[0]) as UserRow['role'];
       return null;
     }
 

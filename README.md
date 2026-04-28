@@ -160,6 +160,13 @@ npm run migrate:plan
 npm run migrate:status -- --db inventory_db --remote
 ```
 
+迁移前健康检查（推荐）：
+```bash
+npm run migrate:doctor -- --db inventory_db --remote
+```
+
+说明：会检查 wrangler 登录状态、数据库名是否存在、以及 migration registry 读写可用性。
+
 应用所有未执行迁移：
 ```bash
 npm run migrate:apply -- --db inventory_db --remote

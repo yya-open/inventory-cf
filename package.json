@@ -15,6 +15,7 @@
     "migrate:verify": "node scripts/migrations.mjs verify",
     "migrate:plan": "node scripts/migrations.mjs plan",
     "migrate:status": "node scripts/migrations.mjs status",
+    "migrate:doctor": "node scripts/migrations.mjs doctor",
     "migrate:apply": "node scripts/migrations.mjs apply",
     "migrate:bundle": "node scripts/migrations.mjs bundle",
     "perf:explain": "python3 scripts/explain_queries.py",

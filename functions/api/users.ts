@@ -6,7 +6,7 @@ import { hashPassword } from "../_password";
 import { validatePassword } from "../_password_policy";
 import { invalidateCachedMe } from "./auth/me";
 import { buildKeywordWhere } from "./_search";
-import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, getUserTemplateCode, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
+import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
 import { getUserDataScope, invalidateUserDataScopeCache, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
 import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
 
@@ -135,13 +135,19 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
           .first<any>()
       : null;
 
+    let resolvedTemplateCode = normalizePermissionTemplateCode(r, permission_template_code);
+    let resolvedDataScope = validatedScope;
     if (newId) {
       const template = await setUserPermissionTemplate(env.DB, newId, r, permission_template_code);
       const dataScope = await setUserDataScope(env.DB, newId, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
       if (permissions && typeof permissions === 'object') await setUserPermissions(env.DB, newId, permissions, actor.username);
       if (created) Object.assign(created, { permission_template_code: template, ...dataScope });
+      resolvedTemplateCode = template;
+      resolvedDataScope = dataScope;
     }
-    const enriched = created ? { ...created, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, created?.permission_template_code || null) : {}, ...(newId ? await getUserDataScope(env.DB, newId) : validatedScope) } : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: normalizePermissionTemplateCode(r, permission_template_code), permissions: permissions || {}, ...validatedScope };
+    const enriched = created
+      ? { ...created, permission_template_code: resolvedTemplateCode, permissions: newId ? await getUserPermissionMap(env.DB, newId, r, resolvedTemplateCode) : {}, ...resolvedDataScope }
+      : { id: newId, username: u, role: r, is_active: 1, must_change_password: 1, permission_template_code: resolvedTemplateCode, permissions: permissions || {}, ...resolvedDataScope };
     await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
     return apiOk(enriched);
@@ -186,6 +192,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const before = target;
 
     const changes: any = {};
+    let aclVersionChanged = false;
     if (reset_password) {
       const newP = String(reset_password);
       const pv = validatePassword(newP);
@@ -197,8 +204,9 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     }
     if (role) {
       if (!["admin", "operator", "viewer"].includes(role)) return apiFail('role 无效', { status: 400, errorCode: 'USER_ROLE_INVALID' });
-      await env.DB.prepare("UPDATE users SET role=?, acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(role, uid).run();
+      await env.DB.prepare("UPDATE users SET role=? WHERE id=?").bind(role, uid).run();
       changes.role = role;
+      aclVersionChanged = true;
     }
     if (typeof is_active !== "undefined") {
       await env.DB.prepare("UPDATE users SET is_active=? WHERE id=?").bind(is_active ? 1 : 0, uid).run();
@@ -207,19 +215,23 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     const finalRole = role ? String(role) : String(target.role);
     if (typeof permission_template_code !== 'undefined') {
       const template = await setUserPermissionTemplate(env.DB, uid, finalRole, permission_template_code);
-      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.permission_template_code = template;
+      aclVersionChanged = true;
     }
     if (permissions && typeof permissions === 'object') {
       await setUserPermissions(env.DB, uid, permissions, actor.username);
-      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.permissions = permissions;
+      aclVersionChanged = true;
     }
     if (typeof data_scope_type !== 'undefined' || typeof data_scope_value !== 'undefined' || typeof data_scope_value2 !== 'undefined') {
       const validatedScope = await assertScopeDictionaryConstraints(env.DB, data_scope_type, data_scope_value, data_scope_value2);
       const scope = await setUserDataScope(env.DB, uid, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
-      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
       changes.data_scope = scope;
+      aclVersionChanged = true;
+    }
+    if (aclVersionChanged) {
+      await env.DB.prepare("UPDATE users SET acl_version=COALESCE(acl_version,0)+1 WHERE id=?").bind(uid).run();
+      changes.acl_version_bumped = true;
     }
 
     invalidateCachedAuthUser(uid);
@@ -231,7 +243,14 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
       .bind(uid)
       .first<any>();
 
-    const enrichedAfter = { ...after, permission_template_code: await getUserTemplateCode(env.DB, uid, after?.role || target.role), permissions: await getUserPermissionMap(env.DB, uid, after?.role || target.role, after?.permission_template_code || null), ...(await getUserDataScope(env.DB, uid)) };
+    const afterRole = String(after?.role || target.role || 'viewer');
+    const normalizedTemplateCode = normalizePermissionTemplateCode(afterRole, after?.permission_template_code || null);
+    const enrichedAfter = {
+      ...after,
+      permission_template_code: normalizedTemplateCode,
+      permissions: await getUserPermissionMap(env.DB, uid, afterRole, normalizedTemplateCode),
+      ...normalizeUserDataScope(after?.data_scope_type, after?.data_scope_value, after?.data_scope_value2),
+    };
     await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after: enrichedAfter, changes });
 
     return apiOk(enrichedAfter);

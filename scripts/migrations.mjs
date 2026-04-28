@@ -51,15 +51,15 @@ function verifyManifest() {
 }
 function runWrangler({ wrangler, db, command, file, remote, local, json = false }) {
   const args = ['d1', 'execute', db];
-  let tmpSqlFile = null;
   if (remote) args.push('--remote');
   if (local) args.push('--local');
   if (json) args.push('--json');
+  if (command && file) throw new Error('runWrangler received both command and file; choose one');
   if (command) {
     const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inventory-migration-command-'));
-    tmpSqlFile = path.join(dir, 'command.sql');
-    fs.writeFileSync(tmpSqlFile, String(command || ''));
-    args.push('--file', tmpSqlFile);
+    const tempSql = path.join(dir, 'command.sql');
+    fs.writeFileSync(tempSql, String(command));
+    args.push('--file', tempSql);
   }
   if (file) args.push('--file', file);
 
@@ -75,6 +75,23 @@ function runWrangler({ wrangler, db, command, file, remote, local, json = false 
     result = spawnSync(wrangler, args, { cwd: root, encoding: 'utf8' });
   }
 
+  if (result.error) throw result.error;
+  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
+  return result.stdout.trim();
+}
+
+function runWranglerRaw({ wrangler, argv }) {
+  let result;
+  if (process.platform === 'win32') {
+    const quoteArg = (value) => {
+      const s = String(value ?? '');
+      return `"${s.replace(/"/g, '""')}"`;
+    };
+    const cmdline = [wrangler, ...argv].map(quoteArg).join(' ');
+    result = spawnSync(cmdline, { cwd: root, encoding: 'utf8', shell: true });
+  } else {
+    result = spawnSync(wrangler, argv, { cwd: root, encoding: 'utf8' });
+  }
   if (result.error) throw result.error;
   if (result.status !== 0) throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
   return result.stdout.trim();
@@ -171,6 +188,30 @@ function pending(appliedRows) {
   const applied = new Set(appliedRows.map((row) => String(row.id)));
   return manifest.filter((entry) => !applied.has(entry.id));
 }
+
+function doctor(args) {
+  if (!args.db) throw new Error('doctor requires --db <database_name>');
+  if (!!args.remote === !!args.local) throw new Error('doctor requires exactly one of --remote or --local');
+
+  const whoamiOut = runWranglerRaw({ wrangler: args.wrangler, argv: ['whoami'] });
+  console.log(`Wrangler identity check ok: ${whoamiOut.split(/\r?\n/)[0] || 'logged in'}`);
+
+  const listOut = runWranglerRaw({ wrangler: args.wrangler, argv: ['d1', 'list', '--json'] });
+  const dbList = parseWranglerJson(listOut);
+  const dbRows = extractResultsRows(dbList);
+  const matched = dbRows.find((row) => String(row?.name || '') === String(args.db));
+  if (!matched) {
+    const names = dbRows.map((row) => String(row?.name || '')).filter(Boolean).join(', ');
+    throw new Error(`D1 database '${args.db}' not found. Available: ${names || '(none)'}`);
+  }
+  console.log(`D1 database found: ${args.db}`);
+
+  ensureRegistry(args);
+  const applied = listApplied(args);
+  const pendingRows = pending(applied);
+  console.log(`Registry check ok: applied=${applied.length}, pending=${pendingRows.length}`);
+}
+
 const args = parseArgs(process.argv.slice(2));
 verifyManifest();
 if (args.command === 'verify') {
@@ -185,6 +226,8 @@ if (args.command === 'verify') {
 } else if (args.command === 'status') {
   if (!args.db) throw new Error('status requires --db <database_name>');
   ensureRegistry(args); printPlan(listApplied(args));
+} else if (args.command === 'doctor') {
+  doctor(args);
 } else if (args.command === 'apply') {
   if (!args.db) throw new Error('apply requires --db <database_name>');
   ensureRegistry(args);
@@ -203,7 +246,7 @@ if (args.command === 'verify') {
     fs.writeFileSync(file, renderWrappedSql(entry));
     console.log(`Applying ${entry.id} ${entry.file}`);
     try {
-      runWrangler({ ...args, command: '', file });
+      runWrangler({ ...args, file });
     } catch (error) {
       if (!isSkippableMigrationError(error)) throw error;
       console.log(`Skipping ${entry.id} ${entry.file} (already applied structure detected); marking applied`);
