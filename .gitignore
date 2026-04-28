@@ -1,3 +1,23 @@
 node_modules/
 dist/
 .wrangler/
+
+# Local env / secrets
+.env
+.env.*
+!.env.example
+
+# Build and tooling cache
+coverage/
+.vite/
+.cache/
+
+# Local temp / logs / backups
+*.log
+*.tmp
+*.bak
+*.bak_*
+
+# OS files
+.DS_Store
+Thumbs.db
