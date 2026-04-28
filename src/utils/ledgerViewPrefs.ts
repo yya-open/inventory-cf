@@ -7,6 +7,7 @@ export type LedgerSavedView = {
   columnWidths: Record<string, number>;
   density: LedgerTableDensity;
   pageSize?: number;
+  filters?: Record<string, unknown>;
   updatedAt: string;
 };
 

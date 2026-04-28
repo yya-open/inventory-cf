@@ -38,6 +38,7 @@ type PersistedPcAssetViewState = {
   archiveReason?: string;
   archiveMode?: ArchiveMode;
   showArchived?: boolean;
+  defaultViewName?: string;
   pageSize?: number;
   visibleColumns?: string[];
   columnOrder?: string[];
@@ -59,6 +60,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     archiveReason: '',
     archiveMode: 'active',
     showArchived: false,
+    defaultViewName: '',
     pageSize: LEDGER_DEFAULT_PAGE_SIZE,
     visibleColumns: PC_COLUMN_KEYS,
     columnOrder: PC_COLUMN_KEYS,
@@ -94,6 +96,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   const density = ref<LedgerTableDensity>(normalizeLedgerDensity(persistedState.density));
   const savedViews = ref<LedgerSavedView[]>(Array.isArray(persistedState.savedViews) ? persistedState.savedViews : []);
   const activeViewName = ref(sanitizeLedgerViewName(persistedState.activeViewName) || 'default');
+  const defaultViewName = ref(sanitizeLedgerViewName(persistedState.defaultViewName) || '');
 
   const initialPageSize = clampPageSize(persistedState.pageSize);
   const shouldMigrateLegacyDefaultPageSize = Number(persistedState.pageSize || 0) === LEGACY_DEFAULT_PAGE_SIZE;
@@ -122,6 +125,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
       showArchived: Boolean(showArchived.value || archiveMode.value !== 'active'),
       archiveMode: archiveMode.value,
       archiveReason: archiveReason.value || '',
+      defaultViewName: defaultViewName.value,
       pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
       visibleColumns: visibleColumns.value,
       columnOrder: columnOrder.value,
@@ -153,7 +157,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     if (shouldMigrateLegacyDefaultPageSize && Number(pageSize.value || 0) === LEGACY_DEFAULT_PAGE_SIZE) {
       pageSize.value = LEDGER_DEFAULT_PAGE_SIZE;
     }
-    watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths, density, savedViews, activeViewName], () => schedulePersistState(), { deep: true });
+    watch([status, inventoryStatus, keyword, archiveReason, archiveMode, showArchived, pageSize, visibleColumns, columnOrder, columnWidths, density, savedViews, activeViewName, defaultViewName], () => schedulePersistState(), { deep: true });
     watch(keyword, (_value, oldValue) => {
       if (suppressAutoSearch || oldValue === undefined) return;
       scheduleKeywordSearch();
@@ -204,6 +208,13 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
       columnWidths: { ...columnWidths.value },
       density: density.value,
       pageSize: clampPageSize(pageSizeRef?.value || initialPageSize),
+      filters: {
+        status: status.value || '',
+        keyword: keyword.value || '',
+        inventoryStatus: inventoryStatus.value || '',
+        archiveReason: archiveReason.value || '',
+        archiveMode: archiveMode.value,
+      },
       updatedAt: new Date().toISOString(),
     });
     activeViewName.value = nextName;
@@ -213,12 +224,25 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
   function applySavedView(name: string) {
     const matched = findLedgerSavedView(savedViews.value, name);
     if (!matched) return false;
-    columnOrder.value = normalizeColumnOrder(matched.columnOrder, PC_COLUMN_KEYS);
-    visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(matched.visibleColumns, PC_COLUMN_KEYS), columnOrder.value);
-    columnWidths.value = normalizeColumnWidths(matched.columnWidths, PC_COLUMN_KEYS);
-    density.value = normalizeLedgerDensity(matched.density);
-    if (pageSizeRef && matched.pageSize) pageSizeRef.value = clampPageSize(matched.pageSize);
-    activeViewName.value = matched.name;
+    runWithoutAutoSearch(() => {
+      columnOrder.value = normalizeColumnOrder(matched.columnOrder, PC_COLUMN_KEYS);
+      visibleColumns.value = orderVisibleColumns(normalizeVisibleColumns(matched.visibleColumns, PC_COLUMN_KEYS), columnOrder.value);
+      columnWidths.value = normalizeColumnWidths(matched.columnWidths, PC_COLUMN_KEYS);
+      density.value = normalizeLedgerDensity(matched.density);
+      if (pageSizeRef && matched.pageSize) pageSizeRef.value = clampPageSize(matched.pageSize);
+
+      const filters = (matched.filters && typeof matched.filters === 'object') ? matched.filters as Record<string, unknown> : null;
+      if (filters) {
+        status.value = String(filters.status || '');
+        keyword.value = String(filters.keyword || '');
+        inventoryStatus.value = String(filters.inventoryStatus || '');
+        archiveReason.value = String(filters.archiveReason || '');
+        const nextArchiveMode = String(filters.archiveMode || 'active') as ArchiveMode;
+        archiveMode.value = ['active', 'archived', 'all'].includes(nextArchiveMode) ? nextArchiveMode : 'active';
+        showArchived.value = archiveMode.value !== 'active';
+      }
+      activeViewName.value = matched.name;
+    });
     return true;
   }
 
@@ -229,7 +253,28 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     if (nextViews.length === savedViews.value.length) return false;
     savedViews.value = nextViews;
     if (activeViewName.value === normalized) activeViewName.value = 'default';
+    if (defaultViewName.value === normalized) defaultViewName.value = '';
     return true;
+  }
+
+  function setDefaultSavedView(name: string) {
+    const normalized = sanitizeLedgerViewName(name);
+    if (!normalized) return false;
+    if (!findLedgerSavedView(savedViews.value, normalized)) return false;
+    defaultViewName.value = normalized;
+    return true;
+  }
+
+  function clearDefaultSavedView() {
+    const hadDefault = !!defaultViewName.value;
+    defaultViewName.value = '';
+    return hadDefault;
+  }
+
+  function getDefaultSavedView() {
+    const normalized = sanitizeLedgerViewName(defaultViewName.value);
+    if (!normalized) return null;
+    return findLedgerSavedView(savedViews.value, normalized);
   }
 
   function runWithoutAutoSearch(fn: () => void) {
@@ -260,6 +305,7 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     density,
     savedViews,
     activeViewName,
+    defaultViewName,
     initialPageSize,
     pcColumnOptions,
     currentFilters,
@@ -274,6 +320,9 @@ export function usePcAssetViewState(onAutoSearch: () => void) {
     saveCurrentView,
     applySavedView,
     deleteSavedView,
+    setDefaultSavedView,
+    clearDefaultSavedView,
+    getDefaultSavedView,
     runWithoutAutoSearch,
   };
 }

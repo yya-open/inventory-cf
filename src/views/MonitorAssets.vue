@@ -28,6 +28,7 @@
       :density="density"
       :saved-views="savedViews"
       :active-view-name="activeViewName"
+      :default-view-name="defaultViewName"
       @update:visible-columns="updateVisibleColumns"
       @update:density="setDensity"
       @move-column="moveVisibleColumn"
@@ -50,6 +51,7 @@
       @save-view="handleSaveView"
       @apply-view="handleApplyView"
       @delete-view="handleDeleteView"
+      @set-default-view="handleSetDefaultView"
       @restore-columns="restoreDefaultColumns"
       @download-template="downloadMonitorTemplate"
       @import-file="onImportMonitorFile"
@@ -304,6 +306,7 @@ const {
   density,
   savedViews,
   activeViewName,
+  defaultViewName,
   initialPageSize,
   monitorColumnOptions,
   currentFilters,
@@ -318,6 +321,8 @@ const {
   saveCurrentView,
   applySavedView,
   deleteSavedView,
+  setDefaultSavedView,
+  getDefaultSavedView,
   runWithoutAutoSearch,
 } = useMonitorAssetViewState(() => {
   void refreshLedgerData();
@@ -381,8 +386,18 @@ function handleApplyView(name: string) {
 }
 
 function handleDeleteView(name: string) {
+  const deletingDefault = defaultViewName.value === String(name || '').trim();
   if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  if (deletingDefault) {
+    notifyAction('视图已删除', `已删除“${name}”视图，默认已回退到系统默认视图。`, 'warning');
+    return;
+  }
   notifyAction('视图已删除', `已删除“${name}”视图。`, 'warning');
+}
+
+function handleSetDefaultView(name: string) {
+  if (!setDefaultSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
 let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
@@ -1984,6 +1999,12 @@ function handleViewportResize() {
 }
 
 onBeforeMount(() => {
+  const defaultView = getDefaultSavedView();
+  if (defaultView) {
+    runWithoutAutoSearch(() => {
+      applySavedView(defaultView.name);
+    });
+  }
   handleViewportResize();
   if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
   void hydrateViewData({ skipAuxiliary: true }).finally(() => {

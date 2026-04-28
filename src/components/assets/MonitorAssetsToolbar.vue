@@ -226,6 +226,7 @@
           </div>
           <div class="saved-view-actions">
             <span class="saved-view-action">应用</span>
+            <el-button link type="primary" @click.stop="emit('set-default-view', item.name)">{{ item.name === defaultViewName ? '已默认' : '设为默认' }}</el-button>
             <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
           </div>
         </div>
@@ -298,6 +299,7 @@ const props = defineProps<{
   density: LedgerTableDensity;
   savedViews: LedgerSavedView[];
   activeViewName: string;
+  defaultViewName?: string;
   mobileMode?: boolean;
 }>();
 
@@ -315,6 +317,7 @@ const emit = defineEmits<{
   'save-view': [string];
   'apply-view': [string];
   'delete-view': [string];
+  'set-default-view': [string];
   search: [];
   reset: [];
   'set-inventory-filter': [string];
