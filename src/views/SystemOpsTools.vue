@@ -100,7 +100,7 @@
           <span class="ops-auto-refresh sys-muted">{{ jobAutoRefreshText }}</span>
         </div>
 
-        <el-table ref="jobsTableRef" :data="jobs" border row-key="id" @selection-change="onJobsSelectionChange">
+        <el-table ref="jobsTableRef" :data="renderedJobs" border row-key="id" @selection-change="onJobsSelectionChange">
           <el-table-column type="selection" width="46" reserve-selection />
           <el-table-column label="序号" width="78" align="center">
             <template #default="{ $index }">{{ $index + 1 }}</template>
@@ -148,13 +148,23 @@
             </template>
           </el-table-column>
         </el-table>
+        <div class="ops-load-more-wrap">
+          <el-button size="small" :disabled="jobsRenderLimit >= jobs.length" @click="jobsRenderLimit += JOB_RENDER_STEP">
+            {{ jobsRenderLimit >= jobs.length ? '已显示全部任务' : `显示更多任务（已显示 ${Math.min(jobsRenderLimit, jobs.length)} / ${jobs.length}）` }}
+          </el-button>
+        </div>
       </el-tab-pane>
 
       <el-tab-pane label="观测中心" name="obs">
         <div class="ops-subtitle">慢请求（近 {{ slowRows.length }} 条）</div>
-        <el-table :data="slowRows" border size="small" class="ops-gap-bottom-lg"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
+        <el-table :data="renderedSlowRows" border size="small" class="ops-gap-bottom-lg"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
+        <div class="ops-load-more-wrap ops-gap-bottom">
+          <el-button size="small" :disabled="obsRenderLimit >= slowRows.length" @click="obsRenderLimit += OBS_RENDER_STEP">
+            {{ obsRenderLimit >= slowRows.length ? '慢请求已显示全部' : `显示更多慢请求（${Math.min(obsRenderLimit, slowRows.length)} / ${slowRows.length}）` }}
+          </el-button>
+        </div>
         <div class="ops-subtitle">错误请求（近 {{ errorRows.length }} 条）</div>
-        <el-table :data="errorRows" border size="small"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
+        <el-table :data="renderedErrorRows" border size="small"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
       </el-tab-pane>
 
       <el-tab-pane label="健康检查" name="health">
@@ -180,7 +190,7 @@
 
       <el-tab-pane label="修复历史" name="history">
         <el-alert type="info" :closable="false" class="ops-gap-bottom" title="修复历史会记录谁执行了什么修复、修前影响多少、修后剩余多少。" />
-        <el-table :data="repairHistory" border>
+        <el-table :data="renderedRepairHistory" border>
           <el-table-column prop="created_at" label="时间" width="180" />
           <el-table-column prop="actor_name" label="执行人" width="120" />
           <el-table-column prop="action_label" label="动作" width="180" />
@@ -190,6 +200,11 @@
           <el-table-column label="结果" width="100"><template #default="{ row }"><el-tag :type="row.success ? 'success' : 'danger'">{{ row.success ? '成功' : '失败' }}</el-tag></template></el-table-column>
           <el-table-column prop="result_summary" label="摘要" min-width="280" />
         </el-table>
+        <div class="ops-load-more-wrap">
+          <el-button size="small" :disabled="historyRenderLimit >= repairHistory.length" @click="historyRenderLimit += HISTORY_RENDER_STEP">
+            {{ historyRenderLimit >= repairHistory.length ? '修复历史已显示全部' : `显示更多修复历史（${Math.min(historyRenderLimit, repairHistory.length)} / ${repairHistory.length}）` }}
+          </el-button>
+        </div>
       </el-tab-pane>
     </el-tabs>
 
@@ -255,6 +270,12 @@ const slowRows = ref<any[]>([]);
 const errorRows = ref<any[]>([]);
 const jobs = ref<JobRow[]>([]);
 const repairHistory = ref<any[]>([]);
+const JOB_RENDER_STEP = 40;
+const HISTORY_RENDER_STEP = 30;
+const OBS_RENDER_STEP = 30;
+const jobsRenderLimit = ref(JOB_RENDER_STEP);
+const historyRenderLimit = ref(HISTORY_RENDER_STEP);
+const obsRenderLimit = ref(OBS_RENDER_STEP);
 const scanning = ref(false);
 const running = ref('');
 const lastRepair = ref('');
@@ -406,6 +427,7 @@ async function loadObservability() {
   const r:any = await apiGet('/api/system-observability');
   slowRows.value = r.data?.slow_requests || [];
   errorRows.value = r.data?.error_requests || [];
+  obsRenderLimit.value = OBS_RENDER_STEP;
   loadedTabs.obs = true;
 }
 
@@ -593,6 +615,7 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
     const rows = Array.isArray(r.data) ? r.data : [];
     const usedDelta = allowDelta && (q.has('after_id') || q.has('ids'));
     jobs.value = usedDelta ? mergeJobsRows(jobs.value, rows, JOB_LIST_LIMIT) : rows;
+    if (!usedDelta) jobsRenderLimit.value = JOB_RENDER_STEP;
     jobsLastSyncMode.value = usedDelta ? 'delta' : 'full';
     jobsLastSyncedAt.value = new Date().toISOString();
     loadedTabs.jobs = true;
@@ -610,6 +633,7 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
 async function loadRepairHistory() {
   const r:any = await apiGet('/api/system-tools?section=history');
   repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
+  historyRenderLimit.value = HISTORY_RENDER_STEP;
   loadedTabs.history = true;
 }
 
@@ -775,6 +799,10 @@ watch(jobs, () => {
   const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
   selectedJobIds.value = selectedJobIds.value.filter((id) => keep.has(id));
 });
+const renderedJobs = computed(() => jobs.value.slice(0, jobsRenderLimit.value));
+const renderedRepairHistory = computed(() => repairHistory.value.slice(0, historyRenderLimit.value));
+const renderedSlowRows = computed(() => slowRows.value.slice(0, obsRenderLimit.value));
+const renderedErrorRows = computed(() => errorRows.value.slice(0, obsRenderLimit.value));
 
 onMounted(() => {
   ensureTabLoaded('repair');
@@ -871,6 +899,12 @@ onBeforeUnmount(() => {
 
 .ops-w-260 {
   width: 260px;
+}
+
+.ops-load-more-wrap {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
 }
 
 .ops-metric-mid {

@@ -22,24 +22,24 @@
       </el-row>
 
       <div class="toolbar">
-        <el-select v-model="filter.status" clearable placeholder="状态" style="width:140px" @change="applyFilters">
+        <el-select v-model="filter.status" clearable placeholder="状态" class="task-w-140" @change="applyFilters">
           <el-option label="排队中" value="queued" />
           <el-option label="执行中" value="running" />
           <el-option label="成功" value="success" />
           <el-option label="失败" value="failed" />
           <el-option label="已取消" value="canceled" />
         </el-select>
-        <el-select v-model="filter.job_type" clearable placeholder="任务类型" style="width:260px" @change="applyFilters">
+        <el-select v-model="filter.job_type" clearable placeholder="任务类型" class="task-w-260" @change="applyFilters">
           <el-option-group v-for="group in jobTypeGroups" :key="group.label" :label="group.label">
             <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
           </el-option-group>
         </el-select>
-        <el-select v-model="filter.days" style="width:140px" @change="applyFilters(true)">
+        <el-select v-model="filter.days" class="task-w-140" @change="applyFilters(true)">
           <el-option label="最近 7 天" :value="7" />
           <el-option label="最近 15 天" :value="15" />
           <el-option label="最近 30 天" :value="30" />
         </el-select>
-        <el-select v-model="pageSize" style="width:140px" @change="applyFilters">
+        <el-select v-model="pageSize" class="task-w-140" @change="applyFilters">
           <el-option label="每页 20 条" :value="20" />
           <el-option label="每页 40 条" :value="40" />
           <el-option label="每页 80 条" :value="80" />
@@ -47,6 +47,7 @@
         <el-switch v-model="filter.mine" active-text="仅看我发起" @change="applyFilters" />
         <el-switch v-model="pollEnabled" active-text="自动刷新" @change="handlePollToggle" />
         <el-switch v-model="compactMode" active-text="精简视图" @change="persistCompactMode" />
+        <el-switch v-model="perfMode" active-text="性能模式" @change="persistPerfMode" />
         <el-button
           type="danger"
           plain
@@ -56,12 +57,14 @@
         >
           {{ batchDeleting ? '批量删除中' : `批量删除（${deletableSelectedCount}）` }}
         </el-button>
+        <el-button v-if="perfMode && renderedJobs.length > PERF_RENDER_INITIAL" size="small" text @click="resetPerfWindow">回到顶部并重置窗口</el-button>
         <div class="toolbar-meta">{{ refreshHint }}</div>
       </div>
 
       <div class="list-meta">
         <span>已加载 {{ jobs.length }} 条，当前渲染 {{ renderedJobs.length }} 条</span>
         <span v-if="hasMore">可继续加载更早任务</span>
+        <span v-if="perfMode">性能模式：滚动到底自动追加渲染（{{ renderedJobs.length }} / {{ jobs.length }}）</span>
       </div>
 
       <el-table
@@ -72,6 +75,7 @@
         max-height="640"
         row-key="id"
         table-layout="fixed"
+        @scroll="onJobsTableScroll"
         @selection-change="onJobSelectionChange"
       >
         <el-table-column type="selection" width="46" reserve-selection />
@@ -151,6 +155,7 @@ import { canCapability } from '../store/auth';
 import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
 
 const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
+const PERF_STORAGE_KEY = 'system_task_center_perf_mode';
 const loading = ref(false);
 const loadingMore = ref(false);
 const snapshotSubmitting = ref(false);
@@ -166,6 +171,7 @@ const pageSize = ref(40);
 const hasMore = ref(false);
 const cursorId = ref<number | null>(null);
 const compactMode = ref(false);
+const perfMode = ref(false);
 const pollEnabled = ref(true);
 const detailVisible = ref(false);
 const detailRow = ref<any | null>(null);
@@ -179,9 +185,17 @@ const BASE_REFRESH_MS = 60_000;
 const ACTIVE_POLL_MS = 8_000;
 const IDLE_POLL_MS = 180_000;
 const RENDER_LIMIT_COMPACT = 30;
+const PERF_RENDER_INITIAL = 120;
+const PERF_RENDER_STEP = 120;
+const PERF_RENDER_NEAR_BOTTOM_PX = 80;
+const perfRenderLimit = ref(PERF_RENDER_INITIAL);
 const jobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const hasActiveJobs = computed(() => jobs.value.some((row) => ['queued', 'running'].includes(String(row?.status || ''))));
-const renderedJobs = computed(() => compactMode.value ? jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT)) : jobs.value);
+const renderedJobs = computed(() => {
+  if (compactMode.value) return jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT));
+  if (perfMode.value) return jobs.value.slice(0, Math.min(jobs.value.length, perfRenderLimit.value));
+  return jobs.value;
+});
 const deletableSelectedCount = computed(() => {
   if (!selectedJobIds.value.length) return 0;
   const selected = new Set(selectedJobIds.value);
@@ -247,6 +261,20 @@ async function loadBase() {
 function clearPollTimer() {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
+}
+function onJobsTableScroll() {
+  if (!perfMode.value) return;
+  if (renderedJobs.value.length >= jobs.value.length) return;
+  const wrap = jobsTableRef.value?.$el?.querySelector?.('.el-scrollbar__wrap') as HTMLElement | undefined;
+  if (!wrap) return;
+  const distanceToBottom = wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop;
+  if (distanceToBottom > PERF_RENDER_NEAR_BOTTOM_PX) return;
+  perfRenderLimit.value = Math.min(jobs.value.length, perfRenderLimit.value + PERF_RENDER_STEP);
+}
+function resetPerfWindow() {
+  perfRenderLimit.value = PERF_RENDER_INITIAL;
+  const wrap = jobsTableRef.value?.$el?.querySelector?.('.el-scrollbar__wrap') as HTMLElement | undefined;
+  if (wrap) wrap.scrollTop = 0;
 }
 function schedulePoll() {
   clearPollTimer();
@@ -330,6 +358,7 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
     } else {
       mergeJobs(rows, false);
       hasMore.value = rows.length >= Number(pageSize.value || 40);
+      perfRenderLimit.value = PERF_RENDER_INITIAL;
     }
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     lastSyncedAt.value = new Date().toISOString();
@@ -450,10 +479,14 @@ async function deleteSelectedJobs() {
 function applyFilters(forceBase = false) {
   hasMore.value = false;
   cursorId.value = null;
+  perfRenderLimit.value = PERF_RENDER_INITIAL;
   void loadJobs({ force: true, includeBase: forceBase, reset: true });
 }
 function persistCompactMode() {
   try { localStorage.setItem(COMPACT_STORAGE_KEY, compactMode.value ? '1' : '0'); } catch {}
+}
+function persistPerfMode() {
+  try { localStorage.setItem(PERF_STORAGE_KEY, perfMode.value ? '1' : '0'); } catch {}
 }
 function handlePollToggle() {
   if (!pollEnabled.value) {
@@ -473,6 +506,9 @@ watch(() => [filter.status, filter.job_type, filter.days, filter.mine, pageSize.
   hasMore.value = false;
   cursorId.value = null;
 });
+watch(perfMode, (enabled) => {
+  if (enabled) perfRenderLimit.value = PERF_RENDER_INITIAL;
+});
 watch(jobs, () => {
   if (!selectedJobIds.value.length) return;
   const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
@@ -481,8 +517,10 @@ watch(jobs, () => {
 onMounted(() => {
   try {
     compactMode.value = localStorage.getItem(COMPACT_STORAGE_KEY) === '1' || window.innerWidth < 1360;
+    perfMode.value = localStorage.getItem(PERF_STORAGE_KEY) === '1';
   } catch {
     compactMode.value = false;
+    perfMode.value = false;
   }
   void loadJobs({ includeBase: true, reset: true });
   document.addEventListener('visibilitychange', onVisibilityChange);
@@ -499,4 +537,6 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .system-task-center{display:flex;flex-direction:column;gap:12px}.page-card{border-radius:16px}.page-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}.page-title{font-size:18px;font-weight:800}.page-desc{font-size:13px;color:#6b7280;margin-top:4px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary-row{margin-bottom:12px}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:12px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
+.task-w-140{width:140px}
+.task-w-260{width:260px}
 </style>

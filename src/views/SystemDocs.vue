@@ -1,13 +1,13 @@
 <template>
-  <div style="max-width: 1180px; margin: 0 auto; display:grid; gap:12px">
-    <el-card shadow="never" style="border-radius:12px">
+  <div class="sys-page docs-grid">
+    <el-card shadow="never" class="sys-rounded-card">
       <template #header>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap">
+        <div class="sys-header-row">
           <div>
-            <div style="font-weight:700; font-size:16px">系统交付文档</div>
-            <div style="color:#888; font-size:12px; margin-top:4px">把发布顺序、迁移顺序、修复中心按钮和常见异常处理集中在一个页面，便于交接和长期维护。</div>
+            <div class="sys-title-strong docs-title">系统交付文档</div>
+            <div class="sys-muted">把发布顺序、迁移顺序、修复中心按钮和常见异常处理集中在一个页面，便于交接和长期维护。</div>
           </div>
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <div class="sys-actions-row">
             <el-button size="small" @click="go('/system/release-check')">打开发布前检查</el-button>
             <el-button size="small" @click="go('/system/tools')">打开运维工具</el-button>
             <el-button size="small" @click="go('/system/backup')">打开备份/恢复</el-button>
@@ -38,8 +38,8 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
       </el-row>
     </el-card>
 
-    <el-card shadow="never" style="border-radius:12px">
-      <template #header><div style="font-weight:700">修复中心按钮说明</div></template>
+    <el-card shadow="never" class="sys-rounded-card">
+      <template #header><div class="sys-title-strong">修复中心按钮说明</div></template>
       <el-table :data="repairDocs" border size="small">
         <el-table-column prop="name" label="按钮" width="180" />
         <el-table-column prop="effect" label="做什么" min-width="280" />
@@ -48,21 +48,21 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
       </el-table>
     </el-card>
 
-    <el-card shadow="never" style="border-radius:12px">
-      <template #header><div style="font-weight:700">高风险操作统一规范</div></template>
+    <el-card shadow="never" class="sys-rounded-card">
+      <template #header><div class="sys-title-strong">高风险操作统一规范</div></template>
       <el-steps :active="4" finish-status="success" simple>
         <el-step title="先预检" description="先看影响条数和差异" />
         <el-step title="再确认" description="确认操作不可逆 / 可重建" />
         <el-step title="执行" description="记录审计和修复历史" />
         <el-step title="复扫" description="执行后马上再扫描" />
       </el-steps>
-      <div style="margin-top:12px; color:#666; line-height:1.8">
+      <div class="docs-help-block">
         建议所有高风险动作都遵循同一套交互：先给出预检结果，再确认影响，再执行，最后立即刷新健康状态，避免用户在不同页面遇到完全不同的操作方式。
       </div>
     </el-card>
 
-    <el-card shadow="never" style="border-radius:12px">
-      <template #header><div style="font-weight:700">常见异常处理</div></template>
+    <el-card shadow="never" class="sys-rounded-card">
+      <template #header><div class="sys-title-strong">常见异常处理</div></template>
       <el-collapse>
         <el-collapse-item title="页面提示 Schema 未就绪 / no such column" name="schema">
           先到发布前检查看当前数据库版本和代码要求版本是否一致；不一致时，先执行远程迁移，再刷新页面。
@@ -99,6 +99,21 @@ const repairDocs = [
 </script>
 
 <style scoped>
+.docs-grid {
+  display: grid;
+  gap: 12px;
+}
+
+.docs-title {
+  font-size: 16px;
+}
+
+.docs-help-block {
+  margin-top: 12px;
+  color: #666;
+  line-height: 1.8;
+}
+
 .doc-card {
   border-radius: 12px;
   height: 100%;

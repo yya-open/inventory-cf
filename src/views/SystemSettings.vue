@@ -69,7 +69,7 @@
                 <div class="form-tip">关闭后，删除资产将优先转为归档，更适合正式环境保留追溯链路。</div>
               </el-form-item>
               <el-form-item label="电脑报废预警年限">
-                <el-select v-model="form.pc_scrap_warning_years" style="width:180px">
+                <el-select v-model="form.pc_scrap_warning_years" class="settings-w-180">
                   <el-option v-for="year in [1,2,3,4,5]" :key="year" :label="`${year} 年`" :value="year" />
                 </el-select>
                 <div class="form-tip">电脑仓“报废预警”页面会按这里的年限筛出超龄设备。</div>
@@ -321,7 +321,7 @@
     <el-dialog v-model="createDialogVisible" title="新增字典项" width="440px">
       <el-form label-width="100px">
         <el-form-item label="所属字典">
-          <el-select v-model="createForm.dictionary_key" style="width:100%">
+          <el-select v-model="createForm.dictionary_key" class="settings-w-full">
             <el-option v-for="def in dictionaryDefs" :key="def.key" :label="def.title" :value="def.key" />
           </el-select>
         </el-form-item>
@@ -329,7 +329,7 @@
           <el-input v-model="createForm.label" maxlength="120" placeholder="请输入字典值" />
         </el-form-item>
         <el-form-item label="排序">
-          <el-input-number v-model="createForm.sort_order" :min="0" :max="999999" style="width:100%" />
+          <el-input-number v-model="createForm.sort_order" :min="0" :max="999999" class="settings-w-full" />
         </el-form-item>
         <el-form-item label="启用">
           <el-switch v-model="createForm.enabled" :active-value="1" :inactive-value="0" />
@@ -748,4 +748,6 @@ onMounted(() => { reload(); });
 .drag-cell--busy{cursor:not-allowed;opacity:.6}
 .drag-handle{font-size:16px;line-height:1}
 .drag-order{font-size:12px;color:#606266}
+.settings-w-180{width:180px}
+.settings-w-full{width:100%}
 </style>
