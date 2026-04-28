@@ -47,8 +47,9 @@
         <el-switch v-model="filter.mine" active-text="仅看我发起" @change="applyFilters" />
         <el-switch v-model="pollEnabled" active-text="自动刷新" @change="handlePollToggle" />
         <el-switch v-model="compactMode" active-text="精简视图" @change="persistCompactMode" />
-        <el-switch v-model="perfMode" active-text="性能模式" @change="persistPerfMode" />
+        <el-switch v-model="perfMode" active-text="虚拟列表性能模式" @change="persistPerfMode" />
         <el-button
+          v-if="!perfMode"
           type="danger"
           plain
           :disabled="batchDeleting || deletableSelectedCount===0"
@@ -57,17 +58,30 @@
         >
           {{ batchDeleting ? '批量删除中' : `批量删除（${deletableSelectedCount}）` }}
         </el-button>
-        <el-button v-if="perfMode && renderedJobs.length > PERF_RENDER_INITIAL" size="small" text @click="resetPerfWindow">回到顶部并重置窗口</el-button>
+        <span v-else class="task-mode-hint">虚拟列表模式下不可批量勾选删除，<el-button size="small" text class="task-mode-hint-btn" @click="disablePerfMode">点此关闭</el-button></span>
+        <el-button v-if="perfMode" size="small" text @click="scrollVirtualTop">回到顶部</el-button>
         <div class="toolbar-meta">{{ refreshHint }}</div>
       </div>
 
       <div class="list-meta">
-        <span>已加载 {{ jobs.length }} 条，当前渲染 {{ renderedJobs.length }} 条</span>
+        <span>已加载 {{ jobs.length }} 条，当前渲染 {{ perfMode ? virtualRows.length : renderedJobs.length }} 条</span>
         <span v-if="hasMore">可继续加载更早任务</span>
-        <span v-if="perfMode">性能模式：滚动到底自动追加渲染（{{ renderedJobs.length }} / {{ jobs.length }}）</span>
+        <span v-if="perfMode">性能模式：固定行高虚拟滚动（窗口渲染）</span>
       </div>
 
+      <el-alert v-if="perfMode && !perfHintDismissed" type="info" :closable="false" class="task-perf-hint">
+        <template #title>
+          已启用虚拟列表性能模式：仅渲染可视窗口附近行，滚动更流畅；如需批量勾选删除，请先关闭该模式。
+        </template>
+        <template #default>
+          <div class="task-perf-hint-actions">
+            <el-button size="small" text @click="dismissPerfHint">我知道了，不再提示</el-button>
+          </div>
+        </template>
+      </el-alert>
+
       <el-table
+        v-if="!perfMode"
         ref="jobsTableRef"
         :data="renderedJobs"
         border
@@ -75,7 +89,6 @@
         max-height="640"
         row-key="id"
         table-layout="fixed"
-        @scroll="onJobsTableScroll"
         @selection-change="onJobSelectionChange"
       >
         <el-table-column type="selection" width="46" reserve-selection />
@@ -115,6 +128,37 @@
           </template>
         </el-table-column>
       </el-table>
+
+      <div v-else class="task-virtual-shell">
+        <div class="task-virtual-head">
+          <div>任务信息</div>
+          <div class="task-virtual-head-right">进度</div>
+          <div class="task-virtual-head-right">操作</div>
+        </div>
+        <div ref="virtualWrapRef" class="task-virtual-wrap" @scroll="onVirtualScroll">
+        <div class="task-virtual-spacer" :style="{ height: `${virtualTotalHeight}px` }">
+          <div
+            v-for="entry in virtualRows"
+            :key="entry.row.id"
+            class="task-virtual-row"
+            :style="{ transform: `translateY(${entry.top}px)` }"
+          >
+            <div class="task-virtual-main">
+              <div class="task-virtual-title">#{{ entry.row.id }} · {{ formatAsyncJobType(entry.row.job_type) }}</div>
+              <div class="task-virtual-sub">{{ entry.row.created_by_name || '-' }} · {{ entry.row.created_at || '-' }} · {{ statusText(entry.row.status) }}</div>
+            </div>
+            <div class="task-virtual-metric">{{ Number(entry.row.progress_pct || 0) }}%</div>
+            <div class="task-virtual-actions">
+              <el-button link @click="openDetail(entry.row)">详情</el-button>
+              <el-button v-if="canDownload(entry.row)" link type="primary" @click="downloadJob(entry.row)">下载</el-button>
+              <el-button v-if="entry.row.status==='failed'" link type="warning" @click="retryJob(entry.row)">重试</el-button>
+              <el-button v-if="entry.row.status==='queued' || entry.row.status==='running'" link type="danger" @click="cancelJob(entry.row)">取消</el-button>
+              <el-button v-if="canDelete(entry.row)" link type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
+            </div>
+          </div>
+        </div>
+      </div>
+      </div>
 
       <div class="load-more-wrap">
         <el-button :loading="loadingMore" :disabled="!hasMore || loading" @click="loadMoreJobs">{{ hasMore ? '加载更早任务' : '没有更多任务了' }}</el-button>
@@ -156,6 +200,7 @@ import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi
 
 const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
 const PERF_STORAGE_KEY = 'system_task_center_perf_mode';
+const PERF_HINT_DISMISSED_KEY = 'system_task_center_perf_hint_dismissed';
 const loading = ref(false);
 const loadingMore = ref(false);
 const snapshotSubmitting = ref(false);
@@ -172,6 +217,7 @@ const hasMore = ref(false);
 const cursorId = ref<number | null>(null);
 const compactMode = ref(false);
 const perfMode = ref(false);
+const perfHintDismissed = ref(false);
 const pollEnabled = ref(true);
 const detailVisible = ref(false);
 const detailRow = ref<any | null>(null);
@@ -185,16 +231,28 @@ const BASE_REFRESH_MS = 60_000;
 const ACTIVE_POLL_MS = 8_000;
 const IDLE_POLL_MS = 180_000;
 const RENDER_LIMIT_COMPACT = 30;
-const PERF_RENDER_INITIAL = 120;
-const PERF_RENDER_STEP = 120;
-const PERF_RENDER_NEAR_BOTTOM_PX = 80;
-const perfRenderLimit = ref(PERF_RENDER_INITIAL);
+const VIRTUAL_ROW_HEIGHT = 72;
+const VIRTUAL_OVERSCAN = 8;
+const virtualWrapRef = ref<HTMLElement | null>(null);
+const virtualScrollTop = ref(0);
 const jobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const hasActiveJobs = computed(() => jobs.value.some((row) => ['queued', 'running'].includes(String(row?.status || ''))));
 const renderedJobs = computed(() => {
   if (compactMode.value) return jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT));
-  if (perfMode.value) return jobs.value.slice(0, Math.min(jobs.value.length, perfRenderLimit.value));
   return jobs.value;
+});
+const virtualVisibleCount = computed(() => {
+  const wrap = virtualWrapRef.value;
+  const viewport = wrap ? wrap.clientHeight : 640;
+  return Math.max(10, Math.ceil(viewport / VIRTUAL_ROW_HEIGHT) + VIRTUAL_OVERSCAN * 2);
+});
+const virtualStartIndex = computed(() => Math.max(0, Math.floor(virtualScrollTop.value / VIRTUAL_ROW_HEIGHT) - VIRTUAL_OVERSCAN));
+const virtualEndIndex = computed(() => Math.min(jobs.value.length, virtualStartIndex.value + virtualVisibleCount.value));
+const virtualTotalHeight = computed(() => jobs.value.length * VIRTUAL_ROW_HEIGHT);
+const virtualRows = computed(() => {
+  const start = virtualStartIndex.value;
+  const end = virtualEndIndex.value;
+  return jobs.value.slice(start, end).map((row, index) => ({ row, top: (start + index) * VIRTUAL_ROW_HEIGHT }));
 });
 const deletableSelectedCount = computed(() => {
   if (!selectedJobIds.value.length) return 0;
@@ -262,19 +320,15 @@ function clearPollTimer() {
   if (pollTimer) clearTimeout(pollTimer);
   pollTimer = null;
 }
-function onJobsTableScroll() {
-  if (!perfMode.value) return;
-  if (renderedJobs.value.length >= jobs.value.length) return;
-  const wrap = jobsTableRef.value?.$el?.querySelector?.('.el-scrollbar__wrap') as HTMLElement | undefined;
-  if (!wrap) return;
-  const distanceToBottom = wrap.scrollHeight - wrap.clientHeight - wrap.scrollTop;
-  if (distanceToBottom > PERF_RENDER_NEAR_BOTTOM_PX) return;
-  perfRenderLimit.value = Math.min(jobs.value.length, perfRenderLimit.value + PERF_RENDER_STEP);
+function onVirtualScroll(event: Event) {
+  const target = event.target as HTMLElement | null;
+  virtualScrollTop.value = target ? target.scrollTop : 0;
 }
-function resetPerfWindow() {
-  perfRenderLimit.value = PERF_RENDER_INITIAL;
-  const wrap = jobsTableRef.value?.$el?.querySelector?.('.el-scrollbar__wrap') as HTMLElement | undefined;
-  if (wrap) wrap.scrollTop = 0;
+function scrollVirtualTop() {
+  if (virtualWrapRef.value) {
+    virtualWrapRef.value.scrollTop = 0;
+    virtualScrollTop.value = 0;
+  }
 }
 function schedulePoll() {
   clearPollTimer();
@@ -358,7 +412,6 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
     } else {
       mergeJobs(rows, false);
       hasMore.value = rows.length >= Number(pageSize.value || 40);
-      perfRenderLimit.value = PERF_RENDER_INITIAL;
     }
     if (!baseSummaryAvailable.value) syncSummaryFromJobs();
     lastSyncedAt.value = new Date().toISOString();
@@ -479,7 +532,6 @@ async function deleteSelectedJobs() {
 function applyFilters(forceBase = false) {
   hasMore.value = false;
   cursorId.value = null;
-  perfRenderLimit.value = PERF_RENDER_INITIAL;
   void loadJobs({ force: true, includeBase: forceBase, reset: true });
 }
 function persistCompactMode() {
@@ -487,6 +539,14 @@ function persistCompactMode() {
 }
 function persistPerfMode() {
   try { localStorage.setItem(PERF_STORAGE_KEY, perfMode.value ? '1' : '0'); } catch {}
+}
+function disablePerfMode() {
+  perfMode.value = false;
+  persistPerfMode();
+}
+function dismissPerfHint() {
+  perfHintDismissed.value = true;
+  try { localStorage.setItem(PERF_HINT_DISMISSED_KEY, '1'); } catch {}
 }
 function handlePollToggle() {
   if (!pollEnabled.value) {
@@ -506,9 +566,6 @@ watch(() => [filter.status, filter.job_type, filter.days, filter.mine, pageSize.
   hasMore.value = false;
   cursorId.value = null;
 });
-watch(perfMode, (enabled) => {
-  if (enabled) perfRenderLimit.value = PERF_RENDER_INITIAL;
-});
 watch(jobs, () => {
   if (!selectedJobIds.value.length) return;
   const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
@@ -518,9 +575,11 @@ onMounted(() => {
   try {
     compactMode.value = localStorage.getItem(COMPACT_STORAGE_KEY) === '1' || window.innerWidth < 1360;
     perfMode.value = localStorage.getItem(PERF_STORAGE_KEY) === '1';
+    perfHintDismissed.value = localStorage.getItem(PERF_HINT_DISMISSED_KEY) === '1';
   } catch {
     compactMode.value = false;
     perfMode.value = false;
+    perfHintDismissed.value = false;
   }
   void loadJobs({ includeBase: true, reset: true });
   document.addEventListener('visibilitychange', onVisibilityChange);
@@ -539,4 +598,19 @@ onBeforeUnmount(() => {
 .system-task-center{display:flex;flex-direction:column;gap:12px}.page-card{border-radius:16px}.page-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}.page-title{font-size:18px;font-weight:800}.page-desc{font-size:13px;color:#6b7280;margin-top:4px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary-row{margin-bottom:12px}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:12px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
 .task-w-140{width:140px}
 .task-w-260{width:260px}
+.task-mode-hint{font-size:12px;color:#909399}
+.task-mode-hint-btn{padding:0 2px;vertical-align:baseline}
+.task-perf-hint{margin-bottom:10px}
+.task-perf-hint-actions{display:flex;justify-content:flex-end}
+.task-virtual-shell{border:1px solid var(--el-border-color);border-radius:8px;background:#fff;overflow:hidden}
+.task-virtual-head{display:grid;grid-template-columns:minmax(240px,1fr) 80px minmax(260px,auto);align-items:center;gap:12px;padding:10px 12px;background:#f7f8fa;border-bottom:1px solid #ebeef5;font-size:12px;color:#606266;font-weight:600}
+.task-virtual-head-right{text-align:right}
+.task-virtual-wrap{height:598px;overflow:auto}
+.task-virtual-spacer{position:relative;width:100%}
+.task-virtual-row{position:absolute;left:0;right:0;height:64px;padding:8px 12px;display:grid;grid-template-columns:minmax(240px,1fr) 80px minmax(260px,auto);align-items:center;gap:12px;border-bottom:1px solid #f0f2f5;box-sizing:border-box}
+.task-virtual-main{min-width:0}
+.task-virtual-title{font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-virtual-sub{font-size:12px;color:#909399;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.task-virtual-metric{font-size:13px;color:#606266;text-align:right}
+.task-virtual-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 </style>
