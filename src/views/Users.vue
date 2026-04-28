@@ -240,7 +240,21 @@ import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, 
 import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
 import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 
-type Row = { id:number; username:string; role:"admin"|"operator"|"viewer"; is_active:number; must_change_password:number; created_at:string; permission_template_code?: string | null; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
+type Row = {
+  id:number;
+  username:string;
+  role:"admin"|"operator"|"viewer";
+  is_active:number;
+  must_change_password:number;
+  created_at:string;
+  permission_template_code?: string | null;
+  permissions?: Record<string, boolean>;
+  permission_overrides?: Record<string, boolean>;
+  permission_override_count?: number;
+  data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse';
+  data_scope_value?: string | null;
+  data_scope_value2?: string | null;
+};
 
 const rows = ref<Row[]>([]);
 const loading = ref(false);
@@ -346,6 +360,7 @@ async function load() {
     qs.set("sort_dir", String(sortDir.value || "desc"));
     if (keyword.value.trim()) qs.set("keyword", keyword.value.trim());
     qs.set("_ts", String(Date.now()));
+    qs.set("view", "lite");
     const r = await apiGet<{ ok:boolean; data: Row[]; meta?: { total?: number } }>("/api/users?" + qs.toString(), { cache: "no-store" });
     rows.value = r.data || [];
     total.value = Number((r as any).meta?.total || 0);
@@ -447,7 +462,11 @@ function openEdit(row: Row) {
   editRole.value = row.role;
   editActive.value = !!row.is_active;
   editTemplateCode.value = normalizePermissionTemplateCode(row.role, row.permission_template_code);
-  editPermissions.value = { ...(row.permissions || buildTemplatePermissionMap(row.role, row.permission_template_code)) };
+  const basePermissions = row.permissions || buildTemplatePermissionMap(row.role, row.permission_template_code);
+  const overrides = row.permission_overrides && typeof row.permission_overrides === 'object' ? row.permission_overrides : {};
+  const mergedPermissions: Record<string, boolean> = { ...(basePermissions as Record<string, boolean>) };
+  for (const [code, allowed] of Object.entries(overrides)) mergedPermissions[code] = !!allowed;
+  editPermissions.value = mergedPermissions;
   const scope = normalizeDataScope(row.data_scope_type, row.data_scope_value, row.data_scope_value2);
   editDataScopeType.value = scope.data_scope_type;
   editDataScopeValue.value = scope.data_scope_value;

@@ -182,10 +182,25 @@ export async function getUserPermissionMap(db: D1Database, userId: number, role:
 
 export async function setUserPermissions(db: D1Database, userId: number, permissions: Partial<Record<PermissionCode, boolean>>, updatedBy: string | null) {
   await ensureUserPermissionsTable(db);
+  const changedCodes = ALL_PERMISSION_CODES.filter((code) => code in permissions);
+  if (!changedCodes.length) return;
+
+  const existingMap = new Map<PermissionCode, number>();
+  const { results: existingRows } = await db
+    .prepare(`SELECT permission_code, allowed FROM user_permissions WHERE user_id=?`)
+    .bind(userId)
+    .all<any>();
+  for (const row of existingRows || []) {
+    const code = String(row?.permission_code || '').trim() as PermissionCode;
+    if (!ALL_PERMISSION_CODES.includes(code)) continue;
+    existingMap.set(code, Number(row?.allowed || 0) === 1 ? 1 : 0);
+  }
+
   const statements: D1PreparedStatement[] = [];
-  for (const code of ALL_PERMISSION_CODES) {
-    if (!(code in permissions)) continue;
+  for (const code of changedCodes) {
     const allowed = permissions[code] ? 1 : 0;
+    const current = existingMap.has(code) ? existingMap.get(code)! : null;
+    if (current === allowed) continue;
     statements.push(db.prepare(
       `INSERT INTO user_permissions (user_id, permission_code, allowed, updated_at, updated_by)
        VALUES (?, ?, ?, ${nowSql()}, ?)

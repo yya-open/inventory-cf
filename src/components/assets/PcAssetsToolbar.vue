@@ -254,6 +254,7 @@ import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import type { AssetInventorySummary } from '../../types/assets';
 import type { LedgerSavedView, LedgerTableDensity } from '../../utils/ledgerViewPrefs';
+import '../../styles/ledger-toolbar-shared.css';
 
 const props = defineProps<{
   status: string;
@@ -689,92 +690,6 @@ function handleBatchCommand(command: string | number | object) {
 .column-order-actions {
   display: flex;
   gap: 4px;
-}
-
-.saved-view-input-row {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-}
-
-.saved-view-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-  margin-top: 10px;
-  max-width: 100%;
-  overflow: hidden;
-}
-
-.saved-view-item {
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) auto;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  width: 100%;
-  max-width: 100%;
-  overflow: hidden;
-  box-sizing: border-box;
-  padding: 12px 14px;
-  text-align: left;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 14px;
-  background: rgba(255, 255, 255, 0.94);
-  cursor: pointer;
-  transition: border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
-}
-
-.saved-view-item:hover {
-  transform: translateY(-1px);
-  border-color: rgba(64, 158, 255, 0.28);
-  box-shadow: 0 10px 20px rgba(15, 23, 42, 0.06);
-}
-
-.saved-view-item.active {
-  border-color: rgba(64, 158, 255, 0.34);
-  box-shadow: inset 0 0 0 1px rgba(64, 158, 255, 0.12), 0 8px 16px rgba(64, 158, 255, 0.08);
-}
-
-.saved-view-main {
-  min-width: 0;
-  flex: 1 1 auto;
-}
-
-.saved-view-name {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 13px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.saved-view-meta {
-  margin-top: 4px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  font-size: 12px;
-  color: #8a94a6;
-}
-
-.saved-view-actions {
-  display: inline-flex;
-  flex: 0 0 auto;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  align-items: center;
-  gap: 8px;
-  min-width: 0;
-  max-width: 42%;
-}
-
-.saved-view-action {
-  flex: 0 0 auto;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--el-color-primary);
 }
 
 .inventory-summary-row {

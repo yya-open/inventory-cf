@@ -45,6 +45,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     };
     const sortCol = sortMap[sortByRaw] || "id";
     const orderBy = `${sortCol} ${sortDir}, id ASC`;
+    const view = String(url.searchParams.get('view') || 'lite').trim().toLowerCase() === 'full' ? 'full' : 'lite';
 
     const kw = buildKeywordWhere(keyword, {
       numericId: "id",
@@ -80,16 +81,23 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const rows = (results || []).map((row: any) => {
       const templateCode = normalizePermissionTemplateCode(row?.role || null, row?.permission_template_code);
       const template = getPermissionTemplateMap(row?.role || null, templateCode);
-      const permissions = Object.fromEntries(ALL_PERMISSION_CODES.map((code) => [code, !!template.permissions[code]])) as Record<string, boolean>;
       const overrides = permissionOverrides.get(Number(row?.id || 0)) || {};
-      for (const [code, allowed] of Object.entries(overrides)) permissions[code] = !!allowed;
-      return {
+      const base = {
         ...row,
         permission_template_code: templateCode,
-        permissions,
+        permission_override_count: Object.keys(overrides).length,
+        permission_overrides: overrides,
         ...normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2),
         permission_codes: ALL_PERMISSION_CODES,
         permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES,
+      } as any;
+      if (view !== 'full') return base;
+
+      const permissions = Object.fromEntries(ALL_PERMISSION_CODES.map((code) => [code, !!template.permissions[code]])) as Record<string, boolean>;
+      for (const [code, allowed] of Object.entries(overrides)) permissions[code] = !!allowed;
+      return {
+        ...base,
+        permissions,
       };
     });
 

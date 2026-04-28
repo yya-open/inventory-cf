@@ -1,11 +1,11 @@
 <template>
   <el-card>
-    <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; margin-bottom:12px; flex-wrap:wrap">
+    <div class="sys-header-row ops-gap-bottom">
       <div>
-        <div style="font-weight:700">运维工具</div>
-        <div style="color:#999; font-size:12px">数据库版本校验、自动巡检、修复中心、异步任务中心、性能与错误观测、健康检查</div>
+        <div class="sys-title-strong">运维工具</div>
+        <div class="sys-muted">数据库版本校验、自动巡检、修复中心、异步任务中心、性能与错误观测、健康检查</div>
       </div>
-      <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+      <div class="sys-actions-row">
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>
         <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '提交中' : '提交快照预计算任务' }}</el-button>
@@ -13,23 +13,23 @@
       </div>
     </div>
 
-    <el-alert v-if="!schema.ok" type="error" :closable="false" show-icon :title="schema.message || '数据库版本不匹配'" style="margin-bottom:12px" />
+    <el-alert v-if="!schema.ok" type="error" :closable="false" show-icon :title="schema.message || '数据库版本不匹配'" class="ops-gap-bottom" />
     <el-alert
       v-else-if="scan.total_problem_count > 0 || health.metrics.failed_async_jobs > 0 || health.metrics.error_5xx_last_24h > 0"
       type="warning"
       :closable="false"
       show-icon
-      style="margin-bottom:12px"
+      class="ops-gap-bottom"
       :title="`当前仍有 ${scan.total_problem_count} 类巡检问题 / ${health.metrics.failed_async_jobs || 0} 个失败任务 / ${health.metrics.error_5xx_last_24h || 0} 次近24h 5xx`"
     >
       <div>建议先处理异常再做发布或大批量操作。</div>
     </el-alert>
 
-    <el-row :gutter="12" style="margin-bottom:12px">
-      <el-col :span="6"><el-card shadow="never"><div>慢请求</div><div style="font-size:28px; font-weight:700">{{ dashboard.slow_request_count }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never"><div>错误请求</div><div style="font-size:28px; font-weight:700">{{ dashboard.error_request_count }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never"><div>异步任务</div><div style="font-size:28px; font-weight:700">{{ dashboard.async_job_count }}</div><div style="font-size:12px; color:#999">队列 {{ dashboard.queued_job_count }} / 失败 {{ dashboard.failed_job_count }}</div></el-card></el-col>
-      <el-col :span="6"><el-card shadow="never"><div>待处理问题</div><div style="font-size:28px; font-weight:700">{{ dashboard.repair_problem_count }}</div><div style="font-size:12px; color:#999">最近巡检 {{ formatTime(scan.last_scanned_at) || '-' }}</div></el-card></el-col>
+    <el-row :gutter="12" class="ops-gap-bottom">
+      <el-col :span="6"><el-card shadow="never"><div>慢请求</div><div class="sys-metric-value">{{ dashboard.slow_request_count }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><div>错误请求</div><div class="sys-metric-value">{{ dashboard.error_request_count }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><div>异步任务</div><div class="sys-metric-value">{{ dashboard.async_job_count }}</div><div class="sys-muted">队列 {{ dashboard.queued_job_count }} / 失败 {{ dashboard.failed_job_count }}</div></el-card></el-col>
+      <el-col :span="6"><el-card shadow="never"><div>待处理问题</div><div class="sys-metric-value">{{ dashboard.repair_problem_count }}</div><div class="sys-muted">最近巡检 {{ formatTime(scan.last_scanned_at) || '-' }}</div></el-card></el-col>
     </el-row>
 
     <el-tabs v-model="tab" @tab-change="onTabChange">
@@ -37,11 +37,11 @@
         <el-alert
           type="info"
           :closable="false"
-          style="margin-bottom:12px"
+          class="ops-gap-bottom"
           :title="scan.total_problem_count > 0 ? `当前有 ${scan.total_problem_count} 类问题，影响 ${scan.affected_rows} 条记录` : '当前巡检全绿，可只在需要时做单项重建'"
         />
 
-        <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px">
+        <div class="ops-action-row ops-gap-bottom">
           <el-button :loading="scanning" @click="scanAll">先扫描</el-button>
           <el-button @click="queueDeepScan">异步深度巡检</el-button>
           <el-button type="primary" :loading="running==='repair_all'" :disabled="!schema.ok" @click="runRepair('repair_all')">一键全量修复</el-button>
@@ -51,11 +51,11 @@
           <el-button :loading="running==='repair_search_norm'" :disabled="!schema.ok" @click="runRepair('repair_search_norm')">{{ actionButtonText('repair_search_norm', '重建搜索规范化') }}</el-button>
         </div>
 
-        <el-row :gutter="12" style="margin-bottom:12px">
-          <el-col :span="6"><el-card shadow="never"><div>扫描到的问题类型</div><div style="font-size:26px; font-weight:700">{{ scan.total_problem_count }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>受影响记录</div><div style="font-size:26px; font-weight:700">{{ scan.affected_rows }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>当前版本</div><div style="font-size:14px; font-weight:700">{{ schema.current_version || '-' }}</div><div style="font-size:12px; color:#999">要求 {{ schema.required_version || '-' }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>巡检状态</div><div style="font-size:14px; font-weight:700">{{ scan.scan_source === 'cache' ? '缓存结果' : '最新扫描' }}</div><div style="font-size:12px; color:#999">{{ formatTime(scan.last_scanned_at) || '-' }}</div></el-card></el-col>
+        <el-row :gutter="12" class="ops-gap-bottom">
+          <el-col :span="6"><el-card shadow="never"><div>扫描到的问题类型</div><div class="ops-metric-mid">{{ scan.total_problem_count }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>受影响记录</div><div class="ops-metric-mid">{{ scan.affected_rows }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>当前版本</div><div class="ops-metric-small">{{ schema.current_version || '-' }}</div><div class="sys-muted">要求 {{ schema.required_version || '-' }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>巡检状态</div><div class="ops-metric-small">{{ scan.scan_source === 'cache' ? '缓存结果' : '最新扫描' }}</div><div class="sys-muted">{{ formatTime(scan.last_scanned_at) || '-' }}</div></el-card></el-col>
         </el-row>
 
         <el-table :data="scan.items" border>
@@ -69,35 +69,35 @@
           <el-table-column label="差异明细" width="120">
             <template #default="{ row }">
               <el-button v-if="row.examples?.length" link type="primary" @click="openDiff(row)">查看明细</el-button>
-              <span v-else style="color:#999">—</span>
+              <span v-else class="sys-muted">—</span>
             </template>
           </el-table-column>
           <el-table-column label="立即修复" width="130">
             <template #default="{ row }">
               <el-button v-if="row.status==='warn' && itemRepairAction(row.key)" link type="warning" @click="runRepair(itemRepairAction(row.key))">立即修复</el-button>
-              <span v-else style="color:#999">—</span>
+              <span v-else class="sys-muted">—</span>
             </template>
           </el-table-column>
         </el-table>
 
-        <el-alert v-if="lastRepair" type="success" :closable="false" :title="lastRepair" style="margin-top:12px" />
+        <el-alert v-if="lastRepair" type="success" :closable="false" :title="lastRepair" class="ops-gap-top" />
       </el-tab-pane>
 
       <el-tab-pane label="异步任务" name="jobs">
-        <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
-          <el-select v-model="jobFilter.status" clearable placeholder="状态" style="width:150px" @change="applyJobFilters"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
-          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" style="width:260px" @change="applyJobFilters">
+        <div class="ops-action-row ops-align-center ops-gap-bottom">
+          <el-select v-model="jobFilter.status" clearable placeholder="状态" class="ops-w-150" @change="applyJobFilters"><el-option label="排队中" value="queued" /><el-option label="执行中" value="running" /><el-option label="成功" value="success" /><el-option label="失败" value="failed" /><el-option label="已取消" value="canceled" /></el-select>
+          <el-select v-model="jobFilter.job_type" clearable placeholder="任务类型" class="ops-w-260" @change="applyJobFilters">
             <el-option-group v-for="group in asyncJobTypeGroups" :key="group.label" :label="group.label">
               <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
             </el-option-group>
           </el-select>
-          <el-select v-model="jobFilter.days" style="width:140px" @change="applyJobFilters"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
+          <el-select v-model="jobFilter.days" class="ops-w-140" @change="applyJobFilters"><el-option label="最近 7 天" :value="7" /><el-option label="最近 15 天" :value="15" /><el-option label="最近 30 天" :value="30" /></el-select>
           <el-switch v-model="jobFilter.mine" active-text="仅看我发起" @change="applyJobFilters" />
           <el-button type="danger" plain :disabled="batchDeletingJobs || deletableSelectedJobsCount===0" :loading="batchDeletingJobs" @click="deleteSelectedJobs">
             {{ batchDeletingJobs ? '批量删除中' : `批量删除（${deletableSelectedJobsCount}）` }}
           </el-button>
           <el-button @click="cleanupJobs">自动清理历史任务</el-button>
-          <span style="margin-left:auto; color:#999; font-size:12px">{{ jobAutoRefreshText }}</span>
+          <span class="ops-auto-refresh sys-muted">{{ jobAutoRefreshText }}</span>
         </div>
 
         <el-table ref="jobsTableRef" :data="jobs" border row-key="id" @selection-change="onJobsSelectionChange">
@@ -122,7 +122,7 @@
           <el-table-column label="结果 / 失败原因" min-width="260">
             <template #default="{ row }">
               <div>{{ row.message || row.error_text || '-' }}</div>
-              <div v-if="row.error_text" style="color:#c45656; font-size:12px">{{ row.error_text }}</div>
+              <div v-if="row.error_text" class="ops-error-text">{{ row.error_text }}</div>
             </template>
           </el-table-column>
           <el-table-column label="耗时" width="100"><template #default="{ row }">{{ formatDuration(row.duration_ms) }}</template></el-table-column>
@@ -130,13 +130,13 @@
           <el-table-column label="保留期" width="170">
             <template #default="{ row }">
               <div>{{ formatTime(row.retain_until) || '-' }}</div>
-              <div style="font-size:12px; color:#999">{{ row.is_expired ? '结果已过期' : (row.retain_until ? `剩余 ${formatDuration(row.expires_in_ms)}` : '-') }}</div>
+               <div class="sys-muted">{{ row.is_expired ? '结果已过期' : (row.retain_until ? `剩余 ${formatDuration(row.expires_in_ms)}` : '-') }}</div>
             </template>
           </el-table-column>
           <el-table-column prop="created_at" label="创建时间" width="180" />
           <el-table-column label="操作" min-width="220">
             <template #default="{ row }">
-              <div style="display:flex; gap:8px; flex-wrap:wrap">
+               <div class="ops-inline-actions">
                 <el-button link @click="openJobDetail(row)">详情</el-button>
                 <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row)">下载</el-button>
                 <el-button v-if="row.status==='success' && canPreviewJob(row)" link type="success" @click="previewJob(row)">预览</el-button>
@@ -151,18 +151,18 @@
       </el-tab-pane>
 
       <el-tab-pane label="观测中心" name="obs">
-        <div style="margin-bottom:8px; color:#666">慢请求（近 {{ slowRows.length }} 条）</div>
-        <el-table :data="slowRows" border size="small" style="margin-bottom:16px"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
-        <div style="margin-bottom:8px; color:#666">错误请求（近 {{ errorRows.length }} 条）</div>
+        <div class="ops-subtitle">慢请求（近 {{ slowRows.length }} 条）</div>
+        <el-table :data="slowRows" border size="small" class="ops-gap-bottom-lg"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
+        <div class="ops-subtitle">错误请求（近 {{ errorRows.length }} 条）</div>
         <el-table :data="errorRows" border size="small"><el-table-column prop="created_at" label="时间" width="180" /><el-table-column prop="method" label="方法" width="90" /><el-table-column prop="path" label="路径" min-width="260" /><el-table-column prop="status" label="状态" width="90" /><el-table-column prop="total_ms" label="总耗时(ms)" width="120" /><el-table-column prop="sql_ms" label="SQL(ms)" width="100" /></el-table>
       </el-tab-pane>
 
       <el-tab-pane label="健康检查" name="health">
-        <el-row :gutter="12" style="margin-bottom:12px">
-          <el-col :span="6"><el-card shadow="never"><div>Schema</div><div style="font-size:26px; font-weight:700">{{ health.schema?.ok ? '正常' : '异常' }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>电脑快照缺失</div><div style="font-size:26px; font-weight:700">{{ health.metrics.pc_latest_state_missing || 0 }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>24h 5xx</div><div style="font-size:26px; font-weight:700">{{ health.metrics.error_5xx_last_24h || 0 }}</div></el-card></el-col>
-          <el-col :span="6"><el-card shadow="never"><div>最近巡检</div><div style="font-size:14px; font-weight:700">{{ formatTime(health.scan?.last_scanned_at) || '-' }}</div></el-card></el-col>
+        <el-row :gutter="12" class="ops-gap-bottom">
+          <el-col :span="6"><el-card shadow="never"><div>Schema</div><div class="sys-metric-mid">{{ health.schema?.ok ? '正常' : '异常' }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>电脑快照缺失</div><div class="sys-metric-mid">{{ health.metrics.pc_latest_state_missing || 0 }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>24h 5xx</div><div class="sys-metric-mid">{{ health.metrics.error_5xx_last_24h || 0 }}</div></el-card></el-col>
+          <el-col :span="6"><el-card shadow="never"><div>最近巡检</div><div class="sys-metric-small">{{ formatTime(health.scan?.last_scanned_at) || '-' }}</div></el-card></el-col>
         </el-row>
         <el-descriptions :column="2" border>
           <el-descriptions-item label="当前迁移版本">{{ schema.current_version || '-' }}</el-descriptions-item>
@@ -179,7 +179,7 @@
       </el-tab-pane>
 
       <el-tab-pane label="修复历史" name="history">
-        <el-alert type="info" :closable="false" style="margin-bottom:12px" title="修复历史会记录谁执行了什么修复、修前影响多少、修后剩余多少。" />
+        <el-alert type="info" :closable="false" class="ops-gap-bottom" title="修复历史会记录谁执行了什么修复、修前影响多少、修后剩余多少。" />
         <el-table :data="repairHistory" border>
           <el-table-column prop="created_at" label="时间" width="180" />
           <el-table-column prop="actor_name" label="执行人" width="120" />
@@ -194,11 +194,11 @@
     </el-tabs>
 
     <el-dialog v-model="diffDialog.visible" width="780px" :title="diffDialog.title || '差异明细'">
-      <div v-if="!diffDialog.rows.length" style="color:#999">暂无明细</div>
+      <div v-if="!diffDialog.rows.length" class="sys-muted">暂无明细</div>
       <el-table v-else :data="diffDialog.rows" border size="small">
         <el-table-column v-for="col in diffDialog.columns" :key="col" :prop="col" :label="columnLabel(col)" min-width="120">
           <template v-if="col==='mismatch_fields'" #default="{ row }">
-            <div style="display:flex; gap:6px; flex-wrap:wrap">
+            <div class="ops-tag-wrap">
               <el-tag v-for="field in row[col] || []" :key="field" size="small" type="warning">{{ mismatchLabel(field) }}</el-tag>
             </div>
           </template>
@@ -219,13 +219,13 @@
           <el-descriptions-item label="结果大小">{{ formatBytes(jobDetail.row.result_size) }}</el-descriptions-item>
           <el-descriptions-item label="保留期">{{ formatTime(jobDetail.row.retain_until) || '-' }}</el-descriptions-item>
         </el-descriptions>
-        <div style="margin-top:12px">
-          <div style="font-weight:700; margin-bottom:6px">结果摘要</div>
-          <div style="white-space:pre-wrap; word-break:break-word">{{ jobDetail.row.message || '-' }}</div>
+        <div class="ops-gap-top">
+          <div class="ops-detail-title">结果摘要</div>
+          <div class="ops-pre-wrap">{{ jobDetail.row.message || '-' }}</div>
         </div>
-        <div v-if="jobDetail.row.error_text" style="margin-top:12px">
-          <div style="font-weight:700; margin-bottom:6px">失败原因</div>
-          <pre style="white-space:pre-wrap; word-break:break-word; background:#f8fafc; border:1px solid #e5e7eb; border-radius:12px; padding:12px">{{ jobDetail.row.error_text }}</pre>
+        <div v-if="jobDetail.row.error_text" class="ops-gap-top">
+          <div class="ops-detail-title">失败原因</div>
+          <pre class="ops-error-pre">{{ jobDetail.row.error_text }}</pre>
         </div>
       </template>
     </el-dialog>
@@ -792,3 +792,94 @@ onBeforeUnmount(() => {
   window.removeEventListener('focus', handleJobsVisibilityChange);
 });
 </script>
+
+<style scoped>
+.ops-gap-bottom {
+  margin-bottom: 12px;
+}
+
+.ops-action-row {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.ops-align-center {
+  align-items: center;
+}
+
+.ops-gap-top {
+  margin-top: 12px;
+}
+
+.ops-gap-bottom-lg {
+  margin-bottom: 16px;
+}
+
+.ops-subtitle {
+  margin-bottom: 8px;
+  color: #666;
+}
+
+.ops-auto-refresh {
+  margin-left: auto;
+}
+
+.ops-inline-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-tag-wrap {
+  display: flex;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.ops-error-text {
+  color: #c45656;
+  font-size: 12px;
+}
+
+.ops-detail-title {
+  font-weight: 700;
+  margin-bottom: 6px;
+}
+
+.ops-pre-wrap {
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+
+.ops-error-pre {
+  white-space: pre-wrap;
+  word-break: break-word;
+  background: #f8fafc;
+  border: 1px solid #e5e7eb;
+  border-radius: 12px;
+  padding: 12px;
+}
+
+.ops-w-140 {
+  width: 140px;
+}
+
+.ops-w-150 {
+  width: 150px;
+}
+
+.ops-w-260 {
+  width: 260px;
+}
+
+.ops-metric-mid {
+  font-size: 26px;
+  font-weight: 700;
+}
+
+.ops-metric-small {
+  font-size: 14px;
+  font-weight: 700;
+}
+</style>

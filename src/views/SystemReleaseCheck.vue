@@ -1,13 +1,13 @@
 <template>
-  <div style="max-width: 1180px; margin: 0 auto">
-    <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
+  <div class="sys-page">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
       <template #header>
-        <div style="display:flex; align-items:center; justify-content:space-between; gap:12px; flex-wrap:wrap">
+        <div class="sys-header-row">
           <div>
-            <div style="font-weight:700; font-size:16px">发布前检查</div>
-            <div style="color:#888; font-size:12px; margin-top:4px">发布前先看数据库版本、健康状态、失败任务、最近错误和前端性能预算。</div>
+            <div class="sys-title-strong release-title">发布前检查</div>
+            <div class="sys-muted">发布前先看数据库版本、健康状态、失败任务、最近错误和前端性能预算。</div>
           </div>
-          <div style="display:flex; gap:8px; align-items:center; flex-wrap:wrap">
+          <div class="sys-actions-row">
             <el-tag :type="summary.ready ? 'success' : 'danger'">{{ summary.ready ? '可以发布' : '暂不建议发布' }}</el-tag>
             <el-button size="small" @click="load(true)">刷新</el-button>
           </div>
@@ -22,10 +22,10 @@
       </el-row>
     </el-card>
 
-    <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
       <template #header>
-        <div style="display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap">
-          <div style="font-weight:700">检查清单</div>
+        <div class="sys-header-row">
+          <div class="sys-title-strong">检查清单</div>
           <el-button size="small" plain @click="go('/system/docs')">查看系统交付文档</el-button>
         </div>
       </template>
@@ -41,30 +41,30 @@
       </el-table>
     </el-card>
 
-    <el-card shadow="never" style="border-radius: 12px; margin-bottom: 12px">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
       <template #header>
-        <div style="font-weight:700">前端性能预算</div>
+        <div class="sys-title-strong">前端性能预算</div>
       </template>
       <el-table :data="budgetRows" border size="small">
         <el-table-column prop="label" label="预算项" min-width="180" />
         <el-table-column prop="limitText" label="预算上限" width="140" />
         <el-table-column prop="description" label="说明" min-width="300" />
       </el-table>
-      <div style="margin-top:10px; color:#888; font-size:12px">
+      <div class="sys-help-text">
         本地执行 <code>npm run check:perf-budget</code> 可在构建后校验预算；<code>npm run verify:release</code> 已自动串上这一步。
       </div>
     </el-card>
 
-    <el-card shadow="never" style="border-radius: 12px">
+    <el-card shadow="never" class="sys-rounded-card">
       <template #header>
-        <div style="font-weight:700">本地发布命令</div>
+        <div class="sys-title-strong">本地发布命令</div>
       </template>
-      <div style="display:grid; gap:10px">
+      <div class="sys-grid-col">
         <pre class="cmd">npm run verify:release</pre>
         <pre class="cmd">npm run migrate:status -- --db inventory_db --remote</pre>
         <pre class="cmd">npm run migrate:apply -- --db inventory_db --remote</pre>
       </div>
-      <div style="color:#888; font-size:12px; margin-top:10px">
+      <div class="sys-help-text">
         当前数据库版本：{{ schema.current_version || '-' }}；代码要求版本：{{ schema.required_version || '-' }}。
       </div>
     </el-card>
@@ -85,11 +85,11 @@ const MetricCard = defineComponent({
     type: { type: String, default: 'info' },
   },
   setup(props) {
-    return () => h(resolveComponent('ElCard'), { shadow: 'never', style: 'border-radius: 12px; min-height: 112px' }, {
+    return () => h(resolveComponent('ElCard'), { shadow: 'never', class: 'sys-metric-card' }, {
       default: () => [
-        h('div', { style: 'color:#888; font-size:12px; margin-bottom:8px' }, props.label),
-        h('div', { style: 'display:flex; align-items:center; gap:8px' }, [
-          h('div', { style: 'font-weight:700; font-size:28px; line-height:1' }, props.value),
+        h('div', { class: 'sys-metric-card-label' }, props.label),
+        h('div', { class: 'sys-metric-card-row' }, [
+          h('div', { class: 'sys-metric-card-value' }, props.value),
           h(resolveComponent('ElTag'), { type: props.type as any, size: 'small' }, () => props.type === 'success' ? '正常' : props.type === 'warning' ? '关注' : '处理'),
         ]),
       ],
@@ -166,6 +166,10 @@ onMounted(() => load(false));
 </script>
 
 <style scoped>
+.release-title {
+  font-size: 16px;
+}
+
 .cmd {
   margin: 0;
   padding: 12px 14px;
