@@ -258,6 +258,7 @@ import { getSystemHealth } from '../api/systemHealth';
 import { confirmRiskAction } from '../utils/riskAction';
 import { downloadJobResultCached, openJobResultCached } from '../utils/jobResultCache';
 import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
+import { useSystemPageLoader } from '../composables/useSystemPageLoader';
 
 const autoScanMinutes = 15;
 type JobRow = any;
@@ -413,36 +414,36 @@ function actionButtonText(action: string, fallback: string) {
   return item && Number(item.affected_count || 0) > 0 ? `${fallback}（${item.affected_count}）` : fallback;
 }
 
-async function loadRepairBase() {
-  const r:any = await apiGet('/api/system-tools?section=base');
-  applySchema(r.data?.schema || {});
-  applyDashboard(r.data?.dashboard || {});
-  applyScan(r.data?.scan || {});
+async function loadRepairBase(force = false) {
+  const payload = await repairBaseLoader.load({ force });
+  applySchema(payload?.schema || {});
+  applyDashboard(payload?.dashboard || {});
+  applyScan(payload?.scan || {});
   if (!health.metrics || typeof health.metrics !== 'object') health.metrics = {};
   health.metrics.failed_async_jobs = Number(health.metrics.failed_async_jobs || dashboard.failed_job_count || 0);
   loadedTabs.repair = true;
 }
 
-async function loadObservability() {
-  const r:any = await apiGet('/api/system-observability');
-  slowRows.value = r.data?.slow_requests || [];
-  errorRows.value = r.data?.error_requests || [];
+async function loadObservability(force = false) {
+  const payload = await observabilityLoader.load({ force });
+  slowRows.value = payload?.slow_requests || [];
+  errorRows.value = payload?.error_requests || [];
   obsRenderLimit.value = OBS_RENDER_STEP;
   loadedTabs.obs = true;
 }
 
-async function loadHealth() {
-  const r:any = await getSystemHealth();
-  health.schema = r.data?.schema || { ok: true };
-  health.metrics = r.data?.metrics || {};
-  health.scan = r.data?.scan || null;
+async function loadHealth(force = false) {
+  const payload = await healthLoader.load({ force });
+  health.schema = payload?.schema || { ok: true };
+  health.metrics = payload?.metrics || {};
+  health.scan = payload?.scan || null;
   loadedTabs.health = true;
 }
 
 async function ensureTabLoaded(name: string, force = false) {
   const target = String(name || tab.value || 'repair');
   if (target === 'repair') {
-    if (force || !loadedTabs.repair) await loadRepairBase();
+    if (force || !loadedTabs.repair) await loadRepairBase(force);
     return;
   }
   if (target === 'jobs') {
@@ -454,11 +455,11 @@ async function ensureTabLoaded(name: string, force = false) {
     return;
   }
   if (target === 'obs') {
-    if (force || !loadedTabs.obs) await loadObservability();
+    if (force || !loadedTabs.obs) await loadObservability(force);
     return;
   }
   if (target === 'health') {
-    if (force || !loadedTabs.health) await loadHealth();
+    if (force || !loadedTabs.health) await loadHealth(force);
     return;
   }
 }
@@ -706,7 +707,7 @@ async function retryJob(id:number) {
 }
 async function openJobDetail(row:any) {
   try {
-    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90`);
+    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90&detail=1`);
     jobDetail.row = Array.isArray(r?.data) ? (r.data[0] || row) : row;
   } catch {
     jobDetail.row = row;
@@ -803,6 +804,38 @@ const renderedJobs = computed(() => jobs.value.slice(0, jobsRenderLimit.value));
 const renderedRepairHistory = computed(() => repairHistory.value.slice(0, historyRenderLimit.value));
 const renderedSlowRows = computed(() => slowRows.value.slice(0, obsRenderLimit.value));
 const renderedErrorRows = computed(() => errorRows.value.slice(0, obsRenderLimit.value));
+
+const repairBaseLoader = useSystemPageLoader<any>('system-ops::repair-base', {
+  ttlMs: 60_000,
+  backgroundRefreshMs: 60_000,
+  initialData: () => ({ schema: {}, dashboard: {}, scan: {} }),
+  load: async ({ force }) => {
+    const suffix = force ? '&force=1' : '';
+    const r: any = await apiGet(`/api/system-tools?section=base${suffix}`);
+    return { schema: r.data?.schema || {}, dashboard: r.data?.dashboard || {}, scan: r.data?.scan || {} };
+  },
+});
+
+const observabilityLoader = useSystemPageLoader<any>('system-ops::observability', {
+  ttlMs: 45_000,
+  backgroundRefreshMs: 60_000,
+  initialData: () => ({ slow_requests: [], error_requests: [] }),
+  load: async ({ force }) => {
+    const suffix = force ? '?force=1' : '';
+    const r: any = await apiGet(`/api/system-observability${suffix}`);
+    return { slow_requests: r.data?.slow_requests || [], error_requests: r.data?.error_requests || [] };
+  },
+});
+
+const healthLoader = useSystemPageLoader<any>('system-ops::health', {
+  ttlMs: 180_000,
+  backgroundRefreshMs: 60_000,
+  initialData: () => ({ schema: { ok: true }, metrics: {}, scan: null }),
+  load: async ({ force }) => {
+    const r: any = await getSystemHealth({ force });
+    return { schema: r.data?.schema || { ok: true }, metrics: r.data?.metrics || {}, scan: r.data?.scan || null };
+  },
+});
 
 onMounted(() => {
   ensureTabLoaded('repair');

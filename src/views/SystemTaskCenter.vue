@@ -291,7 +291,7 @@ function syncSummaryFromJobs(rows = jobs.value) {
 }
 async function openDetail(row: any) {
   try {
-    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90`);
+    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90&detail=1`);
     const found = normalizeJobRowsResponse(r)?.[0] || row;
     detailRow.value = found;
     detailVisible.value = true;

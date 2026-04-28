@@ -57,6 +57,8 @@ export async function ensureAsyncJobsTable(db: D1Database) {
   }
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_status_created_at ON async_jobs(status, created_at DESC, id DESC)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_status ON async_jobs(created_by, status, id DESC)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_job_type_status_created_at ON async_jobs(job_type, status, created_at DESC, id DESC)`).run();
+  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_job_type_status ON async_jobs(created_by, job_type, status, created_at DESC, id DESC)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_retain_until ON async_jobs(retain_until, id DESC)`).run();
 }
 
@@ -1143,7 +1145,7 @@ function mapAsyncJobRow(row: any) {
   };
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null } = {}, bucket?: AsyncJobResultBucket) {
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null } = {}, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
@@ -1172,11 +1174,18 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
     binds.push(...deltaBinds);
   }
 
-  const sql = `SELECT id, job_type, status, created_by, created_by_name, permission_scope, message, error_text, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at,
-    CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
-    LENGTH(result_blob_base64) AS result_blob_base64_len,
-    LENGTH(result_text) AS result_text_len
-    FROM async_jobs ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
+  const selectSql = options.detail
+    ? `SELECT id, job_type, status, created_by, created_by_name, permission_scope, request_json, message, error_text, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at,
+      CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
+      LENGTH(result_blob_base64) AS result_blob_base64_len,
+      LENGTH(result_text) AS result_text_len
+      FROM async_jobs`
+    : `SELECT id, job_type, status, created_by_name, message, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, retain_until, result_deleted_at, canceled_at,
+      CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
+      LENGTH(result_blob_base64) AS result_blob_base64_len,
+      LENGTH(result_text) AS result_text_len
+      FROM async_jobs`;
+  const sql = `${selectSql} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
   return (results || []).map(mapAsyncJobRow);
 }

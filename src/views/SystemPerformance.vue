@@ -26,7 +26,7 @@
       class="sys-card-gap"
     />
 
-    <div v-if="loading && !hasLoadedOnce" class="perf-loading-wrap">
+    <div v-if="loading && !loaded" class="perf-loading-wrap">
       <el-skeleton :rows="8" animated />
     </div>
 
@@ -206,6 +206,7 @@ import { ElSkeleton } from 'element-plus';
 import { computed, onMounted, ref } from 'vue';
 import { ElMessage } from '../utils/el-services';
 import { getSystemPerformance } from '../api/systemPerformance';
+import { useSystemPageLoader } from '../composables/useSystemPageLoader';
 
 type PerfData = {
   summary: Record<string, number>;
@@ -252,34 +253,11 @@ function emptyPerf(): PerfData {
 }
 
 const days = ref(7);
-const loading = ref(false);
-const hasLoadedOnce = ref(false);
-const loadError = ref('');
-const perf = ref<PerfData>(emptyPerf());
-
-const showEmpty = computed(() => {
-  const data = perf.value;
-  return hasLoadedOnce.value
-    && !loading.value
-    && !loadError.value
-    && data.summary.slow_count === 0
-    && data.top_slow_paths.length === 0
-    && data.top_error_paths.length === 0
-    && data.browser_top_routes.length === 0
-    && data.browser_top_events.length === 0;
-});
-
-function formatMetadata(input: unknown) {
-  if (!input || typeof input !== 'object') return '-';
-  const entries = Object.entries(input as Record<string, unknown>).slice(0, 2);
-  if (!entries.length) return '-';
-  return entries.map(([key, value]) => `${key}:${String(value)}`).join(' · ');
-}
-
-async function load(force = false) {
-  loading.value = true;
-  loadError.value = '';
-  try {
+const loader = useSystemPageLoader<PerfData>('system-performance::page', {
+  ttlMs: 30_000,
+  backgroundRefreshMs: 60_000,
+  initialData: emptyPerf,
+  load: async ({ force }) => {
     const response: any = await getSystemPerformance(days.value, { force });
     const payload = response?.data && typeof response.data === 'object' ? response.data : {};
     const next = emptyPerf();
@@ -297,16 +275,39 @@ async function load(force = false) {
     next.retention_policy = { ...next.retention_policy, ...(payload.retention_policy && typeof payload.retention_policy === 'object' ? payload.retention_policy : {}) };
     next.endpoint_baselines = Array.isArray(payload.endpoint_baselines) ? payload.endpoint_baselines : [];
     next.index_recommendations = Array.isArray(payload.index_recommendations) ? payload.index_recommendations : [];
-    perf.value = next;
-    hasLoadedOnce.value = true;
+    return next;
+  },
+});
+const loading = loader.loading;
+const loaded = loader.loaded;
+const loadError = loader.error;
+const perf = loader.data;
+
+const showEmpty = computed(() => {
+  const data = perf.value;
+  return loaded.value
+    && !loading.value
+    && !loadError.value
+    && data.summary.slow_count === 0
+    && data.top_slow_paths.length === 0
+    && data.top_error_paths.length === 0
+    && data.browser_top_routes.length === 0
+    && data.browser_top_events.length === 0;
+});
+
+function formatMetadata(input: unknown) {
+  if (!input || typeof input !== 'object') return '-';
+  const entries = Object.entries(input as Record<string, unknown>).slice(0, 2);
+  if (!entries.length) return '-';
+  return entries.map(([key, value]) => `${key}:${String(value)}`).join(' · ');
+}
+
+async function load(force = false) {
+  try {
+    await loader.load({ force });
   } catch (e: any) {
     console.error('system-performance load failed', e);
-    perf.value = emptyPerf();
-    hasLoadedOnce.value = true;
-    loadError.value = e?.message || '加载性能面板失败';
-    ElMessage.error(loadError.value);
-  } finally {
-    loading.value = false;
+    ElMessage.error(e?.message || '加载性能面板失败');
   }
 }
 
