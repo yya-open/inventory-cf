@@ -41,6 +41,23 @@
       </el-row>
 
       <el-row :gutter="12">
+        <el-col :xs="24">
+          <el-card shadow="never">
+            <template #header><div class="sys-title-strong">核心接口基线（P50 / P95）</div></template>
+            <el-table :data="perf.endpoint_baselines" border size="small" empty-text="暂无接口基线数据">
+              <el-table-column prop="endpoint" label="接口" min-width="180" />
+              <el-table-column prop="request_count" label="样本数" width="100" />
+              <el-table-column prop="p50_total_ms" label="P50(ms)" width="110" />
+              <el-table-column prop="p95_total_ms" label="P95(ms)" width="110" />
+              <el-table-column prop="p99_total_ms" label="P99(ms)" width="110" />
+              <el-table-column prop="avg_total_ms" label="平均(ms)" width="110" />
+              <el-table-column prop="error_5xx_count" label="5xx" width="90" />
+            </el-table>
+          </el-card>
+        </el-col>
+      </el-row>
+
+      <el-row :gutter="12" class="perf-row-gap-top">
         <el-col :xs="24" :xl="12">
           <el-card shadow="never">
             <template #header><div class="sys-title-strong">最慢接口 Top 20</div></template>
@@ -203,6 +220,15 @@ type PerfData = {
   browser_recent_events: any[];
   daily_browser_trend: any[];
   retention_policy: Record<string, number>;
+  endpoint_baselines: Array<{
+    endpoint: string;
+    request_count: number;
+    p50_total_ms: number;
+    p95_total_ms: number;
+    p99_total_ms: number;
+    avg_total_ms: number;
+    error_5xx_count: number;
+  }>;
   index_recommendations: any[];
 };
 
@@ -220,6 +246,7 @@ function emptyPerf(): PerfData {
     browser_recent_events: [],
     daily_browser_trend: [],
     retention_policy: { slow_request_days: 0, request_error_days: 0, browser_perf_days: 0, browser_event_days: 0 },
+    endpoint_baselines: [],
     index_recommendations: [],
   };
 }
@@ -268,6 +295,7 @@ async function load(force = false) {
     next.browser_recent_events = Array.isArray(payload.browser_recent_events) ? payload.browser_recent_events : [];
     next.daily_browser_trend = Array.isArray(payload.daily_browser_trend) ? payload.daily_browser_trend : [];
     next.retention_policy = { ...next.retention_policy, ...(payload.retention_policy && typeof payload.retention_policy === 'object' ? payload.retention_policy : {}) };
+    next.endpoint_baselines = Array.isArray(payload.endpoint_baselines) ? payload.endpoint_baselines : [];
     next.index_recommendations = Array.isArray(payload.index_recommendations) ? payload.index_recommendations : [];
     perf.value = next;
     hasLoadedOnce.value = true;

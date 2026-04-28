@@ -231,6 +231,16 @@
                 <el-switch v-model="form.ops_enable_runtime_ddl" />
                 <div class="form-tip">仅用于应急自修复。生产环境建议关闭，优先使用迁移脚本和初始化工具。</div>
               </el-form-item>
+              <el-form-item label="5xx 告警阈值(24h)">
+                <el-input-number v-model="form.alert_threshold_error_5xx_last_24h" :min="1" :max="100000" />
+              </el-form-item>
+              <el-form-item label="失败任务告警阈值">
+                <el-input-number v-model="form.alert_threshold_failed_async_jobs" :min="1" :max="100000" />
+              </el-form-item>
+              <el-form-item label="登录失败告警阈值(24h)">
+                <el-input-number v-model="form.alert_threshold_login_failures_last_24h" :min="1" :max="100000" />
+                <div class="form-tip">用于系统健康与发布前检查的越线告警判断，可按业务波峰调整。</div>
+              </el-form-item>
             </el-form>
           </el-card>
         </el-col>

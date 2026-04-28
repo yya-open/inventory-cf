@@ -145,6 +145,13 @@ const rows = computed(() => [
     detail: `最近 24 小时记录到 ${Number(health.metrics?.error_5xx_last_24h || 0)} 次 5xx。`,
     action: Number(health.metrics?.error_5xx_last_24h || 0) === 0 ? '无需处理' : '先看错误请求和日志，确认不是新问题再发布',
   },
+  {
+    name: '最近 24 小时登录失败',
+    ok: Number(health.metrics?.login_failures_last_24h || 0) < Number(health.metrics?.thresholds?.login_failures_last_24h || 30),
+    level: 'warning',
+    detail: `最近 24 小时登录失败 ${Number(health.metrics?.login_failures_last_24h || 0)} 次（阈值 ${Number(health.metrics?.thresholds?.login_failures_last_24h || 30)}）。`,
+    action: Number(health.metrics?.login_failures_last_24h || 0) < Number(health.metrics?.thresholds?.login_failures_last_24h || 30) ? '无需处理' : '检查是否存在撞库/密码错误激增，必要时加强风控与验证码策略',
+  },
 ]);
 
 const budgetRows = computed(() => PERFORMANCE_BUDGETS.map((item) => ({

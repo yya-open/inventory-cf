@@ -15,12 +15,12 @@
 
     <el-alert v-if="!schema.ok" type="error" :closable="false" show-icon :title="schema.message || '数据库版本不匹配'" class="ops-gap-bottom" />
     <el-alert
-      v-else-if="scan.total_problem_count > 0 || health.metrics.failed_async_jobs > 0 || health.metrics.error_5xx_last_24h > 0"
+      v-else-if="scan.total_problem_count > 0 || health.metrics.failed_async_jobs > 0 || health.metrics.error_5xx_last_24h > 0 || health.metrics.login_failures_last_24h > 0"
       type="warning"
       :closable="false"
       show-icon
       class="ops-gap-bottom"
-      :title="`当前仍有 ${scan.total_problem_count} 类巡检问题 / ${health.metrics.failed_async_jobs || 0} 个失败任务 / ${health.metrics.error_5xx_last_24h || 0} 次近24h 5xx`"
+      :title="`当前仍有 ${scan.total_problem_count} 类巡检问题 / ${health.metrics.failed_async_jobs || 0} 个失败任务 / ${health.metrics.error_5xx_last_24h || 0} 次近24h 5xx / ${health.metrics.login_failures_last_24h || 0} 次近24h 登录失败`"
     >
       <div>建议先处理异常再做发布或大批量操作。</div>
     </el-alert>

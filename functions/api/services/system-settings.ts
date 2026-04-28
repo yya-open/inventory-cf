@@ -45,6 +45,9 @@ export type SystemSettings = {
   export_qr_file_name_mode: ExportQrFileNameMode;
   export_qr_zip_entry_name_mode: ExportQrZipEntryNameMode;
   ops_enable_runtime_ddl: boolean;
+  alert_threshold_error_5xx_last_24h: number;
+  alert_threshold_failed_async_jobs: number;
+  alert_threshold_login_failures_last_24h: number;
   settings_updated_at?: string | null;
 };
 
@@ -87,6 +90,9 @@ export const DEFAULT_SYSTEM_SETTINGS: SystemSettings = {
   export_qr_file_name_mode: 'scope_template',
   export_qr_zip_entry_name_mode: 'asset',
   ops_enable_runtime_ddl: false,
+  alert_threshold_error_5xx_last_24h: 10,
+  alert_threshold_failed_async_jobs: 20,
+  alert_threshold_login_failures_last_24h: 30,
   settings_updated_at: null,
 };
 
@@ -259,6 +265,9 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     export_qr_file_name_mode: normalizeExportQrFileNameMode(source.export_qr_file_name_mode, DEFAULT_SYSTEM_SETTINGS.export_qr_file_name_mode),
     export_qr_zip_entry_name_mode: normalizeExportQrZipEntryNameMode(source.export_qr_zip_entry_name_mode, DEFAULT_SYSTEM_SETTINGS.export_qr_zip_entry_name_mode),
     ops_enable_runtime_ddl: toBoolean(source.ops_enable_runtime_ddl, DEFAULT_SYSTEM_SETTINGS.ops_enable_runtime_ddl),
+    alert_threshold_error_5xx_last_24h: toInt(source.alert_threshold_error_5xx_last_24h, DEFAULT_SYSTEM_SETTINGS.alert_threshold_error_5xx_last_24h, 1, 100000),
+    alert_threshold_failed_async_jobs: toInt(source.alert_threshold_failed_async_jobs, DEFAULT_SYSTEM_SETTINGS.alert_threshold_failed_async_jobs, 1, 100000),
+    alert_threshold_login_failures_last_24h: toInt(source.alert_threshold_login_failures_last_24h, DEFAULT_SYSTEM_SETTINGS.alert_threshold_login_failures_last_24h, 1, 100000),
     settings_updated_at: normalizeVersion(source.settings_updated_at),
   };
 }

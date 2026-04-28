@@ -17,6 +17,15 @@ type PerfPayload = {
   browser_recent_events: any[];
   daily_browser_trend: any[];
   retention_policy: Record<string, number>;
+  endpoint_baselines: Array<{
+    endpoint: string;
+    request_count: number;
+    p50_total_ms: number;
+    p95_total_ms: number;
+    p99_total_ms: number;
+    avg_total_ms: number;
+    error_5xx_count: number;
+  }>;
   index_recommendations: Array<{ key: string; label: string; status: 'ready' | 'recommended'; detail: string }>;
 };
 
@@ -44,6 +53,8 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
     browserRecentEventsRes,
     browserTrendRes,
     retentionPolicy,
+    endpointRowsRes,
+    endpoint5xxRes,
   ] = await Promise.all([
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM slow_request_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 300`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT id, method, path, status, total_ms, sql_ms, auth_ms, created_at FROM request_error_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 200`).bind(since).all<any>().catch(() => ({ results: [] })),
@@ -56,6 +67,20 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
     db.prepare(`SELECT id, event_name, path, full_path, username, created_at, metadata_json FROM browser_event_log WHERE created_at >= datetime('now','+8 hours', ?) ORDER BY id DESC LIMIT 100`).bind(since).all<any>().catch(() => ({ results: [] })),
     db.prepare(`SELECT substr(created_at, 1, 10) AS day, COUNT(*) AS route_count, ROUND(AVG(duration_ms),1) AS avg_duration_ms, MAX(duration_ms) AS max_duration_ms FROM browser_perf_log WHERE created_at >= datetime('now','+8 hours', ?) GROUP BY substr(created_at,1,10) ORDER BY day DESC LIMIT 14`).bind(since).all<any>().catch(() => ({ results: [] })),
     getObservabilityRetentionPolicy(db).catch(() => ({ slow_request_days: 30, request_error_days: 30, browser_perf_days: 14, browser_event_days: 14 })),
+    db.prepare(
+      `SELECT path, total_ms
+       FROM slow_request_log
+       WHERE created_at >= datetime('now','+8 hours', ?)
+         AND (path LIKE '/api/users%' OR path LIKE '/api/auth/me%' OR path LIKE '/api/jobs%')`
+    ).bind(since).all<any>().catch(() => ({ results: [] })),
+    db.prepare(
+      `SELECT path, COUNT(*) AS c
+       FROM request_error_log
+       WHERE created_at >= datetime('now','+8 hours', ?)
+         AND status >= 500
+         AND (path LIKE '/api/users%' OR path LIKE '/api/auth/me%' OR path LIKE '/api/jobs%')
+       GROUP BY path`
+    ).bind(since).all<any>().catch(() => ({ results: [] })),
   ]);
 
   const slowRows = slowRowsRes.results || [];
@@ -80,6 +105,38 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
       metadata = null;
     }
     return { ...row, metadata };
+  });
+
+  const endpoints = ['/api/users', '/api/auth/me', '/api/jobs'];
+  const endpointTotals = new Map<string, number[]>();
+  for (const endpoint of endpoints) endpointTotals.set(endpoint, []);
+  for (const row of endpointRowsRes.results || []) {
+    const path = String(row?.path || '');
+    const endpoint = endpoints.find((item) => path.startsWith(item));
+    if (!endpoint) continue;
+    endpointTotals.get(endpoint)!.push(toSafeNumber(row?.total_ms));
+  }
+  const endpointError5xx = new Map<string, number>();
+  for (const row of endpoint5xxRes.results || []) {
+    const path = String(row?.path || '');
+    const endpoint = endpoints.find((item) => path.startsWith(item));
+    if (!endpoint) continue;
+    endpointError5xx.set(endpoint, (endpointError5xx.get(endpoint) || 0) + toSafeNumber(row?.c));
+  }
+  const endpointBaselines = endpoints.map((endpoint) => {
+    const totalsForEndpoint = endpointTotals.get(endpoint) || [];
+    const avgTotalMs = totalsForEndpoint.length
+      ? Number((totalsForEndpoint.reduce((sum, value) => sum + value, 0) / totalsForEndpoint.length).toFixed(1))
+      : 0;
+    return {
+      endpoint,
+      request_count: totalsForEndpoint.length,
+      p50_total_ms: percentile(totalsForEndpoint, 50),
+      p95_total_ms: percentile(totalsForEndpoint, 95),
+      p99_total_ms: percentile(totalsForEndpoint, 99),
+      avg_total_ms: avgTotalMs,
+      error_5xx_count: endpointError5xx.get(endpoint) || 0,
+    };
   });
 
   return {
@@ -113,6 +170,7 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
       browser_perf_days: retentionPolicy.browser_perf_days,
       browser_event_days: retentionPolicy.browser_event_days,
     },
+    endpoint_baselines: endpointBaselines,
     index_recommendations: [
       { key: 'idx_asset_inventory_batch_kind_status_started', label: '盘点批次状态索引', status: 'ready', detail: '支撑当前批次/历史批次查询。' },
       { key: 'idx_pc_inventory_log_batch_id_asset_created', label: '电脑盘点记录批次索引', status: 'ready', detail: '支撑按批次回溯盘点记录与问题分布。' },
