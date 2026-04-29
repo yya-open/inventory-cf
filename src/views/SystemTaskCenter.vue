@@ -392,7 +392,8 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
   jobsAbortController = controller;
   if (!opts.silent) loading.value = true;
   try {
-    if (opts.includeBase && (opts.force || !lastBaseLoadedAt || (Date.now() - lastBaseLoadedAt) > BASE_REFRESH_MS)) await loadBase();
+    const shouldLoadBase = !!(opts.includeBase && (opts.force || !lastBaseLoadedAt || (Date.now() - lastBaseLoadedAt) > BASE_REFRESH_MS));
+    const basePromise = shouldLoadBase ? loadBase() : Promise.resolve();
     const activeIds = Array.from(new Set(
       jobs.value
         .filter((row) => ['queued', 'running'].includes(String(row?.status || '')))
@@ -405,6 +406,7 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
       ? buildQuery({ afterId: maxId > 0 ? maxId : undefined, ids: activeIds })
       : buildQuery();
     const r:any = await apiGet(`/api/jobs?${query}`, controller ? { signal: controller.signal } : {});
+    await basePromise;
     if (requestSeq !== jobsRequestSeq) return;
     const rows = normalizeJobRowsResponse(r);
     if (useDelta) {

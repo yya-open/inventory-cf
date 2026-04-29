@@ -7,6 +7,19 @@ import { logAudit } from './_audit';
 
 const QR_EXPORT_TYPES = new Set(['PC_QR_CARDS_EXPORT', 'PC_QR_SHEET_EXPORT', 'MONITOR_QR_CARDS_EXPORT', 'MONITOR_QR_SHEET_EXPORT']);
 const QR_EXPORT_CHUNK_SIZE = 500;
+const JOBS_SCHEMA_CACHE_TTL_MS = 5 * 60_000;
+let jobsSchemaOkCache: { expiresAt: number; status: any } | null = null;
+
+async function getCachedJobsSchemaStatus(db: D1Database, timing?: any) {
+  const now = Date.now();
+  if (jobsSchemaOkCache && jobsSchemaOkCache.expiresAt > now && jobsSchemaOkCache.status?.ok) return jobsSchemaOkCache.status;
+  const status = timing?.measure
+    ? await timing.measure('jobs_schema', () => getSchemaStatus(db))
+    : await getSchemaStatus(db);
+  if (status?.ok) jobsSchemaOkCache = { status, expiresAt: now + JOBS_SCHEMA_CACHE_TTL_MS };
+  else jobsSchemaOkCache = null;
+  return status;
+}
 
 function normalizeQrExportIds(input: any) {
   const ids: number[] = [];
@@ -32,9 +45,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
   try {
     const timing = (env as any).__timing;
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-    const status = timing?.measure
-      ? await timing.measure('jobs_schema', () => getSchemaStatus(env.DB))
-      : await getSchemaStatus(env.DB);
+    const status = await getCachedJobsSchemaStatus(env.DB, timing);
     if (!status.ok) return json(false, status, status.message, 409);
     const url = new URL(request.url);
     const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 100)));
@@ -62,7 +73,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
   const { env, request, waitUntil } = context as any;
   try {
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-    const status = await getSchemaStatus(env.DB);
+    const status = await getCachedJobsSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
     const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json<any>();
     if (QR_EXPORT_TYPES.has(String(job_type || ''))) {
@@ -95,6 +106,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
 export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
+    const timing = (env as any).__timing;
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
     const body = await request.json<any>().catch(() => ({}));
     const action = String(body?.action || '').trim();
@@ -128,8 +140,14 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
         ? body.ids.map((value: any) => Math.trunc(Number(value || 0))).filter((value: number, index: number, arr: number[]) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index).slice(0, 500)
         : [];
       if (!ids.length) return json(false, null, '缺少有效任务 ids', 400);
-      const result = await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
-      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
+      const result = timing?.measure
+        ? await timing.measure('jobs_delete_batch_core', () => deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET))
+        : await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
+      if (timing?.measure) {
+        await timing.measure('jobs_delete_batch_audit', () => logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result));
+      } else {
+        await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
+      }
       const summary = `批量删除完成：删除 ${result.deleted} 条，跳过运行中 ${result.blocked} 条，缺失 ${result.missing} 条，失败 ${result.failed} 条`;
       return json(true, result, summary);
     }

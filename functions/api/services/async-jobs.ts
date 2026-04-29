@@ -17,7 +17,13 @@ import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
 
+let asyncJobsSchemaReady = false;
+let asyncJobsSchemaPending: Promise<void> | null = null;
+
 export async function ensureAsyncJobsTable(db: D1Database) {
+  if (asyncJobsSchemaReady) return;
+  if (asyncJobsSchemaPending) return asyncJobsSchemaPending;
+  asyncJobsSchemaPending = (async () => {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS async_jobs (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -60,6 +66,11 @@ export async function ensureAsyncJobsTable(db: D1Database) {
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_job_type_status_created_at ON async_jobs(job_type, status, created_at DESC, id DESC)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_job_type_status ON async_jobs(created_by, job_type, status, created_at DESC, id DESC)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_retain_until ON async_jobs(retain_until, id DESC)`).run();
+  asyncJobsSchemaReady = true;
+  })().finally(() => {
+    asyncJobsSchemaPending = null;
+  });
+  return asyncJobsSchemaPending;
 }
 
 function csvEscape(v: any) {
@@ -1244,33 +1255,91 @@ export async function deleteAsyncJobs(db: D1Database, ids: number[], bucket?: As
     .map((value) => Math.trunc(Number(value || 0)))
     .filter((value) => Number.isFinite(value) && value > 0)));
 
+  if (!normalized.length) {
+    return {
+      requested: 0,
+      deleted: 0,
+      blocked: 0,
+      missing: 0,
+      failed: 0,
+      deleted_ids: [] as number[],
+      blocked_ids: [] as number[],
+      missing_ids: [] as number[],
+      failed_ids: [] as number[],
+    };
+  }
+
   const deletedIds: number[] = [];
   const blockedIds: number[] = [];
   const missingIds: number[] = [];
   const failedIds: number[] = [];
 
-  for (const id of normalized) {
-    try {
-      const row = await getAsyncJob(db, id, bucket);
-      if (!row) {
-        missingIds.push(id);
-        continue;
+  const timing = ((db as any)?.__timing || null) as { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
+  const rowMap = new Map<number, any>();
+  const CHUNK_SIZE = 180;
+  const loadRows = async () => {
+    for (let i = 0; i < normalized.length; i += CHUNK_SIZE) {
+      const chunk = normalized.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      const { results } = await db.prepare(
+        `SELECT id, status, result_object_key FROM async_jobs WHERE id IN (${placeholders})`
+      ).bind(...chunk).all<any>();
+      for (const row of results || []) {
+        const id = Number((row as any)?.id || 0);
+        if (id > 0) rowMap.set(id, row);
       }
-      if (['queued', 'running'].includes(String(row.status || ''))) {
-        blockedIds.push(id);
-        continue;
-      }
-      const objectKey = String(row.result_object_key || '').trim();
-      if (objectKey && bucket && typeof bucket.delete === 'function') {
-        try { await bucket.delete(objectKey); } catch {}
-      }
-      await db.prepare(`UPDATE asset_inventory_batch SET snapshot_job_id=NULL WHERE snapshot_job_id=?`).bind(id).run();
-      await db.prepare(`DELETE FROM async_jobs WHERE id=?`).bind(id).run();
-      deletedIds.push(id);
-    } catch {
-      failedIds.push(id);
     }
+  };
+  if (timing?.measure) await timing.measure('jobs_delete_batch_query', loadRows);
+  else await loadRows();
+
+  const deletableIds: number[] = [];
+  const deletableObjectKeys: string[] = [];
+  for (const id of normalized) {
+    const row = rowMap.get(id);
+    if (!row) {
+      missingIds.push(id);
+      continue;
+    }
+    if (['queued', 'running'].includes(String(row.status || ''))) {
+      blockedIds.push(id);
+      continue;
+    }
+    deletableIds.push(id);
+    const objectKey = String(row.result_object_key || '').trim();
+    if (objectKey) deletableObjectKeys.push(objectKey);
   }
+
+  const cleanupBucketObjects = async () => {
+    if (!deletableObjectKeys.length || !bucket || typeof bucket.delete !== 'function') return;
+    const DELETE_KEY_CHUNK = 20;
+    for (let i = 0; i < deletableObjectKeys.length; i += DELETE_KEY_CHUNK) {
+      const keyChunk = deletableObjectKeys.slice(i, i + DELETE_KEY_CHUNK);
+      await Promise.allSettled(keyChunk.map((key) => bucket.delete(key)));
+    }
+  };
+  if (timing?.measure) await timing.measure('jobs_delete_batch_r2', cleanupBucketObjects);
+  else await cleanupBucketObjects();
+
+  const deleteRows = async () => {
+    for (let i = 0; i < deletableIds.length; i += CHUNK_SIZE) {
+      const chunk = deletableIds.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      try {
+        await db.prepare(
+          `UPDATE asset_inventory_batch SET snapshot_job_id=NULL WHERE snapshot_job_id IN (${placeholders})`
+        ).bind(...chunk).run();
+        await db.prepare(
+          `DELETE FROM async_jobs WHERE id IN (${placeholders})`
+        ).bind(...chunk).run();
+        deletedIds.push(...chunk);
+      } catch {
+        failedIds.push(...chunk);
+      }
+    }
+  };
+  if (timing?.measure) await timing.measure('jobs_delete_batch_sql', deleteRows);
+  else await deleteRows();
 
   return {
     requested: normalized.length,
