@@ -671,12 +671,13 @@ export function usePublicInventoryPage(options: {
   });
 
   onMounted(async () => {
-    await loadPublicConfig();
+    const configTask = loadPublicConfig();
     loadRecentResult();
     loadSessionSummary();
     recentTargets.value = loadRecentPublicTargets(options.kind, recentTargetsLimit.value);
     refreshPendingQueue();
     await refresh();
+    await configTask;
     if (navigator.onLine && pendingQueue.value.length) {
       void flushPendingQueue();
     }

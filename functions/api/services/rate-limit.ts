@@ -41,6 +41,9 @@ export async function ensureAuthLoginThrottleTable(db: D1Database) {
 }
 
 export async function ensurePublicThrottleTable(db: D1Database) {
+  if ((ensurePublicThrottleTable as any).__ready) return;
+  if ((ensurePublicThrottleTable as any).__pending) return (ensurePublicThrottleTable as any).__pending;
+  (ensurePublicThrottleTable as any).__pending = (async () => {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS public_api_throttle (
       k TEXT PRIMARY KEY,
@@ -49,6 +52,11 @@ export async function ensurePublicThrottleTable(db: D1Database) {
     )`
   ).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_public_api_throttle_updated_at ON public_api_throttle(updated_at)`).run();
+    (ensurePublicThrottleTable as any).__ready = true;
+  })().finally(() => {
+    (ensurePublicThrottleTable as any).__pending = null;
+  });
+  return (ensurePublicThrottleTable as any).__pending;
 }
 
 export async function cleanupPublicThrottleBuckets(db: D1Database, maxAgeHours = 2) {
