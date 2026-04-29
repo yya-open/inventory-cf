@@ -140,6 +140,7 @@ import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText } from "../utils/dataQuality";
+import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
 
@@ -274,7 +275,15 @@ async function submit() {
   normalizeForm();
   const softErrors = [validateDateText(form.value.manufacture_date, "出厂时间"), validateDateText(form.value.warranty_end, "保修到期")].filter(Boolean);
   if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
-  const ok = await formRef.value?.validate().catch(() => false);
+  const ok = await validateWithFriendlyMessage(
+    formRef.value,
+    (msg) => ElMessage.warning(msg),
+    {
+      serial_no: "请输入序列号",
+      brand: "请输入品牌",
+      model: "请输入型号",
+    },
+  );
   if (!ok) return;
 
   submitting.value = true;

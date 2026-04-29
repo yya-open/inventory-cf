@@ -200,6 +200,7 @@ import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
 
@@ -336,7 +337,15 @@ async function onImportRecycleFile(uploadFile: any) {
 }
 
 async function submit() {
-  const ok = await formRef.value?.validate().catch(() => false);
+  const ok = await validateWithFriendlyMessage(
+    formRef.value,
+    (msg) => ElMessage.warning(msg),
+    {
+      asset_id: "请先选择要操作的电脑",
+      action: "请选择操作类型",
+      recycle_date: "请选择回收/归还日期",
+    },
+  );
   if (!ok) return;
 
   submitting.value = true;

@@ -82,6 +82,7 @@ import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
 import { useFixedWarehouseId } from "../utils/warehouse";
+import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const route = useRoute();
 const router = useRouter();
@@ -130,7 +131,14 @@ async function loadItems() {
 
 async function submit() {
   try {
-    const ok = await formRef.value?.validate().catch(() => false);
+    const ok = await validateWithFriendlyMessage(
+      formRef.value,
+      (msg) => ElMessage.warning(msg),
+      {
+        item_id: '请选择配件',
+        qty: '请输入正确的入库数量',
+      },
+    );
     if (!ok) return;
     submitting.value = true;
     const rid = pendingRid.value || crypto.randomUUID();

@@ -198,6 +198,7 @@ import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText, validateEmployeeNo } from "../utils/dataQuality";
+import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
 
@@ -381,7 +382,11 @@ async function submit() {
   normalizeForm();
   const softErrors = [validateEmployeeNo(form.value.employee_no, settings.value.validation_employee_no_pattern), validateDateText(form.value.config_date, "配置日期")].filter(Boolean);
   if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
-  const ok = await formRef.value?.validate().catch(() => false);
+  const ok = await validateWithFriendlyMessage(
+    formRef.value,
+    (msg) => ElMessage.warning(msg),
+    { asset_id: "请先选择要出库的电脑" },
+  );
   if (!ok) return;
 
   submitting.value = true;
