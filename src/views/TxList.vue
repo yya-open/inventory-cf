@@ -1,11 +1,11 @@
 <template>
-  <el-card>
-    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
+  <el-card class="tx-card">
+    <div class="tx-toolbar">
       <el-select
         v-model="type"
         placeholder="类型"
         clearable
-        style="width:140px"
+        class="tx-select-sm"
       >
         <el-option label="入库(IN)" value="IN" />
         <el-option label="出库(OUT)" value="OUT" />
@@ -18,7 +18,7 @@
         filterable
         clearable
         placeholder="配件（可搜索）"
-        style="width:320px"
+        class="tx-select-lg"
         :loading="itemsLoading"
         @visible-change="onItemSelectVisibleChange"
       >
@@ -43,13 +43,13 @@
         v-model="keyword"
         clearable
         placeholder="关键词：SKU/名称/备注"
-        style="width: 220px"
+        class="tx-input"
       />
 
       <el-select
         v-model="sortBy"
         placeholder="排序字段"
-        style="width: 140px"
+        class="tx-select-sm"
         @change="onSearch"
       >
         <el-option label="时间" value="created_at" />
@@ -59,41 +59,45 @@
       <el-select
         v-model="sortDir"
         placeholder="方向"
-        style="width: 110px"
+        class="tx-select-xs"
         @change="onSearch"
       >
         <el-option label="倒序" value="desc" />
         <el-option label="正序" value="asc" />
       </el-select>
 
-      <el-button type="primary" @click="onSearch">
-        查询
-      </el-button>
-      <el-button :disabled="!rows.length || exportLoading" :loading="exportLoading" @click="doExport">
-        导出Excel
-      </el-button>
-      <el-button @click="reset">
-        重置
-      </el-button>
-      <el-button
-        type="success"
-        plain
-        :disabled="rows.length===0"
-        @click="exportCsv"
-      >
-        导出CSV
-      </el-button>
+      <div class="tx-btn-group">
+        <el-button type="primary" @click="onSearch">
+          查询
+        </el-button>
+        <el-button @click="reset">
+          重置
+        </el-button>
+      </div>
 
-      <el-button
-        v-if="isAdmin"
-        type="danger"
-        plain
-        :disabled="loading || refreshing || clearLoading"
-        :loading="clearLoading"
-        @click="clearTx"
-      >
-        清空记录
-      </el-button>
+      <div class="tx-btn-group tx-btn-group--export">
+        <el-button :disabled="!rows.length || exportLoading" :loading="exportLoading" @click="doExport">
+          导出Excel
+        </el-button>
+        <el-button
+          type="success"
+          plain
+          :disabled="rows.length===0"
+          @click="exportCsv"
+        >
+          导出CSV
+        </el-button>
+        <el-button
+          v-if="isAdmin"
+          type="danger"
+          plain
+          :disabled="loading || refreshing || clearLoading"
+          :loading="clearLoading"
+          @click="clearTx"
+        >
+          清空记录
+        </el-button>
+      </div>
     </div>
 
     <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
@@ -122,10 +126,10 @@
         </el-table-column>
         <el-table-column label="配件" min-width="260">
           <template #default="{row}">
-            <div style="font-weight:600">
+            <div class="tx-cell-title">
               {{ row.name }}
             </div>
-            <div style="color:#999;font-size:12px">
+            <div class="tx-cell-sub">
               {{ row.sku }}
             </div>
           </template>
@@ -148,7 +152,7 @@
         <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
       </el-table>
 
-      <div style="display:flex; justify-content:flex-end; margin-top:12px">
+      <div class="tx-pagination-wrap">
         <el-pagination
           v-model:current-page="page"
           v-model:page-size="pageSize"
@@ -167,11 +171,12 @@
 <script setup lang="ts">
 import { ref, onBeforeMount, onActivated, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import { apiDownload, apiGet, apiPost } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
+import { exportToXlsx } from "../utils/excel";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 import { usePagedAssetList } from "../composables/usePagedAssetList";
@@ -377,10 +382,51 @@ function toCsvCell(v: any) {
 async function doExport() {
   try {
     exportLoading.value = true;
-    const params = buildListParams(currentFilters(), false);
-    params.set("max", "50000");
-    await apiDownload(`/api/tx/export?${params.toString()}`, `stock_tx_${beijingTodayYmd()}.csv`);
-    ElMessage.success("已开始下载导出文件");
+    const filters = currentFilters();
+    const pageSizeForExport = 500;
+    const allRows: any[] = [];
+    let currentPage = 1;
+    let totalRows = 0;
+
+    do {
+      const params = buildListParams(filters, true, currentPage, pageSizeForExport);
+      const j = await apiGet<any>(`/api/tx?${params.toString()}`);
+      const pageRows = Array.isArray(j?.data) ? j.data : [];
+      totalRows = Number(j?.total || 0);
+      allRows.push(...pageRows);
+      currentPage += 1;
+      if (!pageRows.length) break;
+    } while (allRows.length < totalRows && currentPage < 500);
+
+    exportToXlsx({
+      filename: `stock_tx_${beijingTodayYmd()}.xlsx`,
+      sheetName: "出入库明细",
+      headers: [
+        { key: "created_at", title: "时间" },
+        { key: "type_label", title: "类型" },
+        { key: "sku", title: "SKU" },
+        { key: "name", title: "名称" },
+        { key: "warehouse_name", title: "仓库" },
+        { key: "qty", title: "数量" },
+        { key: "delta_qty", title: "变动" },
+        { key: "source", title: "来源" },
+        { key: "target", title: "去向" },
+        { key: "remark", title: "备注" },
+      ],
+      rows: allRows.map((r: any) => ({
+        created_at: formatBeijingDateTime(r.created_at_bj || r.created_at),
+        type_label: typeLabel(String(r.type || "")),
+        sku: r.sku || "",
+        name: r.name || "",
+        warehouse_name: r.warehouse_name || "",
+        qty: r.qty,
+        delta_qty: signedDelta(r),
+        source: r.source || "",
+        target: r.target || "",
+        remark: r.remark || "",
+      })),
+    });
+    ElMessage.success(`已导出 Excel（${allRows.length} 条）`);
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {
@@ -562,3 +608,44 @@ onActivated(() => {
   void load({ keepPage: true, silent: rows.value.length > 0, forceRefresh: true });
 });
 </script>
+
+<style scoped>
+.tx-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.tx-btn-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.tx-btn-group--export { margin-left: auto; }
+.tx-select-lg { width: 320px; }
+.tx-select-sm { width: 140px; }
+.tx-select-xs { width: 110px; }
+.tx-input { width: 220px; }
+.tx-cell-title { font-weight: 600; }
+.tx-cell-sub { color: #999; font-size: 12px; }
+.tx-pagination-wrap { display: flex; justify-content: flex-end; margin-top: 12px; }
+
+.tx-card :deep(.el-card__body) {
+  padding: 14px;
+}
+
+@media (max-width: 768px) {
+  .tx-select-lg,
+  .tx-select-sm,
+  .tx-select-xs,
+  .tx-input {
+    width: 100%;
+  }
+
+  .tx-toolbar {
+    gap: 10px;
+  }
+
+  .tx-btn-group,
+  .tx-btn-group--export {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .tx-pagination-wrap {
+    justify-content: flex-start;
+    overflow-x: auto;
+  }
+}
+</style>
