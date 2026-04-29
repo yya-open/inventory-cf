@@ -21,6 +21,12 @@ export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
 export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; acl_version?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
 
+const authRequestCache = new WeakMap<Request, {
+  token?: string;
+  user?: AuthUser;
+  role_level?: number;
+}>();
+
 const AUTH_USER_CACHE_TTL_MS = 30_000;
 type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; acl_version?: number; expiresAt: number };
 const authUserCache = new Map<number, CachedAuthUserRow>();
@@ -162,11 +168,30 @@ export async function requireAuth(
   request: Request,
   minRole: Role = "viewer"
 ): Promise<AuthUser> {
-  const t = (env as any)?.__timing as any;
-  if (t?.measure) {
-    return await t.measure("auth", async () => requireAuthInternal(env, request, minRole));
+  const token = getAuthToken(request);
+  if (token) {
+    const reqCache = authRequestCache.get(request);
+    if (reqCache?.token === token && reqCache.user && Number(reqCache.role_level || 0) >= roleLevel(minRole)) {
+      return reqCache.user;
+    }
   }
-  return await requireAuthInternal(env, request, minRole);
+  const t = (env as any)?.__timing as any;
+  const load = async () => {
+    const user = await requireAuthInternal(env, request, minRole);
+    const resolvedToken = token || getAuthToken(request);
+    if (resolvedToken) {
+      authRequestCache.set(request, {
+        token: resolvedToken,
+        user,
+        role_level: roleLevel(user.role),
+      });
+    }
+    return user;
+  };
+  if (t?.measure) {
+    return await t.measure("auth", load);
+  }
+  return await load();
 }
 
 async function requireAuthInternal(
@@ -238,7 +263,14 @@ async function requireAuthInternal(
     const nowSec = Math.floor(Date.now() / 1000);
     const exp = Number(payload?.exp || 0);
     const remaining = exp ? exp - nowSec : 0;
-    if (!exp || remaining < getJwtRefreshThresholdSeconds(env as any)) {
+    const path = (() => {
+      try { return new URL(request.url).pathname; } catch { return ''; }
+    })();
+    const isMeEndpoint = path === '/api/auth/me';
+    const eagerRefresh = !exp || remaining < getJwtRefreshThresholdSeconds(env as any);
+    const nearExpiryRefresh = !exp || remaining < 5 * 60;
+    const shouldRefresh = isMeEndpoint ? nearExpiryRefresh : eagerRefresh;
+    if (shouldRefresh) {
       (env as any).__refresh_token = await signJwt(
         { sub: user.id, u: user.username, r: user.role, tv: dbTv },
         secret,

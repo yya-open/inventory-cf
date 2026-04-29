@@ -47,6 +47,11 @@ async function ensureMeHotCacheTable(db: D1Database) {
   return meTableEnsuring;
 }
 
+function ensureMeHotCacheTableBackground(db: D1Database) {
+  if (meTableEnsured || meTableEnsuring) return;
+  void ensureMeHotCacheTable(db);
+}
+
 async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion: number) {
   try {
     const row = await db.prepare('SELECT payload_json, acl_version FROM me_hot_cache WHERE user_id=?').bind(userId).first<any>();
@@ -58,13 +63,18 @@ async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion
     if (!parsed || typeof parsed !== 'object') return { payload: null, reason: 'invalid' as MeCacheMissReason };
     if (!parsed?.user || typeof parsed.user !== 'object') return { payload: null, reason: 'invalid' as MeCacheMissReason };
     return { payload: parsed as MePayload, reason: null };
-  } catch {
+  } catch (error: any) {
+    const message = String(error?.message || '').toLowerCase();
+    if (message.includes('no such table') || message.includes('no such column')) {
+      ensureMeHotCacheTableBackground(db);
+    }
     return { payload: null, reason: 'db_error' as MeCacheMissReason };
   }
 }
 
 async function writeMeHotCache(db: D1Database, userId: number, payload: MePayload, aclVersion: number) {
   try {
+    await ensureMeHotCacheTable(db);
     await db.prepare(
       `INSERT INTO me_hot_cache (user_id, payload_json, acl_version, updated_at)
        VALUES (?, ?, ?, datetime('now','+8 hours'))
@@ -157,8 +167,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     }
     markTiming(timing, `auth_me_cache_miss_${memory.reason || 'not_found'}`);
 
-    if (timing?.measure) await timing.measure('auth_me_ensure_cache', () => ensureMeHotCacheTable(env.DB));
-    else await ensureMeHotCacheTable(env.DB);
+    ensureMeHotCacheTableBackground(env.DB);
 
     const hot = timing?.measure
       ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCache(env.DB, user.id, expectedAclVersion))
