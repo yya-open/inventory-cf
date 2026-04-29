@@ -143,10 +143,17 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
       const result = timing?.measure
         ? await timing.measure('jobs_delete_batch_core', () => deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET))
         : await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
-      if (timing?.measure) {
-        await timing.measure('jobs_delete_batch_audit', () => logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result));
+      const auditTask = async () => {
+        if (timing?.measure) {
+          await timing.measure('jobs_delete_batch_audit', () => logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result));
+        } else {
+          await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
+        }
+      };
+      if (typeof waitUntil === 'function') {
+        waitUntil(auditTask().catch(() => {}));
       } else {
-        await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
+        void auditTask().catch(() => {});
       }
       const summary = `批量删除完成：删除 ${result.deleted} 条，跳过运行中 ${result.blocked} 条，缺失 ${result.missing} 条，失败 ${result.failed} 条`;
       return json(true, result, summary);
