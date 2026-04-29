@@ -5,7 +5,10 @@ import { getUserDataScope } from '../services/data-scope';
 type MePayload = { user: any };
 const ME_CACHE_TTL_MS = 30 * 60_000;
 const ME_HOT_CACHE_WRITE_DEBOUNCE_MS = 160;
+const ME_HOT_READ_CACHE_TTL_MS = 10_000;
+const ME_HOT_READ_SLOW_MS = 120;
 const meCache = new Map<number, { expiresAt: number; payload: MePayload }>();
+const meHotReadCache = new Map<number, { expiresAt: number; aclVersion: number; payload: MePayload }>();
 const meHotWriteQueue = new Map<number, {
   db: D1Database;
   payload: MePayload;
@@ -53,6 +56,10 @@ function ensureMeHotCacheTableBackground(db: D1Database) {
 }
 
 async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion: number) {
+  const hotMem = meHotReadCache.get(userId);
+  if (hotMem && hotMem.expiresAt > Date.now() && Number(hotMem.aclVersion || 0) === expectedAclVersion) {
+    return { payload: hotMem.payload, reason: null };
+  }
   try {
     const row = await db.prepare('SELECT payload_json, acl_version FROM me_hot_cache WHERE user_id=?').bind(userId).first<any>();
     const text = String(row?.payload_json || '').trim();
@@ -62,6 +69,7 @@ async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion
     const parsed = JSON.parse(text);
     if (!parsed || typeof parsed !== 'object') return { payload: null, reason: 'invalid' as MeCacheMissReason };
     if (!parsed?.user || typeof parsed.user !== 'object') return { payload: null, reason: 'invalid' as MeCacheMissReason };
+    meHotReadCache.set(userId, { expiresAt: Date.now() + ME_HOT_READ_CACHE_TTL_MS, aclVersion: expectedAclVersion, payload: parsed as MePayload });
     return { payload: parsed as MePayload, reason: null };
   } catch (error: any) {
     const message = String(error?.message || '').toLowerCase();
@@ -83,6 +91,7 @@ async function writeMeHotCache(db: D1Database, userId: number, payload: MePayloa
           acl_version=excluded.acl_version,
           updated_at=datetime('now','+8 hours')`
     ).bind(userId, JSON.stringify(payload), aclVersion).run();
+    meHotReadCache.set(userId, { expiresAt: Date.now() + ME_HOT_READ_CACHE_TTL_MS, aclVersion, payload });
   } catch {
     // best effort
   }
@@ -132,6 +141,7 @@ export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null
 
   if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
     meCache.delete(userId);
+    meHotReadCache.delete(userId);
     const queued = meHotWriteQueue.get(userId);
     if (queued) {
       clearTimeout(queued.timer);
@@ -139,6 +149,7 @@ export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null
     }
   } else {
     meCache.clear();
+    meHotReadCache.clear();
     for (const queued of meHotWriteQueue.values()) clearTimeout(queued.timer);
     meHotWriteQueue.clear();
   }
@@ -169,9 +180,12 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     ensureMeHotCacheTableBackground(env.DB);
 
+    const hotReadStarted = Date.now();
     const hot = timing?.measure
       ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCache(env.DB, user.id, expectedAclVersion))
       : await readMeHotCache(env.DB, user.id, expectedAclVersion);
+    const hotReadDur = Date.now() - hotReadStarted;
+    if (hotReadDur >= ME_HOT_READ_SLOW_MS) markTiming(timing, 'auth_me_hot_cache_read_slow');
     if (hot.payload) {
       markTiming(timing, 'auth_me_cache_hit_hot');
       writeCachedMe(user.id, hot.payload);
