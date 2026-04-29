@@ -24,10 +24,13 @@ function parseDictionaryKey(value: any) {
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
+    const timing = ((env as any).__timing || null) as { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
     await requireAuth(env, request, 'viewer');
     const url = new URL(request.url);
     const dictionaryKey = parseDictionaryKey(url.searchParams.get('dictionary_key'));
-    const version = await getSystemDictionaryVersion(env.DB, dictionaryKey);
+    const version = timing?.measure
+      ? await timing.measure('system_dictionaries_version', () => getSystemDictionaryVersion(env.DB, dictionaryKey))
+      : await getSystemDictionaryVersion(env.DB, dictionaryKey);
     const etag = `W/"${version}"`;
     if (request.headers.get('if-none-match') === etag) {
       return new Response(null, {
@@ -39,7 +42,9 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
         },
       });
     }
-    const items = await listSystemDictionaryItems(env.DB, dictionaryKey);
+    const items = timing?.measure
+      ? await timing.measure('system_dictionaries_items', () => listSystemDictionaryItems(env.DB, dictionaryKey))
+      : await listSystemDictionaryItems(env.DB, dictionaryKey);
     const res = json(true, {
       items,
       grouped: groupDictionaryItems(items),

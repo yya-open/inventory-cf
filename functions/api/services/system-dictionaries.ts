@@ -43,6 +43,8 @@ const dictionaryVersionCache = new Map<string, { expiresAt: number; version: str
 const dictionaryVersionPending = new Map<string, Promise<string>>();
 let bootstrapAllPromise: Promise<void> | null = null;
 const bootstrapKeyPromises = new Map<SystemDictionaryKey, Promise<void>>();
+let dictionarySchemaReady = false;
+let dictionarySchemaPending: Promise<void> | null = null;
 
 function readEnabledLabelsCache(key: SystemDictionaryKey) {
   const cached = enabledLabelsCache.get(key);
@@ -174,6 +176,9 @@ async function ensureLegacySystemSettingsTable(db: D1Database) {
 }
 
 export async function ensureSystemDictionaryTable(db: D1Database) {
+  if (dictionarySchemaReady) return;
+  if (dictionarySchemaPending) return dictionarySchemaPending;
+  dictionarySchemaPending = (async () => {
   await db.prepare(
     `CREATE TABLE IF NOT EXISTS system_dictionary_items (
       id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -190,6 +195,11 @@ export async function ensureSystemDictionaryTable(db: D1Database) {
   ).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_sort ON system_dictionary_items(dictionary_key, sort_order, id)`).run();
   await db.prepare(`CREATE INDEX IF NOT EXISTS idx_system_dictionary_items_key_enabled ON system_dictionary_items(dictionary_key, enabled, sort_order, id)`).run();
+  dictionarySchemaReady = true;
+  })().finally(() => {
+    dictionarySchemaPending = null;
+  });
+  return dictionarySchemaPending;
 }
 
 

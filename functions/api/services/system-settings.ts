@@ -322,10 +322,16 @@ async function readSystemSettings(db: D1Database): Promise<SystemSettings> {
     patch = legacy.patch;
     latestUpdatedAt = legacy.latestUpdatedAt || latestUpdatedAt;
   }
-  patch.asset_archive_reason_options = await getEnabledDictionaryLabels(db, 'asset_archive_reason');
-  patch.dictionary_pc_brand_options = await getEnabledDictionaryLabels(db, 'pc_brand');
-  patch.dictionary_monitor_brand_options = await getEnabledDictionaryLabels(db, 'monitor_brand');
-  patch.dictionary_asset_warehouse_options = await getEnabledDictionaryLabels(db, 'asset_warehouse');
+  const [archiveReasons, pcBrands, monitorBrands, warehouses] = await Promise.all([
+    getEnabledDictionaryLabels(db, 'asset_archive_reason'),
+    getEnabledDictionaryLabels(db, 'pc_brand'),
+    getEnabledDictionaryLabels(db, 'monitor_brand'),
+    getEnabledDictionaryLabels(db, 'asset_warehouse'),
+  ]);
+  patch.asset_archive_reason_options = archiveReasons;
+  patch.dictionary_pc_brand_options = pcBrands;
+  patch.dictionary_monitor_brand_options = monitorBrands;
+  patch.dictionary_asset_warehouse_options = warehouses;
   patch.settings_updated_at = latestUpdatedAt;
   return normalizeSystemSettings(patch as any);
 }

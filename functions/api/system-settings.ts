@@ -6,9 +6,12 @@ type Env = { DB: D1Database; JWT_SECRET?: string };
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
+    const timing = ((env as any).__timing || null) as { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
     await requireAuth(env, request, 'viewer');
     const force = new URL(request.url).searchParams.get('force') === '1';
-    const data = await getSystemSettings(env.DB, { force });
+    const data = timing?.measure
+      ? await timing.measure('system_settings_read', () => getSystemSettings(env.DB, { force }))
+      : await getSystemSettings(env.DB, { force });
     return json(true, data);
   } catch (e: any) {
     return errorResponse(e);
