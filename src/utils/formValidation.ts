@@ -8,27 +8,23 @@ export async function validateWithFriendlyMessage(
   fieldMessages: ValidationMessageMap,
   fallbackMessage = '请先完善表单必填项',
 ) {
-  return await new Promise<boolean>((resolve) => {
-    if (!form) {
-      onWarning(fallbackMessage);
-      resolve(false);
-      return;
-    }
-    const maybePromise = form.validate((valid, fields) => {
-      if (!valid) {
-        for (const key of Object.keys(fieldMessages)) {
-          if ((fields as any)?.[key]?.length) {
-            onWarning(fieldMessages[key]);
-            resolve(false);
-            return;
-          }
-        }
-        onWarning(fallbackMessage);
+  if (!form) {
+    onWarning(fallbackMessage);
+    return false;
+  }
+
+  try {
+    await form.validate();
+    return true;
+  } catch (err: any) {
+    const fields = err && typeof err === 'object' ? err : null;
+    for (const key of Object.keys(fieldMessages)) {
+      if ((fields as any)?.[key]?.length) {
+        onWarning(fieldMessages[key]);
+        return false;
       }
-      resolve(Boolean(valid));
-    });
-    if (maybePromise && typeof (maybePromise as any).catch === 'function') {
-      (maybePromise as Promise<any>).catch(() => {});
     }
-  });
+    onWarning(fallbackMessage);
+    return false;
+  }
 }
