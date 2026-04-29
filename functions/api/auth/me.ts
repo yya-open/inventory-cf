@@ -7,6 +7,7 @@ const ME_CACHE_TTL_MS = 30 * 60_000;
 const ME_HOT_CACHE_WRITE_DEBOUNCE_MS = 160;
 const ME_HOT_READ_CACHE_TTL_MS = 10_000;
 const ME_HOT_READ_SLOW_MS = 120;
+const ME_HOT_READ_SOFT_TIMEOUT_MS = 90;
 const meCache = new Map<number, { expiresAt: number; payload: MePayload }>();
 const meHotReadCache = new Map<number, { expiresAt: number; aclVersion: number; payload: MePayload }>();
 const meHotWriteQueue = new Map<number, {
@@ -80,6 +81,21 @@ async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion
   }
 }
 
+async function readMeHotCacheWithSoftTimeout(db: D1Database, userId: number, expectedAclVersion: number) {
+  let timer: ReturnType<typeof setTimeout> | null = null;
+  try {
+    const timeoutPromise = new Promise<{ payload: null; reason: MeCacheMissReason }>((resolve) => {
+      timer = setTimeout(() => resolve({ payload: null, reason: 'db_error' }), ME_HOT_READ_SOFT_TIMEOUT_MS);
+    });
+    return await Promise.race([
+      readMeHotCache(db, userId, expectedAclVersion),
+      timeoutPromise,
+    ]);
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
+
 async function writeMeHotCache(db: D1Database, userId: number, payload: MePayload, aclVersion: number) {
   try {
     await ensureMeHotCacheTable(db);
@@ -114,6 +130,13 @@ function readCachedMe(userId: number, expectedAclVersion: number) {
 
 function writeCachedMe(userId: number, payload: MePayload) {
   meCache.set(userId, { expiresAt: Date.now() + ME_CACHE_TTL_MS, payload });
+  return payload;
+}
+
+export function primeCachedMe(db: D1Database | null | undefined, userId: number, payload: MePayload, aclVersion: number) {
+  writeCachedMe(userId, payload);
+  meHotReadCache.set(userId, { expiresAt: Date.now() + ME_HOT_READ_CACHE_TTL_MS, aclVersion, payload });
+  if (db) queueMeHotCacheWrite(db, userId, payload, aclVersion);
   return payload;
 }
 
@@ -182,8 +205,8 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const hotReadStarted = Date.now();
     const hot = timing?.measure
-      ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCache(env.DB, user.id, expectedAclVersion))
-      : await readMeHotCache(env.DB, user.id, expectedAclVersion);
+      ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion))
+      : await readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion);
     const hotReadDur = Date.now() - hotReadStarted;
     if (hotReadDur >= ME_HOT_READ_SLOW_MS) markTiming(timing, 'auth_me_hot_cache_read_slow');
     if (hot.payload) {

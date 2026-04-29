@@ -1,8 +1,8 @@
-import { buildAuthCookie, json, signJwt, errorResponse, getJwtTtlSeconds, invalidateCachedAuthUser } from '../../_auth';
+import { buildAuthCookie, json, signJwt, errorResponse, getJwtTtlSeconds, invalidateCachedAuthUser, primeCachedAuthUser } from '../../_auth';
 import { verifyPassword } from '../../_password';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
-import { invalidateCachedMe } from './me';
+import { invalidateCachedMe, primeCachedMe } from './me';
 import {
   bumpAuthFail,
   clampInt,
@@ -74,16 +74,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     let row: any = null;
     try {
       row = await env.DB
-        .prepare('SELECT id, username, password_hash, role, is_active, must_change_password, token_version FROM users WHERE username=?')
+        .prepare('SELECT id, username, password_hash, role, is_active, must_change_password, token_version, acl_version FROM users WHERE username=?')
         .bind(u)
         .first<any>();
     } catch (e: any) {
       if (String(e?.message || '').includes('no such column') && String(e?.message || '').includes('token_version')) {
         row = await env.DB
-          .prepare('SELECT id, username, password_hash, role, is_active, must_change_password FROM users WHERE username=?')
+          .prepare('SELECT id, username, password_hash, role, is_active, must_change_password, acl_version FROM users WHERE username=?')
           .bind(u)
           .first<any>();
-        if (row) row.token_version = 0;
+        if (row) {
+          row.token_version = 0;
+          row.acl_version = Number(row.acl_version || 0);
+        }
       } else {
         throw e;
       }
@@ -112,6 +115,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const permission_template_code = await getUserTemplateCode(env.DB, row.id, row.role).catch(() => null);
     const permissions = await getUserPermissionMap(env.DB, row.id, row.role, permission_template_code || undefined);
     const dataScope = await getUserDataScope(env.DB, row.id).catch(() => ({ data_scope_type: 'all', data_scope_value: null, data_scope_value2: null }));
+    const mePayload = {
+      user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, acl_version: Number((row as any)?.acl_version || 0), permission_template_code, permissions, ...dataScope },
+    };
+    primeCachedAuthUser({
+      id: row.id,
+      username: row.username,
+      role: row.role,
+      is_active: 1,
+      must_change_password: row.must_change_password,
+      token_version: Number(row.token_version || 0),
+      acl_version: Number((row as any)?.acl_version || 0),
+    });
+    primeCachedMe(env.DB, row.id, mePayload, Number((row as any)?.acl_version || 0));
     const res = json(true, {
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permission_template_code, permissions, ...dataScope },
     });

@@ -46,6 +46,10 @@ function writeCachedAuthUserRow(row: Omit<CachedAuthUserRow, 'expiresAt'>) {
   return row;
 }
 
+export function primeCachedAuthUser(row: Omit<CachedAuthUserRow, 'expiresAt'>) {
+  return writeCachedAuthUserRow(row);
+}
+
 export function invalidateCachedAuthUser(userId?: number | null) {
   if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
     authUserCache.delete(userId);
