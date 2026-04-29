@@ -84,10 +84,10 @@
         prop="action"
       >
         <el-radio-group v-model="form.action">
-          <el-radio-button label="RETURN">
+          <el-radio-button value="RETURN">
             归还（回到在库）
           </el-radio-button>
-          <el-radio-button label="RECYCLE">
+          <el-radio-button value="RECYCLE">
             回收（状态=已回收）
           </el-radio-button>
         </el-radio-group>

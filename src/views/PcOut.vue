@@ -96,8 +96,8 @@
         prop="is_employed"
       >
         <el-radio-group v-model="form.is_employed">
-          <el-radio-button label="在职" />
-          <el-radio-button label="离职" />
+          <el-radio-button value="在职" />
+          <el-radio-button value="离职" />
         </el-radio-group>
       </el-form-item>
 

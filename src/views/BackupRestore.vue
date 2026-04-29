@@ -327,13 +327,13 @@
               v-model="mode"
               :disabled="!!jobId && (jobStatus==='RUNNING' || jobStatus==='DONE')"
             >
-              <el-radio label="merge">
+              <el-radio value="merge">
                 合并导入（不覆盖）
               </el-radio>
-              <el-radio label="merge_upsert">
+              <el-radio value="merge_upsert">
                 合并覆盖（更新重复记录）
               </el-radio>
-              <el-radio label="replace">
+              <el-radio value="replace">
                 清空并恢复（危险）
               </el-radio>
             </el-radio-group>
