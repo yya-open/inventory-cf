@@ -14,7 +14,7 @@ export async function validateWithFriendlyMessage(
       resolve(false);
       return;
     }
-    form.validate((valid, fields) => {
+    const maybePromise = form.validate((valid, fields) => {
       if (!valid) {
         for (const key of Object.keys(fieldMessages)) {
           if ((fields as any)?.[key]?.length) {
@@ -27,5 +27,8 @@ export async function validateWithFriendlyMessage(
       }
       resolve(Boolean(valid));
     });
+    if (maybePromise && typeof (maybePromise as any).catch === 'function') {
+      (maybePromise as Promise<any>).catch(() => {});
+    }
   });
 }
