@@ -102,6 +102,25 @@ export async function apiRequestJson<T>(path: string, init: RequestInit = {}, op
   return j as T;
 }
 
+export async function apiRequestJsonWithMeta<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
+  const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
+  const requestEpoch = getAuthRequestEpoch();
+  const sessionKey = getAuthSessionKey();
+  const startedAt = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+  const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
+  const endedAt = (typeof performance !== 'undefined' && typeof performance.now === 'function') ? performance.now() : Date.now();
+  const j = await parseJson(r);
+  if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch, sessionKey);
+  if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j, j?.error_code);
+  return {
+    payload: j as T,
+    timing: {
+      durationMs: Math.max(0, endedAt - startedAt),
+      serverTiming: String(r.headers.get('server-timing') || '').trim(),
+    },
+  };
+}
+
 export const apiGet = <T>(path: string, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "GET", ...init });
 export const apiPost = <T>(path: string, body: any, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "POST", headers: { "content-type": "application/json", ...(init.headers || {}) }, body: JSON.stringify(body), ...init });
 export const apiPut = <T>(path: string, body: any, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "PUT", headers: { "content-type": "application/json", ...(init.headers || {}) }, body: JSON.stringify(body), ...init });
@@ -109,6 +128,8 @@ export const apiDelete = <T>(path: string, body?: any, init: RequestInit = {}) =
 export const apiPostForm = <T>(path: string, form: FormData, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "POST", body: form, ...init });
 export const apiGetPublic = <T>(path: string, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "GET", ...init }, { handleUnauthorized: false });
 export const apiPostPublic = <T>(path: string, body: any, init: RequestInit = {}) => apiRequestJson<T>(path, { method: "POST", headers: { "content-type": "application/json", ...(init.headers || {}) }, body: JSON.stringify(body), ...init }, { handleUnauthorized: false });
+export const apiGetPublicWithMeta = <T>(path: string, init: RequestInit = {}) => apiRequestJsonWithMeta<T>(path, { method: "GET", ...init }, { handleUnauthorized: false });
+export const apiPostPublicWithMeta = <T>(path: string, body: any, init: RequestInit = {}) => apiRequestJsonWithMeta<T>(path, { method: "POST", headers: { "content-type": "application/json", ...(init.headers || {}) }, body: JSON.stringify(body), ...init }, { handleUnauthorized: false });
 
 
 function unwrapData<T>(payload: ApiEnvelope<T>, schema?: Schema<T>) {

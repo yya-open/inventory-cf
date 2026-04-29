@@ -1,6 +1,6 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { ElMessage } from '../utils/el-services';
-import { apiGetPublic, apiPostPublic } from '../api/client';
+import { apiGetPublic, apiGetPublicWithMeta, apiPostPublic, apiPostPublicWithMeta } from '../api/client';
 import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type PublicScanMode, type SystemSettings } from '../api/systemSettings';
 import { buildPublicQuery, enqueuePendingPublicSubmission, flushPendingPublicSubmissions, getWeakNetworkText, isNetworkError, loadPendingPublicSubmissions, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration, type PendingPublicSubmission } from '../utils/publicInventory';
 
@@ -8,6 +8,7 @@ type PublicInventoryKind = 'pc' | 'monitor';
 type NextSource = 'manual' | 'scanner' | 'camera';
 type RetryAction = null | 'refresh' | 'ok' | 'issue';
 type SubmitPayload = { action: 'OK' | 'ISSUE'; issue_type?: string; remark?: string };
+type PerfStage = 'detail_load' | 'submit_ok' | 'submit_issue';
 export type PublicInventorySessionSummary = {
   batch_name: string | null;
   started_at: string;
@@ -111,6 +112,31 @@ export function usePublicInventoryPage(options: {
   };
   let cameraRuntime: CameraQrRuntime | null = null;
   let cameraRuntimePromise: Promise<CameraQrRuntime> | null = null;
+
+  function pushPerfTrace(stage: PerfStage, durationMs: number, serverTiming: string) {
+    if (typeof window === 'undefined') return;
+    const bucketKey = options.kind === 'pc' ? '__inventoryPublicPerfPc' : '__inventoryPublicPerfMonitor';
+    const globalAny = window as any;
+    const list = Array.isArray(globalAny[bucketKey]) ? globalAny[bucketKey] : [];
+    list.push({
+      ts: new Date().toISOString(),
+      stage,
+      durationMs: Math.round(durationMs),
+      serverTiming,
+    });
+    if (list.length > 60) list.splice(0, list.length - 60);
+    globalAny[bucketKey] = list;
+  }
+
+  function reportPerfTrace(stage: PerfStage, durationMs: number, serverTiming: string) {
+    pushPerfTrace(stage, durationMs, serverTiming);
+    if (!serverTiming) return;
+    if (durationMs >= 600) {
+      console.warn(`[public-inventory:${options.kind}] ${stage} slow`, { durationMs: Math.round(durationMs), serverTiming });
+    } else {
+      console.info(`[public-inventory:${options.kind}] ${stage}`, { durationMs: Math.round(durationMs), serverTiming });
+    }
+  }
 
   function detectCameraSupport() {
     const BarcodeDetectorCtor = typeof window !== 'undefined' ? (window as any).BarcodeDetector : null;
@@ -469,7 +495,9 @@ export function usePublicInventoryPage(options: {
         refreshPendingQueue();
         return;
       }
-      const result: any = await apiGetPublic(apiUrl);
+      const resultWithMeta: any = await apiGetPublicWithMeta(apiUrl);
+      reportPerfTrace('detail_load', Number(resultWithMeta?.timing?.durationMs || 0), String(resultWithMeta?.timing?.serverTiming || ''));
+      const result: any = resultWithMeta?.payload || await apiGetPublic(apiUrl);
       if (requestSeq !== refreshRequestSeq) return;
       row.value = result.data;
       ensureSessionSummary(row.value?.inventory_batch_name);
@@ -518,7 +546,10 @@ export function usePublicInventoryPage(options: {
   async function sendInventoryPayload(target: any, payload: SubmitPayload) {
     const apiUrl = inventoryApiUrl(target);
     if (!apiUrl) throw new Error('缺少二维码参数');
-    await apiPostPublic(apiUrl, payload);
+    const resultWithMeta: any = await apiPostPublicWithMeta(apiUrl, payload);
+    const stage: PerfStage = payload.action === 'ISSUE' ? 'submit_issue' : 'submit_ok';
+    reportPerfTrace(stage, Number(resultWithMeta?.timing?.durationMs || 0), String(resultWithMeta?.timing?.serverTiming || ''));
+    return resultWithMeta?.payload || apiPostPublic(apiUrl, payload);
   }
 
   async function flushPendingQueue() {

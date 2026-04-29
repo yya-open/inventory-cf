@@ -11,8 +11,10 @@ let latestStateReady = false;
 let latestStateReadyPending: Promise<void> | null = null;
 let batchCache: { expiresAt: number; row: any | null } | null = null;
 let tokenResolveCache: Map<string, { expiresAt: number; id: number }> = new Map();
+let detailCache: Map<number, { expiresAt: number; payload: any }> = new Map();
 const BATCH_CACHE_TTL_MS = 3000;
 const TOKEN_RESOLVE_CACHE_TTL_MS = 15_000;
+const DETAIL_CACHE_TTL_MS = 8_000;
 
 async function ensureLatestStateReady(db: D1Database) {
   if (latestStateReady) return;
@@ -79,6 +81,28 @@ function sanitizePcAsset(asset: any) {
   };
 }
 
+function readDetailCache(id: number) {
+  const cached = detailCache.get(id);
+  if (!cached) return null;
+  if (cached.expiresAt <= Date.now()) {
+    detailCache.delete(id);
+    return null;
+  }
+  return cached.payload;
+}
+
+function writeDetailCache(id: number, payload: any) {
+  if (detailCache.size > 800) {
+    const now = Date.now();
+    const next = new Map<number, { expiresAt: number; payload: any }>();
+    for (const [k, v] of detailCache) {
+      if (v.expiresAt > now) next.set(k, v);
+    }
+    detailCache = next;
+  }
+  detailCache.set(id, { payload, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
+}
+
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
   try {
     if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
@@ -101,6 +125,12 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const id = resolved.id;
     if (timing?.measure) await timing.measure('public_pc_ensure_state', () => ensureLatestStateReady(env.DB));
     else await ensureLatestStateReady(env.DB);
+    const cachedPayload = readDetailCache(id);
+    if (cachedPayload) {
+      if (timing?.measure) await timing.measure('public_pc_detail_cache_hit', () => 1);
+      return Response.json({ ok: true, data: cachedPayload });
+    }
+    if (timing?.measure) await timing.measure('public_pc_detail_cache_miss', () => 1);
 
     const asset = timing?.measure
       ? await timing.measure('public_pc_asset_query', () => env.DB.prepare(
@@ -142,14 +172,13 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     const activeBatch = timing?.measure
       ? await timing.measure('public_pc_active_batch', () => getCachedActiveBatch(env.DB))
       : await getCachedActiveBatch(env.DB);
-    return Response.json({
-      ok: true,
-      data: sanitizePcAsset({
-        ...asset,
-        inventory_batch_active: Boolean(activeBatch?.id),
-        inventory_batch_name: activeBatch?.name || null,
-      }),
+    const payload = sanitizePcAsset({
+      ...asset,
+      inventory_batch_active: Boolean(activeBatch?.id),
+      inventory_batch_name: activeBatch?.name || null,
     });
+    writeDetailCache(id, payload);
+    return Response.json({ ok: true, data: payload });
   } catch (e: any) {
     return errorResponse(e);
   }
