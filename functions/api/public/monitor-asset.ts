@@ -7,7 +7,9 @@ type Env = { DB: D1Database; JWT_SECRET?: string };
 type TimingLike = { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
 
 let batchCache: { expiresAt: number; row: any | null } | null = null;
+let tokenResolveCache: Map<string, { expiresAt: number; id: number }> = new Map();
 const BATCH_CACHE_TTL_MS = 3000;
+const TOKEN_RESOLVE_CACHE_TTL_MS = 15_000;
 
 async function getCachedActiveBatch(db: D1Database) {
   const now = Date.now();
@@ -15,6 +17,28 @@ async function getCachedActiveBatch(db: D1Database) {
   const row = await getActiveInventoryBatch(db, 'monitor');
   batchCache = { row: row || null, expiresAt: now + BATCH_CACHE_TTL_MS };
   return batchCache.row;
+}
+
+async function resolvePublicAssetIdCached(env: Env, request: Request) {
+  const url = new URL(request.url);
+  const token = String(url.searchParams.get('token') || '').trim();
+  if (!token) {
+    const id = await resolvePublicAssetId({ env, request, kind: 'monitor', allowToken: true });
+    return { id, cacheHit: false };
+  }
+  const now = Date.now();
+  const cached = tokenResolveCache.get(token);
+  if (cached && cached.expiresAt > now) return { id: cached.id, cacheHit: true };
+  if (tokenResolveCache.size > 500) {
+    const next = new Map<string, { expiresAt: number; id: number }>();
+    for (const [k, v] of tokenResolveCache) {
+      if (v.expiresAt > now) next.set(k, v);
+    }
+    tokenResolveCache = next;
+  }
+  const id = await resolvePublicAssetId({ env, request, kind: 'monitor', allowToken: true });
+  tokenResolveCache.set(token, { id, expiresAt: now + TOKEN_RESOLVE_CACHE_TTL_MS });
+  return { id, cacheHit: false };
 }
 
 function sanitizeMonitorAsset(asset: any) {
@@ -50,9 +74,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     } else {
       await rateLimitPublic(env.DB, request, "public_monitor_asset", publicAssetSubject(url), token ? 10 : 20);
     }
-    const id = timing?.measure
-      ? await timing.measure('public_monitor_resolve_id', () => resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true }))
-      : await resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true });
+    const resolved = timing?.measure
+      ? await timing.measure('public_monitor_resolve_id', () => resolvePublicAssetIdCached(env, request))
+      : await resolvePublicAssetIdCached(env, request);
+    if (timing?.measure) {
+      if (resolved.cacheHit) await timing.measure('public_monitor_resolve_id_cache_hit', () => 1);
+      else await timing.measure('public_monitor_resolve_id_cache_miss', () => 1);
+    }
+    const id = resolved.id;
 
     const asset = timing?.measure
       ? await timing.measure('public_monitor_asset_query', () => env.DB.prepare(

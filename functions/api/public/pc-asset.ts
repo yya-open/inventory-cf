@@ -10,7 +10,9 @@ type TimingLike = { measure?: <T>(name: string, fn: () => Promise<T> | T) => Pro
 let latestStateReady = false;
 let latestStateReadyPending: Promise<void> | null = null;
 let batchCache: { expiresAt: number; row: any | null } | null = null;
+let tokenResolveCache: Map<string, { expiresAt: number; id: number }> = new Map();
 const BATCH_CACHE_TTL_MS = 3000;
+const TOKEN_RESOLVE_CACHE_TTL_MS = 15_000;
 
 async function ensureLatestStateReady(db: D1Database) {
   if (latestStateReady) return;
@@ -31,6 +33,28 @@ async function getCachedActiveBatch(db: D1Database) {
   const row = await getActiveInventoryBatch(db, 'pc');
   batchCache = { row: row || null, expiresAt: now + BATCH_CACHE_TTL_MS };
   return batchCache.row;
+}
+
+async function resolvePublicAssetIdCached(env: Env, request: Request) {
+  const url = new URL(request.url);
+  const token = String(url.searchParams.get('token') || '').trim();
+  if (!token) {
+    const id = await resolvePublicAssetId({ env, request, kind: 'pc', allowToken: true });
+    return { id, cacheHit: false };
+  }
+  const now = Date.now();
+  const cached = tokenResolveCache.get(token);
+  if (cached && cached.expiresAt > now) return { id: cached.id, cacheHit: true };
+  if (tokenResolveCache.size > 500) {
+    const next = new Map<string, { expiresAt: number; id: number }>();
+    for (const [k, v] of tokenResolveCache) {
+      if (v.expiresAt > now) next.set(k, v);
+    }
+    tokenResolveCache = next;
+  }
+  const id = await resolvePublicAssetId({ env, request, kind: 'pc', allowToken: true });
+  tokenResolveCache.set(token, { id, expiresAt: now + TOKEN_RESOLVE_CACHE_TTL_MS });
+  return { id, cacheHit: false };
 }
 
 function sanitizePcAsset(asset: any) {
@@ -67,9 +91,14 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     } else {
       await rateLimitPublic(env.DB, request, "public_pc_asset", publicAssetSubject(url), token ? 10 : 20);
     }
-    const id = timing?.measure
-      ? await timing.measure('public_pc_resolve_id', () => resolvePublicAssetId({ env, request, kind: "pc", allowToken: true }))
-      : await resolvePublicAssetId({ env, request, kind: "pc", allowToken: true });
+    const resolved = timing?.measure
+      ? await timing.measure('public_pc_resolve_id', () => resolvePublicAssetIdCached(env, request))
+      : await resolvePublicAssetIdCached(env, request);
+    if (timing?.measure) {
+      if (resolved.cacheHit) await timing.measure('public_pc_resolve_id_cache_hit', () => 1);
+      else await timing.measure('public_pc_resolve_id_cache_miss', () => 1);
+    }
+    const id = resolved.id;
     if (timing?.measure) await timing.measure('public_pc_ensure_state', () => ensureLatestStateReady(env.DB));
     else await ensureLatestStateReady(env.DB);
 

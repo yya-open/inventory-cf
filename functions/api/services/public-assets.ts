@@ -1,6 +1,5 @@
 import { verifyJwt } from '../_auth';
 import { sqlNowStored } from '../_time';
-import { syncAssetInventoryState } from './asset-inventory-state';
 import { resolveInventoryBatchIdForWrite } from './asset-inventory-batches';
 import { cleanupPublicThrottleBuckets, ensurePublicThrottleTable, getClientIp, incrementPublicThrottleBucket } from './rate-limit';
 
@@ -166,6 +165,29 @@ async function getExistingInventoryLog(
   return stmt.first<any>();
 }
 
+async function applyInventoryStateForAction(
+  db: D1Database,
+  kind: PublicAssetKind,
+  assetId: number,
+  batchId: number,
+  action: string,
+  issueType: string | null,
+) {
+  const assetTable = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
+  const normalized = String(action || '').toUpperCase();
+  const inventoryStatus = normalized === 'ISSUE' ? 'CHECKED_ISSUE' : normalized === 'OK' ? 'CHECKED_OK' : 'UNCHECKED';
+  const inventoryIssueType = normalized === 'ISSUE' ? (issueType || null) : null;
+  await db.prepare(
+    `UPDATE ${assetTable}
+        SET inventory_status=?,
+            inventory_at=${sqlNowStored()},
+            inventory_issue_type=?,
+            inventory_batch_id=?,
+            updated_at=${sqlNowStored()}
+      WHERE id=?`
+  ).bind(inventoryStatus, inventoryIssueType, batchId, assetId).run();
+}
+
 export async function insertPublicInventoryLog(
   db: D1Database,
   kind: PublicAssetKind,
@@ -216,7 +238,7 @@ export async function insertPublicInventoryLog(
       .bind(action, issueType, remark, ip, ua, Number(existing.id))
       .run();
 
-    await syncAssetInventoryState(db, kind, [assetId]);
+    await applyInventoryStateForAction(db, kind, assetId, batchId, action, issueType);
     return { ok: true, updated: true, id: Number(existing.id) };
   }
 
@@ -228,6 +250,6 @@ export async function insertPublicInventoryLog(
     .bind(assetId, action, issueType, remark, ip, ua, batchId)
     .run();
 
-  await syncAssetInventoryState(db, kind, [assetId]);
+  await applyInventoryStateForAction(db, kind, assetId, batchId, action, issueType);
   return { ok: true, updated: false };
 }

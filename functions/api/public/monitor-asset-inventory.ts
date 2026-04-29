@@ -9,6 +9,30 @@ import {
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 type TimingLike = { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
+let tokenResolveCache: Map<string, { expiresAt: number; id: number }> = new Map();
+const TOKEN_RESOLVE_CACHE_TTL_MS = 15_000;
+
+async function resolvePublicAssetIdCached(env: Env, request: Request) {
+  const url = new URL(request.url);
+  const token = String(url.searchParams.get('token') || '').trim();
+  if (!token) {
+    const id = await resolvePublicAssetId({ env, request, kind: 'monitor', allowToken: true });
+    return { id, cacheHit: false };
+  }
+  const now = Date.now();
+  const cached = tokenResolveCache.get(token);
+  if (cached && cached.expiresAt > now) return { id: cached.id, cacheHit: true };
+  if (tokenResolveCache.size > 500) {
+    const next = new Map<string, { expiresAt: number; id: number }>();
+    for (const [k, v] of tokenResolveCache) {
+      if (v.expiresAt > now) next.set(k, v);
+    }
+    tokenResolveCache = next;
+  }
+  const id = await resolvePublicAssetId({ env, request, kind: 'monitor', allowToken: true });
+  tokenResolveCache.set(token, { id, expiresAt: now + TOKEN_RESOLVE_CACHE_TTL_MS });
+  return { id, cacheHit: false };
+}
 
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
@@ -21,9 +45,14 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     } else {
       await rateLimitPublic(env.DB, request, "public_monitor_inventory", publicAssetSubject(url), 8);
     }
-    const assetId = timing?.measure
-      ? await timing.measure('public_monitor_inventory_resolve_id', () => resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true }))
-      : await resolvePublicAssetId({ env, request, kind: "monitor", allowToken: true });
+    const resolved = timing?.measure
+      ? await timing.measure('public_monitor_inventory_resolve_id', () => resolvePublicAssetIdCached(env, request))
+      : await resolvePublicAssetIdCached(env, request);
+    if (timing?.measure) {
+      if (resolved.cacheHit) await timing.measure('public_monitor_inventory_resolve_id_cache_hit', () => 1);
+      else await timing.measure('public_monitor_inventory_resolve_id_cache_miss', () => 1);
+    }
+    const assetId = resolved.id;
     const payload = timing?.measure
       ? await timing.measure('public_monitor_inventory_parse_body', async () => parsePublicInventoryBody(await request.json().catch(() => ({}))))
       : parsePublicInventoryBody(await request.json().catch(() => ({})));
@@ -33,6 +62,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     } else {
       await insertPublicInventoryLog(env.DB, "monitor", assetId, payload.action, payload.issueType, payload.remark, request);
     }
+    if (timing?.measure) await timing.measure('public_monitor_inventory_submit_ok', () => 1);
     return Response.json({ ok: true });
   } catch (e: any) {
     return errorResponse(e);
