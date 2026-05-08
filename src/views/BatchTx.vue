@@ -282,8 +282,8 @@ async function downloadTemplate() {
   const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet([header, ...exampleRows]);
   const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "template");
-  XLSX.writeFile(wb, `batch_${mode.value.toLowerCase()}_template.xlsx`);
+  XLSX.utils.book_append_sheet(wb, ws, "导入模板");
+  XLSX.writeFile(wb, mode.value === "IN" ? "配件批量入库导入模板.xlsx" : "配件批量出库导入模板.xlsx");
 }
 
 function beforeUpload(file: File) {

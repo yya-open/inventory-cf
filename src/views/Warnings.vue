@@ -451,7 +451,7 @@ async function exportCsv() {
     if (filters.category) qs.set("category", filters.category);
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
 
-    await apiDownload(`/api/warnings/export?${qs.toString()}`, "warnings.csv");
+    await apiDownload(`/api/warnings/export?${qs.toString()}`, `配件库存预警_${beijingTodayCompact()}.csv`);
     ElMessage.success("已导出 CSV");
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
@@ -482,7 +482,7 @@ async function exportXlsx() {
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "预警中心");
 
-    const filename = `warnings_${beijingTodayCompact()}.xlsx`;
+    const filename = `配件库存预警_${beijingTodayCompact()}.xlsx`;
 
     XLSX.writeFile(wb, filename);
     ElMessage.success("已导出 Excel");

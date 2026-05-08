@@ -399,7 +399,7 @@ async function doExport() {
     } while (allRows.length < totalRows && currentPage < 500);
 
     exportToXlsx({
-      filename: `stock_tx_${beijingTodayYmd()}.xlsx`,
+      filename: `配件出入库明细_${beijingTodayYmd()}.xlsx`,
       sheetName: "出入库明细",
       headers: [
         { key: "created_at", title: "时间" },
@@ -448,7 +448,7 @@ function exportCsv() {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = `stock_tx_${beijingTodayYmd()}.csv`;
+  a.download = `配件出入库明细_${beijingTodayYmd()}.csv`;
   a.click();
   URL.revokeObjectURL(url);
 }

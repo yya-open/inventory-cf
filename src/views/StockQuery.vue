@@ -224,8 +224,8 @@ async function doExport() {
     const XLSX = await loadXlsx();
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "stock");
-    XLSX.writeFile(wb, `stock_${warehouseId.value}_${beijingTodayYmd()}.xlsx`);
+    XLSX.utils.book_append_sheet(wb, ws, "库存查询");
+    XLSX.writeFile(wb, `配件库存查询_${beijingTodayYmd()}.xlsx`);
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {

@@ -720,7 +720,7 @@ onMounted(() => { reload(); });
 </script>
 
 <style scoped>
-.settings-page{max-width:1280px;margin:0 auto}
+.settings-page{max-width:1680px;margin:0 auto}
 .settings-card,.section-card{border-radius:16px}
 .settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
 .settings-title{font-weight:800;font-size:18px}
@@ -730,7 +730,20 @@ onMounted(() => { reload(); });
 .summary-item{padding:14px 16px;border:1px solid #ebeef5;border-radius:14px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}
 .summary-label{font-size:12px;color:#909399;margin-bottom:6px}
 .summary-value{font-size:20px;font-weight:800;color:#303133}
-.settings-grid{margin-top:14px}
+.settings-grid{
+  display:grid;
+  grid-template-columns:repeat(auto-fit,minmax(min(520px,100%),1fr));
+  gap:14px;
+  margin:14px 0 0 !important;
+}
+.settings-grid :deep(.el-col){
+  width:100%;
+  max-width:none;
+  flex:none;
+  padding-left:0 !important;
+  padding-right:0 !important;
+}
+.section-card{height:100%}
 .section-title{font-weight:700}
 .form-tip{margin-top:6px;color:#8a8a8a;font-size:12px;line-height:1.5}
 .scan-mode-setting{max-width:320px}
