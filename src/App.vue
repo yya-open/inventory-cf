@@ -47,7 +47,7 @@
         v-if="isMobile"
         v-model="mobileSidebarVisible"
         direction="ltr"
-        size="82%"
+        :size="mobileSidebarSize"
         :with-header="false"
         :append-to-body="true"
         class="app-mobile-drawer"
@@ -299,6 +299,7 @@ const sidebarHovered = ref(false);
 const sidebarToggleHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
+const mobileSidebarSize = computed(() => 'min(340px, calc(100vw - 56px))');
 
 const activeMenu = computed(() => route.path);
 const desktopSidebarVisible = computed(() => !desktopSidebarCollapsed.value || desktopSidebarPreview.value);
