@@ -113,9 +113,37 @@ const requireCaptcha = ref(false);
 const turnstileToken = ref("");
 const turnstileEl = ref<HTMLElement | null>(null);
 let widgetId: string | null = null;
+let turnstileScriptPromise: Promise<void> | null = null;
+
+function loadTurnstileScript() {
+  if (typeof window === 'undefined') return Promise.resolve();
+  if ((window as any).turnstile?.render) return Promise.resolve();
+  if (turnstileScriptPromise) return turnstileScriptPromise;
+
+  turnstileScriptPromise = new Promise((resolve, reject) => {
+    const existing = document.querySelector<HTMLScriptElement>('script[data-inventory-turnstile]');
+    if (existing) {
+      existing.addEventListener('load', () => resolve(), { once: true });
+      existing.addEventListener('error', () => reject(new Error('Turnstile script failed to load')), { once: true });
+      return;
+    }
+
+    const script = document.createElement('script');
+    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+    script.async = true;
+    script.defer = true;
+    script.dataset.inventoryTurnstile = '1';
+    script.addEventListener('load', () => resolve(), { once: true });
+    script.addEventListener('error', () => reject(new Error('Turnstile script failed to load')), { once: true });
+    document.head.appendChild(script);
+  });
+
+  return turnstileScriptPromise;
+}
 
 async function renderTurnstile() {
   if (!siteKey || !requireCaptcha.value) return;
+  await loadTurnstileScript();
   await nextTick();
   const el = turnstileEl.value;
   const ts: any = (window as any).turnstile;
@@ -544,6 +572,11 @@ async function changePassword() {
 @media (max-width: 640px) {
   .login-page {
     padding: 18px;
+    background: linear-gradient(135deg, #f3f7ff 0%, #f7f8fa 100%);
+  }
+
+  .login-page__orb {
+    display: none;
   }
 
   .login-hero {

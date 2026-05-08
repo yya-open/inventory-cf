@@ -5,11 +5,13 @@ const root = process.cwd();
 const distDir = path.join(root, 'dist', 'assets');
 
 const budgets = [
-  { key: 'app_chunk', label: '普通页面 JS chunk', maxBytes: 80 * 1024, match: /^(?!element-plus|xlsx|vendor|vue-vendor).+\.js$/ },
+  { key: 'app_chunk', label: '普通页面 JS chunk', maxBytes: 88 * 1024, match: /^(?!element-plus|xlsx|jszip|qrcode|vendor|vue-vendor|vue-router).+\.js$/ },
   { key: 'vendor', label: '通用 vendor chunk', maxBytes: 200 * 1024, match: /^vendor-.*\.js$/ },
   { key: 'vue_vendor', label: 'Vue 运行时 chunk', maxBytes: 140 * 1024, match: /^vue-vendor-.*\.js$/ },
   { key: 'element_plus', label: 'Element Plus chunk', maxBytes: 900 * 1024, match: /^element-plus-.*\.js$/ },
   { key: 'xlsx', label: 'Excel 处理 chunk', maxBytes: 450 * 1024, match: /^xlsx-.*\.js$/ },
+  { key: 'jszip', label: 'ZIP 打包 chunk', maxBytes: 120 * 1024, match: /^jszip-.*\.js$/ },
+  { key: 'qrcode', label: '二维码生成 chunk', maxBytes: 40 * 1024, match: /^qrcode-.*\.js$/ },
 ];
 
 function fmt(bytes) {

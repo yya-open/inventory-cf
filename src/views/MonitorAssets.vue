@@ -245,8 +245,6 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { fetchSystemSettings, getCachedSystemSettings, markMonitorBrandSettingsApplied, shouldRefreshMonitorBrandSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
-import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
-import QrExportProgressDialog from '../components/assets/QrExportProgressDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import type { AssetQrExportProgress } from '../utils/assetQrExport';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
@@ -265,6 +263,8 @@ const MonitorAssetBatchStatusDialog = defineAsyncComponent(() => import('../comp
 const MonitorAssetBatchLocationDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchLocationDialog.vue'));
 const MonitorAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchOwnerDialog.vue'));
 const MonitorAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetBatchArchiveDialog.vue'));
+const QrPrintTemplateDialog = defineAsyncComponent(() => import('../components/assets/QrPrintTemplateDialog.vue'));
+const QrExportProgressDialog = defineAsyncComponent(() => import('../components/assets/QrExportProgressDialog.vue'));
 
 const { enabledLocations: locations, ensureEnabledLocations, ensureAllLocations, invalidateLocationCatalog } = useLocationCatalog();
 const canOperator = computed(() => can('operator'));

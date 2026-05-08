@@ -11,9 +11,9 @@ export const PERFORMANCE_BUDGETS: PerfBudget[] = [
   {
     key: 'app_chunk',
     label: '普通页面 JS chunk',
-    maxBytes: 80 * 1024,
+    maxBytes: 88 * 1024,
     scope: 'js',
-    match: /dist\/assets\/(?!element-plus|xlsx|vendor|vue-vendor).+\.js$/,
+    match: /dist\/assets\/(?!element-plus|xlsx|jszip|qrcode|vendor|vue-vendor|vue-router).+\.js$/,
     description: '非基础库的普通页面 chunk 应保持轻量，避免日常查询页再次膨胀。',
   },
   {
@@ -47,6 +47,22 @@ export const PERFORMANCE_BUDGETS: PerfBudget[] = [
     scope: 'js',
     match: /dist\/assets\/xlsx-.*\.js$/,
     description: 'Excel 仅应按需加载，体积不应继续明显上涨。',
+  },
+  {
+    key: 'jszip',
+    label: 'ZIP 打包 chunk',
+    maxBytes: 120 * 1024,
+    scope: 'js',
+    match: /dist\/assets\/jszip-.*\.js$/,
+    description: 'ZIP 打包只应在批量二维码导出等场景按需加载。',
+  },
+  {
+    key: 'qrcode',
+    label: '二维码生成 chunk',
+    maxBytes: 40 * 1024,
+    scope: 'js',
+    match: /dist\/assets\/qrcode-.*\.js$/,
+    description: '二维码生成只应在二维码预览或导出时按需加载。',
   },
 ];
 

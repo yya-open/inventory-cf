@@ -188,8 +188,6 @@ import { isLedgerMobileViewport } from '../utils/responsive';
 import { can, canCapability, canPerm } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
-import QrPrintTemplateDialog from '../components/assets/QrPrintTemplateDialog.vue';
-import QrExportProgressDialog from '../components/assets/QrExportProgressDialog.vue';
 import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
 import type { AssetQrExportProgress } from '../utils/assetQrExport';
 import { usePcAssetViewState } from './assets/pcAssetViewState';
@@ -202,6 +200,8 @@ const PcAssetQrDialog = defineAsyncComponent(() => import('../components/assets/
 const PcAssetBatchStatusDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchStatusDialog.vue'));
 const PcAssetBatchOwnerDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchOwnerDialog.vue'));
 const PcAssetBatchArchiveDialog = defineAsyncComponent(() => import('../components/assets/PcAssetBatchArchiveDialog.vue'));
+const QrPrintTemplateDialog = defineAsyncComponent(() => import('../components/assets/QrPrintTemplateDialog.vue'));
+const QrExportProgressDialog = defineAsyncComponent(() => import('../components/assets/QrExportProgressDialog.vue'));
 
 const canOperator = computed(() => can('operator'));
 const isAdmin = computed(() => can('admin'));

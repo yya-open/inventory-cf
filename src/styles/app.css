@@ -213,6 +213,18 @@ body {
   }
 }
 
+@media (prefers-reduced-motion: reduce) {
+  .app-page-skeleton__panel::after,
+  .app-page-skeleton__table::after {
+    animation: none;
+  }
+
+  .app-aside,
+  .app-aside-toggle {
+    transition: none;
+  }
+}
+
 @media (max-width: 1080px) {
   .app-page-skeleton__toolbar {
     grid-template-columns: 1fr;
@@ -881,6 +893,14 @@ body {
 }
 
 @media (max-width: 900px) {
+  .app-bg {
+    background: linear-gradient(180deg, #f8fafc 0%, #f5f7fb 100%);
+  }
+
+  .app-header {
+    backdrop-filter: none;
+  }
+
   .app-aside,
   .app-aside-toggle {
     display: none !important;
