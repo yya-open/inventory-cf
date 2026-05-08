@@ -71,14 +71,18 @@
       width="420px"
       :close-on-click-modal="false"
       :show-close="false"
+      class="password-dialog password-dialog--change"
     >
-      <el-form>
+      <div class="password-dialog__hint">
+        为了账号安全，请先完成密码更新后继续使用系统。
+      </div>
+      <el-form class="password-dialog__form" label-position="top">
         <el-form-item label="旧密码">
           <el-input v-model="oldP" type="password" show-password autocomplete="current-password" />
         </el-form-item>
         <el-form-item label="新密码">
           <el-input v-model="newP" type="password" show-password autocomplete="new-password" />
-          <div class="password-tip">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
+          <div class="password-dialog__tip">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
       </el-form>
       <template #footer>

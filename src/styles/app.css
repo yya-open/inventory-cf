@@ -257,6 +257,169 @@ body {
   border-radius: 12px;
 }
 
+.password-dialog .el-dialog {
+  position: relative;
+  max-width: calc(100vw - 24px);
+  overflow: hidden;
+  border: 1px solid rgba(148, 163, 184, 0.2);
+  border-radius: 18px;
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  box-shadow: 0 24px 64px rgba(15, 23, 42, 0.22);
+}
+
+.password-dialog .el-dialog::before {
+  content: "";
+  position: absolute;
+  inset: 0 0 auto;
+  height: 4px;
+  background: linear-gradient(90deg, #409eff, #67c23a);
+}
+
+.password-dialog--reset .el-dialog::before {
+  background: linear-gradient(90deg, #e6a23c, #409eff);
+}
+
+.password-dialog .el-dialog__header {
+  margin: 0;
+  padding: 26px 28px 8px;
+}
+
+.password-dialog .el-dialog__title {
+  color: #111827;
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.password-dialog .el-dialog__headerbtn {
+  top: 18px;
+  right: 18px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(148, 163, 184, 0.26);
+  border-radius: 999px;
+  transition: background-color 160ms ease, border-color 160ms ease, color 160ms ease;
+}
+
+.password-dialog .el-dialog__headerbtn:hover,
+.password-dialog .el-dialog__headerbtn:focus-visible {
+  border-color: rgba(64, 158, 255, 0.42);
+  background: rgba(64, 158, 255, 0.08);
+}
+
+.password-dialog .el-dialog__body {
+  padding: 10px 28px 8px;
+}
+
+.password-dialog .el-dialog__footer {
+  padding: 16px 28px 26px;
+  border-top: 1px solid rgba(226, 232, 240, 0.86);
+  background: linear-gradient(180deg, rgba(248, 250, 252, 0.35), rgba(248, 250, 252, 0.78));
+}
+
+.password-dialog__hint,
+.password-dialog__notice {
+  margin-bottom: 18px;
+  padding: 12px 14px;
+  border: 1px solid rgba(191, 219, 254, 0.78);
+  border-radius: 14px;
+  background: linear-gradient(180deg, rgba(239, 246, 255, 0.92), rgba(248, 251, 255, 0.92));
+  color: #475569;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.password-dialog__notice {
+  border-color: rgba(253, 230, 138, 0.86);
+  background: linear-gradient(180deg, rgba(255, 251, 235, 0.95), rgba(255, 252, 245, 0.94));
+}
+
+.password-dialog__notice b {
+  color: #111827;
+  font-weight: 800;
+}
+
+.password-dialog__form {
+  display: grid;
+  gap: 14px;
+}
+
+.password-dialog__form .el-form-item {
+  margin-bottom: 0;
+}
+
+.password-dialog__form .el-form-item__label {
+  padding-bottom: 7px;
+  color: #334155;
+  font-weight: 700;
+  line-height: 1.2;
+}
+
+.password-dialog__form .el-input__wrapper {
+  min-height: 46px;
+  border-radius: 12px;
+  background: #fbfdff;
+  box-shadow: 0 0 0 1px rgba(203, 213, 225, 0.95) inset;
+  transition: box-shadow 160ms ease, background-color 160ms ease;
+}
+
+.password-dialog__form .el-input__wrapper:hover {
+  box-shadow: 0 0 0 1px rgba(147, 197, 253, 0.95) inset;
+}
+
+.password-dialog__form .el-input__wrapper.is-focus {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #409eff inset, 0 0 0 4px rgba(64, 158, 255, 0.12);
+}
+
+.password-dialog__tip {
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.password-dialog .el-dialog__footer .el-button {
+  min-width: 96px;
+  height: 40px;
+  border-radius: 10px;
+  font-weight: 700;
+}
+
+.password-dialog .el-dialog__footer .el-button + .el-button {
+  margin-left: 10px;
+}
+
+@media (max-width: 640px) {
+  .password-dialog .el-dialog {
+    width: calc(100vw - 24px) !important;
+    margin-top: 12vh;
+  }
+
+  .password-dialog .el-dialog__header {
+    padding: 22px 18px 8px;
+  }
+
+  .password-dialog .el-dialog__body {
+    padding: 8px 18px 6px;
+  }
+
+  .password-dialog .el-dialog__footer {
+    display: flex;
+    gap: 10px;
+    padding: 14px 18px 20px;
+  }
+
+  .password-dialog .el-dialog__footer .el-button {
+    flex: 1 1 0;
+    min-width: 0;
+  }
+
+  .password-dialog .el-dialog__footer .el-button + .el-button {
+    margin-left: 0;
+  }
+}
+
 
 /* 统一页头工具区（参考电脑台账） */
 .ui-page-card {

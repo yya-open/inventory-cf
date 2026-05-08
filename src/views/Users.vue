@@ -213,12 +213,12 @@
       </template>
     </el-dialog>
 
-    <el-dialog v-model="showReset" title="重置密码" width="460px">
-      <div style="color:#666; margin-bottom:10px">将为账号 <b>{{ editing?.username }}</b> 设置新密码，并要求下次登录修改。</div>
-      <el-form label-width="90px">
+    <el-dialog v-model="showReset" title="重置密码" width="460px" class="password-dialog password-dialog--reset">
+      <div class="password-dialog__notice">将为账号 <b>{{ editing?.username }}</b> 设置新密码，并要求下次登录修改。</div>
+      <el-form class="password-dialog__form" label-position="top">
         <el-form-item label="新密码">
           <el-input v-model="resetPwd" type="password" show-password />
-          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
+          <div class="password-dialog__tip">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
       </el-form>
       <template #footer>

@@ -219,13 +219,18 @@
       v-model="showChange"
       title="修改密码"
       :width="isMobile ? 'calc(100vw - 24px)' : '420px'"
+      class="password-dialog password-dialog--change"
     >
-      <el-form>
+      <div class="password-dialog__hint">
+        密码长度需为 6-64 位，且必须同时包含字母和数字。
+      </div>
+      <el-form class="password-dialog__form" label-position="top">
         <el-form-item label="旧密码">
           <el-input
             v-model="oldP"
             type="password"
             show-password
+            autocomplete="current-password"
           />
         </el-form-item>
         <el-form-item label="新密码">
@@ -233,6 +238,7 @@
             v-model="newP"
             type="password"
             show-password
+            autocomplete="new-password"
           />
         </el-form-item>
       </el-form>
