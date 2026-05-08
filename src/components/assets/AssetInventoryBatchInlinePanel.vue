@@ -132,7 +132,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from '../../utils/el-message';
 import { apiDownload } from '../../api/client';
 import { trackUiEvent } from '../../utils/browserPerf';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';

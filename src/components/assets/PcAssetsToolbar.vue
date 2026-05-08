@@ -247,8 +247,11 @@
 </template>
 
 <script setup lang="ts">
-import { ElDialog, ElSegmented, ElUpload } from 'element-plus';
-import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus';
+import { ElDialog } from 'element-plus/es/components/dialog/index';
+import { ElSegmented } from 'element-plus/es/components/segmented/index';
+import { ElUpload } from 'element-plus/es/components/upload/index';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus/es/components/dropdown/index';
+import { ElIcon } from 'element-plus/es/components/icon/index';
 import { computed, ref } from 'vue';
 import type { ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';

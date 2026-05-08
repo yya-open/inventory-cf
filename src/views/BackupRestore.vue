@@ -691,8 +691,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElUpload } from 'element-plus';
-import { ElDivider, ElProgress, ElRadio, ElRadioGroup } from 'element-plus';
+import { ElUpload } from 'element-plus/es/components/upload/index';
+import { ElDivider } from 'element-plus/es/components/divider/index';
+import { ElProgress } from 'element-plus/es/components/progress/index';
+import { ElRadio, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, watch, onMounted } from "vue";
 import { ElMessageBox } from "../utils/el-services";
 import { msgError, msgSuccess, msgWarn } from "../utils/msg";

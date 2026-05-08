@@ -344,7 +344,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElSegmented } from 'element-plus';
+import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { onMounted, ref } from 'vue';
 import { scheduleOnIdle } from '../utils/idle';
 import { ElMessage, ElMessageBox } from "../utils/el-services";

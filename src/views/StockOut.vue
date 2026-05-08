@@ -84,7 +84,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { ElMessage } from "../utils/el-message";
 import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";

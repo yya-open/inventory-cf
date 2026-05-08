@@ -161,8 +161,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElDescriptions, ElDescriptionsItem, ElSegmented } from 'element-plus';
-import { ElSkeleton } from 'element-plus';
+import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/descriptions/index';
+import { ElSegmented } from 'element-plus/es/components/segmented/index';
+import { ElSkeleton } from 'element-plus/es/components/skeleton/index';
 import { usePublicInventoryPage } from '../composables/usePublicInventoryPage';
 import PublicInventoryRecentResultCard from '../components/PublicInventoryRecentResultCard.vue';
 import PublicInventorySessionSummaryBar from '../components/PublicInventorySessionSummaryBar.vue';

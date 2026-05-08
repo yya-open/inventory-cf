@@ -262,7 +262,7 @@
 import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue";
 import AppSidebarMenu from "./components/AppSidebarMenu.vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "./utils/el-services";
+import { ElMessage } from "./utils/el-message";
 import { apiPost } from "./api/client";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, canCapability, canPerm, logout, useAuth } from "./store/auth";

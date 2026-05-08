@@ -1,5 +1,5 @@
 import { getAuthRequestEpoch, getAuthSessionKey, useAuth } from "../store/auth";
-import { ElMessage } from '../utils/el-services';
+import { ElMessage } from '../utils/el-message';
 
 import type { Schema } from './schema';
 

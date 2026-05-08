@@ -202,9 +202,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElSkeleton } from 'element-plus';
+import { ElSkeleton } from 'element-plus/es/components/skeleton/index';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { ElMessage } from '../utils/el-message';
 import { getSystemPerformance } from '../api/systemPerformance';
 import { useSystemPageLoader } from '../composables/useSystemPageLoader';
 

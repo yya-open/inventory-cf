@@ -84,7 +84,7 @@
 </template>
 
 <script setup lang="ts">
-import type { FormInstance, FormRules } from 'element-plus';
+import type { FormInstance, FormRules } from 'element-plus/es/components/form/index';
 import { ref } from 'vue';
 
 const SIZE_RE = /^\d+(\.\d{1,2})?(\s*寸)?$/;

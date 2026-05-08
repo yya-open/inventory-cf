@@ -1,4 +1,4 @@
-import type { FormInstance } from 'element-plus';
+import type { FormInstance } from 'element-plus/es/components/form/index';
 
 type ValidationMessageMap = Record<string, string>;
 

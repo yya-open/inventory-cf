@@ -39,7 +39,7 @@ const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can, canCapability, canPerm } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
-import { ElMessage } from "../utils/el-services";
+import { ElMessage } from "../utils/el-message";
 import { scheduleOnIdle } from "../utils/idle";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";

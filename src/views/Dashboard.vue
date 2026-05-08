@@ -108,9 +108,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElSegmented } from 'element-plus';
+import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ref, computed, onMounted, watch } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { ElMessage } from "../utils/el-message";
 import { apiGet } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";

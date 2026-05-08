@@ -406,7 +406,8 @@
 </template>
 
 <script setup lang="ts">
-import { ElSegmented, ElUpload } from 'element-plus';
+import { ElSegmented } from 'element-plus/es/components/segmented/index';
+import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";

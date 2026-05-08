@@ -1,14 +1,18 @@
 <template>
-  <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
+  <div :class="['ledger-table-shell', `ledger-table-shell--${density}`, { 'ledger-table-shell--mobile': mobileMode }]">
     <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <el-table v-else
+    <div v-if="mobileMode && !initialLoading" class="ledger-mobile-table-hint">
+      <span>左右滑动查看完整表格</span>
+      <span>每页 {{ pageSize }} 条</span>
+    </div>
+    <el-table v-if="!initialLoading"
       ref="tableRef"
       class="ledger-table"
       v-loading="loading"
       :data="renderRows"
       row-key="id"
       border
-      max-height="calc(100vh - 320px)"
+      :max-height="tableMaxHeight"
       :row-class-name="rowClassName"
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
@@ -159,6 +163,7 @@
         </el-empty>
       </template>
     </el-table>
+    <div v-if="loading && renderRows.length" class="ledger-refresh-badge">正在刷新当前列表</div>
     <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
     <div class="pager-wrap">
       <el-pagination
@@ -166,7 +171,7 @@
         :page-size="pageSize"
         :total="total"
         background
-        layout="total, sizes, prev, pager, next, jumper"
+        :layout="paginationLayout"
         :page-sizes="[20, 50, 100, 200]"
         @update:current-page="(value: number) => emit('page-change', value)"
         @update:page-size="(value: number) => emit('page-size-change', value)"
@@ -175,7 +180,9 @@
   </div>
 </template>
 <script setup lang="ts">
-import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon, ElPopover } from 'element-plus';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus/es/components/dropdown/index';
+import { ElIcon } from 'element-plus/es/components/icon/index';
+import { ElPopover } from 'element-plus/es/components/popover/index';
 import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
@@ -218,6 +225,8 @@ const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
 const tableFixedLeft = computed(() => mobileMode.value ? false : 'left');
 const tableFixedRight = computed(() => mobileMode.value ? false : 'right');
+const tableMaxHeight = computed(() => mobileMode.value ? 'calc(100vh - 250px)' : 'calc(100vh - 320px)');
+const paginationLayout = computed(() => mobileMode.value ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper');
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
@@ -376,6 +385,36 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
 }
 
+.ledger-table-shell {
+  position: relative;
+}
+
+.ledger-mobile-table-hint,
+.ledger-refresh-badge {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  margin-bottom: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgba(191, 219, 254, 0.72);
+  border-radius: 12px;
+  background: rgba(239, 246, 255, 0.86);
+  color: #475569;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.ledger-refresh-badge {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  z-index: 5;
+  margin: 0;
+  background: rgba(255, 255, 255, 0.94);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+}
+
 .ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
 
 .ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
@@ -401,6 +440,12 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   margin-top: 16px;
   padding-top: 14px;
   border-top: 1px solid rgba(226, 232, 240, 0.9);
+}
+
+.ledger-table-shell--mobile .pager-wrap {
+  justify-content: flex-start;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
 }
 
 .table-cell {

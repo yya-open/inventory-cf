@@ -122,7 +122,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElUpload } from 'element-plus';
+import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportTemplateItems, loadXlsx } from "../utils/excel";

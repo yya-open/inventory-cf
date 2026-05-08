@@ -431,8 +431,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
-import { ElPopconfirm, ElScrollbar } from 'element-plus';
+import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/descriptions/index';
+import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
+import { ElPopconfirm } from 'element-plus/es/components/popconfirm/index';
+import { ElScrollbar } from 'element-plus/es/components/scrollbar/index';
 import { ref, onMounted, computed, watch } from "vue";
 import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";

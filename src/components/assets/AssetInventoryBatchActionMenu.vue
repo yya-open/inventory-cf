@@ -25,7 +25,8 @@
 </template>
 
 <script setup lang="ts">
-import { ElDropdown, ElDropdownItem, ElDropdownMenu, ElIcon } from 'element-plus';
+import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus/es/components/dropdown/index';
+import { ElIcon } from 'element-plus/es/components/icon/index';
 import { ArrowDown } from '@element-plus/icons-vue';
 import { trackUiEvent } from '../../utils/browserPerf';
 

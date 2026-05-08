@@ -193,8 +193,10 @@
 </template>
 
 <script setup lang="ts">
-import { ElDescriptions, ElDescriptionsItem, ElUpload } from 'element-plus';
-import { ElDivider, ElRadioButton, ElRadioGroup } from 'element-plus';
+import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/descriptions/index';
+import { ElUpload } from 'element-plus/es/components/upload/index';
+import { ElDivider } from 'element-plus/es/components/divider/index';
+import { ElRadioButton, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, onMounted } from "vue";
 import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";

@@ -181,7 +181,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onBeforeMount, onActivated, computed } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { ElMessage } from "../utils/el-message";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";

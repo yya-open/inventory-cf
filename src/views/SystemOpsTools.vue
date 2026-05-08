@@ -249,8 +249,9 @@
 </template>
 
 <script setup lang="ts">
-import { ElDescriptions, ElDescriptionsItem, ElTabPane, ElTabs } from 'element-plus';
-import { ElProgress } from 'element-plus';
+import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/descriptions/index';
+import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
+import { ElProgress } from 'element-plus/es/components/progress/index';
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { apiGet, apiPost, apiPut } from '../api/client';

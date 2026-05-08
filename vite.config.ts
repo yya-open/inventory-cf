@@ -27,7 +27,32 @@ export default defineConfig({
           if (id.includes('jszip')) return 'jszip';
           if (id.includes('qrcode')) return 'qrcode';
           if (/[\\/]node_modules[\\/](@vue|vue)[\\/]/.test(id)) return 'vue-vendor';
-          if (id.includes('element-plus')) return 'element-plus';
+          if (id.includes('@element-plus/icons-vue')) return 'el-icons';
+          if (id.includes('element-plus')) {
+            if (id.includes('element-plus/es/components/message-box')) return 'el-message-box';
+            if (id.includes('element-plus/es/components/message')) return 'el-message';
+            if (id.includes('element-plus/es/components/notification')) return 'el-notification';
+            if (id.includes('element-plus/es/components/table')) return 'el-table';
+            if (id.includes('element-plus/es/components/select')) return 'el-select';
+            if (id.includes('element-plus/es/components/date-picker')) return 'el-date-picker';
+            if (id.includes('element-plus/es/components/pagination')) return 'el-pagination';
+            if (id.includes('element-plus/es/components/checkbox')) return 'el-checkbox';
+            if (id.includes('element-plus/es/components/descriptions')) return 'el-descriptions';
+            if (id.includes('element-plus/es/components/input-number')) return 'el-input-number';
+            if (id.includes('element-plus/es/components/switch')) return 'el-switch';
+            if (id.includes('element-plus/es/components/upload')) return 'el-upload';
+            if (id.includes('element-plus/es/components/tabs') || id.includes('element-plus/es/components/tab-pane')) return 'el-tabs';
+            if (id.includes('element-plus/es/components/popconfirm')) return 'el-popconfirm';
+            if (id.includes('element-plus/es/components/scrollbar')) return 'el-scrollbar';
+            if (id.includes('element-plus/es/components/divider')) return 'el-divider';
+            if (id.includes('element-plus/es/components/radio')) return 'el-radio';
+            if (id.includes('element-plus/es/components/segmented')) return 'el-segmented';
+            if (id.includes('element-plus/es/components/skeleton')) return 'el-skeleton';
+            if (id.includes('element-plus/es/components/steps') || id.includes('element-plus/es/components/step')) return 'el-steps';
+            if (id.includes('element-plus/es/components/progress')) return 'el-progress';
+            if (!id.includes('element-plus/es/components/')) return 'el-shared';
+            return 'element-plus';
+          }
           if (id.includes('vue-router')) return 'vue-router';
           return 'vendor';
         },

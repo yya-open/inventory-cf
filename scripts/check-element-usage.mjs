@@ -15,12 +15,16 @@ function tagToComponent(tag) {
   return 'El' + tag.replace(/^el-/, '').split('-').map((part) => part.charAt(0).toUpperCase() + part.slice(1)).join('');
 }
 const pluginText = fs.readFileSync(pluginPath, 'utf8');
-const match = pluginText.match(/const\s+components\s*=\s*\[(.*?)\]\s*as const;/s);
-if (!match) {
+const coreMatch = pluginText.match(/const\s+coreComponents\s*=\s*\[(.*?)\]\s*as const;/s);
+const asyncMatch = pluginText.match(/const\s+asyncComponents\s*:[^{]+{(.*?)};/s);
+if (!coreMatch && !asyncMatch) {
   console.error('[check:element-usage] Could not parse global Element Plus components');
   process.exit(1);
 }
-const globals = new Set(match[1].match(/\bEl[A-Za-z0-9]+\b/g) || []);
+const globals = new Set([
+  ...(coreMatch?.[1].match(/\bEl[A-Za-z0-9]+\b/g) || []),
+  ...(asyncMatch?.[1].match(/\bEl[A-Za-z0-9]+(?=\s*:)/g) || []),
+]);
 const allow = new Set(['ElIcon']);
 const problems = [];
 for (const file of walk(srcDir)) {

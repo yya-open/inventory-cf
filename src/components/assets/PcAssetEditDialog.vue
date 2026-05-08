@@ -86,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import type { FormInstance, FormRules } from 'element-plus';
+import type { FormInstance, FormRules } from 'element-plus/es/components/form/index';
 import { ref, withDefaults } from 'vue';
 
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;

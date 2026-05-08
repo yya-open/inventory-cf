@@ -9,7 +9,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElSkeleton } from 'element-plus';
+import { ElSkeleton } from 'element-plus/es/components/skeleton/index';
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 
 const props = withDefaults(defineProps<{

@@ -97,7 +97,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "../utils/el-services";
+import { ElMessage } from "../utils/el-message";
 import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
