@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202604210020_ledger_hot_indexes";
+export const REQUIRED_SCHEMA_VERSION = "202604270010_users_acl_version";
 
 type SchemaStatus = {
   ok: boolean;
@@ -38,6 +38,7 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'dictionary_usage_counters', label: '字典引用计数表', ok: tables.has('dictionary_usage_counters'), need: 'dictionary_usage_counters' },
     { key: 'system_settings_meta', label: '系统配置元信息', ok: tables.has('system_settings_meta'), need: 'system_settings_meta' },
     { key: 'users.permission_template_code', label: '用户权限模板字段', ok: userColumns.has('permission_template_code'), need: 'users.permission_template_code' },
+    { key: 'users.acl_version', label: '用户权限缓存版本字段', ok: userColumns.has('acl_version'), need: 'users.acl_version' },
     { key: 'users.data_scope_type', label: '用户数据范围字段', ok: userColumns.has('data_scope_type'), need: 'users.data_scope_type' },
     { key: 'users.data_scope_value2', label: '用户双值范围字段', ok: userColumns.has('data_scope_value2'), need: 'users.data_scope_value2' },
     { key: 'restore_job.backup_version', label: '恢复任务备份版本字段', ok: restoreJobColumns.has('backup_version'), need: 'restore_job.backup_version' },

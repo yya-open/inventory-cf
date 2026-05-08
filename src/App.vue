@@ -467,7 +467,8 @@ function markSidebarHovered(next: boolean) {
 
 function toggleSidebar() {
   if (isMobile.value) {
-    mobileSidebarVisible.value ? closeMobileSidebar() : openMobileSidebar();
+    if (mobileSidebarVisible.value) closeMobileSidebar();
+    else openMobileSidebar();
     trackUiEvent('mobile_sidebar_toggle', {
       path: route.path,
       fullPath: route.fullPath,
