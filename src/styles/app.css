@@ -1508,12 +1508,13 @@ body {
   flex-wrap: wrap;
 }
 
-.app-mobile-drawer .el-drawer__body {
-  padding: 0;
+.app-mobile-drawer.el-drawer,
+.app-mobile-drawer .el-drawer {
   background: #ffffff;
 }
 
-.app-mobile-drawer .el-drawer {
+.app-mobile-drawer .el-drawer__body {
+  padding: 0;
   background: #ffffff;
 }
 
@@ -1538,6 +1539,8 @@ body {
 
 .app-mobile-drawer__close {
   flex: 0 0 auto;
+  position: relative;
+  z-index: 3;
 }
 
 @media (max-width: 900px) {

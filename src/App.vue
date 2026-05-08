@@ -55,7 +55,7 @@
       >
         <div class="app-mobile-drawer__header">
           <div class="app-mobile-drawer__title">导航菜单</div>
-          <el-button circle plain class="app-mobile-drawer__close" @click="mobileSidebarVisible = false">×</el-button>
+          <el-button circle plain class="app-mobile-drawer__close" @click="closeMobileSidebar">×</el-button>
         </div>
         <AppSidebarMenu
           :is-system="isSystem"
@@ -85,7 +85,7 @@
               v-if="isMobile"
               class="app-header__menu"
               circle
-              @click="mobileSidebarVisible = true"
+              @click="openMobileSidebar"
             >
               ☰
             </el-button>
@@ -417,8 +417,18 @@ watch(desktopSidebarCollapsed, (value, previous) => {
 
 function updateViewport() {
   const nextMobile = isAppMobileViewport();
+  const wasMobile = isMobile.value;
   isMobile.value = nextMobile;
-  if (!nextMobile) mobileSidebarVisible.value = false;
+  if (!nextMobile || !wasMobile) closeMobileSidebar();
+}
+
+function openMobileSidebar() {
+  if (!isMobile.value) return;
+  mobileSidebarVisible.value = true;
+}
+
+function closeMobileSidebar() {
+  mobileSidebarVisible.value = false;
 }
 
 function handleSidebarToggleHover(next: boolean) {
@@ -450,7 +460,7 @@ function markSidebarHovered(next: boolean) {
 
 function toggleSidebar() {
   if (isMobile.value) {
-    mobileSidebarVisible.value = !mobileSidebarVisible.value;
+    mobileSidebarVisible.value ? closeMobileSidebar() : openMobileSidebar();
     trackUiEvent('mobile_sidebar_toggle', {
       path: route.path,
       fullPath: route.fullPath,
@@ -463,21 +473,21 @@ function toggleSidebar() {
 
 function handleSidebarMenuSelect() {
   if (!isMobile.value) return;
-  mobileSidebarVisible.value = false;
+  closeMobileSidebar();
 }
 
 function handleMobileDrawerClose() {
-  mobileSidebarVisible.value = false;
+  closeMobileSidebar();
 }
 
 watch(() => route.fullPath, () => {
-  mobileSidebarVisible.value = false;
+  closeMobileSidebar();
   sidebarToggleHovered.value = false;
   if (desktopSidebarCollapsed.value) desktopSidebarPreview.value = false;
 });
 
 watch(simpleLayout, (value) => {
-  if (value) mobileSidebarVisible.value = false;
+  if (value) closeMobileSidebar();
 });
 
 async function loadSchemaStatus() {

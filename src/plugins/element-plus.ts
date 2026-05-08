@@ -13,6 +13,7 @@ import {
   ElDescriptions,
   ElDescriptionsItem,
   ElDialog,
+  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,
@@ -46,6 +47,7 @@ import 'element-plus/es/components/date-picker/style/css';
 import 'element-plus/es/components/descriptions/style/css';
 import 'element-plus/es/components/descriptions-item/style/css';
 import 'element-plus/es/components/dialog/style/css';
+import 'element-plus/es/components/drawer/style/css';
 import 'element-plus/es/components/empty/style/css';
 import 'element-plus/es/components/form/style/css';
 import 'element-plus/es/components/form-item/style/css';
@@ -82,6 +84,7 @@ const components = [
   ElDescriptions,
   ElDescriptionsItem,
   ElDialog,
+  ElDrawer,
   ElEmpty,
   ElForm,
   ElFormItem,

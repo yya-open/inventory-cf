@@ -1,4 +1,4 @@
-export const APP_MOBILE_BREAKPOINT = 860;
+export const APP_MOBILE_BREAKPOINT = 1100;
 export const LEDGER_MOBILE_BREAKPOINT = 760;
 
 function viewportWidth() {
