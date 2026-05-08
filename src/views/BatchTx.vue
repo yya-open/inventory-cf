@@ -1,12 +1,12 @@
 <template>
-  <div style="padding:16px">
+  <div class="batch-tx-page">
     <el-card>
       <template #header>
-        <div style="display:flex; align-items:center; justify-content:space-between;">
+        <div class="batch-tx-header">
           <div style="font-weight:700">
             批量出入库
           </div>
-          <div style="display:flex; gap:10px; align-items:center;">
+          <div class="batch-tx-header-actions">
             <el-button @click="downloadTemplate">
               下载模板
             </el-button>
@@ -34,23 +34,23 @@
         />
       </el-tabs>
 
-      <div style="display:flex; gap:12px; margin-bottom:12px; flex-wrap:wrap;">
+      <div class="batch-tx-toolbar">
         <el-input
           v-if="mode==='IN'"
           v-model="headerSource"
           placeholder="来源（可选）"
-          style="width:220px"
+          class="batch-tx-input-sm"
         />
         <el-input
           v-if="mode==='OUT'"
           v-model="headerTarget"
           placeholder="领用人/去向（必填，可被每行覆盖）"
-          style="width:260px"
+          class="batch-tx-input-md"
         />
         <el-input
           v-model="headerRemark"
           placeholder="备注（可选）"
-          style="width:320px"
+          class="batch-tx-input-lg"
         />
         <el-button @click="addRow">
           新增一行
@@ -179,13 +179,13 @@
 
       <div
         v-if="invalidCount"
-        style="margin-top:10px; display:flex; gap:10px; align-items:center; flex-wrap:wrap;"
+        class="batch-tx-invalid"
       >
         <el-alert
           type="warning"
           :closable="false"
           show-icon
-          style="flex:1; min-width:320px;"
+          class="batch-tx-invalid-alert"
           :title="`当前有 ${invalidCount} 行缺少必填字段，已标红（可直接在表格里补全或删除该行）。`"
         />
         <el-button
@@ -196,7 +196,7 @@
         </el-button>
       </div>
 
-      <div style="margin-top:12px; color:#999; font-size:12px;">
+      <div class="batch-tx-tip">
         Excel 模板列：<b>sku</b>, <b>qty</b>；入库可选：unit_price/source/remark；出库必填：<b>target</b>（可在表头填默认领用人）
       </div>
     </el-card>
@@ -486,6 +486,47 @@ onMounted(async () => {
 </script>
 
 <style scoped>
+.batch-tx-page {
+  padding: 16px;
+}
+.batch-tx-header,
+.batch-tx-header-actions,
+.batch-tx-toolbar,
+.batch-tx-invalid {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.batch-tx-header {
+  justify-content: space-between;
+}
+.batch-tx-toolbar {
+  gap: 12px;
+  margin-bottom: 12px;
+}
+.batch-tx-input-sm {
+  width: 220px;
+}
+.batch-tx-input-md {
+  width: 260px;
+}
+.batch-tx-input-lg {
+  width: 320px;
+}
+.batch-tx-invalid {
+  margin-top: 10px;
+}
+.batch-tx-invalid-alert {
+  flex: 1 1 320px;
+  min-width: 0;
+}
+.batch-tx-tip {
+  margin-top: 12px;
+  color: #999;
+  font-size: 12px;
+  line-height: 1.6;
+}
 .row-error {
   background: rgba(245, 108, 108, 0.06);
 }
@@ -497,5 +538,34 @@ onMounted(async () => {
 .cell-error :deep(.el-input-number),
 .cell-error :deep(.el-select__wrapper) {
   box-shadow: 0 0 0 1px var(--el-color-danger) inset !important;
+}
+
+@media (max-width: 640px) {
+  .batch-tx-page {
+    padding: 8px;
+  }
+
+  .batch-tx-header,
+  .batch-tx-header-actions,
+  .batch-tx-toolbar,
+  .batch-tx-invalid {
+    align-items: stretch;
+  }
+
+  .batch-tx-header > *,
+  .batch-tx-header-actions,
+  .batch-tx-header-actions :deep(.el-button),
+  .batch-tx-header-actions :deep(.el-upload),
+  .batch-tx-toolbar > *,
+  .batch-tx-invalid > * {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .batch-tx-input-sm,
+  .batch-tx-input-md,
+  .batch-tx-input-lg {
+    width: 100%;
+  }
 }
 </style>

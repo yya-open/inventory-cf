@@ -98,4 +98,4 @@
   </el-dialog>
 </template>
 <script setup lang="ts">defineProps<{ visible:boolean; rows:Array<Record<string,any>>; newName:string; parentId:string|number; locationParentOptions:Array<{value:number;label:string}>; isAdmin:boolean; buildLocLabel:(row:Record<string,any>)=>string; saving:boolean }>(); const emit = defineEmits<{ 'update:visible':[boolean]; 'update:new-name':[string]; 'update:parent-id':[string|number]; create:[]; 'update-location':[Record<string,any>]; 'delete-location':[Record<string,any>] }>();</script>
-<style scoped>.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px}.name-input{width:260px}.parent-input{width:220px}</style>
+<style scoped>.toolbar{display:flex;gap:10px;align-items:center;margin-bottom:12px;flex-wrap:wrap}.name-input{width:260px}.parent-input{width:220px}@media (max-width:640px){.toolbar{align-items:stretch}.name-input,.parent-input,.toolbar :deep(.el-button){width:100%;max-width:100%}}</style>

@@ -1416,4 +1416,36 @@ onMounted(() => {
 .entity-meta{font-size:12px;color:#909399}
 .payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fafcff}.payload-kv-label{font-size:12px;color:#909399;margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fff}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:10px}.payload-diff-cell.before{background:#fff7ed}.payload-diff-cell.after{background:#ecfdf5}.payload-diff-caption{display:inline-block;font-size:12px;color:#606266;margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:10px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
 
+@media (max-width: 768px){
+  .audit-header,
+  .tools,
+  .payload-toolbar{
+    align-items:stretch;
+  }
+
+  .audit-header > *,
+  .tools,
+  .tools :deep(.el-button),
+  .payload-toolbar > *,
+  .payload-toolbar :deep(.el-button){
+    width:100%;
+    max-width:100%;
+  }
+
+  .audit-retention-stats{
+    grid-template-columns:repeat(2,minmax(0,1fr));
+  }
+
+  .archive-history__row{
+    grid-template-columns:1fr;
+    gap:4px;
+  }
+}
+
+@media (max-width: 420px){
+  .audit-retention-stats{
+    grid-template-columns:1fr;
+  }
+}
+
 </style>

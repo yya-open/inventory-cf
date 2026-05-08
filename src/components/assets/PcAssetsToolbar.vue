@@ -869,7 +869,6 @@ function handleBatchCommand(command: string | number | object) {
   overflow: hidden;
 }
 
-</style>
 .toolbar-lazy-actions-placeholder {
   display: flex;
   align-items: center;
@@ -886,3 +885,5 @@ function handleBatchCommand(command: string | number | object) {
     align-items: flex-start;
   }
 }
+
+</style>

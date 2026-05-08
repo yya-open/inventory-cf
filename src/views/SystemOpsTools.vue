@@ -949,4 +949,34 @@ onBeforeUnmount(() => {
   font-size: 14px;
   font-weight: 700;
 }
+
+@media (max-width: 768px) {
+  .sys-header-row,
+  .sys-actions-row,
+  .ops-action-row,
+  .ops-inline-actions {
+    align-items: stretch;
+  }
+
+  .sys-header-row > *,
+  .sys-actions-row,
+  .sys-actions-row :deep(.el-button),
+  .ops-action-row > *,
+  .ops-action-row :deep(.el-button),
+  .ops-inline-actions,
+  .ops-inline-actions :deep(.el-button) {
+    width: 100%;
+    max-width: 100%;
+  }
+
+  .ops-auto-refresh {
+    margin-left: 0;
+  }
+
+  .ops-w-140,
+  .ops-w-150,
+  .ops-w-260 {
+    width: 100%;
+  }
+}
 </style>

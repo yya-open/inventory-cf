@@ -1547,8 +1547,18 @@ body {
   .app-layout,
   .app-root,
   .app-main,
-  .page-wrap {
+  .page-wrap,
+  .page-wrap__content {
+    width: 100%;
+    max-width: 100%;
     min-width: 0;
+  }
+
+  html,
+  body,
+  #app {
+    max-width: 100vw;
+    overflow-x: hidden;
   }
 
   .app-header {
@@ -1587,6 +1597,10 @@ body {
     min-height: calc(100vh - 156px);
   }
 
+  .page-wrap__content {
+    overflow-x: clip;
+  }
+
   .page-wrap__content > * {
     min-width: 0;
   }
@@ -1615,6 +1629,8 @@ body {
   .ui-toolbar-actions,
   .ui-toolbar-filter-bar,
   .ui-link-group {
+    width: 100%;
+    min-width: 0;
     gap: 10px;
   }
 
@@ -1644,8 +1660,42 @@ body {
     max-width: 100vw;
   }
 
+  .el-card,
+  .el-table,
+  .el-tabs,
+  .el-form,
+  .el-row,
+  .el-col {
+    max-width: 100%;
+    min-width: 0;
+  }
+
+  .el-tabs__header,
+  .el-tabs__nav-wrap {
+    max-width: 100%;
+  }
+
+  .el-tabs__nav-scroll {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-table {
+    width: 100% !important;
+  }
+
+  .el-table__body-wrapper,
+  .el-table__header-wrapper,
+  .el-scrollbar__wrap {
+    -webkit-overflow-scrolling: touch;
+  }
+
   .el-form-item {
     margin-bottom: 16px;
+  }
+
+  .el-form-item__label {
+    line-height: 1.35;
   }
 
   .el-button + .el-button {
@@ -1661,9 +1711,33 @@ body {
     flex-wrap: wrap;
     gap: 8px;
   }
+
+  .el-pagination .el-pagination__jump {
+    margin-left: 0;
+  }
 }
 
 @media (max-width: 640px) {
+  .app-main {
+    padding: 8px;
+  }
+
+  .page-wrap {
+    min-height: calc(100vh - 176px);
+  }
+
+  .page-wrap__content > .el-card,
+  .page-wrap__content > .ui-page-card,
+  .page-wrap__content > .ledger-table-card {
+    border-radius: 14px;
+  }
+
+  .page-wrap__content > .el-card > .el-card__body,
+  .page-wrap__content > .ui-page-card > .el-card__body,
+  .page-wrap__content > .ledger-table-card > .el-card__body {
+    padding: 12px !important;
+  }
+
   .app-header__actions {
     align-items: stretch;
   }
@@ -1681,6 +1755,61 @@ body {
 
   .ui-toolbar-segment {
     flex-basis: 100%;
+  }
+
+  .ui-toolbar-row > *,
+  .ui-toolbar-actions > *,
+  .ui-toolbar-filter-bar > *,
+  .ui-link-group > * {
+    min-width: 0;
+  }
+
+  .el-input,
+  .el-input-number,
+  .el-select,
+  .el-cascader,
+  .el-autocomplete,
+  .el-date-editor {
+    width: 100% !important;
+    min-width: 0 !important;
+    max-width: 100%;
+  }
+
+  .el-button-group {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+  }
+
+  .el-button-group > .el-button {
+    flex: 1 1 auto;
+    margin-left: 0 !important;
+  }
+
+  .el-form--inline,
+  .el-form--inline .el-form-item,
+  .el-form--inline .el-form-item__content {
+    display: flex;
+    width: 100%;
+    max-width: 100%;
+    flex-wrap: wrap;
+  }
+
+  .el-form--inline .el-form-item {
+    margin-right: 0;
+  }
+
+  .el-descriptions__body,
+  .el-descriptions__table {
+    display: block;
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+
+  .el-pagination {
+    justify-content: flex-start;
+    overflow-x: auto;
+    padding-bottom: 4px;
   }
 
   .el-message-box {

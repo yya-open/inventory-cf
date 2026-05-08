@@ -614,4 +614,77 @@ onBeforeUnmount(() => {
 .task-virtual-sub{font-size:12px;color:#909399;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .task-virtual-metric{font-size:13px;color:#606266;text-align:right}
 .task-virtual-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
+
+@media (max-width:768px){
+  .page-header,
+  .page-actions,
+  .toolbar,
+  .row-actions{
+    align-items:stretch;
+  }
+
+  .page-actions,
+  .page-actions :deep(.el-button),
+  .toolbar > *,
+  .toolbar :deep(.el-button){
+    width:100%;
+    max-width:100%;
+  }
+
+  .task-w-140,
+  .task-w-260{
+    width:100%;
+  }
+
+  .task-virtual-head{
+    grid-template-columns:minmax(0,1fr) 48px 104px;
+    gap:6px;
+    padding:8px;
+  }
+
+  .task-virtual-wrap{
+    height:min(560px,calc(100vh - 260px));
+  }
+
+  .task-virtual-row{
+    height:72px;
+    grid-template-columns:minmax(0,1fr) 48px 104px;
+    gap:6px;
+    padding:6px 8px;
+  }
+
+  .task-virtual-title,
+  .task-virtual-sub{
+    white-space:normal;
+    display:-webkit-box;
+    -webkit-box-orient:vertical;
+    overflow:hidden;
+  }
+
+  .task-virtual-title{
+    -webkit-line-clamp:1;
+  }
+
+  .task-virtual-sub{
+    -webkit-line-clamp:2;
+  }
+
+  .task-virtual-metric{
+    text-align:center;
+    font-size:12px;
+  }
+
+  .task-virtual-actions{
+    justify-content:flex-end;
+    gap:2px 6px;
+    max-height:60px;
+    overflow:hidden;
+  }
+
+  .task-virtual-actions :deep(.el-button){
+    min-height:24px;
+    padding:0 2px;
+    font-size:12px;
+  }
+}
 </style>

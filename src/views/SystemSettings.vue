@@ -750,4 +750,73 @@ onMounted(() => { reload(); });
 .drag-order{font-size:12px;color:#606266}
 .settings-w-180{width:180px}
 .settings-w-full{width:100%}
+
+@media (max-width:768px){
+  .settings-page{
+    max-width:100%;
+  }
+
+  .settings-header,
+  .settings-actions,
+  .dictionary-card-header,
+  .dictionary-card-actions,
+  .row-actions{
+    align-items:stretch;
+  }
+
+  .settings-header > *,
+  .settings-actions,
+  .settings-actions :deep(.el-button),
+  .dictionary-card-header > *,
+  .dictionary-card-actions,
+  .dictionary-card-actions :deep(.el-button),
+  .row-actions,
+  .row-actions :deep(.el-button){
+    width:100%;
+    max-width:100%;
+  }
+
+  .settings-summary{
+    grid-template-columns:1fr;
+  }
+
+  .summary-item{
+    padding:12px;
+  }
+
+  .settings-card :deep(.el-card__body),
+  .section-card :deep(.el-card__body){
+    padding:12px;
+  }
+
+  .settings-card :deep(.el-form-item),
+  .section-card :deep(.el-form-item){
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .settings-card :deep(.el-form-item__label),
+  .section-card :deep(.el-form-item__label){
+    width:100% !important;
+    justify-content:flex-start;
+    margin-bottom:6px;
+    text-align:left;
+  }
+
+  .settings-card :deep(.el-form-item__content),
+  .section-card :deep(.el-form-item__content),
+  .setting-stack,
+  .scan-mode-setting,
+  .settings-w-180{
+    width:100%;
+    max-width:100%;
+  }
+
+  .setting-stack{
+    display:flex;
+    flex-direction:column;
+    gap:8px;
+  }
+}
 </style>

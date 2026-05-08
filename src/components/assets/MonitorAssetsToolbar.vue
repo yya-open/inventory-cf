@@ -926,4 +926,12 @@ function handleBatchCommand(command: string | number | object) {
   padding: 2px 0;
 }
 
+@media (max-width: 768px) {
+  .monitor-toolbar .toolbar-location,
+  .monitor-toolbar .toolbar-input {
+    width: 100%;
+    min-width: 0;
+  }
+}
+
 </style>
