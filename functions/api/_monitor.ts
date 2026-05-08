@@ -14,6 +14,8 @@ let __monitorColumnsEnsuredAt = 0;
 let __monitorColumnsReady = false;
 let __monitorGuardTriggersReady = false;
 let __monitorSchemaProbeAt = 0;
+let __monitorReadFastGuardsReady = false;
+let __monitorReadFastGuardsInit: Promise<void> | null = null;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const MONITOR_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
@@ -31,6 +33,24 @@ const MONITOR_REQUIRED_QUERY_COLUMNS = [
   'inventory_at',
   'inventory_issue_type',
 ];
+const MONITOR_REQUIRED_QUERY_COLUMN_LIST = MONITOR_REQUIRED_QUERY_COLUMNS.map((column) => `'${column}'`).join(',');
+const MONITOR_REQUIRED_TRIGGER_NAMES = [
+  'trg_monitor_assets_code_non_blank_insert',
+  'trg_monitor_assets_code_non_blank_update',
+];
+const MONITOR_REQUIRED_TRIGGER_LIST = MONITOR_REQUIRED_TRIGGER_NAMES.map((name) => `'${name}'`).join(',');
+
+async function probeMonitorReadFastGuards(db: D1Database) {
+  const checks = await db.batch([
+    db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('monitor_assets') WHERE name IN (${MONITOR_REQUIRED_QUERY_COLUMN_LIST})`),
+    db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN (${MONITOR_REQUIRED_TRIGGER_LIST})`),
+  ]);
+  const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_QUERY_COLUMNS.length;
+  const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_TRIGGER_NAMES.length;
+  if (columnsReady) __monitorColumnsReady = true;
+  if (triggersReady) __monitorGuardTriggersReady = true;
+  return columnsReady && triggersReady;
+}
 
 async function ensureMonitorQueryColumns(db: D1Database) {
   if (__monitorColumnsReady) return;
@@ -93,8 +113,27 @@ async function ensureMonitorGuardTriggers(db: D1Database) {
 }
 
 export async function ensureMonitorReadFastGuards(db: D1Database) {
-  await ensureMonitorQueryColumns(db);
-  await ensureMonitorGuardTriggers(db);
+  if (__monitorReadFastGuardsReady) return;
+  if (__monitorReadFastGuardsInit) return __monitorReadFastGuardsInit;
+
+  __monitorReadFastGuardsInit = (async () => {
+    if (__monitorColumnsReady && __monitorGuardTriggersReady) {
+      __monitorReadFastGuardsReady = true;
+      return;
+    }
+    const ready = await probeMonitorReadFastGuards(db).catch(() => false);
+    if (ready) {
+      __monitorReadFastGuardsReady = true;
+      return;
+    }
+    await ensureMonitorQueryColumns(db);
+    await ensureMonitorGuardTriggers(db);
+    if (__monitorColumnsReady && __monitorGuardTriggersReady) __monitorReadFastGuardsReady = true;
+  })().finally(() => {
+    __monitorReadFastGuardsInit = null;
+  });
+
+  return __monitorReadFastGuardsInit;
 }
 
 async function probeMonitorSchemaReady(db: D1Database) {

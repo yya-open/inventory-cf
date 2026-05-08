@@ -383,32 +383,40 @@ function prewarmWithThrottle(kind: 'pc' | 'monitor', task: () => Promise<void>) 
   });
 }
 
+function shouldPrewarmLedgerData() {
+  if (typeof window === 'undefined') return false;
+  if (window.innerWidth < 768) return false;
+  return shouldAllowRoutePrefetch();
+}
+
 function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _routePath: string) {
   if (!shouldAllowRoutePrefetch()) return;
+  if (!firstRouteResolved) return;
   const path = String(_routePath || '');
   const canPcLedger = canAccessPcSection(_authUser, 'pc');
   const canMonitorLedger = canAccessPcSection(_authUser, 'monitor');
+  const canPrewarmData = shouldPrewarmLedgerData();
 
   if ((path === '/pc/assets' || path.startsWith('/pc/assets?')) && canMonitorLedger) {
     prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
-    scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 1000);
+    if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 2500);
     return;
   }
   if ((path === '/pc/monitors' || path.startsWith('/pc/monitors?')) && canPcLedger) {
     prefetchChunk('pc-pc-assets', preloadPcAssets);
-    scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 1000);
+    if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 2500);
     return;
   }
 
   if (!path.startsWith('/pc')) {
     if (canPcLedger) {
       prefetchChunk('pc-pc-assets', preloadPcAssets);
-      scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 1200);
+      if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 4000);
       return;
     }
     if (canMonitorLedger) {
       prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
-      scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 1200);
+      if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 4000);
     }
     return;
   }

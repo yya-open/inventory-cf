@@ -77,14 +77,23 @@ async function hmacSha256(key: CryptoKey, data: string) {
   return new Uint8Array(sig);
 }
 
+const hmacKeyCache = new Map<string, Promise<CryptoKey>>();
+
 async function importHmacKey(secret: string) {
-  return crypto.subtle.importKey(
+  const cached = hmacKeyCache.get(secret);
+  if (cached) return cached;
+  const promise = crypto.subtle.importKey(
     "raw",
     new TextEncoder().encode(secret),
     { name: "HMAC", hash: "SHA-256" },
     false,
     ["sign", "verify"]
-  );
+  ).catch((error) => {
+    hmacKeyCache.delete(secret);
+    throw error;
+  });
+  hmacKeyCache.set(secret, promise);
+  return promise;
 }
 
 export async function signJwt(payload: any, secret: string, expSeconds: number) {

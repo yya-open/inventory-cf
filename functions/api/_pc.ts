@@ -14,6 +14,8 @@ let __pcColumnsEnsuredAt = 0;
 let __pcColumnsReady = false;
 let __pcGuardTriggersReady = false;
 let __pcSchemaProbeAt = 0;
+let __pcReadFastGuardsReady = false;
+let __pcReadFastGuardsInit: Promise<void> | null = null;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const PC_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
@@ -33,6 +35,24 @@ const PC_REQUIRED_QUERY_COLUMNS = [
   'manufacture_ts',
   'warranty_end_ts',
 ];
+const PC_REQUIRED_QUERY_COLUMN_LIST = PC_REQUIRED_QUERY_COLUMNS.map((column) => `'${column}'`).join(',');
+const PC_REQUIRED_TRIGGER_NAMES = [
+  'trg_pc_assets_serial_non_blank_insert',
+  'trg_pc_assets_serial_non_blank_update',
+];
+const PC_REQUIRED_TRIGGER_LIST = PC_REQUIRED_TRIGGER_NAMES.map((name) => `'${name}'`).join(',');
+
+async function probePcReadFastGuards(db: D1Database) {
+  const checks = await db.batch([
+    db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('pc_assets') WHERE name IN (${PC_REQUIRED_QUERY_COLUMN_LIST})`),
+    db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN (${PC_REQUIRED_TRIGGER_LIST})`),
+  ]);
+  const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_QUERY_COLUMNS.length;
+  const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_TRIGGER_NAMES.length;
+  if (columnsReady) __pcColumnsReady = true;
+  if (triggersReady) __pcGuardTriggersReady = true;
+  return columnsReady && triggersReady;
+}
 
 async function ensurePcQueryColumns(db: D1Database) {
   if (__pcColumnsReady) return;
@@ -97,8 +117,27 @@ async function ensurePcGuardTriggers(db: D1Database) {
 }
 
 export async function ensurePcReadFastGuards(db: D1Database) {
-  await ensurePcQueryColumns(db);
-  await ensurePcGuardTriggers(db);
+  if (__pcReadFastGuardsReady) return;
+  if (__pcReadFastGuardsInit) return __pcReadFastGuardsInit;
+
+  __pcReadFastGuardsInit = (async () => {
+    if (__pcColumnsReady && __pcGuardTriggersReady) {
+      __pcReadFastGuardsReady = true;
+      return;
+    }
+    const ready = await probePcReadFastGuards(db).catch(() => false);
+    if (ready) {
+      __pcReadFastGuardsReady = true;
+      return;
+    }
+    await ensurePcQueryColumns(db);
+    await ensurePcGuardTriggers(db);
+    if (__pcColumnsReady && __pcGuardTriggersReady) __pcReadFastGuardsReady = true;
+  })().finally(() => {
+    __pcReadFastGuardsInit = null;
+  });
+
+  return __pcReadFastGuardsInit;
 }
 
 async function probePcSchemaReady(db: D1Database) {
