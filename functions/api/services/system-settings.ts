@@ -243,7 +243,7 @@ export function normalizeSystemSettings(input: Partial<Record<keyof SystemSettin
     public_inventory_mobile_compact: toBoolean(source.public_inventory_mobile_compact, DEFAULT_SYSTEM_SETTINGS.public_inventory_mobile_compact),
     public_inventory_continuous_mode_default: toBoolean(source.public_inventory_continuous_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_continuous_mode_default),
     public_inventory_retry_hint: toBoolean(source.public_inventory_retry_hint, DEFAULT_SYSTEM_SETTINGS.public_inventory_retry_hint),
-    public_inventory_scan_mode_default: normalizeScanMode(source.public_inventory_scan_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scan_mode_default, source.public_inventory_scanner_mode_default),
+    public_inventory_scan_mode_default: normalizeScanMode(source.public_inventory_scan_mode_default, DEFAULT_SYSTEM_SETTINGS.public_inventory_scan_mode_default, (source as any).public_inventory_scanner_mode_default),
     public_inventory_recent_targets_limit: toInt(source.public_inventory_recent_targets_limit, DEFAULT_SYSTEM_SETTINGS.public_inventory_recent_targets_limit, 3, 20),
     public_inventory_camera_auto_start: toBoolean(source.public_inventory_camera_auto_start, DEFAULT_SYSTEM_SETTINGS.public_inventory_camera_auto_start),
     public_asset_show_updated_at: toBoolean(source.public_asset_show_updated_at, DEFAULT_SYSTEM_SETTINGS.public_asset_show_updated_at),

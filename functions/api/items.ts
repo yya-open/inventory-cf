@@ -65,7 +65,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
 export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const user = await requireAuth(env, request, 'admin');
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const id = Number(body?.id);
     if (!id) return Response.json({ ok: false, message: 'id 无效' }, { status: 400 });
 

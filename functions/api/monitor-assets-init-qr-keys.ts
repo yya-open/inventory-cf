@@ -13,7 +13,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
     await ensureMonitorQrColumns(env.DB);
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const batchSize = Math.min(200, Math.max(10, Number(body?.batch_size || 50)));
     const result = await initMissingAssetQrKeys(env.DB, {
       assetTable: "monitor_assets",

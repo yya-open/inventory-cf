@@ -7,7 +7,7 @@ import { invalidateUserDataScopeCache } from "../services/data-scope";
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
     const user = await requireAuth(env, request, "viewer");
-    const { old_password, new_password } = await request.json<any>();
+    const { old_password, new_password } = await request.json();
     const oldP = String(old_password || "");
     const newP = String(new_password || "");
     const pv = validatePassword(newP);

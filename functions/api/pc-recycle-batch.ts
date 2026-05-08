@@ -33,7 +33,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 

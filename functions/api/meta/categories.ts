@@ -16,7 +16,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
   try {
     await requireAuth(env, request, "admin");
     if (!env.DB) return json(false, null, "未绑定 D1 数据库(DB)");
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const name = String(body?.name || '').trim();
     if (!name) return json(false, null, '分类名称无效', 400, 'INVALID_PARAMS');
     const deleted = await deleteItemCategoryByName(env.DB, name);

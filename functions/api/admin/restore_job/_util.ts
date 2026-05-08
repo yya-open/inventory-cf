@@ -3,6 +3,17 @@ import { DELETE_ORDER, TABLE_COLUMNS } from "../_backup_schema";
 
 export { DELETE_ORDER, TABLE_COLUMNS };
 
+type ByteStreamPipe = ReadableWritablePair<Uint8Array, Uint8Array>;
+type TextDecodePipe = ReadableWritablePair<string, Uint8Array>;
+
+function gzipPipe() {
+  return new DecompressionStream("gzip") as unknown as ByteStreamPipe;
+}
+
+function textDecodePipe() {
+  return new TextDecoderStream() as unknown as TextDecodePipe;
+}
+
 export function pick(obj: any, cols: string[]) {
   return cols.map((c) => (obj?.[c] === undefined ? null : obj[c]));
 }
@@ -83,10 +94,10 @@ export async function* textChunksFromFile(file: File, forceGzip?: boolean) {
     if (typeof (globalThis as any).DecompressionStream === "undefined") {
       throw new Error("当前环境不支持 gzip 解压，请上传 .json 备份或在支持 DecompressionStream 的环境中操作");
     }
-    s = s.pipeThrough(new DecompressionStream("gzip"));
+    s = s.pipeThrough(gzipPipe());
   }
 
-  const decoder = new TextDecoderStream();
+  const decoder = textDecodePipe();
   const reader = s.pipeThrough(decoder).getReader();
   try {
     while (true) {
@@ -288,7 +299,7 @@ export async function readBackupJsonFromStream(stream: ReadableStream<Uint8Array
     if (typeof (globalThis as any).DecompressionStream === "undefined") {
       throw new Error("当前环境不支持 gzip 解压，请上传 .json 备份或在支持 DecompressionStream 的环境中操作");
     }
-    s = s.pipeThrough(new DecompressionStream("gzip"));
+    s = s.pipeThrough(gzipPipe());
   }
   const text = await new Response(s).text();
   return JSON.parse(text);
@@ -304,9 +315,9 @@ export function getBackupTablesObject(backup: any): Record<string, any[]> {
 export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
   let s: ReadableStream<Uint8Array> = stream;
   if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
-    s = s.pipeThrough(new DecompressionStream("gzip"));
+    s = s.pipeThrough(gzipPipe());
   }
-  const decoder = new TextDecoderStream();
+  const decoder = textDecodePipe();
   const reader = s.pipeThrough(decoder).getReader();
   try {
     while (true) {

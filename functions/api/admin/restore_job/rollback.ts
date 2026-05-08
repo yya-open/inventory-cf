@@ -9,7 +9,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
   try {
     const actor = await requireAuth(env, request, 'admin');
     await ensureCoreSchema(env.DB);
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const id = String(body?.id || '').trim();
     if (!id) return Response.json({ ok: false, message: '缺少 id' }, { status: 400 });
     if (!env.BACKUP_BUCKET) return Response.json({ ok: false, message: '未绑定 R2：BACKUP_BUCKET。' }, { status: 500 });

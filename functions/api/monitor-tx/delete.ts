@@ -35,7 +35,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     requireConfirm(body, "删除", "二次确认不通过");
 
     const ids: number[] = Array.isArray(body?.ids)

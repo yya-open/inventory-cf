@@ -17,7 +17,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const user = await requirePermission(env, request, 'bulk_operation', 'viewer');
     const url = new URL(request.url);
     await ensurePcSchemaIfAllowed(env.DB, env, url);
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const action = String(body?.action || '').trim();
     const ids = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
     if (!ids.length) throw Object.assign(new Error('请选择至少一条电脑台账'), { status: 400 });

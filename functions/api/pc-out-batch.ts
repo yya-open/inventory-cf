@@ -35,7 +35,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
 
-    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const body = await t.measure('parse', () => request.json().catch(() => ({} as any)));
     const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
@@ -68,7 +68,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
         await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑批量出库');
         if (!isInStockStatus(asset.status)) throw new Error('该电脑当前不是“在库”，无法出库');
 
-        const afterStatus = toAssetStatusAfterOut();
+        const afterStatus = toAssetStatusAfterOut(null);
         await applyPcOut({
           db: env.DB,
           outNo: no,

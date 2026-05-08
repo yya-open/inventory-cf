@@ -82,6 +82,7 @@ export async function getRecentAuthFailCount(db: D1Database, ip: string, usernam
     const last = r.last_fail_at as string | null;
     if (!last) return 0;
     const ms = datetimeTextToMsBj(last);
+    if (ms == null) return 0;
     if (!Number.isFinite(ms)) return 0;
     if (Date.now() - ms > windowMin * 60_000) return 0;
     return Number(r.fail_count) || 0;

@@ -29,7 +29,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     assertAssetWarehouseAccess(user, '电脑仓', '电脑批量入库');
 
-    const body = await t.measure('parse', () => request.json<any>().catch(() => ({} as any)));
+    const body = await t.measure('parse', () => request.json().catch(() => ({} as any)));
     const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });

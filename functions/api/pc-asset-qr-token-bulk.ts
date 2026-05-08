@@ -15,7 +15,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
 
     await ensurePcQrColumns(env.DB);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     await assertPcAssetIdsDataScopeAccess(env.DB, user, Array.isArray(body?.ids) ? body.ids : [], '电脑二维码');
     const data = await getOrCreateAssetQrBulk(env.DB, {
       assetTable: 'pc_assets',

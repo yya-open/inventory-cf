@@ -12,7 +12,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database }> = async ({ env, re
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
     await ensureMonitorQrColumns(env.DB);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     await assertMonitorAssetIdsDataScopeAccess(env.DB, user, Array.isArray(body?.ids) ? body.ids : [], '显示器二维码');
     const data = await getOrCreateAssetQrBulk(env.DB, {
       assetTable: 'monitor_assets',

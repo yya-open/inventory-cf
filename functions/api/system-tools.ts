@@ -62,7 +62,7 @@ async function runRepairAction(db: D1Database, action: string) {
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
   try {
     const actor = await requirePermission(env, request, 'ops_tools', 'viewer');
-    const { action } = await request.json<any>();
+    const { action } = await request.json();
     const schema = await getSchemaStatus(env.DB);
     if (!schema.ok && !['scan_all'].includes(String(action || ''))) return json(false, schema, schema.message, 409);
 

@@ -1,6 +1,8 @@
 import { attachInventoryBatchSnapshotJob, clearInventoryLogsForNewBatch, closeInventoryBatch, getActiveInventoryBatch, getLatestInventoryBatch, listRecentInventoryBatches, startInventoryBatch, type AssetInventoryKind } from './asset-inventory-batches';
 import { createAsyncJob } from './async-jobs';
 
+export type { AssetInventoryKind } from './asset-inventory-batches';
+
 export async function getInventoryBatchDomainSnapshot(db: D1Database, kind: AssetInventoryKind) {
   const [latest, recent] = await Promise.all([
     getLatestInventoryBatch(db, kind),

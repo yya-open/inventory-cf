@@ -47,7 +47,7 @@ function dayBounds(from: string, to: string) {
   };
 }
 
-function emptyMetrics(mode: DashboardMode) {
+function emptyMetrics(mode: DashboardMode): Record<string, number> {
   if (mode === 'pc') return { in_qty: 0, out_qty: 0, return_qty: 0, recycle_qty: 0, scrap_qty: 0, tx_count: 0 };
   if (mode === 'monitor') return { in_qty: 0, out_qty: 0, return_qty: 0, transfer_qty: 0, scrap_qty: 0, tx_count: 0 };
   return { in_qty: 0, out_qty: 0, adjust_qty: 0, tx_count: 0 };

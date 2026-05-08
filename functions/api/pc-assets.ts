@@ -95,7 +95,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 
@@ -159,7 +159,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
     else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || url.searchParams.get('id') || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 

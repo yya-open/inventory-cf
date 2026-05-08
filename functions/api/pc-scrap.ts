@@ -40,7 +40,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const { no: scrap_no } = buildWriteNo('PCSCRAP', pcScrapNo, body?.client_request_id);
     const existing = await findExistingByNo(env.DB, 'pc_scrap', 'scrap_no', scrap_no, 'scrap_no, COUNT(*) AS row_count');
     if (existing?.scrap_no) {

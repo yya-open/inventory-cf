@@ -6,6 +6,7 @@ export type UserDataScope = {
   data_scope_value: string | null;
   data_scope_value2: string | null;
 };
+export type ScopedUser = AuthUser & UserDataScope;
 
 export const ASSET_WAREHOUSE_OPTIONS = ['配件仓', '电脑仓', '显示器仓'] as const;
 
@@ -124,7 +125,7 @@ export async function requireAuthWithDataScope(env: { DB: D1Database; JWT_SECRET
   const loadScope = () => getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null }));
   const timing = (env as any)?.__timing;
   const scope = timing?.measure ? await timing.measure('data_scope', loadScope) : await loadScope();
-  return Object.assign(user, scope) as AuthUser & UserDataScope;
+  return Object.assign(user, scope) as ScopedUser;
 }
 
 export function applyDepartmentDataScopeClause(clauses: string[], binds: any[], columnExpr: string, scope?: UserDataScope | null) {

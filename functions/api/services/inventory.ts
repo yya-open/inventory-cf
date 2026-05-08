@@ -74,7 +74,7 @@ function normalizeSortDir(input: string) {
   return String(input || '').trim().toLowerCase() === 'asc' ? 'ASC' : 'DESC';
 }
 
-function normalizeKeyword(input: string) {
+function normalizeKeyword(input: string | null | undefined) {
   return String(input || '').trim();
 }
 

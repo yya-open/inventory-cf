@@ -35,7 +35,7 @@ function datetimeToMsBj(dt: string | null) {
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
   try {
-    const { username, password, turnstile_token } = await request.json<any>();
+    const { username, password, turnstile_token } = await request.json();
     const u = (username || '').trim();
     const p = String(password || '');
     if (!u || !p) return json(false, null, '请输入账号和密码', 400);

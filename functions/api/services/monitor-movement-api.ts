@@ -40,7 +40,7 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
       const url = new URL(request.url);
       await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-      const body = await request.json<any>().catch(() => ({} as any));
+      const body = await request.json().catch(() => ({} as any));
       const clientRequestId = normalizeClientRequestId(body?.client_request_id);
       const txNo = clientRequestId ? toDeterministicNo(options.txPrefix, clientRequestId) : monitorTxNo(options.txPrefix);
       if (clientRequestId) {

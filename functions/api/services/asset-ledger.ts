@@ -419,7 +419,7 @@ export function parseMonitorAssetInput(body: any): MonitorAssetInput {
 
 export function parseArchiveMeta(body: any) {
   return {
-    reason: optional(body?.reason, '归档原因', 120) || '手动归档',
+    reason: optional(body?.reason, 120) || '手动归档',
     note: optional(body?.note, 500),
   };
 }

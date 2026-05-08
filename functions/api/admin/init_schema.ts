@@ -10,7 +10,7 @@ import { logAudit } from "../_audit";
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     if (String(body?.confirm || "").trim() !== "初始化") {
       return json(false, null, "需要二次确认：confirm=初始化", 400);
     }

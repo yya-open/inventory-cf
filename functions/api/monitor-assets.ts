@@ -93,7 +93,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     assertAssetWarehouseAccess(user, '显示器仓', '显示器台账');
     const payload = parseMonitorAssetInput(body);
     await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
@@ -107,7 +107,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     invalidateSystemDictionaryReferenceCache();
     invalidateAssetListCache();
     await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
-    const id = Number(result.meta.last_row_id || 0);
+    const id = Number(result.meta?.last_row_id || 0);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);
     return Response.json({ ok: true, message: '新增成功' });
   } catch (error: any) {
@@ -123,7 +123,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 
@@ -168,7 +168,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || url.searchParams.get('id') || 0);
     if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
 

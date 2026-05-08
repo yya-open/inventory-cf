@@ -1,6 +1,6 @@
 import { sqlNowStored } from '../_time';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
-import { rebuildPcLatestStateForAssets } from './pc-latest-state';
+import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';

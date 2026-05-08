@@ -20,6 +20,14 @@ export function createTiming() {
     return Date.now() - started;
   }
 
+  function total() {
+    return totalMs();
+  }
+
+  function get(name: string) {
+    return parts[name] || 0;
+  }
+
   function header() {
     const total = totalMs();
     const items = Object.entries(parts).map(([k, v]) => `${k};dur=${v}`);
@@ -27,5 +35,5 @@ export function createTiming() {
     return items.join(", ");
   }
 
-  return { add, measure, header, totalMs, parts };
+  return { add, measure, header, totalMs, total, get, parts };
 }

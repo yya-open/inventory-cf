@@ -33,7 +33,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const name = must(body?.name, "位置名称", 120);
     const parent_id = Number(body?.parent_id || 0) || null;
 
@@ -49,7 +49,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .bind(name, parent_id)
       .run();
 
-    await logAudit(env.DB, request, user, "PC_LOCATION_CREATE", "pc_locations", Number(res.meta.last_row_id || 0), { name, parent_id });
+    await logAudit(env.DB, request, user, "PC_LOCATION_CREATE", "pc_locations", Number(res.meta?.last_row_id || 0), { name, parent_id });
     return Response.json({ ok: true, message: "新增成功" });
   } catch (e: any) {
     return errorResponse(e);
@@ -63,7 +63,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
     if (!id) throw Object.assign(new Error("缺少位置ID"), { status: 400 });
     const old = await env.DB.prepare("SELECT * FROM pc_locations WHERE id=?").bind(id).first<any>();
@@ -96,7 +96,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const url = new URL(request.url);
     await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const body = await request.json<any>().catch(() => ({} as any));
+    const body = await request.json().catch(() => ({} as any));
     requireConfirm(body, "删除", "二次确认不通过");
     const id = Number(body?.id || 0);
     if (!id) throw Object.assign(new Error("缺少位置ID"), { status: 400 });

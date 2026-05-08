@@ -1312,10 +1312,11 @@ export async function deleteAsyncJobs(db: D1Database, ids: number[], bucket?: As
 
   const cleanupBucketObjects = async () => {
     if (!deletableObjectKeys.length || !bucket || typeof bucket.delete !== 'function') return;
+    const deleteObject = bucket.delete.bind(bucket);
     const DELETE_KEY_CHUNK = 20;
     for (let i = 0; i < deletableObjectKeys.length; i += DELETE_KEY_CHUNK) {
       const keyChunk = deletableObjectKeys.slice(i, i + DELETE_KEY_CHUNK);
-      await Promise.allSettled(keyChunk.map((key) => bucket.delete(key)));
+      await Promise.allSettled(keyChunk.map((key) => deleteObject(key)));
     }
   };
   if (timing?.measure) await timing.measure('jobs_delete_batch_r2', cleanupBucketObjects);

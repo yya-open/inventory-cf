@@ -18,7 +18,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const retentionDays = Number(body?.retention_days);
     if (!retentionDays || !Number.isFinite(retentionDays)) {
       return json(false, null, "retention_days 无效", 400);

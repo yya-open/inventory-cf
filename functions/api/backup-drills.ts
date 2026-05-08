@@ -59,7 +59,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
   try {
     const actor = await requireAuth(env, request, 'admin');
     await ensureBackupDrillTable(env.DB);
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const scenario = String(body?.scenario || 'restore_drill').trim() || 'restore_drill';
     const outcome = ['success', 'warn', 'failed'].includes(String(body?.outcome || '').trim()) ? String(body?.outcome).trim() : 'success';
     const note = String(body?.note || '').trim().slice(0, 1000);
@@ -82,7 +82,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
   try {
     const actor = await requireAuth(env, request, 'admin');
     await ensureBackupDrillTable(env.DB);
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const id = Number(body?.id || 0);
     if (!id) throw Object.assign(new Error('缺少演练记录ID'), { status: 400 });
     const before = await env.DB.prepare(`SELECT * FROM backup_drill_runs WHERE id=?`).bind(id).first<any>();

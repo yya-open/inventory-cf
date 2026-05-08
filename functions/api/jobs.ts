@@ -75,7 +75,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
     const status = await getCachedJobsSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
-    const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json<any>();
+    const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json();
     if (QR_EXPORT_TYPES.has(String(job_type || ''))) {
       const ids = normalizeQrExportIds(request_json?.ids);
       if (ids.length > QR_EXPORT_CHUNK_SIZE) {
@@ -108,7 +108,7 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
   try {
     const timing = (env as any).__timing;
     const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-    const body = await request.json<any>().catch(() => ({}));
+    const body = await request.json().catch(() => ({}));
     const action = String(body?.action || '').trim();
     const id = Number(body?.id || 0);
     if (action === 'cleanup') {

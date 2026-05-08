@@ -110,7 +110,7 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { username, password, role, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json<any>();
+    const { username, password, role, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json();
 
     const u = String(username || "").trim();
     const p = String(password || "");
@@ -167,7 +167,7 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json<any>();
+    const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json();
 
     const uid = Number(id);
     if (!uid) return apiFail('id 无效', { status: 400, errorCode: 'USER_ID_INVALID' });
@@ -270,7 +270,7 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
 export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
   try {
     const actor = await requireAuth(env, request, "admin");
-    const { id } = await request.json<any>();
+    const { id } = await request.json();
 
     const uid = Number(id);
     if (!uid) return apiFail('id 无效', { status: 400, errorCode: 'USER_ID_INVALID' });
