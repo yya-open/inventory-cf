@@ -2111,36 +2111,9 @@ onActivated(() => {
     gap: 14px;
   }
 
-  .ledger-page::before {
-    inset: -8px 0 auto;
-    height: 120px;
-    border-radius: 18px;
-  }
-
-  .ledger-section--table::before {
-    display: none;
-  }
-
   :deep(.ledger-toolbar-card > .el-card__body),
   :deep(.ledger-table-card > .el-card__body) {
     padding: 14px;
-  }
-}
-
-@media (max-width: 640px) {
-  .ledger-page {
-    gap: 10px;
-  }
-
-  :deep(.ledger-toolbar-card),
-  :deep(.ledger-table-card) {
-    border-radius: 16px;
-    box-shadow: 0 10px 24px rgba(15, 23, 42, 0.06);
-  }
-
-  :deep(.ledger-toolbar-card > .el-card__body),
-  :deep(.ledger-table-card > .el-card__body) {
-    padding: 10px;
   }
 }
 </style>

@@ -1,7 +1,7 @@
 <template>
   <div :class="['ledger-table-shell', `ledger-table-shell--${density}`]">
     <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <el-card v-else-if="!mobileMode" shadow="never" class="ledger-table-card">
+    <el-card v-else-if="!initialLoading" shadow="never" class="ledger-table-card">
       <el-table
       ref="tableRef"
       class="ledger-table"
