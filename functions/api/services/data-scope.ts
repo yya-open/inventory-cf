@@ -39,7 +39,11 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
 }
 
 let ensureUserDataScopeColumnsPromise: Promise<void> | null = null;
+let userDataScopeColumnsReady = false;
 const USER_DATA_SCOPE_CACHE_TTL_MS = 30_000;
+const USER_DATA_SCOPE_COLUMNS = ['data_scope_type', 'data_scope_value', 'data_scope_value2'];
+const USER_DATA_SCOPE_COLUMN_LIST = USER_DATA_SCOPE_COLUMNS.map((column) => `'${column}'`).join(',');
+const USER_DATA_SCOPE_INDEX_NAME = 'idx_users_data_scope_type_value_v2';
 const userDataScopeCache = new Map<number, UserDataScope & { expiresAt: number }>();
 
 function readCachedUserDataScope(userId: number) {
@@ -66,8 +70,21 @@ export function invalidateUserDataScopeCache(userId?: number | null) {
 }
 
 export async function ensureUserDataScopeColumns(db: D1Database) {
+  if (userDataScopeColumnsReady) return;
   if (!ensureUserDataScopeColumnsPromise) {
     ensureUserDataScopeColumnsPromise = (async () => {
+      const ready = await db.batch([
+        db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('users') WHERE name IN (${USER_DATA_SCOPE_COLUMN_LIST})`),
+        db.prepare(`SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name=?`).bind(USER_DATA_SCOPE_INDEX_NAME),
+      ]).then((checks) => {
+        const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= USER_DATA_SCOPE_COLUMNS.length;
+        const indexReady = Number((checks[1] as any)?.results?.[0]?.ok || 0) === 1;
+        return columnsReady && indexReady;
+      }).catch(() => false);
+      if (ready) {
+        userDataScopeColumnsReady = true;
+        return;
+      }
       try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_type TEXT`).run(); } catch {}
       try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value TEXT`).run(); } catch {}
       try { await db.prepare(`ALTER TABLE users ADD COLUMN data_scope_value2 TEXT`).run(); } catch {}
@@ -77,6 +94,7 @@ export async function ensureUserDataScopeColumns(db: D1Database) {
         await db.prepare(`UPDATE users SET data_scope_value=NULL, data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all'))='all'`).run();
         await db.prepare(`UPDATE users SET data_scope_value2=NULL WHERE TRIM(COALESCE(data_scope_type, 'all')) IN ('department','warehouse')`).run();
       } catch {}
+      userDataScopeColumnsReady = true;
     })().catch((error) => {
       ensureUserDataScopeColumnsPromise = null;
       throw error;
@@ -103,7 +121,9 @@ export async function setUserDataScope(db: D1Database, userId: number, type: str
 
 export async function requireAuthWithDataScope(env: { DB: D1Database; JWT_SECRET?: string }, request: Request, minRole: 'viewer' | 'operator' | 'admin' = 'viewer') {
   const user = await requireAuth(env as any, request, minRole);
-  const scope = await getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null }));
+  const loadScope = () => getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null }));
+  const timing = (env as any)?.__timing;
+  const scope = timing?.measure ? await timing.measure('data_scope', loadScope) : await loadScope();
   return Object.assign(user, scope) as AuthUser & UserDataScope;
 }
 
