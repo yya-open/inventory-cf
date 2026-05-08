@@ -13,8 +13,8 @@
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
     >
-      <el-table-column type="selection" width="48" fixed="left" />
-      <el-table-column label="ID" width="80" fixed="left" align="center">
+      <el-table-column type="selection" width="48" :fixed="tableFixedLeft" />
+      <el-table-column label="ID" width="80" :fixed="tableFixedLeft" align="center">
         <template #default="{ $index }">
           {{ (page - 1) * pageSize + $index + 1 }}
         </template>
@@ -27,7 +27,7 @@
           label="电脑"
           :width="getColumnWidth('computer')"
           :min-width="280"
-          fixed="left"
+          :fixed="tableFixedLeft"
         >
           <template #default="{ row }">
             <div class="table-cell asset-cell" @click="emit('open-info', row)">
@@ -113,7 +113,7 @@
         <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark')" :min-width="220" show-overflow-tooltip />
       </template>
 
-      <el-table-column v-if="canOperator || isAdmin" label="操作" width="96" align="center" fixed="right">
+      <el-table-column v-if="canOperator || isAdmin" label="操作" width="96" align="center" :fixed="tableFixedRight">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="row-action-wrap">
             <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
@@ -216,6 +216,8 @@ const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.v
 const CORE_VISIBLE_KEYS = ['computer', 'status'] as const;
 const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
+const tableFixedLeft = computed(() => mobileMode.value ? false : 'left');
+const tableFixedRight = computed(() => mobileMode.value ? false : 'right');
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });

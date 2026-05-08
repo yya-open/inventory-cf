@@ -15,13 +15,13 @@
       @selection-change="handleSelectionChange"
       @header-dragend="handleHeaderDragend"
     >
-      <el-table-column type="selection" width="48" fixed="left" />
-      <el-table-column label="序号" width="78" fixed="left" align="center">
+      <el-table-column type="selection" width="48" :fixed="tableFixedLeft" />
+      <el-table-column label="序号" width="78" :fixed="tableFixedLeft" align="center">
         <template #default="{ $index }">{{ sequenceNumber($index) }}</template>
       </el-table-column>
 
       <template v-for="key in orderedVisibleColumns" :key="key">
-        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="170" fixed="left">
+        <el-table-column v-if="key === 'assetCode'" column-key="assetCode" label="资产编号" :width="getColumnWidth('assetCode')" :min-width="170" :fixed="tableFixedLeft">
           <template #default="{ row }">
             <div class="table-cell asset-cell" @click="emit('open-info', row)">
               <div class="cell-primary ellipsis">{{ row.asset_code || '-' }}</div>
@@ -113,7 +113,7 @@
         <el-table-column v-else-if="key === 'updatedAt'" column-key="updatedAt" prop="updated_at" label="更新时间" :width="getColumnWidth('updatedAt')" :min-width="170" />
       </template>
 
-      <el-table-column label="操作" width="96" align="center" fixed="right">
+      <el-table-column label="操作" width="96" align="center" :fixed="tableFixedRight">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="row-action-wrap">
             <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => emit('row-more', String(command), row)">
@@ -270,6 +270,8 @@ const emit = defineEmits<{
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 const tableRef = ref<any>();
 const mobileMode = computed(() => Boolean(props.mobileMode));
+const tableFixedLeft = computed(() => mobileMode.value ? false : 'left');
+const tableFixedRight = computed(() => mobileMode.value ? false : 'right');
 const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
 const syncingSelection = ref(false);
 const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
