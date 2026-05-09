@@ -1,13 +1,51 @@
 <template>
   <div class="login-page">
     <div class="login-shell">
-      <section class="login-wallpaper" aria-hidden="true">
-        <img class="login-wallpaper__image" :src="loginWallpaper" alt="" />
+      <section class="login-panel" aria-hidden="true">
+        <div class="login-panel__brand">
+          <div class="login-panel__mark">IC</div>
+          <div>
+            <div class="login-panel__name">配件仓管理系统</div>
+            <div class="login-panel__desc">库存、资产、盘点与审计统一工作台</div>
+          </div>
+        </div>
+        <div class="login-panel__summary">
+          <div class="login-panel__summary-title">运营概览</div>
+          <div class="login-panel__metrics">
+            <div class="login-panel__metric">
+              <span>库存流转</span>
+              <strong>实时</strong>
+            </div>
+            <div class="login-panel__metric">
+              <span>盘点任务</span>
+              <strong>可追溯</strong>
+            </div>
+            <div class="login-panel__metric">
+              <span>权限审计</span>
+              <strong>已启用</strong>
+            </div>
+          </div>
+        </div>
+        <div class="login-panel__list">
+          <div class="login-panel__list-row">
+            <span>配件仓</span>
+            <b>入库、出库、预警</b>
+          </div>
+          <div class="login-panel__list-row">
+            <span>电脑/显示器仓</span>
+            <b>台账、二维码、归还</b>
+          </div>
+          <div class="login-panel__list-row">
+            <span>系统运维</span>
+            <b>备份、报表、发布检查</b>
+          </div>
+        </div>
       </section>
 
       <section class="login-card" aria-label="登录表单">
         <div class="login-card__eyebrow">系统登录</div>
-        <div class="login-card__title">请输入账号密码</div>
+        <div class="login-card__title">欢迎回来</div>
+        <div class="login-card__subtitle">使用授权账号进入配件仓工作台</div>
         <el-form label-position="top" @submit.prevent>
           <el-form-item label="账号">
             <el-input
@@ -71,7 +109,6 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import loginWallpaper from "../assets/login-anime-wallpaper.jpg";
 import { ElMessage } from "../utils/el-message";
 import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
@@ -220,11 +257,7 @@ async function changePassword() {
   justify-content: center;
   padding: 32px;
   overflow: hidden;
-  background:
-    radial-gradient(circle at 12% 16%, rgba(52, 116, 210, 0.22), transparent 28%),
-    radial-gradient(circle at 86% 12%, rgba(28, 174, 157, 0.20), transparent 26%),
-    radial-gradient(circle at 76% 88%, rgba(245, 165, 64, 0.16), transparent 24%),
-    linear-gradient(135deg, #eef5ff 0%, #f7fafc 42%, #eef8f5 100%);
+  background: #eef2f6;
 }
 
 .login-page::before {
@@ -233,73 +266,143 @@ async function changePassword() {
   inset: 0;
   pointer-events: none;
   background:
-    linear-gradient(rgba(255, 255, 255, 0.28) 1px, transparent 1px),
-    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 1px, transparent 1px);
-  background-size: 72px 72px;
-  mask-image: linear-gradient(135deg, transparent 0%, #000 22%, #000 76%, transparent 100%);
+    linear-gradient(#dce3ec 1px, transparent 1px),
+    linear-gradient(90deg, #dce3ec 1px, transparent 1px);
+  background-size: 48px 48px;
+  opacity: 0.42;
 }
 
 .login-page::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background:
-    radial-gradient(circle at center, transparent 42%, rgba(15, 23, 42, 0.10) 100%);
+  content: none;
 }
 
 .login-shell {
   position: relative;
   z-index: 1;
-  width: min(1040px, 100%);
-  min-height: 560px;
+  width: min(980px, 100%);
+  min-height: 540px;
   display: grid;
-  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
+  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.76fr);
   overflow: hidden;
-  border: 1px solid rgba(186, 201, 219, 0.78);
+  border: 1px solid #d5dde8;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow:
-    0 24px 70px rgba(42, 69, 105, 0.18),
-    0 8px 24px rgba(20, 184, 166, 0.08);
+  box-shadow: 0 18px 44px rgba(31, 45, 61, 0.14);
 }
 
-.login-wallpaper {
+.login-panel {
   position: relative;
   min-width: 0;
-  min-height: 560px;
-  overflow: hidden;
-  border-right: 1px solid #e2e8f0;
-  background: #dceaf6;
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 28px;
+  padding: 44px;
+  border-right: 1px solid #d8e0ea;
+  background: #182235;
+  color: #ffffff;
 }
 
-.login-wallpaper::before,
-.login-wallpaper::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
+.login-panel__brand {
+  display: flex;
+  align-items: center;
+  gap: 14px;
 }
 
-.login-wallpaper::before {
-  z-index: 1;
-  background:
-    linear-gradient(90deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0)),
-    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.34), transparent 34%);
+.login-panel__mark {
+  width: 44px;
+  height: 44px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 8px;
+  background: #22324a;
+  color: #dbeafe;
+  font-weight: 800;
+  letter-spacing: 0;
 }
 
-.login-wallpaper::after {
-  z-index: 2;
-  box-shadow: inset 0 0 80px rgba(15, 23, 42, 0.10);
+.login-panel__name {
+  font-size: 20px;
+  font-weight: 700;
+  line-height: 1.25;
 }
 
-.login-wallpaper__image {
-  width: 100%;
-  height: 100%;
-  min-height: 560px;
+.login-panel__desc {
+  margin-top: 6px;
+  color: #aeb9c8;
+  font-size: 13px;
+}
+
+.login-panel__summary {
+  padding: 22px;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: #202d40;
+}
+
+.login-panel__summary-title {
+  margin-bottom: 16px;
+  color: #d7dfeb;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.login-panel__metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.login-panel__metric {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  background: #172132;
+}
+
+.login-panel__metric span,
+.login-panel__metric strong {
   display: block;
-  object-fit: cover;
-  transform: scale(1.02);
+}
+
+.login-panel__metric span {
+  color: #91a0b4;
+  font-size: 12px;
+}
+
+.login-panel__metric strong {
+  margin-top: 8px;
+  color: #ffffff;
+  font-size: 15px;
+}
+
+.login-panel__list {
+  display: grid;
+  gap: 10px;
+}
+
+.login-panel__list-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 13px 0;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
+}
+
+.login-panel__list-row span {
+  color: #cbd5e1;
+  font-size: 13px;
+}
+
+.login-panel__list-row b {
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 600;
+  text-align: right;
 }
 
 .login-card {
@@ -308,22 +411,27 @@ async function changePassword() {
   justify-content: center;
   min-width: 0;
   padding: 52px 44px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 253, 255, 0.98) 100%);
+  background: #ffffff;
 }
 
 .login-card__eyebrow {
   color: #315b8c;
-  font-size: 14px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 700;
 }
 
 .login-card__title {
-  margin: 10px 0 28px;
+  margin: 10px 0 6px;
   color: #182235;
-  font-size: 24px;
+  font-size: 26px;
   font-weight: 700;
   line-height: 1.3;
+}
+
+.login-card__subtitle {
+  margin-bottom: 28px;
+  color: #667085;
+  font-size: 14px;
 }
 
 .login-submit {
@@ -332,17 +440,18 @@ async function changePassword() {
   margin-top: 2px;
   border-radius: 6px;
   font-weight: 600;
-  border: 0;
-  background: linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%);
-  box-shadow: 0 12px 22px rgba(59, 130, 246, 0.18);
+  border: 1px solid #1f5fbf;
+  background: #2563eb;
+  box-shadow: none;
 }
 
 .login-submit:hover {
-  background: linear-gradient(135deg, #4c8df7 0%, #17c0a9 100%);
+  border-color: #1d4ed8;
+  background: #1d4ed8;
 }
 
 .login-submit:focus-visible {
-  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14), 0 12px 22px rgba(59, 130, 246, 0.18);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
 }
 
 .login-turnstile {
@@ -389,15 +498,10 @@ async function changePassword() {
     min-height: 0;
   }
 
-  .login-wallpaper {
-    padding: 34px;
+  .login-panel {
     border-right: 0;
     border-bottom: 1px solid #e1e6ef;
-    min-height: 300px;
-  }
-
-  .login-wallpaper__image {
-    min-height: 300px;
+    padding: 30px;
   }
 }
 
@@ -412,7 +516,7 @@ async function changePassword() {
     border-radius: 6px;
   }
 
-  .login-wallpaper {
+  .login-panel {
     display: none;
   }
 
