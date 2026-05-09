@@ -71,7 +71,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import loginWallpaper from "../assets/login-anime-wallpaper.svg";
+import loginWallpaper from "../assets/login-anime-wallpaper.jpg";
 import { ElMessage } from "../utils/el-message";
 import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
