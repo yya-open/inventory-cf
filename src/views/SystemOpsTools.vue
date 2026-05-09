@@ -769,15 +769,16 @@ async function deleteSelectedJobs() {
       jobDetail.visible = false;
       jobDetail.row = null;
     }
+    loading.close();
     if (failed) ElMessage.warning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
     else ElMessage.success(`批量删除完成：共删除 ${success} 条`);
     selectedJobIds.value = [];
     jobsTableRef.value?.clearSelection?.();
     await loadJobs();
   } catch (error: any) {
+    loading.close();
     ElMessage.error(error?.message || '批量删除任务失败');
   } finally {
-    loading.close();
     batchDeletingJobs.value = false;
   }
 }

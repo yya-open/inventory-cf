@@ -349,7 +349,6 @@ async function doDelete() {
   try {
     await ElMessageBox.confirm("删除后无法恢复，确认继续？需要输入二次确认。", "提示", { type: "warning" });
     const { value } = await ElMessageBox.prompt("请输入 删除 以确认", "二次确认", { inputPlaceholder: "删除" });
-    actionLoading.value = true;
     await withDestructiveActionFeedback("正在删除显示器出入库明细", () => apiPost<any>(`/api/monitor-tx/delete`, { entries: selected.value.map((x) => ({ id: x.id })), confirm: value }));
     ElMessage.success("删除成功");
     selected.value = [];

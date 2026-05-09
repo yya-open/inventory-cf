@@ -21,7 +21,6 @@ export function notifyDownloadStarted(filename: string, actionLabel = '下载') 
 }
 
 export async function withBlockingActionFeedback<T>(label: string, action: () => Promise<T>): Promise<T> {
-  ElMessage.info(`${label}已开始，请稍候…`);
   let loading: LoadingInstance | undefined;
   try {
     loading = ElLoading.service({

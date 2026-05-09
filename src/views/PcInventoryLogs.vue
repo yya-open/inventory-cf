@@ -436,7 +436,6 @@ async function deleteSelected() {
       inputPlaceholder: '删除',
       inputValidator: (v: string) => (String(v || '').trim() === '删除' ? true : '需要输入「删除」'),
     });
-    loading.value = true;
     const r: any = await withDestructiveActionFeedback('正在批量删除电脑盘点记录', () => apiPost('/api/pc-inventory-log/delete', { ids, confirm: '删除' }));
     ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
