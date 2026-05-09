@@ -796,6 +796,11 @@ function handleBatchCommand(command: string | number | object) {
   box-shadow: 0 10px 18px rgba(64, 158, 255, 0.18);
 }
 
+:deep(.el-segmented__item.is-selected),
+:deep(.el-segmented__item.is-selected .el-segmented__item-label) {
+  color: #fff;
+}
+
 @media (max-width: 1100px) {
   .pc-toolbar,
   .monitor-toolbar {
