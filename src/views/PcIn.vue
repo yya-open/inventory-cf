@@ -138,11 +138,14 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
+import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText } from "../utils/dataQuality";
 import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
+const PC_ASSETS_MUTATION_KEY = 'inventory:pc-assets:mutation';
 
 const form = ref({
   brand: "",
@@ -210,6 +213,14 @@ function normalizeForm() {
   form.value.remark = normalizeRemark(form.value.remark, settings.value.validation_remark_max_length);
 }
 
+function notifyPcAssetsChanged() {
+  invalidatePagedListNamespace('pc-assets');
+  invalidateAssetInventorySummaryCache('pc');
+  try {
+    window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
+  } catch {}
+}
+
 async function onImportFile(uploadFile: any) {
   const file: File = uploadFile?.raw;
   if (!file) return;
@@ -265,6 +276,7 @@ async function onImportFile(uploadFile: any) {
 
       ElMessage.success(`导入完成：成功 ${res.success} 条`);
     }
+    if (Number(res?.success || 0) > 0) notifyPcAssetsChanged();
 
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
@@ -290,6 +302,7 @@ async function submit() {
   try {
     const r: any = await apiPost("/api/pc-in", { ...form.value });
     ElMessage.success(r?.created ? "入库成功（已新增资产）" : "入库成功（已更新资产）");
+    notifyPcAssetsChanged();
     // keep brand/model for convenience; clear serial and optional fields
     form.value.serial_no = "";
     form.value.manufacture_date = "";

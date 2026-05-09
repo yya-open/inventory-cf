@@ -183,6 +183,7 @@ import { useAssetQrExportActions } from '../composables/useAssetQrExportActions'
 import { useQrExportProgress } from '../composables/useQrExportProgress';
 import { useAssetSelectionSummary } from '../composables/useAssetSelectionSummary';
 import { useAssetBulkActions } from '../composables/useAssetBulkActions';
+import { invalidatePagedListNamespace } from '../composables/usePagedAssetList';
 import { trimText, useAssetFormActions, validateRequiredFields } from '../composables/useAssetFormActions';
 import { assetStatusText, type AssetInventorySummary, type PcAsset, type PcFilters } from '../types/assets';
 import { formatBeijingDateTime } from '../utils/datetime';
@@ -587,6 +588,16 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
 
 const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
 const LEDGER_BATCH_REFRESH_DELAY_MS = 12000;
+const PC_ASSETS_MUTATION_KEY = 'inventory:pc-assets:mutation';
+let lastSeenExternalMutation = 0;
+
+function readPcAssetsMutationTick() {
+  try {
+    return Number(window.sessionStorage.getItem(PC_ASSETS_MUTATION_KEY) || 0) || 0;
+  } catch {
+    return 0;
+  }
+}
 
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
@@ -675,13 +686,13 @@ function scheduleAuxiliaryRefresh(initialFilters: PcFilters) {
   });
 }
 
-async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
   if (options.keepPage) {
-    await load(filters, { keepPage: true, silent: options.silent });
+    await load(filters, { keepPage: true, silent: options.silent, forceRefresh: options.forceRefresh });
   } else {
-    await reload(filters, { silent: options.silent });
+    await reload(filters, { silent: options.silent, forceRefresh: options.forceRefresh });
   }
   lastRefreshAt = Date.now();
   if (!options.skipAuxiliary) scheduleAuxiliaryRefresh(filters);
@@ -1194,7 +1205,7 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 
-async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
+async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
   const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
@@ -1212,6 +1223,7 @@ function handleViewportResize() {
 }
 
 onBeforeMount(() => {
+  lastSeenExternalMutation = readPcAssetsMutationTick();
   const defaultView = getDefaultSavedView();
   if (defaultView) {
     runWithoutAutoSearch(() => {
@@ -1233,6 +1245,15 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
+  const externalMutation = readPcAssetsMutationTick();
+  if (externalMutation > lastSeenExternalMutation) {
+    lastSeenExternalMutation = externalMutation;
+    invalidatePagedListNamespace('pc-assets');
+    invalidateCache();
+    invalidateTotal();
+    void hydrateViewData({ keepPage: true, silent: true, forceRefresh: true });
+    return;
+  }
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;
   void hydrateViewData({ keepPage: true, silent: true });
 });

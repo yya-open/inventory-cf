@@ -189,6 +189,20 @@ export function primePagedListCache(namespace: string, filterKey: string, page: 
   markPagedListNamespacePrimed(normalizedNamespace);
 }
 
+export function invalidatePagedListNamespace(namespace: string) {
+  const normalizedNamespace = String(namespace || 'paged-list');
+  const memoryPrefix = `${normalizedNamespace}::`;
+  clearPageCacheByPrefix(memoryPrefix);
+  for (const [key, request] of [...pageRequests.entries()]) {
+    if (!key.startsWith(memoryPrefix)) continue;
+    request.controller.abort();
+    pageRequests.delete(key);
+  }
+  removeSessionStorageByPrefix(`inventory:paged-cache:${memoryPrefix}`);
+  removeSessionStorageByPrefix(`inventory:paged-total:${memoryPrefix}`);
+  primedNamespaces.delete(normalizedNamespace);
+}
+
 export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOptions<TFilters, TItem>) {
   const rows = ref<TItem[]>([]);
   const loading = ref(false);
