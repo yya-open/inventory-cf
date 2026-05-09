@@ -79,7 +79,7 @@
       </el-drawer>
 
       <el-container class="app-content">
-        <el-header class="app-header">
+        <el-header class="app-header" :class="{ 'app-header--mobile-expanded': isMobile && mobileHeaderExpanded }">
           <div class="app-header__main">
             <el-button
               v-if="isMobile"
@@ -90,43 +90,58 @@
               ☰
             </el-button>
             <div class="app-header__title-group">
-            <div class="app-header__title">
-              {{ title }}
-            </div>
+              <div class="app-header__title-row">
+                <div class="app-header__title">
+                  {{ title }}
+                </div>
+                <div v-if="isMobile" class="app-header__area-pill">
+                  {{ currentAreaLabel }}
+                </div>
+              </div>
 
-            <el-button-group class="app-header__switches">
-              <el-button
-                v-if="canAccessPartsArea"
-                size="small"
-                :type="currentArea==='parts' ? 'primary' : 'default'"
-                @click="switchTo('parts')"
-              >
-                配件仓
-              </el-button>
-              <el-button
-                v-if="canAccessPcArea"
-                size="small"
-                :type="currentArea==='pc' ? 'primary' : 'default'"
-                @click="switchTo('pc')"
-              >
-                {{ canAccessPcLedger && canAccessMonitorLedger ? '电脑/显示器仓' : (canAccessPcLedger ? '电脑仓' : '显示器仓') }}
-              </el-button>
-              <el-button
-                v-if="canAccessSystemModule"
-                size="small"
-                :type="currentArea==='system' ? 'primary' : 'default'"
-                @click="switchToSystem"
-              >
-                系统
-              </el-button>
-            </el-button-group>
+              <el-button-group v-if="!isMobile || mobileHeaderExpanded" class="app-header__switches">
+                <el-button
+                  v-if="canAccessPartsArea"
+                  size="small"
+                  :type="currentArea==='parts' ? 'primary' : 'default'"
+                  @click="switchTo('parts')"
+                >
+                  配件仓
+                </el-button>
+                <el-button
+                  v-if="canAccessPcArea"
+                  size="small"
+                  :type="currentArea==='pc' ? 'primary' : 'default'"
+                  @click="switchTo('pc')"
+                >
+                  {{ canAccessPcLedger && canAccessMonitorLedger ? '电脑/显示器仓' : (canAccessPcLedger ? '电脑仓' : '显示器仓') }}
+                </el-button>
+                <el-button
+                  v-if="canAccessSystemModule"
+                  size="small"
+                  :type="currentArea==='system' ? 'primary' : 'default'"
+                  @click="switchToSystem"
+                >
+                  系统
+                </el-button>
+              </el-button-group>
             </div>
+            <el-button
+              v-if="isMobile"
+              class="app-header__fold"
+              circle
+              plain
+              :aria-expanded="mobileHeaderExpanded"
+              @click="toggleMobileHeader"
+            >
+              {{ mobileHeaderExpanded ? '⌃' : '⌄' }}
+            </el-button>
           </div>
 
-          <div class="app-header__actions">
+          <div v-if="!isMobile || mobileHeaderExpanded" class="app-header__actions">
             <div
               v-if="auth.user"
-              style="color: #666"
+              class="app-header__user"
             >
               {{ auth.user.username }}（{{ roleText(auth.user.role) }}）
             </div>
@@ -294,17 +309,24 @@ const currentArea = computed<"parts" | "pc" | "system">(() => {
 });
 
 const sidebarWarehouseActive = computed<"parts" | "pc">(() => (warehouse.active === "pc" ? "pc" : "parts"));
+const currentAreaLabel = computed(() => {
+  if (currentArea.value === "system") return "系统";
+  if (currentArea.value === "pc") return canAccessPcLedger.value && canAccessMonitorLedger.value ? "电脑/显示器仓" : (canAccessPcLedger.value ? "电脑仓" : "显示器仓");
+  return "配件仓";
+});
 
 const simpleLayout = computed(() => (route.meta as any)?.public || route.path === "/login" || route.path === "/warehouses");
 const showRouteSkeleton = computed(() => !simpleLayout.value && routePageSkeletonVisible.value);
 
 const SIDEBAR_COLLAPSED_KEY = "inventory_sidebar_collapsed";
+const MOBILE_HEADER_EXPANDED_KEY = "inventory_mobile_header_expanded";
 const desktopSidebarCollapsed = ref(false);
 const desktopSidebarPreview = ref(false);
 const sidebarHovered = ref(false);
 const sidebarToggleHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
+const mobileHeaderExpanded = ref(false);
 const mobileSidebarSize = computed(() => 'min(340px, calc(100vw - 56px))');
 
 const activeMenu = computed(() => route.path);
@@ -370,10 +392,12 @@ function switchTo(k: WarehouseKey) {
   // 在系统页面也允许跳回仓库，即使当前 activeWarehouse 与目标一致
   if (!isSystem.value && warehouse.active === k) return;
   setWarehouse(k);
+  collapseMobileHeader();
   router.push(k === "pc" ? preferredPcRoute(auth.user) : "/stock");
 }
 
 function switchToSystem() {
+  collapseMobileHeader();
   router.push(systemEntryPath.value);
 }
 
@@ -394,6 +418,7 @@ onMounted(() => {
   removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
   try {
     desktopSidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
+    mobileHeaderExpanded.value = localStorage.getItem(MOBILE_HEADER_EXPANDED_KEY) === "1";
     updateViewport();
     window.addEventListener("resize", updateViewport, { passive: true });
   } catch {}
@@ -436,6 +461,27 @@ function openMobileSidebar() {
 
 function closeMobileSidebar() {
   mobileSidebarVisible.value = false;
+}
+
+function toggleMobileHeader() {
+  if (!isMobile.value) return;
+  mobileHeaderExpanded.value = !mobileHeaderExpanded.value;
+  try {
+    localStorage.setItem(MOBILE_HEADER_EXPANDED_KEY, mobileHeaderExpanded.value ? "1" : "0");
+  } catch {}
+  trackUiEvent('mobile_header_toggle', {
+    path: route.path,
+    fullPath: route.fullPath,
+    metadata: { expanded: mobileHeaderExpanded.value, area: currentArea.value },
+  });
+}
+
+function collapseMobileHeader() {
+  if (!isMobile.value || !mobileHeaderExpanded.value) return;
+  mobileHeaderExpanded.value = false;
+  try {
+    localStorage.setItem(MOBILE_HEADER_EXPANDED_KEY, "0");
+  } catch {}
 }
 
 function handleSidebarToggleHover(next: boolean) {
