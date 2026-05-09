@@ -135,7 +135,7 @@
             </el-table-column>
             <el-table-column
               label="操作"
-              width="90"
+              width="130"
               fixed="right"
             >
               <template #default="{ row }">
@@ -156,6 +156,14 @@
                     @click.stop="rollbackStocktakeByRow(row)"
                   >
                     撤销
+                  </el-button>
+                  <el-button
+                    v-if="isAdmin"
+                    type="danger"
+                    link
+                    @click.stop="deleteStocktake(row)"
+                  >
+                    删除
                   </el-button>
                 </template>
                 <template v-else>
@@ -250,7 +258,7 @@
                   v-if="isAdmin"
                   type="danger"
                   plain
-                  :disabled="detail.stocktake.status!=='DRAFT'"
+                  :disabled="!canDeleteStocktake(detail.stocktake)"
                   @click="deleteStocktake(detail.stocktake)"
                 >
                   删除盘点单
@@ -543,6 +551,10 @@ function stocktakeErrorHint(e: unknown) {
   return '';
 }
 
+function canDeleteStocktake(row: any) {
+  return ['DRAFT', 'APPLIED'].includes(String(row?.status || ''));
+}
+
 function onDetailSelectionChange(rows: any[]) {
   selectedIds.value = new Set((rows || []).map((row: any) => Number(row?.id || 0)).filter((id: number) => Number.isFinite(id) && id > 0));
 }
@@ -623,21 +635,37 @@ watch(list, async () => {
 
 async function deleteStocktake(row:any){
   if (!row?.id) return;
-  if (String(row.status) !== "DRAFT"){
-    ElMessage.warning("仅草稿状态可删除");
+  const status = String(row.status || '');
+  if (!canDeleteStocktake(row)){
+    ElMessage.warning("仅草稿或已应用完成的盘点单可删除");
     return;
   }
   try{
-    await ElMessageBox.confirm(
-      `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
-      "删除确认",
-      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
-    );
+    if (status === 'APPLIED') {
+      const { value } = await ElMessageBox.prompt(
+        `盘点单 ${row.st_no || row.id} 已应用。删除只会移除盘点单和明细记录，不会撤销已经产生的库存调整；如需恢复库存，请先点“撤销盘点”。请输入「删除」确认。`,
+        "删除已应用盘点单",
+        {
+          type: "warning",
+          confirmButtonText: "确认删除",
+          cancelButtonText: "取消",
+          inputPlaceholder: "删除",
+          inputValidator: (value: string) => String(value || '').trim() === '删除' || "需要输入「删除」",
+        }
+      );
+      if (String(value || '').trim() !== '删除') return;
+    } else {
+      await ElMessageBox.confirm(
+        `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
+        "删除确认",
+        { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
+      );
+    }
   }catch{
     return;
   }
   try{
-    await apiPost("/api/stocktake/delete", { id: Number(row.id) });
+    await apiPost("/api/stocktake/delete", { id: Number(row.id), confirm: "删除" });
     ElMessage.success("删除成功");
     if (Number(selectedId.value) === Number(row.id)){
       selectedId.value = null;

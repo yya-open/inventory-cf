@@ -1,6 +1,6 @@
 import { errorResponse } from "../_auth";
 import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
-import { requireConfirm } from "../_confirm";
+import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { apiFail, apiOk } from '../_response';
 
@@ -15,20 +15,23 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (!id) return apiFail('缺少盘点单 id', { status: 400, errorCode: 'MISSING_STOCKTAKE_ID' });
 
     await assertPartsStocktakeAccess(env.DB, actor, id, '库存盘点');
-    const st = (await env.DB.prepare(`SELECT id, status FROM stocktake WHERE id=?`).bind(id).first()) as any;
+    const st = (await env.DB.prepare(`SELECT id, st_no, status FROM stocktake WHERE id=?`).bind(id).first()) as any;
     if (!st) return apiFail('盘点单不存在', { status: 404, errorCode: 'STOCKTAKE_NOT_FOUND' });
-    if (st.status !== "DRAFT") {
-      return apiFail('仅草稿状态可删除；已应用盘点请先撤销', { status: 400, errorCode: 'STOCKTAKE_NOT_DRAFT' });
+    const status = String(st.status || '');
+    if (status !== 'DRAFT' && status !== 'APPLIED') {
+      return apiFail('仅草稿或已应用完成的盘点单可删除', { status: 400, errorCode: 'STOCKTAKE_INVALID_STATUS' });
     }
 
+    const lineRow = await env.DB.prepare(`SELECT COUNT(1) AS c FROM stocktake_line WHERE stocktake_id=?`).bind(id).first<any>();
+    const lineCount = Number(lineRow?.c || 0);
     const r = await env.DB.batch([
       env.DB.prepare(`DELETE FROM stocktake_line WHERE stocktake_id=?`).bind(id),
-      env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status='DRAFT'`).bind(id),
+      env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status=?`).bind(id, status),
     ]);
 
     const changes = Number((r?.[1] as any)?.meta?.changes ?? 0);
-    await logAudit(env.DB, request, actor, "STOCKTAKE_DELETE", "stocktake", id, { changes });
-    return apiOk({ changes });
+    await logAudit(env.DB, request, actor, "STOCKTAKE_DELETE", "stocktake", id, { st_no: st.st_no, status, line_count: lineCount, changes });
+    return apiOk({ changes, status, line_count: lineCount });
   } catch (e: any) {
     return errorResponse(e);
   }
