@@ -9,6 +9,7 @@ import { bulkDeleteAssets } from './services/asset-bulk-delete';
 import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -39,6 +40,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       await assertArchiveReasonDictionaryValue(env.DB, meta.reason, '归档原因');
       const result = await bulkArchiveAssets(env.DB, 'pc', ids, meta.reason, meta.note || null, user.username || null);
       invalidateSystemDictionaryReferenceCache();
+      if (result.changed) invalidateAssetListCache('pc-assets');
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,
@@ -63,6 +65,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       const result = timing?.measure
         ? await timing.measure('pc_assets_restore', () => bulkRestoreAssets(env.DB, 'pc', ids))
         : await bulkRestoreAssets(env.DB, 'pc', ids);
+      if (result.changed) invalidateAssetListCache('pc-assets');
       waitUntil((async () => {
         invalidateSystemDictionaryReferenceCache();
         await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
@@ -88,6 +91,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       const status = String(body?.status || '').trim();
       if (!ALLOWED_STATUS.has(status)) throw Object.assign(new Error('不支持的目标状态'), { status: 400 });
       const result = await bulkUpdatePcStatus(env.DB, ids, status);
+      if (result.changed) invalidateAssetListCache('pc-assets');
       await logAudit(env.DB, request, user, 'PC_ASSET_STATUS_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -172,6 +176,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       });
       if (result.processed) {
         invalidateSystemDictionaryReferenceCache();
+        invalidateAssetListCache('pc-assets');
         await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
       }
       for (const item of result.successes) {
@@ -244,6 +249,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
       const result = await bulkUpdatePcOwner(env.DB, ids, owner);
       invalidateSystemDictionaryReferenceCache();
+      if (result.changed) invalidateAssetListCache('pc-assets');
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'PC_ASSET_OWNER_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,

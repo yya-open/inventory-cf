@@ -4,6 +4,7 @@ import { ensurePcSchema, must, optional, getPcAssetByIdOrSerial, normalizeText, 
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 function assertAssigned(status: any) {
   return String(status) === 'ASSIGNED';
@@ -89,6 +90,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       }
     }
 
+    if (success > duplicated) invalidateAssetListCache('pc-assets');
     return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
   } catch (e: any) {
     return errorResponse(e);

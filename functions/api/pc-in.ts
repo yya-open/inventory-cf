@@ -7,6 +7,7 @@ import { assertDateText, getDataQualitySettings, trimRemarkByRule } from './serv
 import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
@@ -51,6 +52,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       remark,
       createdBy: user.username,
     });
+    invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, 'PC_IN', 'pc_in', no, {
       asset_id: assetId,

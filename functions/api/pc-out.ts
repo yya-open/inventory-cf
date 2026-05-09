@@ -15,6 +15,7 @@ import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByR
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
@@ -67,6 +68,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       createdBy: user.username,
       statusAfter: afterStatus,
     }));
+    invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, 'PC_OUT', 'pc_out', no, {
       asset_id: asset.id,

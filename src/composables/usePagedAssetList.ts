@@ -358,7 +358,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
       } else {
         const controller = new AbortController();
         pageController = controller;
-        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: true, signal: controller.signal })
+        const request = options.fetchPage({ filters, page: nextPage, pageSize: effectivePageSize, fast: !opts.forceRefresh, signal: controller.signal })
           .finally(() => {
             const active = pageRequests.get(pageKey);
             if (active?.promise === request) pageRequests.delete(pageKey);

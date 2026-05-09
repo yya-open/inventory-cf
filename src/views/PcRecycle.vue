@@ -248,7 +248,8 @@ async function loadAssets(keyword = "", force = false) {
     params.set("status", "ASSIGNED");
     params.set("page", "1");
     params.set("page_size", "50");
-    params.set("fast", "1");
+    if (force) params.set("no_cache", String(Date.now()));
+    else params.set("fast", "1");
     if (normalizedKeyword) params.set("keyword", normalizedKeyword);
     const r: any = await apiGet(`/api/pc-assets?${params.toString()}`);
     if (seq !== activeLoadSeq) return;

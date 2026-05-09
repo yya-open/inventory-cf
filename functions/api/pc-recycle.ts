@@ -5,6 +5,7 @@ import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { createTiming } from './_timing';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 function assertAssigned(status: any) {
   return String(status) === 'ASSIGNED';
@@ -66,6 +67,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       remark,
       createdBy: user.username,
     }));
+    invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, pcRecycleAuditAction(action), 'pc_recycle', no, {
       asset_id: asset.id,
