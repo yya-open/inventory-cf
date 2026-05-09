@@ -314,6 +314,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (effectivePageSize !== pageSize.value) pageSize.value = effectivePageSize;
     const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
     const ttlMs = Number(options.cacheTtlMs ?? 30_000);
+    const shouldPrefetch = !opts.forceRefresh;
     const cached = hydrateWarmCache(filterKey, nextPage, effectivePageSize, ttlMs);
 
     if (cached && !opts.keepPage) page.value = 1;
@@ -393,7 +394,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         totalCache.set(filterKey, total.value);
         persistTotal(options, filterKey, total.value);
         patchPageCacheTotal(cachePrefix, total.value);
-        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
+        if (shouldPrefetch) prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
         return;
       }
 
@@ -419,7 +420,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         total.value = resolveKnownTotal(filterKey, knownTotal);
         patchPageCacheTotal(cachePrefix, total.value);
         persistTotal(options, filterKey, total.value);
-        prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
+        if (shouldPrefetch) prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
         return;
       }
 
@@ -429,7 +430,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         patchPageCacheTotal(cachePrefix, cachedTotal);
       }
 
-      prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
+      if (shouldPrefetch) prefetchNextPage(filters, filterKey, nextPage, effectivePageSize, rows.value as TItem[]);
       totalController = new AbortController();
       totalTimer = setTimeout(async () => {
         const totalSeq = requestSeq;
