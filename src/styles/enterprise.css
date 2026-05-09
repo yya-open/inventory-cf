@@ -1,9 +1,12 @@
 :root {
-  --ent-bg: #eef3f8;
-  --ent-bg-top: #e6edf6;
-  --ent-bg-mid: #f6f8fb;
-  --ent-bg-bottom: #edf2f7;
-  --ent-bg-line: rgba(121, 139, 163, 0.10);
+  --ent-bg: #edf2f7;
+  --ent-bg-top: #dde8f4;
+  --ent-bg-mid: #f5f8fb;
+  --ent-bg-bottom: #e8eef5;
+  --ent-bg-panel: rgba(31, 95, 191, 0.075);
+  --ent-bg-panel-warm: rgba(154, 120, 64, 0.045);
+  --ent-bg-panel-cool: rgba(24, 109, 128, 0.055);
+  --ent-bg-line: rgba(91, 111, 138, 0.115);
   --ent-surface: #ffffff;
   --ent-surface-muted: #f7f9fc;
   --ent-border: #d8dee9;
@@ -42,10 +45,13 @@ body {
 
 .app-bg {
   background:
-    linear-gradient(180deg, var(--ent-bg-top) 0, var(--ent-bg-mid) 260px, var(--ent-bg-bottom) 100%),
+    linear-gradient(180deg, var(--ent-bg-top) 0, var(--ent-bg-mid) 238px, var(--ent-bg-bottom) 100%),
+    linear-gradient(132deg, var(--ent-bg-panel) 0 18%, transparent 18% 100%),
+    linear-gradient(154deg, transparent 0 58%, var(--ent-bg-panel-cool) 58% 72%, transparent 72% 100%),
+    linear-gradient(28deg, transparent 0 74%, var(--ent-bg-panel-warm) 74% 86%, transparent 86% 100%),
     linear-gradient(90deg, var(--ent-bg-line) 1px, transparent 1px),
     linear-gradient(180deg, var(--ent-bg-line) 1px, transparent 1px) !important;
-  background-size: auto, 56px 56px, 56px 56px !important;
+  background-size: auto, auto, auto, auto, 64px 64px, 64px 64px !important;
 }
 
 .app-layout {
@@ -53,9 +59,31 @@ body {
 }
 
 .app-main {
+  position: relative;
   background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0, rgba(255, 255, 255, 0) 180px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.28) 0, rgba(255, 255, 255, 0) 170px),
     transparent;
+}
+
+.app-main::before {
+  content: "";
+  position: fixed;
+  top: 56px;
+  right: 0;
+  bottom: 0;
+  left: var(--sidebar-width, 72px);
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(90deg, rgba(255, 255, 255, 0.46) 0 48px, transparent 48px),
+    linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0 92px, transparent 92px),
+    repeating-linear-gradient(135deg, rgba(31, 95, 191, 0.035) 0 1px, transparent 1px 18px);
+  opacity: 0.86;
+}
+
+.page-wrap {
+  position: relative;
+  z-index: 1;
 }
 
 .app-aside {
