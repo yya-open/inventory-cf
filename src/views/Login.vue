@@ -213,28 +213,55 @@ async function changePassword() {
 
 <style scoped>
 .login-page {
+  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 32px;
+  overflow: hidden;
   background:
-    radial-gradient(circle at 14% 18%, rgba(59, 130, 246, 0.14), transparent 24%),
-    radial-gradient(circle at 88% 14%, rgba(20, 184, 166, 0.14), transparent 22%),
-    radial-gradient(circle at 72% 88%, rgba(245, 158, 11, 0.10), transparent 20%),
-    linear-gradient(180deg, #f5f7fb 0%, #eef2f7 100%);
+    radial-gradient(circle at 12% 16%, rgba(52, 116, 210, 0.22), transparent 28%),
+    radial-gradient(circle at 86% 12%, rgba(28, 174, 157, 0.20), transparent 26%),
+    radial-gradient(circle at 76% 88%, rgba(245, 165, 64, 0.16), transparent 24%),
+    linear-gradient(135deg, #eef5ff 0%, #f7fafc 42%, #eef8f5 100%);
+}
+
+.login-page::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(rgba(255, 255, 255, 0.28) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255, 255, 255, 0.22) 1px, transparent 1px);
+  background-size: 72px 72px;
+  mask-image: linear-gradient(135deg, transparent 0%, #000 22%, #000 76%, transparent 100%);
+}
+
+.login-page::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background:
+    radial-gradient(circle at center, transparent 42%, rgba(15, 23, 42, 0.10) 100%);
 }
 
 .login-shell {
+  position: relative;
+  z-index: 1;
   width: min(1040px, 100%);
   min-height: 560px;
   display: grid;
   grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
   overflow: hidden;
-  border: 1px solid #d9e1ea;
+  border: 1px solid rgba(186, 201, 219, 0.78);
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.11);
+  box-shadow:
+    0 24px 70px rgba(42, 69, 105, 0.18),
+    0 8px 24px rgba(20, 184, 166, 0.08);
 }
 
 .login-wallpaper {
@@ -281,7 +308,8 @@ async function changePassword() {
   justify-content: center;
   min-width: 0;
   padding: 52px 44px;
-  background: #ffffff;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(250, 253, 255, 0.98) 100%);
 }
 
 .login-card__eyebrow {
