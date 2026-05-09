@@ -1251,7 +1251,7 @@ onActivated(() => {
     invalidatePagedListNamespace('pc-assets');
     invalidateCache();
     invalidateTotal();
-    void hydrateViewData({ keepPage: true, silent: true, forceRefresh: true });
+    void hydrateViewData({ keepPage: false, silent: false, forceRefresh: true });
     return;
   }
   if (Date.now() - lastRefreshAt < SOFT_REFRESH_TTL_MS) return;

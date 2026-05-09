@@ -12,7 +12,7 @@ import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } f
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
+export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   try {
     const user = await requirePermission(env, request, 'bulk_operation', 'viewer');
     const url = new URL(request.url);
@@ -48,16 +48,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }
 
     if (action === 'restore') {
-      const result = await bulkRestoreAssets(env.DB, 'pc', ids);
-      invalidateSystemDictionaryReferenceCache();
-      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
-      await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), {
-        ids: result.ids,
-        requested_ids: ids,
-        count: result.changed,
-        skipped: result.skipped,
-        skipped_ids: result.skippedIds,
-      });
+      const timing = (env as any).__timing;
+      const result = timing?.measure
+        ? await timing.measure('pc_assets_restore', () => bulkRestoreAssets(env.DB, 'pc', ids))
+        : await bulkRestoreAssets(env.DB, 'pc', ids);
+      waitUntil((async () => {
+        invalidateSystemDictionaryReferenceCache();
+        await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
+        await logAudit(env.DB, request, user, 'PC_ASSET_RESTORE_BATCH', 'pc_assets', String(ids.length), {
+          ids: result.ids,
+          requested_ids: ids,
+          count: result.changed,
+          skipped: result.skipped,
+          skipped_ids: result.skippedIds,
+        });
+      })().catch(() => {}));
       return Response.json({
         ok: true,
         restored: result.changed,
