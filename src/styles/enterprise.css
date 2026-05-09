@@ -1,5 +1,9 @@
 :root {
-  --ent-bg: #f1f4f8;
+  --ent-bg: #eef3f8;
+  --ent-bg-top: #e6edf6;
+  --ent-bg-mid: #f6f8fb;
+  --ent-bg-bottom: #edf2f7;
+  --ent-bg-line: rgba(121, 139, 163, 0.10);
   --ent-surface: #ffffff;
   --ent-surface-muted: #f7f9fc;
   --ent-border: #d8dee9;
@@ -37,12 +41,21 @@ body {
 }
 
 .app-bg {
-  background: var(--ent-bg) !important;
+  background:
+    linear-gradient(180deg, var(--ent-bg-top) 0, var(--ent-bg-mid) 260px, var(--ent-bg-bottom) 100%),
+    linear-gradient(90deg, var(--ent-bg-line) 1px, transparent 1px),
+    linear-gradient(180deg, var(--ent-bg-line) 1px, transparent 1px) !important;
+  background-size: auto, 56px 56px, 56px 56px !important;
 }
 
-.app-layout,
+.app-layout {
+  background: transparent;
+}
+
 .app-main {
-  background: var(--ent-bg);
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.18) 0, rgba(255, 255, 255, 0) 180px),
+    transparent;
 }
 
 .app-aside {
