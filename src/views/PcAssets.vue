@@ -1078,7 +1078,6 @@ async function exportArchiveRecords() {
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档电脑记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, formatBeijingDateTime });
-    ElMessage.success('归档电脑记录已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出归档记录失败');
   } finally {

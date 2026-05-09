@@ -399,7 +399,7 @@ async function doExport() {
       if (!pageRows.length) break;
     } while (allRows.length < totalRows && currentPage < 500);
 
-    exportToXlsx({
+    await exportToXlsx({
       filename: `配件出入库明细_${beijingTodayYmd()}.xlsx`,
       sheetName: "出入库明细",
       headers: [
@@ -427,7 +427,6 @@ async function doExport() {
         remark: r.remark || "",
       })),
     });
-    ElMessage.success(`已导出 Excel（${allRows.length} 条）`);
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {

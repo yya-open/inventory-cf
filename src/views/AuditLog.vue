@@ -1262,8 +1262,8 @@ function buildAuditExportFilename(scope: 'current' | 'all') {
   return scope === 'current' ? `audit_current_${stamp}.xlsx` : `audit_filtered_${stamp}.xlsx`;
 }
 
-function exportAuditRows(rowsToExport: any[], filename: string) {
-  exportToXlsx({
+async function exportAuditRows(rowsToExport: any[], filename: string) {
+  await exportToXlsx({
     filename,
     sheetName: '审计日志',
     headers: [
@@ -1295,8 +1295,8 @@ async function exportFilteredRows() {
       return;
     }
     const result: any = await fetchAuditExportRows('all');
-    exportAuditRows(result?.data || [], buildAuditExportFilename('all'));
-    ElMessage.success(result?.limited ? `已导出 ${result?.exported || 0} 条（达到上限）` : '筛选结果已导出');
+    await exportAuditRows(result?.data || [], buildAuditExportFilename('all'));
+    if (result?.limited) ElMessage.warning(`导出达到上限：${result?.exported || 0} 条`);
   } catch (error: any) {
     ElMessage.error(error?.message || '导出筛选结果失败');
   }
@@ -1310,8 +1310,7 @@ async function exportCurrentRows() {
       return;
     }
     const result: any = await fetchAuditExportRows('current');
-    exportAuditRows(result?.data || [], buildAuditExportFilename('current'));
-    ElMessage.success('当前页已导出');
+    await exportAuditRows(result?.data || [], buildAuditExportFilename('current'));
   } catch (error: any) {
     ElMessage.error(error?.message || '导出当前页失败');
   }

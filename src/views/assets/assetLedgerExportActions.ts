@@ -1,6 +1,6 @@
 export type ExcelHeader = { key: string; title: string };
 
-type LoadExcelUtils = () => Promise<{ exportToXlsx: (args: { filename: string; sheetName: string; headers: ExcelHeader[]; rows: Array<Record<string, any>> }) => void }>;
+type LoadExcelUtils = () => Promise<{ exportToXlsx: (args: { filename: string; sheetName: string; headers: ExcelHeader[]; rows: Array<Record<string, any>> }) => Promise<void> }>;
 
 const pcLedgerHeaders: ExcelHeader[] = [
   { key: 'id', title: 'ID' },
@@ -67,7 +67,7 @@ async function exportWorkbook(options: {
   loadExcelUtils: LoadExcelUtils;
 }) {
   const { exportToXlsx } = await options.loadExcelUtils();
-  exportToXlsx({ filename: options.filename, sheetName: options.sheetName, headers: options.headers, rows: options.rows });
+  await exportToXlsx({ filename: options.filename, sheetName: options.sheetName, headers: options.headers, rows: options.rows });
 }
 
 export async function exportPcSelectedRows(options: { rows: Array<Record<string, any>>; loadExcelUtils: LoadExcelUtils; assetStatusText: (status: string) => string; formatBeijingDateTime: (value: any) => string; }) {

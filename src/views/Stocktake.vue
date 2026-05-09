@@ -799,13 +799,12 @@ async function exportStocktakeReport(){
   const filename = `盘点结果报表_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}.xlsx`;
   XLSX.writeFile(wb, filename);
   notifyDownloadStarted(filename, '导出');
-  ElMessage.success('盘点结果报表已导出');
 }
 
-function exportFilteredLines(){
+async function exportFilteredLines(){
   if (!detail.value || !filteredLines.value.length) return ElMessage.warning('当前没有可导出的盘点明细');
   const filterLabel = { all: '全部', changed: '差异', increase: '盘盈', decrease: '盘亏', pending: '未盘' }[lineFilter.value] || '全部';
-  exportToXlsx({
+  await exportToXlsx({
     filename: `盘点明细_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}_${filterLabel}.xlsx`,
     sheetName: '盘点明细',
     headers: [
@@ -824,7 +823,6 @@ function exportFilteredLines(){
       updated_at_text: formatBeijingDateTime(row.updated_at),
     })),
   });
-  ElMessage.success('盘点明细已导出');
 }
 
 async function downloadCountTemplate(){

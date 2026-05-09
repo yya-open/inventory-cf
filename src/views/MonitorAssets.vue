@@ -1061,7 +1061,6 @@ async function exportArchiveRecords() {
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档显示器记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, locationText, formatBeijingDateTime });
-    ElMessage.success('归档显示器记录已导出');
   } catch (error: any) {
     ElMessage.error(error?.message || '导出归档记录失败');
   } finally {

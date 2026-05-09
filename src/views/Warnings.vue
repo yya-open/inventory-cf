@@ -453,7 +453,6 @@ async function exportCsv() {
     if (filters.keyword.trim()) qs.set("keyword", filters.keyword.trim());
 
     await apiDownload(`/api/warnings/export?${qs.toString()}`, `配件库存预警_${beijingTodayCompact()}.csv`);
-    ElMessage.success("已导出 CSV");
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {
@@ -487,7 +486,6 @@ async function exportXlsx() {
 
     XLSX.writeFile(wb, filename);
     notifyDownloadStarted(filename, '导出');
-    ElMessage.success("已导出 Excel");
   } catch (e: any) {
     ElMessage.error((e as any)?.message || "导出失败");
   } finally {

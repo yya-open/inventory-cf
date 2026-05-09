@@ -430,7 +430,7 @@ async function exportExcel() {
       ...r,
       created_at: formatBjTime(r.created_at),
     }));
-    exportToXlsx({
+    await exportToXlsx({
       filename: "电脑出入库明细_仓库2.xlsx",
       sheetName: "明细",
       headers: [

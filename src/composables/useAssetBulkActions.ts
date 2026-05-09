@@ -45,7 +45,7 @@ export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
   async function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
     if (!rows.length) return;
     const { exportToXlsx } = await options.loadExcelUtils();
-    exportToXlsx({
+    await exportToXlsx({
       filename,
       sheetName: '失败明细',
       headers: Object.keys(rows[0]).map((key) => ({ key, title: key })),

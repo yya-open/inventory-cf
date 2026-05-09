@@ -10,7 +10,7 @@ export type ExportToXlsxFn = (options: {
   sheetName: string;
   headers: Array<{ key: string; title: string }>;
   rows: Array<Record<string, any>>;
-}) => void;
+}) => Promise<void>;
 
 export type AssetQrExportProgress = { stage: string; current: number; total: number; detail?: string };
 export type AssetQrExportProgressCallback = (progress: AssetQrExportProgress) => void;
@@ -115,7 +115,7 @@ export async function exportAssetQrLinksWorkbook<T>(options: {
   const { exportToXlsx } = await options.loadExcelUtils();
   const qrLinkMap = await fetchAssetQrLinkMap(options);
   const linkRows = options.rows.map((row) => options.mapWorkbookRow(row, qrLinkMap.get(Number(options.getId(row))) || ''));
-  exportToXlsx({
+  await exportToXlsx({
     filename: options.filename,
     sheetName: options.sheetName || '二维码链接',
     headers: options.headers,

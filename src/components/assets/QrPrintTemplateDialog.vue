@@ -287,12 +287,10 @@ function buildExportFilename(mode: 'template' | 'bundle') {
 
 function exportCurrentTemplate() {
   downloadJsonFile(exportQrPrintTemplate(props.kind, form.value, props.scope), buildExportFilename('template'));
-  ElMessage.success('当前模板已导出');
 }
 
 function exportPresetBundle() {
   downloadJsonFile(exportQrPrintTemplateBundle(props.kind, props.scope), buildExportFilename('bundle'));
-  ElMessage.success('模板预设包已导出');
 }
 
 function triggerImport() {

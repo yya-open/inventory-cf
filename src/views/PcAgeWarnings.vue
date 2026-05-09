@@ -295,7 +295,7 @@ async function createScrap() {
       报废原因: x.reason || '',
     }));
 
-    exportToXlsx({
+    await exportToXlsx({
       filename: `电脑仓_报废单_${scrapNo}.xlsx`,
       headers: [
         { key: '报废单号', title: '报废单号' },
@@ -349,7 +349,7 @@ async function exportExcel(all: boolean) {
     const filters = currentFilters();
     const rowsToExport = all ? await fetchAllWarningRows(filters) : rows.value;
     if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的报废预警数据');
-    exportToXlsx({
+    await exportToXlsx({
       filename: `电脑报废预警_${all ? '全部' : '当前页'}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`,
       sheetName: '报废预警',
       headers: [
@@ -379,7 +379,6 @@ async function exportExcel(all: boolean) {
         remark: row.remark || '',
       })),
     });
-    ElMessage.success(all ? `已导出筛选结果（${rowsToExport.length} 条）` : `已导出当前页（${rowsToExport.length} 条）`);
   } catch (e: any) {
     ElMessage.error(e?.message || '导出失败');
   } finally {
