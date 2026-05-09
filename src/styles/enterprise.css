@@ -1,12 +1,12 @@
 :root {
-  --ent-bg: #edf2f7;
-  --ent-bg-top: #dde8f4;
-  --ent-bg-mid: #f5f8fb;
-  --ent-bg-bottom: #e8eef5;
-  --ent-bg-panel: rgba(31, 95, 191, 0.075);
-  --ent-bg-panel-warm: rgba(154, 120, 64, 0.045);
-  --ent-bg-panel-cool: rgba(24, 109, 128, 0.055);
-  --ent-bg-line: rgba(91, 111, 138, 0.115);
+  --ent-bg: #e7eef7;
+  --ent-bg-top: #d7e5f5;
+  --ent-bg-mid: #f3f7fb;
+  --ent-bg-bottom: #e2ebf5;
+  --ent-bg-panel: rgba(31, 95, 191, 0.16);
+  --ent-bg-panel-warm: rgba(142, 102, 43, 0.085);
+  --ent-bg-panel-cool: rgba(12, 112, 138, 0.12);
+  --ent-bg-line: rgba(76, 97, 124, 0.12);
   --ent-surface: #ffffff;
   --ent-surface-muted: #f7f9fc;
   --ent-border: #d8dee9;
@@ -45,13 +45,14 @@ body {
 
 .app-bg {
   background:
-    linear-gradient(180deg, var(--ent-bg-top) 0, var(--ent-bg-mid) 238px, var(--ent-bg-bottom) 100%),
-    linear-gradient(132deg, var(--ent-bg-panel) 0 18%, transparent 18% 100%),
-    linear-gradient(154deg, transparent 0 58%, var(--ent-bg-panel-cool) 58% 72%, transparent 72% 100%),
-    linear-gradient(28deg, transparent 0 74%, var(--ent-bg-panel-warm) 74% 86%, transparent 86% 100%),
+    linear-gradient(180deg, var(--ent-bg-top) 0, #eef5fb 230px, var(--ent-bg-bottom) 100%),
+    linear-gradient(118deg, rgba(31, 95, 191, 0.22) 0 20%, transparent 20% 100%),
+    linear-gradient(142deg, transparent 0 42%, rgba(255, 255, 255, 0.58) 42% 58%, transparent 58% 100%),
+    linear-gradient(154deg, transparent 0 56%, var(--ent-bg-panel-cool) 56% 75%, transparent 75% 100%),
+    linear-gradient(28deg, transparent 0 70%, var(--ent-bg-panel-warm) 70% 88%, transparent 88% 100%),
     linear-gradient(90deg, var(--ent-bg-line) 1px, transparent 1px),
     linear-gradient(180deg, var(--ent-bg-line) 1px, transparent 1px) !important;
-  background-size: auto, auto, auto, auto, 64px 64px, 64px 64px !important;
+  background-size: auto, auto, auto, auto, auto, 64px 64px, 64px 64px !important;
 }
 
 .app-layout {
@@ -75,10 +76,29 @@ body {
   z-index: 0;
   pointer-events: none;
   background:
-    linear-gradient(90deg, rgba(255, 255, 255, 0.46) 0 48px, transparent 48px),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.34) 0 92px, transparent 92px),
-    repeating-linear-gradient(135deg, rgba(31, 95, 191, 0.035) 0 1px, transparent 1px 18px);
-  opacity: 0.86;
+    linear-gradient(90deg, rgba(255, 255, 255, 0.58) 0 46px, transparent 46px),
+    linear-gradient(180deg, rgba(31, 95, 191, 0.11) 0 148px, transparent 148px),
+    linear-gradient(112deg, rgba(30, 80, 150, 0.16) 0 16%, transparent 16% 100%),
+    linear-gradient(68deg, transparent 0 66%, rgba(16, 121, 142, 0.13) 66% 82%, transparent 82% 100%),
+    repeating-linear-gradient(135deg, rgba(31, 95, 191, 0.045) 0 1px, transparent 1px 18px);
+  opacity: 1;
+}
+
+.app-main::after {
+  content: "";
+  position: fixed;
+  top: 76px;
+  right: 18px;
+  bottom: 18px;
+  left: calc(var(--sidebar-width, 72px) + 18px);
+  z-index: 0;
+  pointer-events: none;
+  background:
+    linear-gradient(180deg, rgba(255, 255, 255, 0.56), rgba(255, 255, 255, 0)) 0 0 / 100% 116px no-repeat,
+    linear-gradient(90deg, rgba(31, 95, 191, 0.13), transparent 38%) 0 0 / 52% 100% no-repeat,
+    linear-gradient(270deg, rgba(12, 112, 138, 0.11), transparent 34%) 100% 0 / 42% 100% no-repeat;
+  border-radius: 10px;
+  opacity: 0.95;
 }
 
 .page-wrap {
