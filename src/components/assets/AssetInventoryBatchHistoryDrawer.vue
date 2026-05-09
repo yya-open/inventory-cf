@@ -84,6 +84,7 @@
 <script setup lang="ts">
 import { ElMessage } from '../../utils/el-message';
 import { apiDownload } from '../../api/client';
+import { withExportActionFeedback } from '../../utils/operationFeedback';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
 
 const props = defineProps<{
@@ -151,7 +152,9 @@ function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
 async function downloadSnapshot(item: InventoryBatchRow) {
   try {
     if (!canDownload(item)) return;
-    await apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined);
+    await withExportActionFeedback('下载盘点快照', () =>
+      apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined)
+    );
   } catch (error: any) {
     ElMessage.error(error?.message || '下载结果快照失败');
   }

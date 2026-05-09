@@ -80,6 +80,7 @@ import { computed, ref } from 'vue';
 import { ElMessage } from '../../utils/el-message';
 import { apiDownload } from '../../api/client';
 import { trackUiEvent } from '../../utils/browserPerf';
+import { withExportActionFeedback } from '../../utils/operationFeedback';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
 import { emptyInventoryIssueBreakdown, type AssetInventorySummary, type InventoryIssueBreakdown } from '../../types/assets';
 import AssetInventoryIssueBreakdownPanel from './AssetInventoryIssueBreakdownPanel.vue';
@@ -171,7 +172,9 @@ async function downloadSnapshot(item: InventoryBatchRow) {
       },
       urgent: true,
     });
-    await apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined);
+    await withExportActionFeedback('下载盘点快照', () =>
+      apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined)
+    );
   } catch (error: any) {
     ElMessage.error(error?.message || '下载结果快照失败');
   }
