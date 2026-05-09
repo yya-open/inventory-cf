@@ -1,39 +1,13 @@
 <template>
   <div class="login-page">
-    <div class="login-page__orb login-page__orb--left"></div>
-    <div class="login-page__orb login-page__orb--right"></div>
     <div class="login-shell">
-      <div class="login-hero">
-        <div class="login-hero__badge">欢迎回来</div>
-        <div class="login-hero__title">让今天的工作，从一次顺畅登录开始</div>
-        <div class="login-hero__quote">
-          <div class="login-hero__quote-text">{{ hitokotoText }}</div>
-          <div v-if="hitokotoFrom" class="login-hero__quote-from">—— {{ hitokotoFrom }}</div>
-        </div>
+      <section class="login-wallpaper" aria-hidden="true">
+        <img class="login-wallpaper__image" :src="loginWallpaper" alt="" />
+      </section>
 
-        <div class="login-hero__visual" aria-hidden="true">
-          <div class="login-hero__visual-glow"></div>
-          <div class="login-hero__visual-card login-hero__visual-card--main">
-            <div class="login-hero__visual-eyebrow">WELCOME</div>
-            <div class="login-hero__visual-heading">欢迎进入系统</div>
-            <div class="login-hero__visual-copy">登录后即可回到你的工作台，继续今天的安排。</div>
-          </div>
-          <div class="login-hero__visual-card login-hero__visual-card--side">
-            <div class="login-hero__visual-dot"></div>
-            <div>
-              <div class="login-hero__visual-side-title">Hi</div>
-              <div class="login-hero__visual-side-copy">愿今天一切顺利</div>
-            </div>
-          </div>
-        </div>
-
-        <div class="login-hero__note">请输入账号和密码继续访问系统。</div>
-      </div>
-
-      <el-card class="login-card" shadow="never">
-        <div class="login-card__brand">欢迎登录</div>
-        <div class="login-card__title">继续进入系统</div>
-        <div class="login-card__desc">请输入账号和密码，进入你的工作台。</div>
+      <section class="login-card" aria-label="登录表单">
+        <div class="login-card__eyebrow">系统登录</div>
+        <div class="login-card__title">请输入账号密码</div>
         <el-form label-position="top" @submit.prevent>
           <el-form-item label="账号">
             <el-input
@@ -62,7 +36,7 @@
             {{ loading ? '登录中…' : '登录' }}
           </el-button>
         </el-form>
-      </el-card>
+      </section>
     </div>
 
     <el-dialog
@@ -95,14 +69,14 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
+import { nextTick, onBeforeUnmount, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
+import loginWallpaper from "../assets/login-wallpaper.svg";
 import { ElMessage } from "../utils/el-message";
 import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
 import { validatePassword } from "../utils/password";
-import { readHitokotoCache, writeHitokotoCache } from "../utils/hitokotoCache";
 
 const route = useRoute();
 const router = useRouter();
@@ -185,52 +159,6 @@ const oldP = ref("");
 const newP = ref("");
 const changing = ref(false);
 
-const defaultHitokotoText = "愿你今天录入顺利、盘点顺心，每一笔记录都清晰可查。";
-const defaultHitokotoFrom = "欢迎回来";
-const hitokotoText = ref(defaultHitokotoText);
-const hitokotoFrom = ref(defaultHitokotoFrom);
-const HITOKOTO_CACHE_TTL = 15 * 60 * 1000;
-
-function applyHitokoto(text?: string, from?: string) {
-  hitokotoText.value = String(text || '').trim() || defaultHitokotoText;
-  hitokotoFrom.value = String(from || '').trim() || defaultHitokotoFrom;
-}
-
-async function loadHitokoto() {
-  const cached = readHitokotoCache(HITOKOTO_CACHE_TTL);
-  if (cached?.text) {
-    applyHitokoto(cached.text, cached.from);
-    if (cached.fresh) return;
-  }
-
-  const controller = new AbortController();
-  const timer = window.setTimeout(() => controller.abort(), 3500);
-  try {
-    const response = await fetch("https://v1.hitokoto.cn/?c=d&c=i&c=k&encode=json", {
-      method: "GET",
-      signal: controller.signal,
-    });
-    if (!response.ok) throw new Error(`HTTP ${response.status}`);
-    const data = await response.json();
-    const text = typeof data?.hitokoto === "string" ? data.hitokoto.trim() : "";
-    const from = [data?.from_who, data?.from].filter(Boolean).join(" · ");
-    if (text) {
-      applyHitokoto(text, from || defaultHitokotoFrom);
-      writeHitokotoCache({ text, from: from || defaultHitokotoFrom });
-      return;
-    }
-    if (!cached?.text) applyHitokoto();
-  } catch {
-    if (!cached?.text) applyHitokoto();
-  } finally {
-    window.clearTimeout(timer);
-  }
-}
-
-onMounted(() => {
-  void loadHitokoto();
-});
-
 async function doLogin() {
   loading.value = true;
   try {
@@ -285,238 +213,108 @@ async function changePassword() {
 
 <style scoped>
 .login-page {
-  position: relative;
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 32px;
-  overflow: hidden;
   background:
-    radial-gradient(circle at top left, rgba(64, 158, 255, 0.18), transparent 32%),
-    radial-gradient(circle at bottom right, rgba(103, 194, 58, 0.12), transparent 24%),
-    linear-gradient(135deg, #f3f7ff 0%, #f7f8fa 42%, #eef4ff 100%);
-}
-
-.login-page__orb {
-  position: absolute;
-  border-radius: 999px;
-  filter: blur(12px);
-  pointer-events: none;
-}
-
-.login-page__orb--left {
-  width: 260px;
-  height: 260px;
-  left: -80px;
-  top: 120px;
-  background: rgba(64, 158, 255, 0.15);
-}
-
-.login-page__orb--right {
-  width: 220px;
-  height: 220px;
-  right: -70px;
-  bottom: 90px;
-  background: rgba(103, 194, 58, 0.12);
+    radial-gradient(circle at 14% 18%, rgba(59, 130, 246, 0.14), transparent 24%),
+    radial-gradient(circle at 88% 14%, rgba(20, 184, 166, 0.14), transparent 22%),
+    radial-gradient(circle at 72% 88%, rgba(245, 158, 11, 0.10), transparent 20%),
+    linear-gradient(180deg, #f5f7fb 0%, #eef2f7 100%);
 }
 
 .login-shell {
-  position: relative;
-  z-index: 1;
-  width: min(1140px, 100%);
+  width: min(1040px, 100%);
+  min-height: 560px;
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 28px;
-  align-items: stretch;
-}
-
-.login-hero {
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  min-height: 580px;
-  padding: 40px;
-  border-radius: 28px;
-  color: #1f2329;
-  background: rgba(255, 255, 255, 0.72);
-  backdrop-filter: blur(10px);
-  box-shadow: 0 24px 80px rgba(31, 35, 41, 0.08);
-  border: 1px solid rgba(255, 255, 255, 0.7);
-}
-
-.login-hero__badge {
-  display: inline-flex;
-  width: fit-content;
-  padding: 6px 12px;
-  border-radius: 999px;
-  background: rgba(64, 158, 255, 0.12);
-  color: #337ecc;
-  font-size: 12px;
-  font-weight: 600;
-}
-
-.login-hero__title {
-  margin-top: 18px;
-  max-width: 560px;
-  font-size: 42px;
-  line-height: 1.15;
-  font-weight: 800;
-}
-
-.login-hero__quote {
-  margin-top: 18px;
-  max-width: 560px;
-  padding: 16px 18px;
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.72);
-  border: 1px solid rgba(214, 225, 240, 0.95);
-  box-shadow: 0 10px 24px rgba(31, 35, 41, 0.04);
-}
-
-.login-hero__quote-text {
-  font-size: 16px;
-  line-height: 1.9;
-  color: #4b5563;
-}
-
-.login-hero__quote-from {
-  margin-top: 8px;
-  font-size: 13px;
-  color: #7b8794;
-}
-
-.login-hero__visual {
-  position: relative;
-  margin-top: 32px;
-  min-height: 250px;
-  border-radius: 26px;
+  grid-template-columns: minmax(0, 1.15fr) minmax(360px, 0.85fr);
   overflow: hidden;
+  border: 1px solid #d9e1ea;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 18px 44px rgba(15, 23, 42, 0.11);
+}
+
+.login-wallpaper {
+  position: relative;
+  min-width: 0;
+  min-height: 560px;
+  overflow: hidden;
+  border-right: 1px solid #e2e8f0;
+  background: #dceaf6;
+}
+
+.login-wallpaper::before,
+.login-wallpaper::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.login-wallpaper::before {
+  z-index: 1;
   background:
-    linear-gradient(145deg, rgba(64, 158, 255, 0.16), rgba(64, 158, 255, 0.04)),
-    linear-gradient(180deg, rgba(255, 255, 255, 0.82), rgba(245, 249, 255, 0.92));
-  border: 1px solid rgba(214, 225, 240, 0.92);
+    linear-gradient(90deg, rgba(15, 23, 42, 0.08), rgba(15, 23, 42, 0)),
+    radial-gradient(circle at 18% 18%, rgba(255, 255, 255, 0.34), transparent 34%);
 }
 
-.login-hero__visual-glow {
-  position: absolute;
-  width: 220px;
-  height: 220px;
-  right: -30px;
-  top: -50px;
-  border-radius: 999px;
-  background: radial-gradient(circle, rgba(64, 158, 255, 0.28), rgba(64, 158, 255, 0));
+.login-wallpaper::after {
+  z-index: 2;
+  box-shadow: inset 0 0 80px rgba(15, 23, 42, 0.10);
 }
 
-.login-hero__visual-card {
-  position: absolute;
-  border-radius: 22px;
-  background: rgba(255, 255, 255, 0.88);
-  box-shadow: 0 18px 40px rgba(31, 35, 41, 0.08);
-  border: 1px solid rgba(224, 232, 241, 0.92);
-}
-
-.login-hero__visual-card--main {
-  left: 28px;
-  top: 34px;
-  width: min(440px, calc(100% - 56px));
-  padding: 26px 28px;
-}
-
-.login-hero__visual-card--side {
-  right: 26px;
-  bottom: 26px;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 14px 16px;
-}
-
-.login-hero__visual-eyebrow {
-  font-size: 12px;
-  letter-spacing: 0.16em;
-  color: #7f8a99;
-  font-weight: 700;
-}
-
-.login-hero__visual-heading {
-  margin-top: 10px;
-  font-size: 28px;
-  line-height: 1.2;
-  font-weight: 800;
-  color: #1f2329;
-}
-
-.login-hero__visual-copy {
-  margin-top: 10px;
-  max-width: 320px;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #66707f;
-}
-
-.login-hero__visual-dot {
-  width: 12px;
-  height: 12px;
-  border-radius: 999px;
-  background: linear-gradient(135deg, #409eff, #7bc4ff);
-  box-shadow: 0 0 0 6px rgba(64, 158, 255, 0.14);
-}
-
-.login-hero__visual-side-title {
-  font-size: 16px;
-  font-weight: 700;
-  color: #1f2329;
-}
-
-.login-hero__visual-side-copy {
-  margin-top: 3px;
-  font-size: 13px;
-  color: #707782;
-}
-
-.login-hero__note {
-  margin-top: 18px;
-  font-size: 14px;
-  line-height: 1.8;
-  color: #6c7684;
+.login-wallpaper__image {
+  width: 100%;
+  height: 100%;
+  min-height: 560px;
+  display: block;
+  object-fit: cover;
+  transform: scale(1.02);
 }
 
 .login-card {
-  min-height: 580px;
-  border-radius: 28px;
-  border: none;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 28px 80px rgba(31, 35, 41, 0.12);
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  min-width: 0;
+  padding: 52px 44px;
+  background: #ffffff;
 }
 
-.login-card__brand {
-  font-size: 13px;
-  color: #337ecc;
-  font-weight: 700;
-  letter-spacing: 0.08em;
+.login-card__eyebrow {
+  color: #315b8c;
+  font-size: 14px;
+  font-weight: 600;
 }
 
 .login-card__title {
-  margin-top: 12px;
-  font-size: 30px;
-  font-weight: 800;
-  color: #1f2329;
-}
-
-.login-card__desc {
-  margin-top: 8px;
-  margin-bottom: 22px;
-  color: #7a818d;
-  line-height: 1.7;
+  margin: 10px 0 28px;
+  color: #182235;
+  font-size: 24px;
+  font-weight: 700;
+  line-height: 1.3;
 }
 
 .login-submit {
   width: 100%;
-  height: 44px;
-  border-radius: 12px;
-  font-weight: 700;
-  margin-top: 4px;
+  height: 42px;
+  margin-top: 2px;
+  border-radius: 6px;
+  font-weight: 600;
+  border: 0;
+  background: linear-gradient(135deg, #3b82f6 0%, #14b8a6 100%);
+  box-shadow: 0 12px 22px rgba(59, 130, 246, 0.18);
+}
+
+.login-submit:hover {
+  background: linear-gradient(135deg, #4c8df7 0%, #17c0a9 100%);
+}
+
+.login-submit:focus-visible {
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.14), 0 12px 22px rgba(59, 130, 246, 0.18);
 }
 
 .login-turnstile {
@@ -535,65 +333,67 @@ async function changePassword() {
   margin-top: 6px;
 }
 
-:deep(.login-card .el-card__body) {
-  height: 100%;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  padding: 40px;
-}
-
 :deep(.login-card .el-form-item__label) {
+  padding-bottom: 7px;
+  color: #465267;
   font-weight: 600;
-  color: #404552;
 }
 
 :deep(.login-card .el-input__wrapper) {
-  min-height: 44px;
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px rgba(31, 35, 41, 0.06) inset;
+  min-height: 42px;
+  border-radius: 6px;
+  background: #fbfdff;
+  box-shadow: 0 0 0 1px #d8e0ea inset;
+}
+
+:deep(.login-card .el-input__wrapper:hover) {
+  box-shadow: 0 0 0 1px #aebccc inset;
+}
+
+:deep(.login-card .el-input__wrapper.is-focus) {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px #409eff inset;
 }
 
 @media (max-width: 980px) {
   .login-shell {
     grid-template-columns: 1fr;
+    min-height: 0;
   }
 
-  .login-hero,
-  .login-card {
-    min-height: auto;
+  .login-wallpaper {
+    padding: 34px;
+    border-right: 0;
+    border-bottom: 1px solid #e1e6ef;
+    min-height: 300px;
   }
 
-  .login-hero {
-    padding: 28px;
-  }
-
-  .login-hero__title {
-    font-size: 34px;
+  .login-wallpaper__image {
+    min-height: 300px;
   }
 }
 
 @media (max-width: 640px) {
   .login-page {
-    padding: 18px;
-    background: linear-gradient(135deg, #f3f7ff 0%, #f7f8fa 100%);
-  }
-
-  .login-page__orb {
-    display: none;
-  }
-
-  .login-hero {
-    display: none;
+    align-items: stretch;
+    padding: 12px;
   }
 
   .login-shell {
-    width: 100%;
-    grid-template-columns: 1fr;
+    align-self: center;
+    border-radius: 6px;
+  }
+
+  .login-wallpaper {
+    display: none;
+  }
+
+  .login-card {
+    padding: 32px 22px;
   }
 
   .login-card__title {
-    font-size: 26px;
+    font-size: 22px;
   }
 }
 </style>

@@ -1,0 +1,109 @@
+<svg width="1200" height="900" viewBox="0 0 1200 900" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <style>
+    .word-set {
+      font-family: "Microsoft YaHei", "PingFang SC", "Noto Sans CJK SC", sans-serif;
+      font-weight: 700;
+      letter-spacing: 0.08em;
+      opacity: 0;
+      animation: wordFade 18s ease-in-out infinite;
+    }
+
+    .word-set--two {
+      animation-delay: 6s;
+    }
+
+    .word-set--three {
+      animation-delay: 12s;
+    }
+
+    @keyframes wordFade {
+      0%, 26%, 100% {
+        opacity: 0;
+        transform: translateY(10px);
+      }
+      8%, 18% {
+        opacity: 1;
+        transform: translateY(0);
+      }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .word-set {
+        animation: none;
+      }
+
+      .word-set--one {
+        opacity: 1;
+      }
+    }
+  </style>
+  <rect width="1200" height="900" fill="#EAF2FA"/>
+  <g filter="url(#softBlur)">
+    <circle cx="208" cy="194" r="260" fill="#7DB7FF" fill-opacity="0.52"/>
+    <circle cx="960" cy="132" r="318" fill="#8BE0D6" fill-opacity="0.46"/>
+    <circle cx="832" cy="744" r="310" fill="#F6C167" fill-opacity="0.42"/>
+    <circle cx="286" cy="762" r="260" fill="#A5D8A8" fill-opacity="0.34"/>
+  </g>
+  <path d="M0 610C126 546 226 532 358 570C512 615 610 718 774 668C934 620 1004 468 1200 494V900H0V610Z" fill="url(#waveA)" fill-opacity="0.72"/>
+  <path d="M0 706C168 632 316 666 466 710C664 768 776 806 956 704C1042 655 1116 628 1200 640V900H0V706Z" fill="url(#waveB)" fill-opacity="0.7"/>
+  <g opacity="0.42">
+    <path d="M168 180H1032" stroke="white" stroke-opacity="0.55"/>
+    <path d="M168 290H1032" stroke="white" stroke-opacity="0.38"/>
+    <path d="M168 400H1032" stroke="white" stroke-opacity="0.34"/>
+    <path d="M168 510H1032" stroke="white" stroke-opacity="0.28"/>
+    <path d="M260 88V804" stroke="white" stroke-opacity="0.32"/>
+    <path d="M456 88V804" stroke="white" stroke-opacity="0.24"/>
+    <path d="M652 88V804" stroke="white" stroke-opacity="0.28"/>
+    <path d="M848 88V804" stroke="white" stroke-opacity="0.24"/>
+  </g>
+  <g opacity="0.7">
+    <rect x="126" y="124" width="132" height="132" rx="32" fill="white" fill-opacity="0.32"/>
+    <rect x="945" y="230" width="98" height="98" rx="28" fill="white" fill-opacity="0.26"/>
+    <rect x="756" y="112" width="62" height="62" rx="18" fill="white" fill-opacity="0.24"/>
+    <rect x="326" y="638" width="84" height="84" rx="24" fill="white" fill-opacity="0.22"/>
+  </g>
+  <g class="word-wall" opacity="0.72">
+    <g class="word-set word-set--one" fill="#16345F">
+      <text x="118" y="178" font-size="58" fill-opacity="0.18">有序</text>
+      <text x="746" y="156" font-size="46" fill-opacity="0.16">稳定</text>
+      <text x="488" y="330" font-size="34" fill-opacity="0.13">清晰</text>
+      <text x="166" y="512" font-size="40" fill-opacity="0.12">从容</text>
+      <text x="884" y="438" font-size="72" fill-opacity="0.12">可靠</text>
+    </g>
+    <g class="word-set word-set--two" fill="#0F766E">
+      <text x="164" y="238" font-size="44" fill-opacity="0.16">协同</text>
+      <text x="608" y="190" font-size="66" fill-opacity="0.13">高效</text>
+      <text x="820" y="344" font-size="38" fill-opacity="0.15">专注</text>
+      <text x="306" y="574" font-size="64" fill-opacity="0.12">流动</text>
+      <text x="746" y="632" font-size="42" fill-opacity="0.13">连接</text>
+    </g>
+    <g class="word-set word-set--three" fill="#B45309">
+      <text x="126" y="318" font-size="50" fill-opacity="0.14">明快</text>
+      <text x="432" y="172" font-size="40" fill-opacity="0.13">准确</text>
+      <text x="724" y="282" font-size="78" fill-opacity="0.10">轻盈</text>
+      <text x="204" y="642" font-size="36" fill-opacity="0.13">秩序</text>
+      <text x="910" y="574" font-size="48" fill-opacity="0.13">安心</text>
+    </g>
+  </g>
+  <g opacity="0.35">
+    <circle cx="994" cy="648" r="5" fill="#2563EB"/>
+    <circle cx="1026" cy="676" r="5" fill="#14B8A6"/>
+    <circle cx="1058" cy="704" r="5" fill="#F59E0B"/>
+    <circle cx="1090" cy="732" r="5" fill="#22C55E"/>
+  </g>
+  <defs>
+    <filter id="softBlur" x="-200" y="-260" width="1620" height="1400" filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">
+      <feGaussianBlur stdDeviation="78"/>
+    </filter>
+    <linearGradient id="waveA" x1="0" y1="548" x2="1200" y2="548" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#3B82F6"/>
+      <stop offset="0.52" stop-color="#14B8A6"/>
+      <stop offset="1" stop-color="#22C55E"/>
+    </linearGradient>
+    <linearGradient id="waveB" x1="24" y1="660" x2="1134" y2="860" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#1D4ED8"/>
+      <stop offset="0.46" stop-color="#0EA5E9"/>
+      <stop offset="1" stop-color="#F59E0B"/>
+    </linearGradient>
+  </defs>
+</svg>
