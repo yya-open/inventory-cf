@@ -57,16 +57,28 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
             env.DB.prepare(
               `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, remark, created_by)
                SELECT ?, 'REVERSAL', ?, ?, ?, ?, 'STOCKTAKE_ROLLBACK', ?, ?, ?, ?
-               WHERE NOT EXISTS (
+               WHERE EXISTS (
+                 SELECT 1 FROM stocktake
+                 WHERE id=? AND status='ROLLING'
+               )
+               AND NOT EXISTS (
                  SELECT 1 FROM stock_tx
                  WHERE ref_type='STOCKTAKE_ROLLBACK' AND ref_id=? AND item_id=? AND warehouse_id=?
                )`
-            ).bind(stocktakeRollbackTxNo(stNo, itemId), itemId, warehouseId, Math.abs(diff), -diff, st_id, stNo, `撤销盘点 ${stNo}`, user.username, st_id, itemId, warehouseId),
+            ).bind(stocktakeRollbackTxNo(stNo, itemId), itemId, warehouseId, Math.abs(diff), -diff, st_id, stNo, `撤销盘点 ${stNo}`, user.username, st_id, st_id, itemId, warehouseId),
             env.DB.prepare(
               `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-               VALUES (?, ?, ?, ${sqlNowStored()})
-               ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=${sqlNowStored()}`
-            ).bind(itemId, warehouseId, Number(l.system_qty))
+               SELECT ?, ?, ?, ${sqlNowStored()}
+               WHERE EXISTS (
+                 SELECT 1 FROM stocktake
+                 WHERE id=? AND status='ROLLING'
+               )
+               ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=${sqlNowStored()}
+               WHERE EXISTS (
+                 SELECT 1 FROM stocktake
+                 WHERE id=? AND status='ROLLING'
+               )`
+            ).bind(itemId, warehouseId, Number(l.system_qty), st_id, st_id)
           );
         }
         if (!stmts.length) continue;

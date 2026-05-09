@@ -25,11 +25,21 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const lineRow = await env.DB.prepare(`SELECT COUNT(1) AS c FROM stocktake_line WHERE stocktake_id=?`).bind(id).first<any>();
     const lineCount = Number(lineRow?.c || 0);
     const r = await env.DB.batch([
-      env.DB.prepare(`DELETE FROM stocktake_line WHERE stocktake_id=?`).bind(id),
-      env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status=?`).bind(id, status),
+      env.DB.prepare(
+        `DELETE FROM stocktake_line
+         WHERE stocktake_id=?
+           AND EXISTS (
+             SELECT 1 FROM stocktake
+             WHERE id=? AND status IN ('DRAFT','APPLIED')
+           )`
+      ).bind(id, id),
+      env.DB.prepare(`DELETE FROM stocktake WHERE id=? AND status IN ('DRAFT','APPLIED')`).bind(id),
     ]);
 
     const changes = Number((r?.[1] as any)?.meta?.changes ?? 0);
+    if (changes !== 1) {
+      return apiFail('盘点单状态已变化，请刷新后重试', { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
+    }
     await logAudit(env.DB, request, actor, "STOCKTAKE_DELETE", "stocktake", id, { st_no: st.st_no, status, line_count: lineCount, changes });
     return apiOk({ changes, status, line_count: lineCount });
   } catch (e: any) {

@@ -99,11 +99,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
              SET qty = qty + ?, updated_at=${sqlNowStored()}
              WHERE item_id=? AND warehouse_id=?
                AND (qty + ?) >= 0
+               AND EXISTS (
+                 SELECT 1 FROM stocktake
+                 WHERE id=? AND status='APPLYING'
+               )
                AND NOT EXISTS (
                  SELECT 1 FROM stock_tx
                  WHERE ref_type='STOCKTAKE' AND ref_id=? AND item_id=? AND warehouse_id=?
                )`
-          ).bind(diff, itemId, warehouseId, diff, st_id, itemId, warehouseId),
+          ).bind(diff, itemId, warehouseId, diff, st_id, st_id, itemId, warehouseId),
           env.DB.prepare(
             `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, remark, created_by)
              SELECT ?, 'ADJUST', ?, ?, ?, ?, 'STOCKTAKE', ?, ?, ?, ?

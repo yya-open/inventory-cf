@@ -1,6 +1,6 @@
 import { ref, unref, type ComputedRef, type Ref } from 'vue';
 import { ElMessage } from '../utils/el-services';
-import { withBlockingActionFeedback } from '../utils/destructiveAction';
+import { withExportActionFeedback } from '../utils/operationFeedback';
 import { buildQrExportFilename } from '../utils/exportNaming';
 import {
   exportAssetQrLinksWorkbook,
@@ -101,7 +101,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
     try {
       options.batchBusy.value = true;
       const count = unref(options.selectedCount);
-      await withBlockingActionFeedback(`导出二维码链接（${count}条）`, () =>
+      await withExportActionFeedback(`导出二维码链接（${count}条）`, () =>
         exportAssetQrLinksWorkbook({
           rows: unref(options.selectedRows),
           getId: options.getId,
