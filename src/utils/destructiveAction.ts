@@ -1,7 +1,7 @@
 import type { LoadingInstance } from "element-plus/es/components/loading/src/loading";
 import { ElLoading, ElMessage } from "./el-services";
 
-export async function withDestructiveActionFeedback<T>(label: string, action: () => Promise<T>): Promise<T> {
+export async function withBlockingActionFeedback<T>(label: string, action: () => Promise<T>): Promise<T> {
   ElMessage.info(`${label}已开始，请稍候…`);
   let loading: LoadingInstance | undefined;
   try {
@@ -17,3 +17,5 @@ export async function withDestructiveActionFeedback<T>(label: string, action: ()
     } catch {}
   }
 }
+
+export const withDestructiveActionFeedback = withBlockingActionFeedback;

@@ -1,5 +1,6 @@
 import { ref, unref, type ComputedRef, type Ref } from 'vue';
 import { ElMessage } from '../utils/el-services';
+import { withBlockingActionFeedback } from '../utils/destructiveAction';
 import { buildQrExportFilename } from '../utils/exportNaming';
 import {
   exportAssetQrLinksWorkbook,
@@ -100,15 +101,17 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
     try {
       options.batchBusy.value = true;
       const count = unref(options.selectedCount);
-      await exportAssetQrLinksWorkbook({
-        rows: unref(options.selectedRows),
-        getId: options.getId,
-        fetchBulkLinks: options.fetchBulkLinks,
-        loadExcelUtils: options.loadExcelUtils,
-        filename: options.linkFilename(count),
-        headers: options.linkHeaders,
-        mapWorkbookRow: options.mapLinkWorkbookRow,
-      });
+      await withBlockingActionFeedback(`导出二维码链接（${count}条）`, () =>
+        exportAssetQrLinksWorkbook({
+          rows: unref(options.selectedRows),
+          getId: options.getId,
+          fetchBulkLinks: options.fetchBulkLinks,
+          loadExcelUtils: options.loadExcelUtils,
+          filename: options.linkFilename(count),
+          headers: options.linkHeaders,
+          mapWorkbookRow: options.mapLinkWorkbookRow,
+        })
+      );
     } catch (error: any) {
       ElMessage.error(error?.message || options.messages.linksFailed);
     } finally {
