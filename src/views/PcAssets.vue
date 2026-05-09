@@ -599,6 +599,23 @@ function readPcAssetsMutationTick() {
   }
 }
 
+function clearPcAssetsMutationTick() {
+  try {
+    window.sessionStorage.removeItem(PC_ASSETS_MUTATION_KEY);
+  } catch {}
+}
+
+function consumeExternalPcAssetsMutation() {
+  const externalMutation = readPcAssetsMutationTick();
+  if (!externalMutation || externalMutation <= lastSeenExternalMutation) return false;
+  lastSeenExternalMutation = externalMutation;
+  clearPcAssetsMutationTick();
+  invalidatePagedListNamespace('pc-assets');
+  invalidateCache();
+  invalidateTotal();
+  return true;
+}
+
 async function refreshInventoryBatch(options: { force?: boolean } = {}) {
   try {
     await refreshInventoryBatchStore({ silent: true, force: options.force, ttlMs: INVENTORY_BATCH_SOFT_TTL_MS });
@@ -1223,7 +1240,7 @@ function handleViewportResize() {
 }
 
 onBeforeMount(() => {
-  lastSeenExternalMutation = readPcAssetsMutationTick();
+  const hasExternalMutation = consumeExternalPcAssetsMutation();
   const defaultView = getDefaultSavedView();
   if (defaultView) {
     runWithoutAutoSearch(() => {
@@ -1232,7 +1249,7 @@ onBeforeMount(() => {
   }
   handleViewportResize();
   if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
-  void hydrateViewData({ skipAuxiliary: true }).finally(() => {
+  void hydrateViewData({ skipAuxiliary: true, keepPage: !hasExternalMutation, forceRefresh: hasExternalMutation }).finally(() => {
     const filters = currentFiltersForList();
     scheduleAuxiliaryRefresh(filters);
   });
@@ -1245,12 +1262,7 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
-  const externalMutation = readPcAssetsMutationTick();
-  if (externalMutation > lastSeenExternalMutation) {
-    lastSeenExternalMutation = externalMutation;
-    invalidatePagedListNamespace('pc-assets');
-    invalidateCache();
-    invalidateTotal();
+  if (consumeExternalPcAssetsMutation()) {
     void hydrateViewData({ keepPage: false, silent: false, forceRefresh: true });
     return;
   }

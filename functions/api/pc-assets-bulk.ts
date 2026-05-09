@@ -1,7 +1,7 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
-import { ensurePcSchemaIfAllowed } from './_pc';
+import { ensurePcReadFastGuards, ensurePcSchemaIfAllowed } from './_pc';
 import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 import { bulkArchiveAssets, bulkRestoreAssets, bulkUpdatePcOwner, bulkUpdatePcStatus, loadAssetRows } from './services/asset-bulk';
@@ -14,13 +14,25 @@ const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
   try {
-    const user = await requirePermission(env, request, 'bulk_operation', 'viewer');
-    const url = new URL(request.url);
-    await ensurePcSchemaIfAllowed(env.DB, env, url);
-    const body = await request.json().catch(() => ({} as any));
+    const timing = (env as any).__timing;
+    const user = timing?.measure
+      ? await timing.measure('permission', () => requirePermission(env, request, 'bulk_operation', 'viewer'))
+      : await requirePermission(env, request, 'bulk_operation', 'viewer');
+    const body = timing?.measure
+      ? await timing.measure('parse', () => request.json().catch(() => ({} as any)))
+      : await request.json().catch(() => ({} as any));
     const action = String(body?.action || '').trim();
     const ids = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
     if (!ids.length) throw Object.assign(new Error('请选择至少一条电脑台账'), { status: 400 });
+
+    if (action === 'restore') {
+      if (timing?.measure) await timing.measure('schema_fast', () => ensurePcReadFastGuards(env.DB));
+      else await ensurePcReadFastGuards(env.DB);
+    } else {
+      const url = new URL(request.url);
+      if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
+      else await ensurePcSchemaIfAllowed(env.DB, env, url);
+    }
 
     if (action === 'archive') {
       const meta = parseArchiveMeta(body);
@@ -48,7 +60,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     }
 
     if (action === 'restore') {
-      const timing = (env as any).__timing;
       const result = timing?.measure
         ? await timing.measure('pc_assets_restore', () => bulkRestoreAssets(env.DB, 'pc', ids))
         : await bulkRestoreAssets(env.DB, 'pc', ids);
