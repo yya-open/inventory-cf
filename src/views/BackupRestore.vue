@@ -701,6 +701,7 @@ import { msgError, msgSuccess, msgWarn } from "../utils/msg";
 import { apiPostForm, apiGet, apiPost, apiPut } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
 import { scheduleOnIdle } from '../utils/idle';
+import { saveBlobAsFile } from "../utils/operationFeedback";
 import { can } from "../store/auth";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
 
@@ -1216,12 +1217,7 @@ function downloadDrillSop() {
     '5. 记录演练时间、结果、问题、恢复耗时。',
   ].join('\n');
   const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = 'backup_restore_drill_sop.txt';
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAsFile(blob, 'backup_restore_drill_sop.txt', '下载');
 }
 
 function openDrillDialog() {

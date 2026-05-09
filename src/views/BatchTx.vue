@@ -208,7 +208,7 @@ import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, onMounted, computed } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
-import { loadXlsx } from "../utils/excel";
+import { downloadTemplate as downloadExcelTemplate, loadXlsx } from "../utils/excel";
 import { apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 
@@ -262,7 +262,6 @@ function clearRows() {
 
 
 async function downloadTemplate() {
-  // 模板默认带示例，方便用户照填
   const header =
     mode.value === "IN"
       ? ["sku", "qty", "unit_price", "source", "remark"]
@@ -279,11 +278,18 @@ async function downloadTemplate() {
           ["SSD-1T-NVME", 2, "李四", "示例：领用人必填（也可用表头默认）"],
         ];
 
-  const XLSX = await loadXlsx();
-  const ws = XLSX.utils.aoa_to_sheet([header, ...exampleRows]);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, "导入模板");
-  XLSX.writeFile(wb, mode.value === "IN" ? "配件批量入库导入模板.xlsx" : "配件批量出库导入模板.xlsx");
+  await downloadExcelTemplate({
+    filename: mode.value === "IN" ? "配件批量入库导入模板.xlsx" : "配件批量出库导入模板.xlsx",
+    headers: header.map((title) => ({ title })),
+    exampleRows: exampleRows.map((row) => {
+      const values = row as any[];
+      return header.reduce<Record<string, any>>((acc, title, index) => {
+        acc[title] = values[index] ?? '';
+        return acc;
+      }, {});
+    }),
+    sheetName: "导入模板",
+  });
 }
 
 function beforeUpload(file: File) {

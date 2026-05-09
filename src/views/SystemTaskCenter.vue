@@ -193,7 +193,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
-import { apiGet, apiPost, apiPut } from '../api/client';
+import { apiDownload, apiGet, apiPost, apiPut } from '../api/client';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { canCapability } from '../store/auth';
 import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
@@ -281,7 +281,13 @@ function onJobSelectionChange(rows: any[]) {
 }
 function displayIndex(index: number) { return index + 1; }
 function buildDownloadUrl(row: any) { const q = new URLSearchParams(); q.set('id', String(row.id)); return `/api/jobs-download?${q.toString()}`; }
-function downloadJob(row: any) { window.open(buildDownloadUrl(row), '_blank', 'noopener'); }
+async function downloadJob(row: any) {
+  try {
+    await apiDownload(buildDownloadUrl(row), row?.result_filename || undefined);
+  } catch (error: any) {
+    ElMessage.error(error?.message || '下载任务结果失败');
+  }
+}
 function syncSummaryFromJobs(rows = jobs.value) {
   const list = Array.isArray(rows) ? rows : [];
   summary.async_job_count = list.length;

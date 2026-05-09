@@ -7,6 +7,7 @@ import {
 } from './qrPrintTemplate';
 import type { AssetQrExportProgressCallback } from './assetQrExport';
 import { buildQrZipEntryName } from './exportNaming';
+import { saveBlobAsFile } from './operationFeedback';
 
 type JsZipConstructor = any;
 type QrCodeModule = typeof import('qrcode');
@@ -64,14 +65,7 @@ type TextBlock = {
 };
 
 function downloadBlob(filename: string, blob: Blob) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-  URL.revokeObjectURL(url);
+  saveBlobAsFile(blob, filename, '导出');
 }
 
 function chunkRecords<T>(items: T[], size: number) {

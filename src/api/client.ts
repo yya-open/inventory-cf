@@ -1,5 +1,5 @@
 import { getAuthRequestEpoch, getAuthSessionKey, useAuth } from "../store/auth";
-import { ElMessage } from '../utils/el-message';
+import { saveBlobAsFile } from '../utils/operationFeedback';
 
 import type { Schema } from './schema';
 
@@ -195,19 +195,8 @@ export async function apiFetchFile(path: string, filename?: string, options: Req
 }
 
 export function triggerFileDownload(file: ApiFetchedFile, filename?: string) {
-  const url = URL.createObjectURL(file.blob);
   const downloadName = filename || file.filename || 'download';
-  try {
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = downloadName;
-    document.body.appendChild(a);
-    a.click();
-    a.remove();
-    ElMessage.success(`已开始下载：${downloadName}`);
-  } finally {
-    URL.revokeObjectURL(url);
-  }
+  saveBlobAsFile(file.blob, downloadName, '下载');
 }
 
 export async function apiDownload(path: string, filename?: string, options: RequestOptions = {}, init: RequestInit = {}) {

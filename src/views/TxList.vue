@@ -177,6 +177,7 @@ import { useRoute, useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
 import { formatBeijingDateTime, beijingTodayYmd } from "../utils/datetime";
 import { exportToXlsx } from "../utils/excel";
+import { saveBlobAsFile } from "../utils/operationFeedback";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 import { usePagedAssetList } from "../composables/usePagedAssetList";
@@ -445,12 +446,7 @@ function exportCsv() {
     ].map(toCsvCell).join(","));
   }
   const blob = new Blob([lines.join("\n")], { type: "text/csv;charset=utf-8" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `配件出入库明细_${beijingTodayYmd()}.csv`;
-  a.click();
-  URL.revokeObjectURL(url);
+  saveBlobAsFile(blob, `配件出入库明细_${beijingTodayYmd()}.csv`, '导出');
 }
 
 async function loadItems(force = false) {

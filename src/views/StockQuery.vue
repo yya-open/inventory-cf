@@ -107,6 +107,7 @@ import { ElMessage } from "../utils/el-message";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";
+import { notifyDownloadStarted } from "../utils/operationFeedback";
 import { useRoute, useRouter } from "vue-router";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
@@ -225,7 +226,9 @@ async function doExport() {
     const ws = XLSX.utils.aoa_to_sheet(aoa);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, "库存查询");
-    XLSX.writeFile(wb, `配件库存查询_${beijingTodayYmd()}.xlsx`);
+    const filename = `配件库存查询_${beijingTodayYmd()}.xlsx`;
+    XLSX.writeFile(wb, filename);
+    notifyDownloadStarted(filename, '导出');
   } catch (e: any) {
     ElMessage.error(e?.message || "导出失败");
   } finally {

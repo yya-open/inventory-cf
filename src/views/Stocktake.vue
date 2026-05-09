@@ -412,6 +412,7 @@ import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue"
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
+import { notifyDownloadStarted } from "../utils/operationFeedback";
 import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
@@ -795,7 +796,9 @@ async function exportStocktakeReport(){
   const wsDetail = XLSX.utils.json_to_sheet(detailRows);
   XLSX.utils.book_append_sheet(wb, wsSummary, '汇总');
   XLSX.utils.book_append_sheet(wb, wsDetail, '明细');
-  XLSX.writeFile(wb, `盘点结果报表_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}.xlsx`);
+  const filename = `盘点结果报表_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  notifyDownloadStarted(filename, '导出');
   ElMessage.success('盘点结果报表已导出');
 }
 
@@ -834,7 +837,9 @@ async function downloadCountTemplate(){
   const ws = XLSX.utils.aoa_to_sheet([header, exampleRow, ...rows]);
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "count");
-  XLSX.writeFile(wb, `stocktake_${detail.value.stocktake.st_no}.xlsx`);
+  const filename = `stocktake_${detail.value.stocktake.st_no}.xlsx`;
+  XLSX.writeFile(wb, filename);
+  notifyDownloadStarted(filename, '下载模板');
 }
 
 function beforeUpload(file: File){

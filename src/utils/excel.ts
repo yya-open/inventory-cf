@@ -1,3 +1,4 @@
+import { notifyDownloadStarted } from './operationFeedback';
 let xlsxPromise: Promise<typeof import('xlsx')> | null = null;
 
 export function loadXlsx() {
@@ -29,7 +30,9 @@ export async function exportToXlsx(a: any, b?: any, c?: any) {
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
     XLSX.utils.book_append_sheet(wb, ws, sheetName);
-    XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+    const outputName = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+    XLSX.writeFile(wb, outputName);
+    notifyDownloadStarted(outputName, '导出');
     return;
   }
 
@@ -50,7 +53,9 @@ export async function exportToXlsx(a: any, b?: any, c?: any) {
   const ws = XLSX.utils.json_to_sheet(data, { header: headers.map((h) => h.title) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
-  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+  const outputName = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  XLSX.writeFile(wb, outputName);
+  notifyDownloadStarted(outputName, '导出');
 }
 
 /** 下载模板：只按 title 生成列，并可带示例行 */
@@ -70,7 +75,9 @@ export async function downloadTemplate(options: {
   const ws = XLSX.utils.json_to_sheet(data, { header: headers.map((h) => h.title) });
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, sheetName || 'Sheet1');
-  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+  const outputName = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  XLSX.writeFile(wb, outputName);
+  notifyDownloadStarted(outputName, '下载模板');
 }
 
 /** 解析 Excel 第一张表，返回对象数组（key 为表头文字） */
@@ -159,5 +166,7 @@ export async function exportWorkbookXlsx(options: {
     XLSX.utils.book_append_sheet(wb, ws, normalizeSheetName(sheet.sheetName, index));
   });
 
-  XLSX.writeFile(wb, filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`);
+  const outputName = filename.endsWith('.xlsx') ? filename : `${filename}.xlsx`;
+  XLSX.writeFile(wb, outputName);
+  notifyDownloadStarted(outputName, '导出');
 }

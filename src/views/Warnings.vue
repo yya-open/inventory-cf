@@ -187,6 +187,7 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
 import { loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime, beijingTodayCompact } from "../utils/datetime";
+import { notifyDownloadStarted } from "../utils/operationFeedback";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
 import { usePagedAssetList } from "../composables/usePagedAssetList";
@@ -485,6 +486,7 @@ async function exportXlsx() {
     const filename = `配件库存预警_${beijingTodayCompact()}.xlsx`;
 
     XLSX.writeFile(wb, filename);
+    notifyDownloadStarted(filename, '导出');
     ElMessage.success("已导出 Excel");
   } catch (e: any) {
     ElMessage.error((e as any)?.message || "导出失败");
