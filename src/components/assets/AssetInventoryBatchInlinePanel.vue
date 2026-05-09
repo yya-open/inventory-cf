@@ -81,8 +81,7 @@ import { ElMessage } from '../../utils/el-message';
 import { apiDownload } from '../../api/client';
 import { trackUiEvent } from '../../utils/browserPerf';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
-import type { AssetInventorySummary, InventoryIssueBreakdown } from '../../types/assets';
-import { emptyInventoryIssueBreakdown } from '../../types/assets';
+import { emptyInventoryIssueBreakdown, type AssetInventorySummary, type InventoryIssueBreakdown } from '../../types/assets';
 import AssetInventoryIssueBreakdownPanel from './AssetInventoryIssueBreakdownPanel.vue';
 
 const props = defineProps<{

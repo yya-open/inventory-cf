@@ -1,5 +1,4 @@
-import { computed, onBeforeUnmount, ref, watch, type MaybeRefOrGetter } from 'vue';
-import { toValue } from 'vue';
+import { computed, onBeforeUnmount, ref, toValue, watch, type MaybeRefOrGetter } from 'vue';
 
 type ChunkedRowsOptions = {
   threshold?: number;

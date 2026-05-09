@@ -1,5 +1,4 @@
-import type { App, Component } from 'vue';
-import { defineAsyncComponent } from 'vue';
+import { defineAsyncComponent, type App, type Component } from 'vue';
 import { ElAlert } from 'element-plus/es/components/alert/index';
 import { ElAside, ElContainer, ElHeader, ElMain } from 'element-plus/es/components/container/index';
 import { ElButton, ElButtonGroup } from 'element-plus/es/components/button/index';

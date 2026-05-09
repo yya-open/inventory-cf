@@ -1,9 +1,8 @@
 import { apiGetData } from './client';
 import { asObject } from './schema';
-import type { AssetInventorySummary, InventoryIssueBreakdown } from '../types/assets';
+import { emptyInventoryIssueBreakdown, type AssetInventorySummary, type InventoryIssueBreakdown } from '../types/assets';
 import type { InventoryBatchPayload } from './inventoryBatches';
 import { inventoryBatchPayloadSchema } from '../domain/inventory/schemas';
-import { emptyInventoryIssueBreakdown } from '../types/assets';
 
 export type InventoryOverviewPayload = {
   batch: InventoryBatchPayload;

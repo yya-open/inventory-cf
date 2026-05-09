@@ -234,10 +234,13 @@ import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInv
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
-import { exportAssetQrLinksWorkbook, exportAssetQrPrintLocal } from '../utils/assetQrExport';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
+import { useAssetSelectionSummary } from '../composables/useAssetSelectionSummary';
+import { useAssetBulkActions } from '../composables/useAssetBulkActions';
+import { useAssetQrExportActions } from '../composables/useAssetQrExportActions';
+import { trimText, useAssetFormActions, validateRequiredFields } from '../composables/useAssetFormActions';
 import { can, canCapability, canPerm } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
@@ -245,13 +248,12 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { fetchSystemSettings, getCachedSystemSettings, markMonitorBrandSettingsApplied, shouldRefreshMonitorBrandSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
-import type { QrPrintTemplate, QrPrintTemplateKind } from '../utils/qrPrintTemplate';
+import type { QrPrintTemplate } from '../utils/qrPrintTemplate';
 import type { AssetQrExportProgress } from '../utils/assetQrExport';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
-import { buildBulkDeleteConfirmTip, extractAffectedIds, summarizeBulkDeleteResult } from './assets/assetBulkActions';
-import { buildQrExportFilename } from '../utils/exportNaming';
+import { extractAffectedIds } from './assets/assetBulkActions';
 import { isLedgerMobileViewport } from '../utils/responsive';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
@@ -277,11 +279,9 @@ const isMobile = ref(typeof window !== 'undefined' ? isLedgerMobileViewport() : 
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
-const qrTemplateVisible = ref(false);
+const { runSaveAction } = useAssetFormActions();
 const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; current: number; total: number; detail: string }>({ visible: false, title: '', stage: '', current: 0, total: 1, detail: '' });
 let qrExportProgressAutoCloseTimer: number | null = null;
-const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
-const qrTemplateAction = ref<'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet'>('batch-cards');
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -734,6 +734,18 @@ const batchArchivePreview = computed(() => {
 });
 
 const { selectedIds, selectedRows, selectedCount, syncPageSelection, clearSelection } = useCrossPageSelection<MonitorAsset>((row) => String(row.id));
+const { selectionSummary, selectedNumberIds } = useAssetSelectionSummary(selectedRows);
+const { confirmBatchRisk, runBulkAction, runBulkDelete } = useAssetBulkActions({
+  endpoint: '/api/monitor-assets-bulk',
+  assetLabel: '显示器',
+  selectedCount,
+  selectedNumberIds,
+  archivedCount: computed(() => selectionSummary.value.archived),
+  batchBusy,
+  clearSelection,
+  ensureLocalPatchedPageStable,
+  loadExcelUtils,
+});
 const assetSaving = ref(false);
 const opSubmitting = ref(false);
 const locationSaving = ref(false);
@@ -878,81 +890,6 @@ async function restoreAsset(row: MonitorAsset) {
   }
 }
 
-async function exportSelectedQrLinks() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  try {
-    batchBusy.value = true;
-    await exportAssetQrLinksWorkbook({
-      rows: selectedRows.value,
-      getId: (row) => Number(row.id),
-      fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-      loadExcelUtils,
-      filename: `显示器二维码链接_${selectedCount.value}条.xlsx`,
-      headers: [
-        { key: 'id', title: 'ID' },
-        { key: 'asset_code', title: '资产编号' },
-        { key: 'sn', title: 'SN' },
-        { key: 'brand', title: '品牌' },
-        { key: 'model', title: '型号' },
-        { key: 'status', title: '状态' },
-        { key: 'url', title: '二维码链接' },
-      ],
-      mapWorkbookRow: (row, url) => ({
-        id: row.id,
-        asset_code: row.asset_code,
-        sn: row.sn,
-        brand: row.brand,
-        model: row.model,
-        status: assetStatusText(row.status),
-        url,
-      }),
-    });
-    ElMessage.success('二维码链接已导出');
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导出二维码链接失败');
-  } finally {
-    batchBusy.value = false;
-  }
-}
-
-async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>) {
-  try {
-    exportBusy.value = true;
-    startQrExportProgress('正在导出二维码标签');
-    await exportSelectedQrCardsLocal(template);
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导出二维码卡片失败');
-  } finally {
-    exportBusy.value = false;
-    finishQrExportProgress();
-  }
-}
-
-function exportSelectedQrCards() {
-  openQrPrintTemplate('cards');
-}
-
-
-async function confirmBatchRisk(title: string, message: string) {
-  await ElMessageBox.confirm(message, title, {
-    type: 'warning',
-    confirmButtonText: '确认继续',
-    cancelButtonText: '取消',
-  });
-}
-
-async function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
-  if (!rows.length) return;
-  const { exportToXlsx } = await loadExcelUtils();
-  exportToXlsx({
-    filename,
-    sheetName: '失败明细',
-    headers: Object.keys(rows[0]).map((key) => ({ key, title: key })),
-    rows,
-  });
-}
-
-
 function openBatchStatusDialog() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   batchStatusValue.value = 'IN_STOCK';
@@ -977,97 +914,71 @@ function openBatchOwnerDialog() {
 
 async function submitBatchStatus() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  try {
-    batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
-      action: 'status',
-      ids: selectedIds.value.map((id) => Number(id)),
-      status: batchStatusValue.value,
-    });
-    ElMessage.success(result?.message || '批量修改成功');
-    notifyAction('批量状态已更新', `已处理 ${selectedCount.value} 台显示器的状态。`);
-    batchStatusVisible.value = false;
-    applyMonitorStatusPatch(extractAffectedIds(result), batchStatusValue.value);
-    clearSelection();
-    await ensureLocalPatchedPageStable();
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量修改状态失败');
-  } finally {
-    batchBusy.value = false;
-  }
+  await runBulkAction({
+    action: 'status',
+    payload: { status: batchStatusValue.value },
+    successMessage: '批量状态已更新',
+    notificationTitle: '显示器状态已更新',
+    notificationMessage: `已处理 ${selectedCount.value} 台显示器的状态`,
+    errorMessage: '批量更新状态失败',
+    closeDialog: () => { batchStatusVisible.value = false; },
+    applyResult: (result) => applyMonitorStatusPatch(extractAffectedIds(result), batchStatusValue.value),
+  });
 }
 
 async function submitBatchLocation() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (!batchLocationValue.value) return ElMessage.warning('请选择目标位置');
-  try {
-    batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
-      action: 'location',
-      ids: selectedIds.value.map((id) => Number(id)),
-      location_id: batchLocationValue.value,
-    });
-    ElMessage.success(result?.message || '批量修改成功');
-    notifyAction('批量位置已更新', `已处理 ${selectedCount.value} 台显示器的位置。`);
-    batchLocationVisible.value = false;
-    applyMonitorLocationPatch(extractAffectedIds(result), batchLocationValue.value);
-    clearSelection();
-    await ensureLocalPatchedPageStable();
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量修改位置失败');
-  } finally {
-    batchBusy.value = false;
-  }
+  if (!batchLocationValue.value) return ElMessage.warning('请选择位置');
+  await runBulkAction({
+    action: 'location',
+    payload: { location_id: batchLocationValue.value },
+    successMessage: '批量位置已更新',
+    notificationTitle: '显示器位置已更新',
+    notificationMessage: `已处理 ${selectedCount.value} 台显示器的位置`,
+    errorMessage: '批量更新位置失败',
+    closeDialog: () => { batchLocationVisible.value = false; },
+    applyResult: (result) => applyMonitorLocationPatch(extractAffectedIds(result), batchLocationValue.value),
+  });
 }
-
 
 async function submitBatchOwner() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (!String(batchOwnerForm.value.employee_name || '').trim()) return ElMessage.warning('请输入领用人');
-  try {
-    batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
-      action: 'owner',
-      ids: selectedIds.value.map((id) => Number(id)),
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return ElMessage.warning('请填写领用人');
+  await runBulkAction({
+    action: 'owner',
+    payload: {
       employee_name: batchOwnerForm.value.employee_name,
       employee_no: batchOwnerForm.value.employee_no,
       department: batchOwnerForm.value.department,
-    });
-    ElMessage.success(result?.message || '批量修改领用人成功');
-    notifyAction('批量领用人已更新', `已处理 ${selectedCount.value} 台显示器的领用信息。`);
-    batchOwnerVisible.value = false;
-    applyMonitorOwnerPatch(extractAffectedIds(result), batchOwnerForm.value);
-    clearSelection();
-    await ensureLocalPatchedPageStable();
-  } catch (error: any) {
-    ElMessage.error(error?.message || '批量修改领用人失败');
-  } finally {
-    batchBusy.value = false;
-  }
+    },
+    successMessage: '批量领用人已更新',
+    notificationTitle: '显示器领用人已更新',
+    notificationMessage: `已处理 ${selectedCount.value} 台显示器的领用信息`,
+    errorMessage: '批量更新领用人失败',
+    closeDialog: () => { batchOwnerVisible.value = false; },
+    applyResult: (result) => applyMonitorOwnerPatch(extractAffectedIds(result), batchOwnerForm.value),
+  });
 }
 
 async function batchRestoreSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  const restorable = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
-  if (!restorable) return ElMessage.warning('当前选中项中没有已归档显示器');
+  const restorable = selectionSummary.value.archived;
+  if (!restorable) return ElMessage.warning('选中显示器中没有可恢复的归档记录');
   try {
-    await confirmBatchRisk('批量恢复归档', `预计恢复 ${restorable} 台显示器。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
-    batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
-      action: 'restore',
-      ids: selectedIds.value.map((id) => Number(id)),
-    });
-    ElMessage.success(result?.message || '批量恢复成功');
-    notifyAction('批量恢复完成', `已恢复 ${selectedCount.value} 台显示器。`, 'info');
-    applyMonitorRestorePatch(extractAffectedIds(result));
-    clearSelection();
-    await ensureLocalPatchedPageStable(true);
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '批量恢复归档失败');
-  } finally {
-    batchBusy.value = false;
+    await confirmBatchRisk('批量恢复', `将恢复 ${restorable} 台已归档显示器，恢复后会重新出现在默认台账列表中。`);
+  } catch {
+    return;
   }
+  await runBulkAction({
+    action: 'restore',
+    successMessage: '批量恢复成功',
+    notificationTitle: '显示器已恢复',
+    notificationMessage: `已处理 ${selectedCount.value} 台显示器`,
+    notificationType: 'info',
+    errorMessage: '批量恢复失败',
+    stable: true,
+    applyResult: (result) => applyMonitorRestorePatch(extractAffectedIds(result)),
+  });
 }
 
 async function batchArchiveSelected() {
@@ -1081,51 +992,34 @@ async function submitBatchArchive() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
   if (!String(batchArchiveForm.value.reason || '').trim()) return ElMessage.warning('请选择归档原因');
   try {
-    await confirmBatchRisk('批量归档确认', `此操作会归档选中的 ${selectedCount.value} 台显示器，默认列表将不再显示，请输入“确认”继续。`);
-    batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', {
-      action: 'archive',
-      ids: selectedIds.value.map((id) => Number(id)),
+    await confirmBatchRisk('批量归档', `将归档选中的 ${selectedCount.value} 台显示器，归档后默认列表不再显示。`);
+  } catch {
+    return;
+  }
+  await runBulkAction({
+    action: 'archive',
+    payload: {
       reason: batchArchiveForm.value.reason,
       note: batchArchiveForm.value.note,
-    });
-    ElMessage.success(result?.message || '批量归档成功');
-    notifyAction('批量归档完成', `已归档 ${selectedCount.value} 台显示器。`, 'warning');
-    batchArchiveVisible.value = false;
-    applyMonitorArchivePatch(extractAffectedIds(result), batchArchiveForm.value);
-    clearSelection();
-    await ensureLocalPatchedPageStable(true);
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '批量归档失败');
-  } finally {
-    batchBusy.value = false;
-  }
+    },
+    successMessage: '批量归档成功',
+    notificationTitle: '显示器已归档',
+    notificationMessage: `已处理 ${selectedCount.value} 台显示器`,
+    notificationType: 'warning',
+    errorMessage: '批量归档失败',
+    closeDialog: () => { batchArchiveVisible.value = false; },
+    stable: true,
+    applyResult: (result) => applyMonitorArchivePatch(extractAffectedIds(result), batchArchiveForm.value),
+  });
 }
 
 async function batchDeleteSelected() {
   if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  try {
-    const archivedCount = selectedRows.value.filter((row) => Number(row.archived || 0) === 1).length;
-    await confirmBatchRisk('批量删除确认', buildBulkDeleteConfirmTip('显示器', selectedCount.value, archivedCount));
-    batchBusy.value = true;
-    const result: any = await withDestructiveActionFeedback('正在批量删除显示器台账', () => apiPost('/api/monitor-assets-bulk', {
-      action: 'delete',
-      ids: selectedIds.value.map((id) => Number(id)),
-    }));
-    const summary = summarizeBulkDeleteResult('显示器', result);
-    if (summary.processed) clearSelection();
-    if (summary.level === 'success') ElMessage.success(summary.message);
-    else if (summary.level === 'warning') ElMessage.warning(summary.message);
-    if (Array.isArray(result?.success_items)) applyMonitorDeletePatch(result.success_items);
-    if (summary.failedRecords.length) await exportBatchFailures(`显示器批量删除失败明细_${summary.failedRecords.length}条.xlsx`, summary.failedRecords);
-    await ensureLocalPatchedPageStable(true);
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '批量删除失败');
-  } finally {
-    batchBusy.value = false;
-  }
+  await runBulkDelete({
+    requestLabel: '显示器批量删除',
+    errorMessage: '批量删除失败',
+    applyDeletePatch: applyMonitorDeletePatch,
+  });
 }
 
 async function exportSelectedRows() {
@@ -1334,39 +1228,50 @@ async function openEdit(row: MonitorAsset) {
 }
 
 async function saveAsset() {
-  if (assetSaving.value) return;
-  const trim = (value: unknown) => String(value ?? '').trim();
   const sizePattern = /^\d+(\.\d{1,2})?(\s*寸)?$/;
-  const payload = {
-    ...dlgAsset.form,
-    asset_code: trim(dlgAsset.form.asset_code),
-    sn: trim(dlgAsset.form.sn),
-    brand: trim(dlgAsset.form.brand),
-    model: trim(dlgAsset.form.model),
-    size_inch: trim(dlgAsset.form.size_inch),
-    remark: trim(dlgAsset.form.remark),
-    location_id: dlgAsset.form.location_id || '',
-  } as any;
-
-  if (!payload.asset_code) return ElMessage.warning('资产编号必填');
-  if (!payload.brand) return ElMessage.warning('品牌必填');
-  if (!payload.model) return ElMessage.warning('型号必填');
-  if (payload.size_inch && !sizePattern.test(payload.size_inch)) return ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
-
-  assetSaving.value = true;
-  dlgAsset.form = { ...payload };
-  try {
-    if (dlgAsset.mode === 'create') {
-      await apiPost('/api/monitor-assets', payload);
-      ElMessage.success('新增成功');
-      notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
+  await runSaveAction<Record<string, any>>({
+    busy: assetSaving,
+    buildPayload: () => ({
+      ...dlgAsset.form,
+      asset_code: trimText(dlgAsset.form.asset_code),
+      sn: trimText(dlgAsset.form.sn),
+      brand: trimText(dlgAsset.form.brand),
+      model: trimText(dlgAsset.form.model),
+      size_inch: trimText(dlgAsset.form.size_inch),
+      remark: trimText(dlgAsset.form.remark),
+      location_id: dlgAsset.form.location_id || '',
+    }),
+    validate: (payload) => {
+      if (!validateRequiredFields(payload, [
+        { key: 'asset_code', label: '资产编号' },
+        { key: 'brand', label: '品牌' },
+        { key: 'model', label: '型号' },
+      ])) return false;
+      if (payload.size_inch && !sizePattern.test(payload.size_inch)) {
+        ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
+        return false;
+      }
+      return true;
+    },
+    submit: (payload) => {
+      dlgAsset.form = { ...(payload as any) };
+      return dlgAsset.mode === 'create'
+        ? apiPost('/api/monitor-assets', payload)
+        : apiPut('/api/monitor-assets', payload);
+    },
+    recoverBeforeRetry: handleMaybeMissingSchema,
+    successMessage: dlgAsset.mode === 'create' ? '新增成功' : '保存成功',
+    notificationTitle: dlgAsset.mode === 'create' ? '显示器已新增' : '显示器已更新',
+    notificationMessage: (payload) => dlgAsset.mode === 'create'
+      ? `已创建 ${payload.asset_code || '新显示器'}。`
+      : `已更新 ${payload.asset_code || '显示器记录'}。`,
+    errorMessage: '操作失败',
+    onSuccess: async (payload) => {
       dlgAsset.show = false;
-      await refreshCurrent(true, true);
-    } else {
-      await apiPut('/api/monitor-assets', payload);
-      ElMessage.success('保存成功');
-      notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
-      dlgAsset.show = false;
+      if (dlgAsset.mode === 'create') {
+        await refreshCurrent(true, true);
+        return;
+      }
       if (systemSettings.value.ui_write_local_refresh) {
         patchCurrentRows([Number(payload.id)], (row) => ({
           ...row,
@@ -1383,44 +1288,8 @@ async function saveAsset() {
       } else {
         await refreshCurrent(true, true);
       }
-    }
-  } catch (error: any) {
-    try {
-      await handleMaybeMissingSchema(error);
-    if (dlgAsset.mode === 'create') {
-      await apiPost('/api/monitor-assets', payload);
-      ElMessage.success('新增成功');
-      notifyAction('显示器已新增', `已创建 ${payload.asset_code || '新显示器'}。`);
-      dlgAsset.show = false;
-      await refreshCurrent(true, true);
-    } else {
-      await apiPut('/api/monitor-assets', payload);
-      ElMessage.success('保存成功');
-      notifyAction('显示器已更新', `已更新 ${payload.asset_code || '显示器记录'}。`);
-      dlgAsset.show = false;
-      if (systemSettings.value.ui_write_local_refresh) {
-        patchCurrentRows([Number(payload.id)], (row) => ({
-          ...row,
-          asset_code: payload.asset_code,
-          sn: payload.sn,
-          brand: payload.brand,
-          model: payload.model,
-          size_inch: payload.size_inch || '',
-          remark: payload.remark || '',
-          location_id: payload.location_id || null,
-          ...findLocationParts(Number(payload.location_id || 0) || 0),
-        }));
-        await ensureLocalPatchedPageStable(false);
-      } else {
-        await refreshCurrent(true, true);
-      }
-    }
-    } catch (nextError: any) {
-      ElMessage.error(nextError.message || '操作失败');
-    }
-  } finally {
-    assetSaving.value = false;
-  }
+    },
+  });
 }
 
 async function removeAsset(row: MonitorAsset) {
@@ -1522,56 +1391,78 @@ async function openTransfer(row: MonitorAsset) {
 
 async function submitOp() {
   const asset = dlgOp.asset;
-  if (!asset || opSubmitting.value) return;
-  try {
-    opSubmitting.value = true;
-    if (dlgOp.kind === 'in') {
-      await apiPost('/api/monitor-in', { asset_id: asset.id, location_id: dlgOp.form.location_id || null, remark: dlgOp.form.remark });
-      ElMessage.success('入库成功');
-    } else if (dlgOp.kind === 'out') {
-      await apiPost('/api/monitor-out', {
-        asset_id: asset.id,
-        location_id: dlgOp.form.location_id || null,
-        employee_no: dlgOp.form.employee_no,
-        employee_name: dlgOp.form.employee_name,
-        department: dlgOp.form.department,
-        remark: dlgOp.form.remark,
-      });
-      ElMessage.success('出库成功');
-    } else if (dlgOp.kind === 'return') {
-      await apiPost('/api/monitor-return', { asset_id: asset.id, location_id: dlgOp.form.location_id || null, remark: dlgOp.form.remark });
-      ElMessage.success('归还成功');
-    } else if (dlgOp.kind === 'transfer') {
-      await apiPost('/api/monitor-transfer', { asset_id: asset.id, to_location_id: dlgOp.form.location_id, remark: dlgOp.form.remark });
-      ElMessage.success('调拨成功');
-    }
-    dlgOp.show = false;
-    if (systemSettings.value.ui_write_local_refresh) {
-      const assetId = Number(asset.id);
-      if (dlgOp.kind === 'in') {
-        applyMonitorStatusPatch([assetId], 'IN_STOCK');
-        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
-        applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
-      } else if (dlgOp.kind === 'out') {
-        applyMonitorStatusPatch([assetId], 'ASSIGNED');
-        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
-        applyMonitorOwnerPatch([assetId], { employee_name: dlgOp.form.employee_name, employee_no: dlgOp.form.employee_no, department: dlgOp.form.department });
-      } else if (dlgOp.kind === 'return') {
-        applyMonitorStatusPatch([assetId], 'IN_STOCK');
-        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
-        applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
-      } else if (dlgOp.kind === 'transfer') {
-        applyMonitorLocationPatch([assetId], dlgOp.form.location_id || '');
+  if (!asset) return;
+  const operationText: Record<typeof dlgOp.kind, string> = {
+    in: '入库',
+    out: '出库',
+    return: '归还',
+    transfer: '调拨',
+  };
+  await runSaveAction<{
+    asset: MonitorAsset;
+    kind: typeof dlgOp.kind;
+    form: typeof dlgOp.form;
+  }>({
+    busy: opSubmitting,
+    buildPayload: () => ({
+      asset,
+      kind: dlgOp.kind,
+      form: {
+        location_id: dlgOp.form.location_id || '',
+        employee_no: trimText(dlgOp.form.employee_no),
+        employee_name: trimText(dlgOp.form.employee_name),
+        department: trimText(dlgOp.form.department),
+        remark: trimText(dlgOp.form.remark),
+      },
+    }),
+    submit: ({ asset, kind, form }) => {
+      if (kind === 'in') {
+        return apiPost('/api/monitor-in', { asset_id: asset.id, location_id: form.location_id || null, remark: form.remark });
       }
-      await ensureLocalPatchedPageStable(false);
-    } else {
-      await refreshCurrent(true, true);
-    }
-  } catch (error: any) {
-    ElMessage.error(error?.message || '操作失败');
-  } finally {
-    opSubmitting.value = false;
-  }
+      if (kind === 'out') {
+        return apiPost('/api/monitor-out', {
+          asset_id: asset.id,
+          location_id: form.location_id || null,
+          employee_no: form.employee_no,
+          employee_name: form.employee_name,
+          department: form.department,
+          remark: form.remark,
+        });
+      }
+      if (kind === 'return') {
+        return apiPost('/api/monitor-return', { asset_id: asset.id, location_id: form.location_id || null, remark: form.remark });
+      }
+      return apiPost('/api/monitor-transfer', { asset_id: asset.id, to_location_id: form.location_id, remark: form.remark });
+    },
+    successMessage: `${operationText[dlgOp.kind]}成功`,
+    notificationTitle: `显示器${operationText[dlgOp.kind]}成功`,
+    notificationMessage: ({ asset, kind }) => `${asset.asset_code || asset.sn || '显示器'} 已完成${operationText[kind]}。`,
+    errorMessage: '操作失败',
+    onSuccess: async ({ asset, kind, form }) => {
+      dlgOp.show = false;
+      if (systemSettings.value.ui_write_local_refresh) {
+        const assetId = Number(asset.id);
+        if (kind === 'in') {
+          applyMonitorStatusPatch([assetId], 'IN_STOCK');
+          applyMonitorLocationPatch([assetId], form.location_id || '');
+          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+        } else if (kind === 'out') {
+          applyMonitorStatusPatch([assetId], 'ASSIGNED');
+          applyMonitorLocationPatch([assetId], form.location_id || '');
+          applyMonitorOwnerPatch([assetId], { employee_name: form.employee_name, employee_no: form.employee_no, department: form.department });
+        } else if (kind === 'return') {
+          applyMonitorStatusPatch([assetId], 'IN_STOCK');
+          applyMonitorLocationPatch([assetId], form.location_id || '');
+          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+        } else if (kind === 'transfer') {
+          applyMonitorLocationPatch([assetId], form.location_id || '');
+        }
+        await ensureLocalPatchedPageStable(false);
+      } else {
+        await refreshCurrent(true, true);
+      }
+    },
+  });
 }
 
 const qrVisible = ref(false);
@@ -1631,127 +1522,74 @@ function buildMonitorQrCardRecord(row: MonitorAsset, url: string, template?: Par
   };
 }
 
-async function exportSingleMonitorQrSheet(template?: Partial<QrPrintTemplate>) {
-  if (!qrRow.value) return;
-  const result = await exportAssetQrPrintLocal({
-    mode: 'sheet',
-    rows: [qrRow.value],
-    getId: (row) => Number(row.id),
-    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
-    loadQrCardUtils,
-    filename: buildQrExportFilename({ scope: 'monitor', kind: 'sheet', count: 1, template, singleLabel: `显示器二维码_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}` }),
-    title: '显示器二维码',
-    template,
-    onProgress: updateQrExportProgress,
-  });
-  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
-  ElMessage.success('二维码打印页已导出，可直接打印');
-}
-
-async function exportSingleMonitorQrCard(template?: Partial<QrPrintTemplate>) {
-  if (!qrRow.value) return;
-  const result = await exportAssetQrPrintLocal({
-    mode: 'cards',
-    rows: [qrRow.value],
-    getId: (row) => Number(row.id),
-    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
-    loadQrCardUtils,
-    filename: buildQrExportFilename({ scope: 'monitor', kind: 'cards', count: 1, template, singleLabel: `显示器标签_${qrRow.value.asset_code || qrRow.value.id || 'monitor'}` }),
-    title: '显示器标签',
-    template,
-    onProgress: updateQrExportProgress,
-  });
-  if (result.empty) return ElMessage.warning('当前记录没有可导出的二维码');
-  ElMessage.success('标签打印页已导出，可直接打印');
-}
-
-async function exportSelectedQrSheetLocal(template?: Partial<QrPrintTemplate>) {
-  const result = await exportAssetQrPrintLocal({
-    mode: 'sheet',
-    rows: selectedRows.value,
-    getId: (row) => Number(row.id),
-    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => buildMonitorQrSheetRecord(row, url, template),
-    loadQrCardUtils,
-    filename: buildQrExportFilename({ scope: 'monitor', kind: 'sheet', count: selectedRows.value.length, template }),
-    title: '显示器二维码图版',
-    template,
-    onProgress: updateQrExportProgress,
-  });
-  if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
-  ElMessage.success('二维码图版打印页已导出，可直接打印');
-}
-
-async function exportSelectedQrCardsLocal(template?: Partial<QrPrintTemplate>) {
-  const result = await exportAssetQrPrintLocal({
-    mode: 'cards',
-    rows: selectedRows.value,
-    getId: (row) => Number(row.id),
-    fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
-    mapPrintRecord: (row, url) => buildMonitorQrCardRecord(row, url, template),
-    loadQrCardUtils,
-    filename: buildQrExportFilename({ scope: 'monitor', kind: 'cards', count: selectedRows.value.length, template }),
-    title: '显示器二维码卡片',
-    template,
-    onProgress: updateQrExportProgress,
-  });
-  if (result.empty) return ElMessage.warning('当前选中项没有可导出的二维码');
-  ElMessage.success('二维码卡片已导出，可直接打印');
-}
-
-function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: 'batch-cards' | 'batch-sheet' | 'single-cards' | 'single-sheet') {
-  if (!canQrExport.value) return ElMessage.warning('当前账号没有二维码/标签导出权限');
-  const nextAction = action || (kind === 'cards' ? 'batch-cards' : 'batch-sheet');
-  if (nextAction.startsWith('batch') && !selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (nextAction.startsWith('single') && !qrRow.value?.id) return ElMessage.warning('请先打开要导出的二维码');
-  qrTemplateKind.value = kind;
-  qrTemplateAction.value = nextAction;
-  qrTemplateVisible.value = true;
-}
-
-async function submitQrPrintTemplate(template: QrPrintTemplate) {
-  if (qrTemplateAction.value === 'single-cards') {
-    try {
-      startQrExportProgress('正在导出二维码标签');
-      await exportSingleMonitorQrCard(template);
-    } finally {
-      finishQrExportProgress();
-    }
-    return;
-  }
-  if (qrTemplateAction.value === 'single-sheet') {
-    try {
-      startQrExportProgress('正在导出二维码图版');
-      await exportSingleMonitorQrSheet(template);
-    } finally {
-      finishQrExportProgress();
-    }
-    return;
-  }
-  if (qrTemplateKind.value === 'cards') {
-    await executeExportSelectedQrCards(template);
-    return;
-  }
-  await executeExportSelectedQrSheet(template);
-}
-
-async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>) {
-  try {
-    exportBusy.value = true;
-    startQrExportProgress('正在导出二维码图版');
-    await exportSelectedQrSheetLocal(template);
-  } catch (error: any) {
-    ElMessage.error(error?.message || '导出二维码图版失败');
-  } finally {
-    exportBusy.value = false;
-  }
-}
-
-function exportSelectedQrPng() {
-  openQrPrintTemplate('sheet');
-}
+const {
+  qrTemplateVisible,
+  qrTemplateKind,
+  openQrPrintTemplate,
+  submitQrPrintTemplate,
+  exportSelectedQrLinks,
+  exportSelectedQrCards,
+  exportSelectedQrPng,
+  downloadQr,
+  downloadLabel,
+} = useAssetQrExportActions<MonitorAsset>({
+  scope: 'monitor',
+  canExport: canQrExport,
+  selectedRows,
+  selectedCount,
+  singleRow: qrRow,
+  exportBusy,
+  batchBusy,
+  getId: (row) => Number(row.id),
+  fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+  loadExcelUtils,
+  loadQrCardUtils,
+  mapSheetRecord: buildMonitorQrSheetRecord,
+  mapCardRecord: buildMonitorQrCardRecord,
+  linkFilename: (count) => `显示器二维码链接_${count}条.xlsx`,
+  linkHeaders: [
+    { key: 'id', title: 'ID' },
+    { key: 'asset_code', title: '资产编号' },
+    { key: 'sn', title: 'SN' },
+    { key: 'brand', title: '品牌' },
+    { key: 'model', title: '型号' },
+    { key: 'status', title: '状态' },
+    { key: 'url', title: '二维码链接' },
+  ],
+  mapLinkWorkbookRow: (row, url) => ({
+    id: row.id,
+    asset_code: row.asset_code,
+    sn: row.sn,
+    brand: row.brand,
+    model: row.model,
+    status: assetStatusText(row.status),
+    url,
+  }),
+  singleSheetLabel: (row) => `显示器二维码_${row.asset_code || row.id || 'monitor'}`,
+  singleCardsLabel: (row) => `显示器标签_${row.asset_code || row.id || 'monitor'}`,
+  sheetTitle: '显示器二维码',
+  cardsTitle: '显示器标签',
+  selectedSheetTitle: '显示器二维码图版',
+  selectedCardsTitle: '显示器二维码卡片',
+  messages: {
+    noPermission: '当前账号没有二维码/标签导出权限',
+    noSelection: '请先勾选显示器',
+    noSingle: '请先打开要导出的二维码',
+    selectedEmpty: '当前选中项没有可导出的二维码',
+    singleEmpty: '当前记录没有可导出的二维码',
+    sheetSuccess: '二维码打印页已导出，可直接打印',
+    cardsSuccess: '标签打印页已导出，可直接打印',
+    linksSuccess: '二维码链接已导出',
+    sheetFailed: '导出二维码图版失败',
+    cardsFailed: '导出二维码卡片失败',
+    linksFailed: '导出二维码链接失败',
+    progressSheet: '正在导出二维码图版',
+    progressCards: '正在导出二维码标签',
+  },
+  startProgress: startQrExportProgress,
+  updateProgress: updateQrExportProgress,
+  finishProgress: finishQrExportProgress,
+});
 
 function openAuditHistory(row?: MonitorAsset | null) {
   const id = Number(row?.id || infoRow.value?.id || 0);
@@ -1793,14 +1631,6 @@ async function openQr(row: MonitorAsset) {
   } finally {
     qrLoading.value = false;
   }
-}
-
-function downloadQr() {
-  openQrPrintTemplate('sheet', 'single-sheet');
-}
-
-function downloadLabel() {
-  openQrPrintTemplate('cards', 'single-cards');
 }
 
 async function copyQrLink() {

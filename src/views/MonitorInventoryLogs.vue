@@ -174,8 +174,7 @@ import type { InventoryBatchPayload, InventoryBatchRow } from '../api/inventoryB
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { getMonitorInventoryOverview } from '../api/inventoryOverview';
 import { countMonitorAssets, getMonitorAssetInventorySummary } from '../api/assetLedgers';
-import type { AssetInventorySummary, InventoryIssueBreakdown, MonitorFilters } from '../types/assets';
-import { emptyInventoryIssueBreakdown } from '../types/assets';
+import { emptyInventoryIssueBreakdown, type AssetInventorySummary, type InventoryIssueBreakdown, type MonitorFilters } from '../types/assets';
 import { openMonitorLedgerFromInventoryLog } from '../utils/inventoryLedgerNavigation';
 import { createInventoryBatchStartPreview, executeInventoryBatchClose, executeInventoryBatchStart, invalidateInventoryBatchDomainCaches, suggestInventoryBatchName } from '../utils/inventoryBatchPageService';
 import { usePagedAssetList } from '../composables/usePagedAssetList';

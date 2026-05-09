@@ -1,5 +1,4 @@
-import type { AuthUser } from './_auth';
-import { requireAuth } from './_auth';
+import { requireAuth, type AuthUser } from './_auth';
 import { getUserPermissionMap, getUserTemplateCode, type PermissionCode } from './_permissions';
 
 export type CapabilityCode =

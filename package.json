@@ -26,6 +26,7 @@
     "check:perf-budget": "node scripts/perf-budget-check.mjs",
     "check:element-usage": "node scripts/check-element-usage.mjs",
     "check:runtime-sources": "node scripts/check-runtime-sources.mjs",
+    "check:source-encoding": "node scripts/check-source-encoding.mjs",
     "db:clean": "node scripts/db-clean.mjs",
     "audit:cleanup": "node scripts/audit-cleanup.mjs",
     "audit:stats": "node scripts/audit-capacity-report.mjs",
