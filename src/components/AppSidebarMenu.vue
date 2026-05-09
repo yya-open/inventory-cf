@@ -2,7 +2,7 @@
   <div class="app-sidebar-menu" :class="{ 'app-sidebar-menu--collapsed': collapsed, 'app-sidebar-menu--mobile': isMobile }">
     <div class="app-sidebar-menu__brand" :title="brandTitle">
       <span v-if="collapsed" class="app-sidebar-menu__brand-badge" aria-hidden="true">
-        <el-icon><Box /></el-icon>
+        <component :is="brandIcon" class="app-sidebar-menu__brand-icon" />
       </span>
       <template v-else>{{ brandTitle }}</template>
     </div>
@@ -115,6 +115,12 @@ type MenuItem = {
   icon: object;
   visible: boolean;
 };
+
+const brandIcon = computed(() => {
+  if (props.isSystem) return markRaw(Setting);
+  if (props.warehouseActive === 'pc') return markRaw(Cpu);
+  return markRaw(Box);
+});
 
 const brandTitle = '出入库管理';
 

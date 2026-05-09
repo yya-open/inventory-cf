@@ -1659,6 +1659,19 @@ body {
   font-size: 18px;
 }
 
+.app-sidebar-menu__brand-icon {
+  width: 20px;
+  height: 20px;
+  display: block;
+  stroke-width: 2;
+}
+
+.app-sidebar-menu__brand-icon svg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
 .app-sidebar-menu__menu {
   border-right: 0 !important;
   background: transparent !important;
