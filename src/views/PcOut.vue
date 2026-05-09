@@ -198,11 +198,14 @@ import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText, validateEmployeeNo } from "../utils/dataQuality";
 import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
+const PC_ASSETS_MUTATION_KEY = 'inventory:pc-assets:mutation';
 
 const form = ref({
   asset_id: undefined as number | undefined,
@@ -305,6 +308,14 @@ function removeAssetOption(id?: number) {
   assetOptions.value = assetOptions.value.filter((x: any) => Number(x.id) !== Number(id));
 }
 
+function notifyPcAssetsChanged() {
+  invalidatePagedListNamespace('pc-assets');
+  invalidateAssetInventorySummaryCache('pc');
+  try {
+    window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
+  } catch {}
+}
+
 function downloadOutTemplate() {
   downloadTemplate({
     filename: "电脑出库导入模板.xlsx",
@@ -362,6 +373,7 @@ async function onImportOutFile(uploadFile: any) {
     const res: any = await apiPost("/api/pc-out-batch", { items });
     const okSum = Number(res?.success || 0);
     const failSum = Number(res?.failed || 0);
+    if (okSum > 0) notifyPcAssetsChanged();
     if (failSum > 0) {
       console.warn("pc-out-batch errors", res?.errors);
       ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
@@ -373,7 +385,7 @@ async function onImportOutFile(uploadFile: any) {
       const serialSet = new Set(items.map((it) => normalizeSerialNo(it.serial_no, settings.value.validation_serial_no_uppercase)));
       assetOptions.value = assetOptions.value.filter((row: any) => !serialSet.has(normalizeSerialNo(row?.serial_no, settings.value.validation_serial_no_uppercase)));
     } else {
-      await loadAssets();
+      await loadAssets(lastLoadedKeyword, true);
     }
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
@@ -395,6 +407,7 @@ async function submit() {
   try {
     const usedAssetId = form.value.asset_id;
     const r: any = await apiPost("/api/pc-out", { ...form.value });
+    notifyPcAssetsChanged();
     ElMessage.success("出库成功");
 
     // 清理员工信息，保留是否在职默认值
@@ -409,7 +422,7 @@ async function submit() {
     formRef.value?.clearValidate();
     // 优先本地移除已出库资产，减少一次整表刷新
     if (settings.value.ui_write_local_refresh) removeAssetOption(usedAssetId);
-    else await loadAssets();
+    else await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
     ElMessage.error(e?.message || "出库失败");
   } finally {

@@ -202,9 +202,12 @@ import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
+import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { validateWithFriendlyMessage } from "../utils/formValidation";
 
 const formRef = ref<FormInstance>();
+const PC_ASSETS_MUTATION_KEY = 'inventory:pc-assets:mutation';
 
 const form = ref({
   asset_id: undefined as number | undefined,
@@ -283,6 +286,14 @@ const canSubmit = computed(() => {
   return !!form.value.asset_id && !!String(form.value.action || "").trim() && !!String(form.value.recycle_date || "").trim() && !submitting.value;
 });
 
+function notifyPcAssetsChanged() {
+  invalidatePagedListNamespace('pc-assets');
+  invalidateAssetInventorySummaryCache('pc');
+  try {
+    window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
+  } catch {}
+}
+
 function downloadRecycleTemplate() {
   downloadTemplate({
     filename: "电脑回收归还导入模板.xlsx",
@@ -325,6 +336,7 @@ async function onImportRecycleFile(uploadFile: any) {
     const res: any = await apiPost("/api/pc-recycle-batch", { items });
     const okSum = Number(res?.success || 0);
     const failSum = Number(res?.failed || 0);
+    if (okSum > 0) notifyPcAssetsChanged();
     if (failSum > 0) {
       console.warn("pc-recycle-batch errors", res?.errors);
       ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
@@ -332,7 +344,7 @@ async function onImportRecycleFile(uploadFile: any) {
       ElMessage.success(`导入完成：成功 ${okSum} 条`);
     }
 
-    await loadAssets();
+    await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
     ElMessage.error(e?.message || "导入失败");
   }
@@ -353,6 +365,7 @@ async function submit() {
   submitting.value = true;
   try {
     await apiPost("/api/pc-recycle", { ...form.value });
+    notifyPcAssetsChanged();
     ElMessage.success("操作成功");
 
     form.value.asset_id = undefined;
@@ -362,7 +375,7 @@ async function submit() {
     form.value.remark = "";
     formRef.value?.clearValidate();
 
-    await loadAssets();
+    await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
     ElMessage.error(e?.message || "操作失败");
   } finally {
