@@ -1,6 +1,7 @@
 import { unref, type ComputedRef, type Ref } from 'vue';
 import { apiPost } from '../api/client';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
+import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { confirmLedgerAction, notifyLedgerAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
 import { buildBulkDeleteConfirmTip, summarizeBulkDeleteResult } from '../views/assets/assetBulkActions';
 import type { ExcelUtilsModule } from '../utils/assetQrExport';
@@ -9,6 +10,7 @@ import { ElMessage } from '../utils/el-services';
 type BulkActionRunOptions = {
   action: string;
   payload?: Record<string, any>;
+  requestLabel?: string;
   successMessage: string;
   notificationTitle: string;
   notificationMessage: string;
@@ -56,11 +58,14 @@ export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
   async function runBulkAction(input: BulkActionRunOptions) {
     try {
       options.batchBusy.value = true;
-      const result: any = await apiPost(options.endpoint, {
+      const request = () => apiPost(options.endpoint, {
         action: input.action,
         ids: unref(options.selectedNumberIds),
         ...(input.payload || {}),
       });
+      const result: any = input.requestLabel
+        ? await withBlockingActionFeedback(input.requestLabel, request)
+        : await request();
       showLedgerSuccess({
         message: result?.message || input.successMessage,
         notificationTitle: input.notificationTitle,

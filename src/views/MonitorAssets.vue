@@ -229,6 +229,7 @@ import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMount
 import { useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
+import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
@@ -877,7 +878,9 @@ async function restoreAsset(row: MonitorAsset) {
       cancelButtonText: '取消',
     });
     batchBusy.value = true;
-    const result: any = await apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
+    const result: any = await withBlockingActionFeedback('正在恢复显示器归档', () =>
+      apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] })
+    );
     ElMessage.success(result?.message || '恢复成功');
     applyMonitorRestorePatch(extractAffectedIds(result, [Number(row.id)]));
     clearSelection();
@@ -971,6 +974,7 @@ async function batchRestoreSelected() {
   }
   await runBulkAction({
     action: 'restore',
+    requestLabel: '正在批量恢复显示器归档',
     successMessage: '批量恢复成功',
     notificationTitle: '显示器已恢复',
     notificationMessage: `已处理 ${selectedCount.value} 台显示器`,

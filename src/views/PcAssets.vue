@@ -170,6 +170,7 @@ import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onActiv
 import { useRouter } from 'vue-router';
 import { ElMessage } from "../utils/el-services";
 import { apiDelete, apiPost, apiPut } from '../api/client';
+import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
@@ -913,7 +914,9 @@ async function restoreAsset(row: PcAsset) {
       confirmButtonText: '确认恢复',
     });
     batchBusy.value = true;
-    const result: any = await apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] });
+    const result: any = await withBlockingActionFeedback('正在恢复电脑归档', () =>
+      apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] })
+    );
     showLedgerSuccess({
       message: result?.message || '恢复成功',
       notificationTitle: '电脑已恢复',
@@ -989,6 +992,7 @@ async function batchRestoreSelected() {
   }
   await runBulkAction({
     action: 'restore',
+    requestLabel: '正在批量恢复电脑归档',
     successMessage: '批量恢复成功',
     notificationTitle: '批量恢复完成',
     notificationMessage: `已恢复 ${selectedCount.value} 台电脑。`,
