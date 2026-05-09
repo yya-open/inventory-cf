@@ -6,7 +6,7 @@ export type { AssetInventoryKind } from './asset-inventory-batches';
 export async function getInventoryBatchDomainSnapshot(db: D1Database, kind: AssetInventoryKind) {
   const [latest, recent] = await Promise.all([
     getLatestInventoryBatch(db, kind),
-    listRecentInventoryBatches(db, kind, 5),
+    listRecentInventoryBatches(db, kind, 0),
   ]);
   const resolvedActive = String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null;
   const resolvedLatest = latest || resolvedActive;

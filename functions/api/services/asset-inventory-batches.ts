@@ -14,7 +14,7 @@ export type AssetInventoryIssueBreakdown = {
 
 export type AssetInventoryBatchSnapshotStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled' | null;
 
-const INVENTORY_BATCH_RECENT_HISTORY_LIMIT = 5;
+const INVENTORY_BATCH_RECENT_HISTORY_LIMIT = 0;
 const INVENTORY_BATCH_RETENTION_LIMIT = INVENTORY_BATCH_RECENT_HISTORY_LIMIT + 1;
 
 export type AssetInventoryBatchRow = {
@@ -375,7 +375,8 @@ export async function listRecentInventoryBatches(
   kind: AssetInventoryKind,
   limit = INVENTORY_BATCH_RECENT_HISTORY_LIMIT,
 ) {
-  const take = Math.max(1, Math.min(INVENTORY_BATCH_RECENT_HISTORY_LIMIT, Number(limit) || INVENTORY_BATCH_RECENT_HISTORY_LIMIT));
+  const take = Math.max(0, Math.min(INVENTORY_BATCH_RECENT_HISTORY_LIMIT, Number(limit) || INVENTORY_BATCH_RECENT_HISTORY_LIMIT));
+  if (take <= 0) return [];
   return allBatchRows(db, `SELECT *
        FROM asset_inventory_batch
       WHERE kind=?

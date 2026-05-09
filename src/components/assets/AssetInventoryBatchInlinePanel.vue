@@ -4,7 +4,7 @@
       <div class="batch-inline-shell-head">
         <div>
           <div class="batch-inline-title">{{ inventoryBatch.active ? '当前盘点批次' : '最近盘点批次' }}</div>
-          <div class="batch-inline-subtle">历史数据最多保留最近 5 轮，开启新一轮后会自动清理更早批次。</div>
+          <div class="batch-inline-subtle">这里只保留并展示最近一次盘点结果，开启或结束新一轮后会自动替换。</div>
         </div>
         <div class="batch-inline-shell-actions">
           <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '最近一轮' }}</el-tag>
@@ -70,61 +70,6 @@
             </div>
           </template>
         </div>
-
-        <div v-if="inventoryBatch.recent?.length" class="batch-inline-list">
-          <div v-for="item in inventoryBatch.recent" :key="item.id" class="batch-inline-item">
-            <div class="batch-inline-item-head">
-              <div>
-                <div class="batch-inline-item-name">{{ item.name }}</div>
-                <div class="batch-inline-subtle">创建人：{{ item.created_by || '-' }}<template v-if="item.closed_by"> · 结束人：{{ item.closed_by }}</template></div>
-              </div>
-              <el-tag type="info">上一轮</el-tag>
-            </div>
-            <div class="batch-inline-time-grid">
-              <div>
-                <span class="batch-inline-label">开始时间</span>
-                <strong>{{ item.started_at || '-' }}</strong>
-              </div>
-              <div>
-                <span class="batch-inline-label">结束时间</span>
-                <strong>{{ item.closed_at || '-' }}</strong>
-              </div>
-            </div>
-            <div class="batch-inline-metric-grid">
-              <div class="metric-card total">
-                <span>总数</span>
-                <strong>{{ item.summary_total || 0 }}</strong>
-              </div>
-              <div class="metric-card checked">
-                <span>已盘</span>
-                <strong>{{ item.summary_checked_ok || 0 }}</strong>
-              </div>
-              <div class="metric-card issue">
-                <span>异常</span>
-                <strong>{{ item.summary_checked_issue || 0 }}</strong>
-              </div>
-              <div class="metric-card unchecked">
-                <span>未盘</span>
-                <strong>{{ item.summary_unchecked || 0 }}</strong>
-              </div>
-            </div>
-            <AssetInventoryIssueBreakdownPanel :breakdown="item.summary_issue_breakdown" />
-            <div v-if="showSnapshot(item)" class="batch-inline-snapshot">
-              <div class="batch-inline-snapshot-head">
-                <div>
-                  <span class="batch-inline-label">结果快照</span>
-                  <strong>{{ item.snapshot_filename || snapshotStatusText(item.snapshot_job_status) }}</strong>
-                </div>
-                <el-tag :type="snapshotTagType(item.snapshot_job_status)">{{ snapshotStatusText(item.snapshot_job_status) }}</el-tag>
-              </div>
-              <div class="batch-inline-subtle">{{ snapshotSubtleText(item) }}</div>
-              <div class="batch-inline-snapshot-actions">
-                <el-button v-if="canDownload(item)" type="primary" plain size="small" @click="downloadSnapshot(item)">下载快照</el-button>
-              </div>
-            </div>
-          </div>
-        </div>
-        <el-empty v-else description="暂无历史盘点记录" />
       </div>
     </div>
   </div>
@@ -198,12 +143,17 @@ function snapshotSubtleText(item: InventoryBatchRow | null | undefined) {
   const jobMeta = item.snapshot_job_meta || null;
   const jobText = item.snapshot_job_id ? `任务 #${item.snapshot_job_id}` : '快照任务';
   const retryText = jobMeta && Number(jobMeta.max_retries || 0) > 0 ? ` · 重试 ${Number(jobMeta.retry_count || 0)}/${Number(jobMeta.max_retries || 0)}` : '';
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'success') return `导出时间：${item.snapshot_exported_at || jobMeta?.finished_at || '-'}${item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : ''}${item.snapshot_file_size ? ` · 大小：${(Number(item.snapshot_file_size || 0) / 1024).toFixed(1)} KB` : ''} · ${jobText}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'failed') return `${item.snapshot_error_message || '结果快照生成失败'} · ${jobText}${retryText}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'canceled') return `${item.snapshot_error_message || '结果快照任务已取消'} · ${jobText}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'running') return `${jobText} 正在后台生成${jobMeta?.started_at ? ` · 开始于 ${jobMeta.started_at}` : ''}`;
-  if (String(item.snapshot_job_status || '').toLowerCase() === 'queued') return `${jobText} 已入队，后台将继续生成${retryText}`;
-  return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照';
+  const status = String(item.snapshot_job_status || '').toLowerCase();
+  if (status === 'success') {
+    const fileText = item.snapshot_filename ? ` · 文件：${item.snapshot_filename}` : '';
+    const sizeText = item.snapshot_file_size ? ` · 大小：${(Number(item.snapshot_file_size || 0) / 1024).toFixed(1)} KB` : '';
+    return `导出时间：${item.snapshot_exported_at || jobMeta?.finished_at || '-'}${fileText}${sizeText} · ${jobText}`;
+  }
+  if (status === 'failed') return `${item.snapshot_error_message || '结果快照生成失败'} · ${jobText}${retryText}`;
+  if (status === 'canceled') return `${item.snapshot_error_message || '结果快照任务已取消'} · ${jobText}`;
+  if (status === 'running') return `${jobText} 正在后台生成${jobMeta?.started_at ? ` · 开始于 ${jobMeta.started_at}` : ''}`;
+  if (status === 'queued') return `${jobText} 已入队，后台将继续生成${retryText}`;
+  return item.snapshot_exported_at ? `导出时间：${item.snapshot_exported_at}` : '结束本轮后会在这里显示可下载的结果快照。';
 }
 
 function toggleExpanded() {
@@ -236,19 +186,15 @@ async function downloadSnapshot(item: InventoryBatchRow) {
 .batch-inline-shell-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .batch-inline-shell-body { display:flex; flex-direction:column; gap:12px; margin-top: 12px; }
 .batch-collapse-btn { padding-inline: 4px; }
-.batch-inline-header-card,
-.batch-inline-item {
+.batch-inline-header-card {
   border: 1px solid #ebeef5;
   border-radius: 16px;
   background: #fff;
   padding: 14px 16px;
 }
-.batch-inline-title-row,
-.batch-inline-item-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
 .batch-inline-title { font-size: 14px; font-weight: 700; color:#303133; }
-.batch-inline-name, .batch-inline-item-name { font-size: 16px; font-weight: 700; color:#303133; margin-top: 10px; }
+.batch-inline-name { font-size: 16px; font-weight: 700; color:#303133; margin-top: 10px; }
 .batch-inline-subtle { margin-top: 4px; color:#909399; font-size:12px; line-height:1.6; }
-.batch-inline-list { display:flex; flex-direction:column; gap:12px; }
 .batch-inline-snapshot { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
 .batch-inline-snapshot-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .batch-inline-snapshot-actions { display:flex; justify-content:flex-end; }

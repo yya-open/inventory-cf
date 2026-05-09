@@ -5,7 +5,7 @@
         <div class="history-title-row">
           <div>
             <div class="history-title">当前盘点批次</div>
-            <div class="history-subtle">默认保留最近 5 轮盘点的开启/结束时间与结果汇总。</div>
+            <div class="history-subtle">默认只保留最近 1 轮盘点的开启/结束时间与结果汇总。</div>
           </div>
           <el-tag :type="inventoryBatch.active ? 'success' : 'info'">{{ inventoryBatch.active ? '进行中' : '暂无进行中' }}</el-tag>
         </div>

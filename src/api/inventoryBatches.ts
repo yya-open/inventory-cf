@@ -50,7 +50,6 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
   const latest = payload?.latest || null;
   const resolvedActive = payload?.active || (String(latest?.status || '').toUpperCase() === 'ACTIVE' ? latest : null);
   const resolvedLatest = resolvedActive || latest;
-  const recent = (payload?.recent || []).filter((item): item is InventoryBatchRow => Boolean(item?.id) && (!resolvedActive || Number(item.id) !== Number(resolvedActive.id)));
   const normalizeRow = (row: InventoryBatchRow | null | undefined) => {
     if (!row?.id) return null;
     return inventoryBatchRowSchema(row);
@@ -58,7 +57,7 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
   return {
     active: normalizeRow(resolvedActive),
     latest: normalizeRow(resolvedLatest),
-    recent: recent.map((item) => normalizeRow(item)).filter((item): item is InventoryBatchRow => Boolean(item?.id)),
+    recent: [],
   };
 }
 
