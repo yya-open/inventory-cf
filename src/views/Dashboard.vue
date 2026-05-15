@@ -143,6 +143,7 @@ const summaryCache = new Map<string, { data: any; fetchedAt: number }>();
 const detailCache = new Map<string, { data: any; fetchedAt: number }>();
 const pendingSummaryRequests = new Map<string, Promise<any>>();
 const pendingDetailRequests = new Map<string, Promise<any>>();
+const prefetchedSummaryKeys = new Set<string>();
 let activeSummaryRequestId = 0;
 let activeDetailRequestId = 0;
 let activeSummaryController: AbortController | null = null;
@@ -317,10 +318,16 @@ async function fetchDetail(mode = reportMode.value, dayCount = days.value, force
 
 async function prefetchOtherModes() {
   const candidates = reportModeOptions.value.map((item: any) => item.value).filter((mode: string) => mode !== reportMode.value);
+  const tasks: Promise<void>[] = [];
   for (const mode of candidates) {
-    if (isSummaryFresh(mode as ReportMode, days.value) || pendingSummaryRequests.has(buildCacheKey(mode as ReportMode, days.value))) continue;
-    fetchSummary(mode as ReportMode, days.value, false).catch(() => {});
+    const cacheKey = buildCacheKey(mode as ReportMode, days.value);
+    if (prefetchedSummaryKeys.has(cacheKey)) continue;
+    if (isSummaryFresh(mode as ReportMode, days.value) || pendingSummaryRequests.has(cacheKey)) continue;
+    tasks.push(fetchSummary(mode as ReportMode, days.value, false).then((result) => {
+      if (result) prefetchedSummaryKeys.add(cacheKey);
+    }).catch(() => {}));
   }
+  if (tasks.length) await Promise.allSettled(tasks);
 }
 
 async function loadDetail(mode = reportMode.value, dayCount = days.value, force = false, silent = false) {

@@ -187,6 +187,11 @@
                 <el-tag v-for="item in editAccessImpact.added" :key="`add-${item}`" type="success" effect="plain">新增 {{ item }}</el-tag>
                 <el-tag v-for="item in editAccessImpact.removed" :key="`remove-${item}`" type="danger" effect="plain">移除 {{ item }}</el-tag>
               </div>
+              <div v-if="editAccessImpact.routeAdded.length || editAccessImpact.routeRemoved.length" class="access-summary__row">
+                <span class="access-summary__label">页面入口</span>
+                <el-tag v-for="item in editAccessImpact.routeAdded" :key="`route-add-${item}`" type="success" effect="plain">新增 {{ item }}</el-tag>
+                <el-tag v-for="item in editAccessImpact.routeRemoved" :key="`route-remove-${item}`" type="danger" effect="plain">移除 {{ item }}</el-tag>
+              </div>
               <div v-else class="access-summary__note">{{ editAccessImpact.changed ? '范围说明有变化，业务仓域可见性不变。' : '与当前可见范围一致。' }}</div>
             </div>
             <div class="access-summary__note">{{ editAccessSummary.note }}</div>
@@ -284,6 +289,7 @@ import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDelete, isApiErrorCode } from "../api/client";
 import { validatePassword } from "../utils/password";
+import { getAccessibleRouteLabels } from "../utils/moduleAccess";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
 import { DATA_SCOPE_OPTIONS, PERMISSION_WAREHOUSE_OPTIONS, dataScopeLabel, encodeWarehouseScopeValues, normalizeDataScope, scopeModeOptions, warehouseScopeValues } from "../utils/dataScope";
 
@@ -324,6 +330,7 @@ const showScopePreview = ref(false);
 const scopePreview = ref<any | null>(null);
 const previewTargetPath = ref('');
 const previewRouteResult = computed(() => (scopePreview.value?.route_checks || []).find((item:any) => item.path === previewTargetPath.value) || null);
+const scopePreviewCache = new Map<string, any>();
 
 const warehouseOptions = PERMISSION_WAREHOUSE_OPTIONS.map((label) => label);
 const createWarehouseScopeValue = computed({
@@ -354,6 +361,7 @@ const editDataScopeType = ref<'all' | 'department' | 'warehouse' | 'department_w
 const editDataScopeValue = ref('');
 const editDataScopeValue2 = ref('');
 const resetPwd = ref("");
+const editBaseSnapshot = ref<{ role: string; permissions: Record<string, boolean>; scope: DraftScope } | null>(null);
 
 type DraftScope = {
   data_scope_type: 'all' | 'department' | 'warehouse' | 'department_warehouse';
@@ -369,6 +377,15 @@ const MODE_LABEL: Record<string, string> = {
 
 function roleLevel(role: string) {
   return role === 'admin' ? 3 : role === 'operator' ? 2 : 1;
+}
+
+function buildPreviewCacheKey(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string; role: string }) {
+  return JSON.stringify({
+    role: String(payload.role || ''),
+    data_scope_type: String(payload.data_scope_type || ''),
+    data_scope_value: String(payload.data_scope_value || ''),
+    data_scope_value2: String(payload.data_scope_value2 || ''),
+  });
 }
 
 function buildScopeState(scope: DraftScope) {
@@ -401,6 +418,13 @@ function buildAccessSummary(role: string, permissions: Record<string, boolean>, 
   const modes = new Set(state.modes);
   const canOperate = roleLevel(role) >= 2;
   const systemEntries = buildSystemEntries(role, permissions);
+  const routeLabels = getAccessibleRouteLabels({
+    role,
+    permissions,
+    data_scope_type: scope.data_scope_type,
+    data_scope_value: scope.data_scope_value,
+    data_scope_value2: scope.data_scope_value2,
+  });
   const modules = [
     { label: '配件仓', enabled: modes.has('parts') },
     { label: '电脑仓', enabled: modes.has('pc') },
@@ -411,7 +435,7 @@ function buildAccessSummary(role: string, permissions: Record<string, boolean>, 
   const note = state.ready
     ? (enabledLabels.length ? `保存后可见：${enabledLabels.join('、')}` : '当前数据范围没有可见业务仓域')
     : '请补全数据范围后再保存，摘要会实时更新。';
-  return { ...state, modules, systemEntries, roleHint, note };
+  return { ...state, modules, systemEntries, routeLabels, roleHint, note };
 }
 
 function scopeFromRow(row?: Row | null): DraftScope {
@@ -428,12 +452,28 @@ function moduleLabelsFromModes(modes: string[]) {
 }
 
 const editAccessImpact = computed(() => {
-  const before = buildScopeState(scopeFromRow(editing.value));
+  const base = editBaseSnapshot.value || {
+    role: editing.value?.role || 'viewer',
+    permissions: editing.value?.permissions || {},
+    scope: scopeFromRow(editing.value),
+  };
+  const before = buildAccessSummary(base.role, base.permissions, base.scope);
   const after = buildScopeState({
     data_scope_type: editDataScopeType.value,
     data_scope_value: editDataScopeValue.value,
     data_scope_value2: editDataScopeValue2.value,
   });
+  const currentRouteLabels = getAccessibleRouteLabels({
+    role: editRole.value,
+    permissions: editPermissions.value,
+    data_scope_type: editDataScopeType.value,
+    data_scope_value: editDataScopeValue.value,
+    data_scope_value2: editDataScopeValue2.value,
+  });
+  const beforeRoutes = new Set(before.routeLabels);
+  const afterRoutes = new Set(currentRouteLabels);
+  const routeAdded = currentRouteLabels.filter((label) => !beforeRoutes.has(label));
+  const routeRemoved = before.routeLabels.filter((label) => !afterRoutes.has(label));
   const beforeModes = new Set(before.modes);
   const afterModes = new Set(after.modes);
   const added = moduleLabelsFromModes(after.modes.filter((mode) => !beforeModes.has(mode)));
@@ -443,7 +483,9 @@ const editAccessImpact = computed(() => {
     afterLabel: after.scopeLabel,
     added,
     removed,
-    changed: before.scopeLabel !== after.scopeLabel || added.length > 0 || removed.length > 0,
+    routeAdded,
+    routeRemoved,
+    changed: before.scopeLabel !== after.scopeLabel || added.length > 0 || removed.length > 0 || routeAdded.length > 0 || routeRemoved.length > 0,
   };
 });
 
@@ -563,8 +605,15 @@ function draftScopeWarning(scope: DraftScope) {
 
 async function previewScope(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string; role: string }) {
   try {
-    const r = await apiPost<any>('/api/users/preview-scope', payload);
-    scopePreview.value = r.data || null;
+    const cacheKey = buildPreviewCacheKey(payload);
+    const cached = scopePreviewCache.get(cacheKey);
+    if (cached) {
+      scopePreview.value = cached;
+    } else {
+      const r = await apiPost<any>('/api/users/preview-scope', payload);
+      scopePreview.value = r.data || null;
+      scopePreviewCache.set(cacheKey, scopePreview.value);
+    }
     previewTargetPath.value = scopePreview.value?.route_checks?.find((item:any) => item.enabled)?.path || scopePreview.value?.route_checks?.[0]?.path || '';
     showScopePreview.value = true;
   } catch (e: any) {
@@ -632,6 +681,15 @@ function openEdit(row: Row) {
   editDataScopeType.value = scope.data_scope_type;
   editDataScopeValue.value = scope.data_scope_value;
   editDataScopeValue2.value = scope.data_scope_value2;
+  editBaseSnapshot.value = {
+    role: row.role,
+    permissions: { ...mergedPermissions },
+    scope: {
+      data_scope_type: scope.data_scope_type,
+      data_scope_value: scope.data_scope_value,
+      data_scope_value2: scope.data_scope_value2,
+    },
+  };
   showEdit.value = true;
 }
 
