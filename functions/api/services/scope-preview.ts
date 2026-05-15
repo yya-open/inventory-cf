@@ -1,4 +1,4 @@
-import { resolvePartsWarehouseId, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
+import { getRequiredWarehouses, resolvePartsWarehouseId, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
 type PreviewRole = 'admin' | 'operator' | 'viewer';
 
@@ -20,25 +20,19 @@ function canRole(role: PreviewRole, min: PreviewRole) {
 export function dataScopeLabelFromServer(scope?: UserDataScope | null) {
   if (!scope || scope.data_scope_type === 'all') return '全部数据';
   if (scope.data_scope_type === 'department') return `部门：${scope.data_scope_value || '-'}`;
-  if (scope.data_scope_type === 'warehouse') return `仓库：${scope.data_scope_value || '-'}`;
-  return `部门：${scope?.data_scope_value || '-'} / 仓库：${scope?.data_scope_value2 || '-'}`;
+  if (scope.data_scope_type === 'warehouse') return `仓库：${(getRequiredWarehouses(scope) || []).join('、') || '-'}`;
+  return `部门：${scope?.data_scope_value || '-'} / 仓库：${(getRequiredWarehouses(scope) || []).join('、') || '-'}`;
 }
 
 function allowedReportModes(scope?: UserDataScope | null) {
   if (!scope || scope.data_scope_type === 'all') return ['parts', 'pc', 'monitor'];
   if (scope.data_scope_type === 'department') return ['pc', 'monitor'];
-  if (scope.data_scope_type === 'warehouse') {
-    if (scope.data_scope_value === '配件仓') return ['parts'];
-    if (scope.data_scope_value === '电脑仓') return ['pc'];
-    if (scope.data_scope_value === '显示器仓') return ['monitor'];
-    return [];
-  }
-  if (scope.data_scope_type === 'department_warehouse') {
-    if (scope.data_scope_value2 === '配件仓') return ['parts'];
-    if (scope.data_scope_value2 === '电脑仓') return ['pc'];
-    if (scope.data_scope_value2 === '显示器仓') return ['monitor'];
-  }
-  return [];
+  const warehouses = getRequiredWarehouses(scope) || [];
+  const modes: string[] = [];
+  if (warehouses.includes('配件仓')) modes.push('parts');
+  if (warehouses.includes('电脑仓')) modes.push('pc');
+  if (warehouses.includes('显示器仓')) modes.push('monitor');
+  return modes;
 }
 
 function buildRouteChecks(scope: UserDataScope, role: PreviewRole) {

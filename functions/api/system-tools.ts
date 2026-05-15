@@ -12,6 +12,7 @@ import {
   repairDictionaryCounters,
   repairPcLatestState,
   repairSearchNormalize,
+  repairUserScopeFormat,
 } from './services/ops-tools';
 import { listAsyncJobs } from './services/async-jobs';
 import { getSchemaStatus } from './services/schema-status';
@@ -56,6 +57,7 @@ async function runRepairAction(db: D1Database, action: string) {
   if (action === 'repair_dictionary_counters') return await repairDictionaryCounters(db);
   if (action === 'repair_audit_materialized') return await repairAuditMaterialized(db);
   if (action === 'repair_search_norm') return await repairSearchNormalize(db);
+  if (action === 'repair_user_scope_format') return await repairUserScopeFormat(db);
   throw Object.assign(new Error('不支持的操作'), { status: 400 });
 }
 
@@ -76,14 +78,15 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     let data: any = null;
     try {
       if (action === 'repair_all') {
-        const [a, b, c, d] = await Promise.all([
+        const [a, b, c, d, e] = await Promise.all([
           repairPcLatestState(env.DB),
           repairDictionaryCounters(env.DB),
           repairAuditMaterialized(env.DB),
           repairSearchNormalize(env.DB),
+          repairUserScopeFormat(env.DB),
         ]);
         const after = await forceRefreshRepairScan(env.DB);
-        data = { before_scan: before, repair: { pc_latest_state: a, dictionary_counters: b, audit_materialized: c, search_norm: d }, after_scan: after, after };
+        data = { before_scan: before, repair: { pc_latest_state: a, dictionary_counters: b, audit_materialized: c, search_norm: d, user_scope_format: e }, after_scan: after, after };
       } else {
         const result = await runRepairAction(env.DB, String(action || ''));
         const after = await forceRefreshRepairScan(env.DB);

@@ -37,6 +37,9 @@ class FakeDB {
     if (normalized.startsWith('select id, username, data_scope_type, data_scope_value, data_scope_value2 from users where not')) {
       return (this.rows.invalidScopes || []).slice(0, Number(params[0] || 5));
     }
+    if (normalized === 'select id, username, data_scope_type, data_scope_value, data_scope_value2 from users') {
+      return this.rows.userScopes || [];
+    }
     if (normalized === 'select id, item_id, warehouse_id, qty from stock where coalesce(qty, 0) < 0 limit ?') {
       return (this.rows.negativeStock || []).slice(0, Number(params[0] || 5));
     }
@@ -89,6 +92,23 @@ describe('data integrity helpers', () => {
     expect(result.checks.foreign_key_ok).toBe(false);
     expect(result.issues.some((item) => item.key === 'blank_username')).toBe(true);
     expect(result.issues.some((item) => item.key === 'negative_stock_qty')).toBe(true);
+  });
+
+  it('flags invalid and legacy user scope warehouse formats', async () => {
+    const db = new FakeDB({
+      userScopes: [
+        { id: 1, username: 'legacy', data_scope_type: 'warehouse', data_scope_value: '电脑/显示器仓', data_scope_value2: '' },
+        { id: 2, username: 'invalid', data_scope_type: 'warehouse', data_scope_value: '未知仓', data_scope_value2: '' },
+      ],
+      quickCheck: [{ quick_check: 'ok' }],
+      foreignKeyCheck: [],
+    }) as any;
+
+    const result = await runDataIntegrityChecks(db);
+
+    expect(result.ok).toBe(false);
+    expect(result.issues.some((item) => item.key === 'invalid_user_scope_warehouse')).toBe(true);
+    expect(result.issues.some((item) => item.key === 'legacy_user_scope_format')).toBe(true);
   });
 
   it('verifies replace restore row counts against manifest', async () => {

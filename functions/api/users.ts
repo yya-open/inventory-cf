@@ -7,20 +7,29 @@ import { validatePassword } from "../_password_policy";
 import { invalidateCachedMe } from "./auth/me";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
-import { getUserDataScope, invalidateUserDataScopeCache, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
-import { assertDepartmentDictionaryValue, assertWarehouseDictionaryValue } from './services/master-data';
+import { getUserDataScope, getRequiredWarehouses, invalidateUserDataScopeCache, isPermissionWarehouseScopeValue, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
+import { assertDepartmentDictionaryValue } from './services/master-data';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
 async function assertScopeDictionaryConstraints(db: D1Database, type: any, value: any, value2: any) {
   const scope = normalizeUserDataScope(type, value, value2);
   if (scope.data_scope_type === 'department') await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
-  if (scope.data_scope_type === 'warehouse') await assertWarehouseDictionaryValue(db, scope.data_scope_value, '仓库范围');
+  if (scope.data_scope_type === 'warehouse') assertPermissionWarehouseScope(scope);
   if (scope.data_scope_type === 'department_warehouse') {
     await assertDepartmentDictionaryValue(db, scope.data_scope_value, '部门范围');
-    await assertWarehouseDictionaryValue(db, scope.data_scope_value2, '仓库范围');
+    assertPermissionWarehouseScope(scope);
   }
   return scope;
+}
+
+function assertPermissionWarehouseScope(scope: ReturnType<typeof normalizeUserDataScope>) {
+  const warehouses = getRequiredWarehouses(scope) || [];
+  if (!warehouses.length) throw Object.assign(new Error('仓库范围不能为空'), { status: 400, error_code: 'USER_SCOPE_WAREHOUSE_REQUIRED' });
+  const invalid = warehouses.find((item) => !isPermissionWarehouseScopeValue(item));
+  if (invalid) {
+    throw Object.assign(new Error(`仓库范围「${invalid}」不是可授权仓域`), { status: 400, error_code: 'USER_SCOPE_WAREHOUSE_INVALID' });
+  }
 }
 
 export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {

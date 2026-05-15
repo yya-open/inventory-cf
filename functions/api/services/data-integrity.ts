@@ -1,5 +1,6 @@
 import { countTableRows } from '../admin/_backup_helpers';
 import type { BackupManifest } from '../admin/_backup_integrity';
+import { getRequiredWarehouses, isPermissionWarehouseScopeValue, normalizeUserDataScope } from './data-scope';
 
 export type DataIntegrityIssue = {
   key: string;
@@ -40,6 +41,58 @@ async function makeIssue(db: D1Database, issue: Omit<DataIntegrityIssue, 'count'
     message: issue.message,
     sample: rows,
   } satisfies DataIntegrityIssue;
+}
+
+function normalizeNullableText(value: any) {
+  const raw = String(value ?? '').trim();
+  return raw || null;
+}
+
+function isCanonicalUserScope(row: any) {
+  const normalized = normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
+  return String(row?.data_scope_type || 'all').trim().toLowerCase() === normalized.data_scope_type
+    && normalizeNullableText(row?.data_scope_value) === normalizeNullableText(normalized.data_scope_value)
+    && normalizeNullableText(row?.data_scope_value2) === normalizeNullableText(normalized.data_scope_value2);
+}
+
+async function collectUserScopeFormatIssues(db: D1Database, sampleLimit: number) {
+  const rows = await queryRows(db, `SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users`);
+  const invalid: any[] = [];
+  const legacy: any[] = [];
+  for (const row of rows) {
+    const normalized = normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
+    const warehouses = getRequiredWarehouses(normalized) || [];
+    const invalidWarehouse = warehouses.find((item) => !isPermissionWarehouseScopeValue(item));
+    if (invalidWarehouse) {
+      invalid.push({ ...row, invalid_warehouse: invalidWarehouse });
+      continue;
+    }
+    if (!isCanonicalUserScope(row)) {
+      legacy.push({ ...row, normalized });
+    }
+  }
+  const issues: DataIntegrityIssue[] = [];
+  if (invalid.length) {
+    issues.push({
+      key: 'invalid_user_scope_warehouse',
+      severity: 'error',
+      table: 'users',
+      count: invalid.length,
+      message: '存在未纳入权限仓域清单的数据范围值',
+      sample: invalid.slice(0, sampleLimit),
+    });
+  }
+  if (legacy.length) {
+    issues.push({
+      key: 'legacy_user_scope_format',
+      severity: 'warn',
+      table: 'users',
+      count: legacy.length,
+      message: '存在旧版用户数据范围格式，建议迁移为 JSON 多选仓域格式',
+      sample: legacy.slice(0, sampleLimit),
+    });
+  }
+  return issues;
 }
 
 function validDataScopePredicate(prefix = 'users') {
@@ -123,6 +176,8 @@ export async function runDataIntegrityChecks(db: D1Database, options?: { sampleL
     const issue = await makeIssue(db, { ...definition, sampleLimit });
     if (issue.count > 0) issues.push(issue);
   }
+
+  issues.push(...await collectUserScopeFormatIssues(db, sampleLimit));
 
   let foreignKeyOk = true;
   try {

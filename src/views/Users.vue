@@ -94,9 +94,26 @@
           <el-input v-model="form.data_scope_value" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
-          <el-select v-model="createWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
+          <el-select v-model="createWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable style="width:100%" placeholder="请选择一个或多个授权仓域">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="访问摘要">
+          <div class="access-summary">
+            <div class="access-summary__head">
+              <el-tag :type="createAccessSummary.ready ? 'success' : 'warning'">{{ createAccessSummary.scopeLabel }}</el-tag>
+              <span class="access-summary__hint">{{ createAccessSummary.roleHint }}</span>
+            </div>
+            <div class="access-summary__row">
+              <span class="access-summary__label">可见模块</span>
+              <el-tag v-for="item in createAccessSummary.modules" :key="item.label" :type="item.enabled ? 'success' : 'info'" effect="plain">{{ item.label }}</el-tag>
+            </div>
+            <div v-if="createAccessSummary.systemEntries.length" class="access-summary__row">
+              <span class="access-summary__label">系统入口</span>
+              <el-tag v-for="item in createAccessSummary.systemEntries" :key="item" type="warning" effect="plain">{{ item }}</el-tag>
+            </div>
+            <div class="access-summary__note">{{ createAccessSummary.note }}</div>
+          </div>
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -140,9 +157,40 @@
           <el-input v-model="editDataScopeValue" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
-          <el-select v-model="editWarehouseScopeValue" filterable clearable style="width:100%" placeholder="请选择仓库">
+          <el-select v-model="editWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable style="width:100%" placeholder="请选择一个或多个授权仓域">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
+        </el-form-item>
+        <el-form-item label="访问摘要">
+          <div class="access-summary">
+            <div class="access-summary__head">
+              <el-tag :type="editAccessSummary.ready ? 'success' : 'warning'">{{ editAccessSummary.scopeLabel }}</el-tag>
+              <span class="access-summary__hint">{{ editAccessSummary.roleHint }}</span>
+            </div>
+            <div class="access-summary__row">
+              <span class="access-summary__label">可见模块</span>
+              <el-tag v-for="item in editAccessSummary.modules" :key="item.label" :type="item.enabled ? 'success' : 'info'" effect="plain">{{ item.label }}</el-tag>
+            </div>
+            <div v-if="editAccessSummary.systemEntries.length" class="access-summary__row">
+              <span class="access-summary__label">系统入口</span>
+              <el-tag v-for="item in editAccessSummary.systemEntries" :key="item" type="warning" effect="plain">{{ item }}</el-tag>
+            </div>
+            <div class="access-summary__change">
+              <div class="access-summary__row">
+                <span class="access-summary__label">变更影响</span>
+                <el-tag effect="plain">{{ editAccessImpact.beforeLabel }}</el-tag>
+                <span class="access-summary__arrow">保存后</span>
+                <el-tag :type="editAccessSummary.ready ? 'success' : 'warning'" effect="plain">{{ editAccessImpact.afterLabel }}</el-tag>
+              </div>
+              <div v-if="editAccessImpact.added.length || editAccessImpact.removed.length" class="access-summary__row">
+                <span class="access-summary__label"></span>
+                <el-tag v-for="item in editAccessImpact.added" :key="`add-${item}`" type="success" effect="plain">新增 {{ item }}</el-tag>
+                <el-tag v-for="item in editAccessImpact.removed" :key="`remove-${item}`" type="danger" effect="plain">移除 {{ item }}</el-tag>
+              </div>
+              <div v-else class="access-summary__note">{{ editAccessImpact.changed ? '范围说明有变化，业务仓域可见性不变。' : '与当前可见范围一致。' }}</div>
+            </div>
+            <div class="access-summary__note">{{ editAccessSummary.note }}</div>
+          </div>
         </el-form-item>
         <el-form-item label="权限模板">
           <div style="display:flex; gap:8px; width:100%">
@@ -237,8 +285,7 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDelete, isApiErrorCode } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, PERMISSION_LABEL, PERMISSION_TEMPLATE_LABEL, buildTemplatePermissionMap, getDefaultPermissionTemplate, normalizePermissionTemplateCode, type PermissionTemplateCode } from "../utils/permissions";
-import { DATA_SCOPE_OPTIONS, dataScopeLabel, normalizeDataScope } from "../utils/dataScope";
-import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
+import { DATA_SCOPE_OPTIONS, PERMISSION_WAREHOUSE_OPTIONS, dataScopeLabel, encodeWarehouseScopeValues, normalizeDataScope, scopeModeOptions, warehouseScopeValues } from "../utils/dataScope";
 
 type Row = {
   id:number;
@@ -278,21 +325,22 @@ const scopePreview = ref<any | null>(null);
 const previewTargetPath = ref('');
 const previewRouteResult = computed(() => (scopePreview.value?.route_checks || []).find((item:any) => item.path === previewTargetPath.value) || null);
 
-const systemSettings = ref({ ...DEFAULT_SYSTEM_SETTINGS });
-const warehouseOptions = computed(() => systemSettings.value.dictionary_asset_warehouse_options || []);
+const warehouseOptions = PERMISSION_WAREHOUSE_OPTIONS.map((label) => label);
 const createWarehouseScopeValue = computed({
-  get: () => form.value.data_scope_type === 'warehouse' ? form.value.data_scope_value : form.value.data_scope_value2,
-  set: (value: string) => {
-    if (form.value.data_scope_type === 'warehouse') form.value.data_scope_value = value || '';
-    else form.value.data_scope_value2 = value || '';
+  get: () => warehouseScopeValues(form.value.data_scope_type === 'warehouse' ? form.value.data_scope_value : form.value.data_scope_value2),
+  set: (value: string[]) => {
+    const encoded = encodeWarehouseScopeValues(value || []);
+    if (form.value.data_scope_type === 'warehouse') form.value.data_scope_value = encoded;
+    else form.value.data_scope_value2 = encoded;
   },
 });
 
 const editWarehouseScopeValue = computed({
-  get: () => editDataScopeType.value === 'warehouse' ? editDataScopeValue.value : editDataScopeValue2.value,
-  set: (value: string) => {
-    if (editDataScopeType.value === 'warehouse') editDataScopeValue.value = value || '';
-    else editDataScopeValue2.value = value || '';
+  get: () => warehouseScopeValues(editDataScopeType.value === 'warehouse' ? editDataScopeValue.value : editDataScopeValue2.value),
+  set: (value: string[]) => {
+    const encoded = encodeWarehouseScopeValues(value || []);
+    if (editDataScopeType.value === 'warehouse') editDataScopeValue.value = encoded;
+    else editDataScopeValue2.value = encoded;
   },
 });
 const form = ref({ username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer") as PermissionTemplateCode, permissions: {} as Record<string, boolean>, data_scope_type: 'all' as 'all' | 'department' | 'warehouse' | 'department_warehouse', data_scope_value: '', data_scope_value2: '' });
@@ -307,6 +355,110 @@ const editDataScopeValue = ref('');
 const editDataScopeValue2 = ref('');
 const resetPwd = ref("");
 
+type DraftScope = {
+  data_scope_type: 'all' | 'department' | 'warehouse' | 'department_warehouse';
+  data_scope_value: string;
+  data_scope_value2: string;
+};
+
+const MODE_LABEL: Record<string, string> = {
+  parts: '配件仓',
+  pc: '电脑仓',
+  monitor: '显示器仓',
+};
+
+function roleLevel(role: string) {
+  return role === 'admin' ? 3 : role === 'operator' ? 2 : 1;
+}
+
+function buildScopeState(scope: DraftScope) {
+  const type = scope.data_scope_type;
+  const department = String(scope.data_scope_value || '').trim();
+  const warehouses = warehouseScopeValues(type === 'department_warehouse' ? scope.data_scope_value2 : (scope.data_scope_value || scope.data_scope_value2));
+  if (type === 'department' && !department) return { ready: false, scopeLabel: '待填写部门', modes: [] as string[] };
+  if (type === 'warehouse' && !warehouses.length) return { ready: false, scopeLabel: '待选择仓库', modes: [] as string[] };
+  if (type === 'department_warehouse' && (!department || !warehouses.length)) return { ready: false, scopeLabel: !department ? '待填写部门' : '待选择仓库', modes: [] as string[] };
+  const normalized = normalizeDataScope(type, scope.data_scope_value, scope.data_scope_value2);
+  return {
+    ready: true,
+    scopeLabel: dataScopeLabel(normalized.data_scope_type, normalized.data_scope_value, normalized.data_scope_value2),
+    modes: [...scopeModeOptions(normalized.data_scope_type, normalized.data_scope_value, normalized.data_scope_value2)] as string[],
+  };
+}
+
+function buildSystemEntries(role: string, permissions: Record<string, boolean>) {
+  if (role === 'admin') return ['系统管理', '报表看板', '用户管理', '备份恢复'];
+  const entries: string[] = [];
+  if (permissions.async_job_manage) entries.push('批量任务');
+  if (permissions.audit_export) entries.push('审计日志');
+  if (permissions.system_settings_write) entries.push('系统配置');
+  if (permissions.ops_tools) entries.push('运维工具');
+  return entries;
+}
+
+function buildAccessSummary(role: string, permissions: Record<string, boolean>, scope: DraftScope) {
+  const state = buildScopeState(scope);
+  const modes = new Set(state.modes);
+  const canOperate = roleLevel(role) >= 2;
+  const systemEntries = buildSystemEntries(role, permissions);
+  const modules = [
+    { label: '配件仓', enabled: modes.has('parts') },
+    { label: '电脑仓', enabled: modes.has('pc') },
+    { label: '显示器仓', enabled: modes.has('monitor') },
+  ];
+  const enabledLabels = modules.filter((item) => item.enabled).map((item) => item.label);
+  const roleHint = canOperate ? `${roleText(role)}：可执行授权范围内的业务操作` : `${roleText(role)}：仅查看授权范围内数据`;
+  const note = state.ready
+    ? (enabledLabels.length ? `保存后可见：${enabledLabels.join('、')}` : '当前数据范围没有可见业务仓域')
+    : '请补全数据范围后再保存，摘要会实时更新。';
+  return { ...state, modules, systemEntries, roleHint, note };
+}
+
+function scopeFromRow(row?: Row | null): DraftScope {
+  const scope = normalizeDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
+  return {
+    data_scope_type: scope.data_scope_type,
+    data_scope_value: scope.data_scope_value,
+    data_scope_value2: scope.data_scope_value2,
+  };
+}
+
+function moduleLabelsFromModes(modes: string[]) {
+  return modes.map((mode) => MODE_LABEL[mode] || mode);
+}
+
+const editAccessImpact = computed(() => {
+  const before = buildScopeState(scopeFromRow(editing.value));
+  const after = buildScopeState({
+    data_scope_type: editDataScopeType.value,
+    data_scope_value: editDataScopeValue.value,
+    data_scope_value2: editDataScopeValue2.value,
+  });
+  const beforeModes = new Set(before.modes);
+  const afterModes = new Set(after.modes);
+  const added = moduleLabelsFromModes(after.modes.filter((mode) => !beforeModes.has(mode)));
+  const removed = moduleLabelsFromModes(before.modes.filter((mode) => !afterModes.has(mode)));
+  return {
+    beforeLabel: before.scopeLabel,
+    afterLabel: after.scopeLabel,
+    added,
+    removed,
+    changed: before.scopeLabel !== after.scopeLabel || added.length > 0 || removed.length > 0,
+  };
+});
+
+const createAccessSummary = computed(() => buildAccessSummary(form.value.role, form.value.permissions, {
+  data_scope_type: form.value.data_scope_type,
+  data_scope_value: form.value.data_scope_value,
+  data_scope_value2: form.value.data_scope_value2,
+}));
+
+const editAccessSummary = computed(() => buildAccessSummary(editRole.value, editPermissions.value, {
+  data_scope_type: editDataScopeType.value,
+  data_scope_value: editDataScopeValue.value,
+  data_scope_value2: editDataScopeValue2.value,
+}));
+
 watch(() => form.value.data_scope_type, (type) => {
   if (type === 'all') {
     form.value.data_scope_value = '';
@@ -315,8 +467,12 @@ watch(() => form.value.data_scope_type, (type) => {
   }
   if (type === 'department') form.value.data_scope_value2 = '';
   if (type === 'warehouse') {
-    form.value.data_scope_value = form.value.data_scope_value || form.value.data_scope_value2 || '';
+    form.value.data_scope_value = encodeWarehouseScopeValues(warehouseScopeValues(form.value.data_scope_value || form.value.data_scope_value2));
     form.value.data_scope_value2 = '';
+  }
+  if (type === 'department_warehouse' && warehouseScopeValues(form.value.data_scope_value).length && !form.value.data_scope_value2) {
+    form.value.data_scope_value2 = encodeWarehouseScopeValues(warehouseScopeValues(form.value.data_scope_value));
+    form.value.data_scope_value = '';
   }
 });
 
@@ -328,8 +484,12 @@ watch(editDataScopeType, (type) => {
   }
   if (type === 'department') editDataScopeValue2.value = '';
   if (type === 'warehouse') {
-    editDataScopeValue.value = editDataScopeValue.value || editDataScopeValue2.value || '';
+    editDataScopeValue.value = encodeWarehouseScopeValues(warehouseScopeValues(editDataScopeValue.value || editDataScopeValue2.value));
     editDataScopeValue2.value = '';
+  }
+  if (type === 'department_warehouse' && warehouseScopeValues(editDataScopeValue.value).length && !editDataScopeValue2.value) {
+    editDataScopeValue2.value = encodeWarehouseScopeValues(warehouseScopeValues(editDataScopeValue.value));
+    editDataScopeValue.value = '';
   }
 });
 
@@ -347,6 +507,8 @@ function userErrorHint(e: unknown) {
   if (isApiErrorCode(e, 'USER_SELF_DISABLE_FORBIDDEN')) return '不能禁用当前登录账号';
   if (isApiErrorCode(e, 'USER_SELF_DELETE_FORBIDDEN')) return '不能删除当前登录账号';
   if (isApiErrorCode(e, 'USER_LAST_ADMIN_REQUIRED')) return '系统至少需要保留一个启用的管理员账号';
+  if (isApiErrorCode(e, 'USER_SCOPE_WAREHOUSE_REQUIRED')) return '请选择仓库范围';
+  if (isApiErrorCode(e, 'USER_SCOPE_WAREHOUSE_INVALID')) return '仓库范围不是可授权仓域，请刷新页面后重试';
   return '';
 }
 
@@ -394,6 +556,11 @@ function editScopePayload() {
   return { data_scope_type: normalizedScope.data_scope_type, data_scope_value: normalizedScope.data_scope_value, data_scope_value2: normalizedScope.data_scope_value2 };
 }
 
+function draftScopeWarning(scope: DraftScope) {
+  const state = buildScopeState(scope);
+  return state.ready ? '' : state.scopeLabel;
+}
+
 async function previewScope(payload: { data_scope_type: string; data_scope_value: string; data_scope_value2: string; role: string }) {
   try {
     const r = await apiPost<any>('/api/users/preview-scope', payload);
@@ -417,18 +584,11 @@ function applyCreateTemplate() {
   form.value.permissions = buildTemplatePermissionMap(form.value.role, form.value.permission_template_code);
 }
 
-async function ensureScopeDictionariesLoaded() {
-  try {
-    systemSettings.value = await fetchSystemSettings();
-  } catch {}
-}
-
 function applyEditTemplate() {
   editPermissions.value = buildTemplatePermissionMap(editRole.value, editTemplateCode.value);
 }
 
 function openCreate() {
-  void ensureScopeDictionariesLoaded();
   form.value = { username:"", password:"", role:"viewer" as any, permission_template_code: getDefaultPermissionTemplate("viewer"), permissions: buildTemplatePermissionMap("viewer", getDefaultPermissionTemplate("viewer")), data_scope_type: 'all', data_scope_value: '', data_scope_value2: '' };
   showCreate.value = true;
 }
@@ -437,6 +597,8 @@ async function createUser() {
   if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
   const pv = validatePassword(form.value.password);
   if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  const draftWarning = draftScopeWarning({ data_scope_type: form.value.data_scope_type, data_scope_value: form.value.data_scope_value, data_scope_value2: form.value.data_scope_value2 });
+  if (draftWarning) return ElMessage.warning(draftWarning);
   const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value, form.value.data_scope_value2);
   if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
   if ((normalizedScope.data_scope_type === 'warehouse' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value2 && normalizedScope.data_scope_type !== 'warehouse') return ElMessage.warning('请选择仓库范围');
@@ -457,7 +619,6 @@ async function createUser() {
 }
 
 function openEdit(row: Row) {
-  void ensureScopeDictionariesLoaded();
   editing.value = row;
   editRole.value = row.role;
   editActive.value = !!row.is_active;
@@ -470,12 +631,14 @@ function openEdit(row: Row) {
   const scope = normalizeDataScope(row.data_scope_type, row.data_scope_value, row.data_scope_value2);
   editDataScopeType.value = scope.data_scope_type;
   editDataScopeValue.value = scope.data_scope_value;
-  editDataScopeValue2.value = scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2;
+  editDataScopeValue2.value = scope.data_scope_value2;
   showEdit.value = true;
 }
 
 async function saveEdit() {
   if (!editing.value) return;
+  const draftWarning = draftScopeWarning({ data_scope_type: editDataScopeType.value, data_scope_value: editDataScopeValue.value, data_scope_value2: editDataScopeValue2.value });
+  if (draftWarning) return ElMessage.warning(draftWarning);
   const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value, editDataScopeValue2.value);
   if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
   if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
@@ -537,7 +700,57 @@ async function delUser(row: Row) {
 }
 
 onMounted(() => {
-  systemSettings.value = getCachedSystemSettings();
   void load();
 });
 </script>
+
+<style scoped>
+.access-summary {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #dcdfe6;
+  border-radius: 6px;
+  background: #fafafa;
+}
+
+.access-summary__head,
+.access-summary__row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+
+.access-summary__row {
+  margin-top: 8px;
+}
+
+.access-summary__hint,
+.access-summary__note,
+.access-summary__label {
+  color: #606266;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.access-summary__label {
+  width: 56px;
+  flex: none;
+  color: #909399;
+}
+
+.access-summary__note {
+  margin-top: 8px;
+}
+
+.access-summary__change {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px dashed #dcdfe6;
+}
+
+.access-summary__arrow {
+  color: #909399;
+  font-size: 12px;
+}
+</style>

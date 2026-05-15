@@ -5,6 +5,7 @@ import { rebuildSearchFtsTables } from './search-fts';
 import { materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode, isAuditHighRisk } from '../_audit';
 import { normalizeSearchText } from '../_search';
 import { getSchemaStatus } from './schema-status';
+import { getRequiredWarehouses, invalidateUserDataScopeCache, isPermissionWarehouseScopeValue, normalizeUserDataScope } from './data-scope';
 
 export type RepairScanExample = Record<string, any>;
 export type RepairScanItem = {
@@ -35,6 +36,7 @@ const REPAIR_ACTION_LABEL: Record<string, string> = {
   repair_dictionary_counters: '重算字典引用',
   repair_audit_materialized: '回填审计物化',
   repair_search_norm: '重建搜索规范化',
+  repair_user_scope_format: '迁移权限范围格式',
 };
 
 export async function ensureSlowRequestLogTable(db: D1Database) {
@@ -297,6 +299,65 @@ export async function repairSearchNormalize(db: D1Database) {
   return { repaired };
 }
 
+function nullableText(value: any) {
+  const raw = String(value ?? '').trim();
+  return raw || null;
+}
+
+function normalizedScopeDiff(row: any) {
+  const rawType = String(row?.data_scope_type || 'all').trim().toLowerCase();
+  const rawValue = nullableText(row?.data_scope_value);
+  const rawValue2 = nullableText(row?.data_scope_value2);
+  if (!['all', 'department', 'warehouse', 'department_warehouse'].includes(rawType)) {
+    return { normalized: normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2), warehouses: [], invalidWarehouse: '', invalidStructure: 'invalid_scope_type', canonical: false };
+  }
+  if (rawType === 'all' && (rawValue || rawValue2)) {
+    return { normalized: normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2), warehouses: [], invalidWarehouse: '', invalidStructure: 'all_scope_has_values', canonical: false };
+  }
+  if (rawType === 'department' && (!rawValue || rawValue2)) {
+    return { normalized: normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2), warehouses: [], invalidWarehouse: '', invalidStructure: 'invalid_department_scope', canonical: false };
+  }
+  if (rawType === 'warehouse' && (!rawValue || rawValue2)) {
+    return { normalized: normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2), warehouses: [], invalidWarehouse: '', invalidStructure: 'invalid_warehouse_scope', canonical: false };
+  }
+  if (rawType === 'department_warehouse' && (!rawValue || !rawValue2)) {
+    return { normalized: normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2), warehouses: [], invalidWarehouse: '', invalidStructure: 'invalid_department_warehouse_scope', canonical: false };
+  }
+  const normalized = normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
+  const warehouses = getRequiredWarehouses(normalized) || [];
+  const invalidWarehouse = warehouses.find((item) => !isPermissionWarehouseScopeValue(item)) || '';
+  const canonical = String(row?.data_scope_type || 'all').trim().toLowerCase() === normalized.data_scope_type
+    && nullableText(row?.data_scope_value) === nullableText(normalized.data_scope_value)
+    && nullableText(row?.data_scope_value2) === nullableText(normalized.data_scope_value2);
+  return { normalized, warehouses, invalidWarehouse, canonical };
+}
+
+export async function repairUserScopeFormat(db: D1Database) {
+  const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users ORDER BY id ASC`).all<any>();
+  const statements: D1PreparedStatement[] = [];
+  let repaired = 0;
+  let skipped_invalid = 0;
+  for (const row of results || []) {
+    const diff = normalizedScopeDiff(row);
+    if (diff.invalidWarehouse || diff.invalidStructure) {
+      skipped_invalid += 1;
+      continue;
+    }
+    if (diff.canonical) continue;
+    statements.push(db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(
+      diff.normalized.data_scope_type,
+      diff.normalized.data_scope_value,
+      diff.normalized.data_scope_value2,
+      row.id,
+    ));
+    repaired += 1;
+    if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
+  }
+  if (statements.length) await db.batch(statements);
+  if (repaired > 0) invalidateUserDataScopeCache();
+  return { repaired, skipped_invalid };
+}
+
 async function scanPcLatestState(db: D1Database): Promise<RepairScanItem> {
   const row = await db.prepare(`SELECT COUNT(*) AS c FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE s.asset_id IS NULL`).first<any>().catch(() => ({ c: 0 }));
   const count = Number(row?.c || 0);
@@ -400,12 +461,42 @@ async function scanSearchNorm(db: D1Database): Promise<RepairScanItem> {
   };
 }
 
+async function scanUserScopeFormat(db: D1Database): Promise<RepairScanItem> {
+  const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users ORDER BY id ASC`).all<any>().catch(() => ({ results: [] }));
+  const diffs: any[] = [];
+  let repairable = 0;
+  let invalid = 0;
+  for (const row of results || []) {
+    const diff = normalizedScopeDiff(row);
+    if (diff.invalidWarehouse || diff.invalidStructure) {
+      invalid += 1;
+      diffs.push({ id: row.id, username: row.username, issue: diff.invalidStructure ? 'invalid_structure' : 'invalid_warehouse', invalid_warehouse: diff.invalidWarehouse || undefined, invalid_structure: diff.invalidStructure || undefined, data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2 });
+      continue;
+    }
+    if (!diff.canonical) {
+      repairable += 1;
+      diffs.push({ id: row.id, username: row.username, issue: 'legacy_format', data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2, normalized: diff.normalized });
+    }
+  }
+  const affected = repairable + invalid;
+  return {
+    key: 'user_scope_format',
+    label: '用户权限范围格式',
+    affected_count: affected,
+    status: affected > 0 ? 'warn' : 'ok',
+    detail: affected > 0 ? `发现 ${repairable} 个旧格式账号范围 / ${invalid} 个非法仓域范围` : '用户权限范围格式正常',
+    recommendation: invalid > 0 ? '请先人工处理非法仓域；旧格式可执行“迁移权限范围格式”' : (repairable > 0 ? '建议执行“迁移权限范围格式”' : '无需处理'),
+    examples: diffs.slice(0, 20),
+  };
+}
+
 export async function scanRepairCenter(db: D1Database): Promise<RepairScanResult> {
   const items = await Promise.all([
     scanPcLatestState(db),
     scanDictionaryCounters(db),
     scanAuditMaterialized(db),
     scanSearchNorm(db),
+    scanUserScopeFormat(db),
   ]);
   return {
     total_problem_count: items.reduce((sum, item) => sum + (item.affected_count > 0 ? 1 : 0), 0),
@@ -439,12 +530,14 @@ function summarizeRepairedCount(action: string, result: any) {
     return Number(repair?.pc_latest_state?.repaired || 0)
       + Number(repair?.dictionary_counters?.repaired || repair?.dictionary_counters?.rows || 0)
       + Number(repair?.audit_materialized?.repaired || 0)
-      + Number(repair?.search_norm?.repaired || 0);
+      + Number(repair?.search_norm?.repaired || 0)
+      + Number(repair?.user_scope_format?.repaired || 0);
   }
   if (action === 'repair_pc_latest_state') return Number(result?.repaired || 0);
   if (action === 'repair_dictionary_counters') return Number(result?.repaired || result?.rows || 0);
   if (action === 'repair_audit_materialized') return Number(result?.repaired || 0);
   if (action === 'repair_search_norm') return Number(result?.repaired || 0);
+  if (action === 'repair_user_scope_format') return Number(result?.repaired || 0);
   return 0;
 }
 

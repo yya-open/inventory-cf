@@ -375,16 +375,6 @@ async function computeReferenceCounts(db: D1Database, keys: SystemDictionaryKey[
           SELECT '显示器仓' AS label, COUNT(*) AS c FROM monitor_assets
           UNION ALL
           SELECT '配件仓' AS label, COUNT(*) AS c FROM warehouses
-          UNION ALL
-          SELECT TRIM(COALESCE(data_scope_value, '')) AS label, COUNT(*) AS c
-          FROM users
-          WHERE data_scope_type='warehouse'
-          GROUP BY TRIM(COALESCE(data_scope_value, ''))
-          UNION ALL
-          SELECT TRIM(COALESCE(data_scope_value2, '')) AS label, COUNT(*) AS c
-          FROM users
-          WHERE data_scope_type='department_warehouse'
-          GROUP BY TRIM(COALESCE(data_scope_value2, ''))
         ) t
         GROUP BY label`
     ).all<any>();

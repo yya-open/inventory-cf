@@ -1,24 +1,24 @@
 import { requireAuth, type AuthUser } from '../../_auth';
+import {
+  PERMISSION_WAREHOUSE_OPTIONS,
+  PC_MONITOR_WAREHOUSE_SCOPE,
+  encodeWarehouseScopeValues,
+  isPermissionWarehouseScopeValue,
+  normalizeWarehouseScopeValue,
+  normalizeWarehouseScopeValues,
+  type DataScopeType,
+  type PermissionWarehouseScope,
+} from '../../../shared/data-scope';
 
-export type DataScopeType = 'all' | 'department' | 'warehouse' | 'department_warehouse';
 export type UserDataScope = {
   data_scope_type: DataScopeType;
   data_scope_value: string | null;
   data_scope_value2: string | null;
 };
 export type ScopedUser = AuthUser & UserDataScope;
-
-export const ASSET_WAREHOUSE_OPTIONS = ['配件仓', '电脑仓', '显示器仓'] as const;
-
-export function normalizeWarehouseScopeValue(value: any) {
-  const raw = String(value || '').trim();
-  if (!raw) return null;
-  const lower = raw.toLowerCase();
-  if (['parts', 'part', '配件仓', '主仓'].includes(lower) || raw === '配件仓' || raw === '主仓') return '配件仓';
-  if (['pc', '电脑仓'].includes(lower) || raw === '电脑仓') return '电脑仓';
-  if (['monitor', '显示器仓'].includes(lower) || raw === '显示器仓') return '显示器仓';
-  return raw.slice(0, 120);
-}
+export const ASSET_WAREHOUSE_OPTIONS = PERMISSION_WAREHOUSE_OPTIONS;
+export { PC_MONITOR_WAREHOUSE_SCOPE, encodeWarehouseScopeValues, isPermissionWarehouseScopeValue, normalizeWarehouseScopeValue, normalizeWarehouseScopeValues };
+export type AssetWarehouseScope = PermissionWarehouseScope;
 
 export function normalizeDepartmentScopeValue(value: any) {
   const raw = String(value || '').trim();
@@ -29,7 +29,8 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
   const rawType = String(type || '').trim().toLowerCase();
   const department = normalizeDepartmentScopeValue(value);
   const warehouseSource = rawType === 'department_warehouse' ? value2 : (value || value2);
-  const warehouse = normalizeWarehouseScopeValue(warehouseSource);
+  const warehouses = normalizeWarehouseScopeValues(warehouseSource);
+  const warehouse = warehouses.length ? encodeWarehouseScopeValues(warehouses) : null;
 
   if (rawType === 'department' && department) return { data_scope_type: 'department', data_scope_value: department, data_scope_value2: null };
   if (rawType === 'warehouse' && warehouse) return { data_scope_type: 'warehouse', data_scope_value: warehouse, data_scope_value2: null };
@@ -201,13 +202,18 @@ export async function assertMonitorAssetIdsDataScopeAccess(db: D1Database, scope
 
 export function getRequiredWarehouse(scope?: UserDataScope | null) {
   if (!scope || !['warehouse', 'department_warehouse'].includes(scope.data_scope_type)) return null;
-  return normalizeWarehouseScopeValue(scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2);
+  return normalizeWarehouseScopeValues(scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2)[0] || null;
+}
+
+export function getRequiredWarehouses(scope?: UserDataScope | null) {
+  if (!scope || !['warehouse', 'department_warehouse'].includes(scope.data_scope_type)) return null;
+  return normalizeWarehouseScopeValues(scope.data_scope_type === 'warehouse' ? scope.data_scope_value : scope.data_scope_value2);
 }
 
 export function scopeAllowsAssetWarehouse(scope: UserDataScope | null | undefined, warehouseName: '电脑仓' | '显示器仓' | '配件仓') {
-  const required = getRequiredWarehouse(scope);
+  const required = getRequiredWarehouses(scope);
   if (!required) return true;
-  return required === warehouseName;
+  return required.includes(warehouseName);
 }
 
 export function assertAssetWarehouseAccess(scope: UserDataScope | null | undefined, warehouseName: '电脑仓' | '显示器仓' | '配件仓', moduleLabel?: string) {
@@ -233,9 +239,9 @@ export async function assertPartsStocktakeAccess(db: D1Database, scope: UserData
 }
 
 export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null) {
-  const required = getRequiredWarehouse(scope);
+  const required = getRequiredWarehouses(scope);
   if (!required) return Number(requestedWarehouseId || 1) || 1;
-  if (required !== '配件仓') {
+  if (!required.includes('配件仓')) {
     return -1;
   }
   const requested = Number(requestedWarehouseId || 1) || 1;

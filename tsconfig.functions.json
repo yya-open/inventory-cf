@@ -1,4 +1,4 @@
 {
   "extends": "./tsconfig.json",
-  "include": ["functions", "workers", "types", "env.d.ts"]
+  "include": ["functions", "workers", "shared", "types", "env.d.ts"]
 }

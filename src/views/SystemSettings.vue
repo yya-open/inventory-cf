@@ -431,7 +431,7 @@ const dictionaryDefs: Array<{ key: SystemDictionaryKey; title: string; descripti
   { key: 'asset_archive_reason', title: '归档原因字典', description: '用于台账归档原因筛选和批量归档弹窗。' },
   { key: 'pc_brand', title: '电脑品牌字典', description: '用于电脑台账新增、编辑与筛选时的品牌建议。' },
   { key: 'monitor_brand', title: '显示器品牌字典', description: '用于显示器台账新增、编辑与筛选时的品牌建议。' },
-  { key: 'asset_warehouse', title: '资产仓域字典', description: '用于用户可见范围、看板口径与仓域治理配置。' },
+  { key: 'asset_warehouse', title: '资产仓域字典', description: '用于业务仓域治理与字典配置；账号授权范围使用独立的固定仓域选项。' },
 ];
 const createForm = ref<{ dictionary_key: SystemDictionaryKey; label: string; sort_order: number; enabled: 0 | 1 }>({
   dictionary_key: 'pc_brand',

@@ -49,6 +49,7 @@
           <el-button :loading="running==='repair_dictionary_counters'" :disabled="!schema.ok" @click="runRepair('repair_dictionary_counters')">{{ actionButtonText('repair_dictionary_counters', '重算字典引用') }}</el-button>
           <el-button :loading="running==='repair_audit_materialized'" :disabled="!schema.ok" @click="runRepair('repair_audit_materialized')">{{ actionButtonText('repair_audit_materialized', '回填审计物化') }}</el-button>
           <el-button :loading="running==='repair_search_norm'" :disabled="!schema.ok" @click="runRepair('repair_search_norm')">{{ actionButtonText('repair_search_norm', '重建搜索规范化') }}</el-button>
+          <el-button :loading="running==='repair_user_scope_format'" :disabled="!schema.ok" @click="runRepair('repair_user_scope_format')">{{ actionButtonText('repair_user_scope_format', '迁移权限范围格式') }}</el-button>
         </div>
 
         <el-row :gutter="12" class="ops-gap-bottom">
@@ -400,6 +401,7 @@ function itemRepairAction(key: string) {
     dictionary_counters: 'repair_dictionary_counters',
     audit_materialized: 'repair_audit_materialized',
     search_norm: 'repair_search_norm',
+    user_scope_format: 'repair_user_scope_format',
   };
   return map[key] || '';
 }
@@ -410,6 +412,7 @@ function actionButtonText(action: string, fallback: string) {
     repair_dictionary_counters: 'dictionary_counters',
     repair_audit_materialized: 'audit_materialized',
     repair_search_norm: 'search_norm',
+    repair_user_scope_format: 'user_scope_format',
   };
   const item = scanItemByKey(byAction[action]);
   return item && Number(item.affected_count || 0) > 0 ? `${fallback}（${item.affected_count}）` : fallback;
@@ -507,6 +510,7 @@ async function runRepair(action: string) {
     repair_dictionary_counters: scanItemByKey('dictionary_counters'),
     repair_audit_materialized: scanItemByKey('audit_materialized'),
     repair_search_norm: scanItemByKey('search_norm'),
+    repair_user_scope_format: scanItemByKey('user_scope_format'),
   };
   const item = itemMap[action];
   const affected = action === 'repair_all' ? Number(scan.affected_rows || 0) : Number(item?.affected_count || 0);
