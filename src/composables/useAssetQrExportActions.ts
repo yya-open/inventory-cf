@@ -5,6 +5,10 @@ import { buildQrExportFilename } from '../utils/exportNaming';
 import {
   exportAssetQrLinksWorkbook,
   exportAssetQrPrintLocal,
+  buildQrPrintPreflightWarnings,
+  createAssetQrExportJob,
+  formatAssetQrJobCreatedMessage,
+  shouldUseAsyncQrPrintExport,
   type AssetQrExportProgressCallback,
   type AssetQrLinkRow,
   type AssetQrPrintRecord,
@@ -60,6 +64,15 @@ type UseAssetQrExportActionsOptions<TAsset> = {
   finishProgress: () => void;
 };
 
+function qrJobType(scope: 'pc' | 'monitor', kind: QrPrintTemplateKind) {
+  if (scope === 'pc') return kind === 'cards' ? 'PC_QR_CARDS_EXPORT' : 'PC_QR_SHEET_EXPORT';
+  return kind === 'cards' ? 'MONITOR_QR_CARDS_EXPORT' : 'MONITOR_QR_SHEET_EXPORT';
+}
+
+function qrJobLabel(kind: QrPrintTemplateKind) {
+  return kind === 'cards' ? '二维码卡片' : '二维码图版';
+}
+
 export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActionsOptions<TAsset>) {
   const qrTemplateVisible = ref(false);
   const qrTemplateKind = ref<QrPrintTemplateKind>('cards');
@@ -73,6 +86,16 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
     template?: Partial<QrPrintTemplate>;
     emptyMessage: string;
   }) {
+    if (shouldUseAsyncQrPrintExport(optionsForPrint.rows.length)) {
+      const result = await createAssetQrExportJob({
+        rows: optionsForPrint.rows,
+        getId: options.getId,
+        jobType: qrJobType(options.scope, optionsForPrint.mode),
+        template: optionsForPrint.template,
+      });
+      ElMessage.success(formatAssetQrJobCreatedMessage(result, qrJobLabel(optionsForPrint.mode)));
+      return;
+    }
     const result = await exportAssetQrPrintLocal({
       mode: optionsForPrint.mode,
       rows: optionsForPrint.rows,
@@ -176,14 +199,17 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
   async function executeExportSelectedQrSheet(template?: Partial<QrPrintTemplate>) {
     try {
       options.exportBusy.value = true;
-      await runWithProgress(options.messages.progressSheet, () => exportQrPrint({
-        mode: 'sheet',
-        rows: unref(options.selectedRows),
+      const rows = unref(options.selectedRows);
+      const task = () => exportQrPrint({
+        mode: 'sheet' as const,
+        rows,
         title: options.selectedSheetTitle,
-        filename: buildQrExportFilename({ scope: options.scope, kind: 'sheet', count: unref(options.selectedRows).length, template }),
+        filename: buildQrExportFilename({ scope: options.scope, kind: 'sheet', count: rows.length, template }),
         template,
         emptyMessage: options.messages.selectedEmpty,
-      }));
+      });
+      if (shouldUseAsyncQrPrintExport(rows.length)) await task();
+      else await runWithProgress(options.messages.progressSheet, task);
     } catch (error: any) {
       ElMessage.error(error?.message || options.messages.sheetFailed);
     } finally {
@@ -194,14 +220,17 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
   async function executeExportSelectedQrCards(template?: Partial<QrPrintTemplate>) {
     try {
       options.exportBusy.value = true;
-      await runWithProgress(options.messages.progressCards, () => exportQrPrint({
-        mode: 'cards',
-        rows: unref(options.selectedRows),
+      const rows = unref(options.selectedRows);
+      const task = () => exportQrPrint({
+        mode: 'cards' as const,
+        rows,
         title: options.selectedCardsTitle,
-        filename: buildQrExportFilename({ scope: options.scope, kind: 'cards', count: unref(options.selectedRows).length, template }),
+        filename: buildQrExportFilename({ scope: options.scope, kind: 'cards', count: rows.length, template }),
         template,
         emptyMessage: options.messages.selectedEmpty,
-      }));
+      });
+      if (shouldUseAsyncQrPrintExport(rows.length)) await task();
+      else await runWithProgress(options.messages.progressCards, task);
     } catch (error: any) {
       ElMessage.error(error?.message || options.messages.cardsFailed);
     } finally {
@@ -210,6 +239,9 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
   }
 
   async function submitQrPrintTemplate(template: QrPrintTemplate) {
+    const exportCount = qrTemplateAction.value.startsWith('batch') ? unref(options.selectedRows).length : 1;
+    const warnings = buildQrPrintPreflightWarnings(qrTemplateKind.value, template, exportCount);
+    if (warnings.length) ElMessage.warning(warnings.slice(0, 2).join('；'));
     if (qrTemplateAction.value === 'single-cards') {
       await runWithProgress(options.messages.progressCards, () => exportSingleCards(template));
       return;

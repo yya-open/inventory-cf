@@ -1,5 +1,5 @@
 import { apiPost } from '../api/client';
-import type { QrPrintTemplate } from './qrPrintTemplate';
+import { estimateQrCellSize, normalizeQrPrintTemplate, type QrPrintTemplate, type QrPrintTemplateKind } from './qrPrintTemplate';
 
 export type AssetQrLinkRow = { id: number; url: string };
 export type AssetQrPrintMeta = { label: string; value: string };
@@ -15,16 +15,18 @@ export type ExportToXlsxFn = (options: {
 export type AssetQrExportProgress = { stage: string; current: number; total: number; detail?: string };
 export type AssetQrExportProgressCallback = (progress: AssetQrExportProgress) => void;
 
-export type DownloadQrCardsHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
-export type DownloadQrSheetHtmlFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
+export type DownloadQrCardsPngFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
+export type DownloadQrSheetPngFn = (filename: string, title: string, records: AssetQrPrintRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) => Promise<void>;
 
 export type ExcelUtilsModule = {
   exportToXlsx: ExportToXlsxFn;
 };
 
 export type QrCardUtilsModule = {
-  downloadQrCardsHtml: DownloadQrCardsHtmlFn;
-  downloadQrSheetHtml: DownloadQrSheetHtmlFn;
+  downloadQrCardsPng: DownloadQrCardsPngFn;
+  downloadQrSheetPng: DownloadQrSheetPngFn;
+  downloadQrCardsHtml?: DownloadQrCardsPngFn;
+  downloadQrSheetHtml?: DownloadQrSheetPngFn;
 };
 
 export type AssetQrExportJobResult = {
@@ -35,6 +37,7 @@ export type AssetQrExportJobResult = {
 
 const QR_LINK_CACHE_PREFIX = 'inventory:asset-qr-link:';
 const QR_LINK_CACHE_TTL_MS = 10 * 60_000;
+export const QR_LOCAL_PRINT_MAX_ROWS = 80;
 const qrLinkMemoryCache = new Map<number, { url: string; expiresAt: number }>();
 
 function canUseSessionStorage() {
@@ -160,11 +163,29 @@ export async function exportAssetQrPrintLocal<T>(options: {
   if (!records.length) return { count: 0, empty: true as const };
   const qrCardUtils = await options.loadQrCardUtils();
   if (options.mode === 'cards') {
-    await qrCardUtils.downloadQrCardsHtml(options.filename, options.title, records, options.template, options.onProgress);
+    await qrCardUtils.downloadQrCardsPng(options.filename, options.title, records, options.template, options.onProgress);
   } else {
-    await qrCardUtils.downloadQrSheetHtml(options.filename, options.title, records, options.template, options.onProgress);
+    await qrCardUtils.downloadQrSheetPng(options.filename, options.title, records, options.template, options.onProgress);
   }
   return { count: records.length, empty: false as const };
+}
+
+export function shouldUseAsyncQrPrintExport(count: number) {
+  return Math.max(0, Number(count || 0)) > QR_LOCAL_PRINT_MAX_ROWS;
+}
+
+export function buildQrPrintPreflightWarnings(kind: QrPrintTemplateKind, inputTemplate?: Partial<QrPrintTemplate>, count = 0) {
+  const template = normalizeQrPrintTemplate(kind, inputTemplate || {});
+  const cell = estimateQrCellSize(template);
+  const warnings: string[] = [];
+  if (template.qr_size_mm < 20) warnings.push('二维码小于 20 mm，部分标签机或扫码枪可能识别不稳');
+  if (template.output_dpi === 203 && template.qr_size_mm < 22) warnings.push('203 DPI 机型建议二维码至少 22 mm');
+  if (template.qr_margin_modules < 2) warnings.push('二维码留白小于 2 模块，切边后可能影响扫码');
+  if (template.content_mode === 'detail' && cell.widthMm < 42) warnings.push('当前单块区域较窄，明细版可能过密');
+  if (template.show_meta && template.meta_count >= 3 && cell.heightMm < 34) warnings.push('元信息行数偏多，建议减少到 1-2 行');
+  if (template.label_preset !== 'none' && template.show_link) warnings.push('标签机模板会隐藏链接，避免文字过密');
+  if (shouldUseAsyncQrPrintExport(count)) warnings.push(`已选择 ${count} 条，将自动提交异步任务生成文件`);
+  return warnings;
 }
 
 export async function createAssetQrExportJob<T>(options: {

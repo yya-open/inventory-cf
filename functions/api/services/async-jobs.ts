@@ -123,11 +123,28 @@ function inlineSvgMarkup(svg: string, attrs: Record<string, string | number> = {
   });
 }
 
-async function prepareQrCards(records: QrCardRecord[]) {
-  return Promise.all(records.map(async (record) => ({
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>) {
+  const output = new Array<R>(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(Math.trunc(concurrency || 1), items.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      output[index] = await mapper(items[index] as T, index);
+    }
+  }));
+  return output;
+}
+
+async function prepareQrCards(records: QrCardRecord[], template: QrPrintTemplate) {
+  const width = Math.max(220, Math.min(1600, Math.round((template.qr_size_mm / 25.4) * template.output_dpi * 2)));
+  const margin = Math.max(1, Math.trunc(template.qr_margin_modules || 2));
+  const errorCorrectionLevel = template.output_dpi === 203 ? 'H' as const : 'Q' as const;
+  return mapWithConcurrency(records, 8, async (record) => ({
     ...record,
-    svg: await QRCode.toString(record.url, { type: 'svg', width: 220, margin: 1, errorCorrectionLevel: 'Q' }),
-  })));
+    svg: await QRCode.toString(record.url, { type: 'svg', width, margin, errorCorrectionLevel }),
+  }));
 }
 
 function chunkRecords<T>(items: T[], size: number) {
@@ -143,18 +160,19 @@ function renderCardMeta(meta?: Array<{ label: string; value: string }>, limit = 
 
 function buildLayoutVars(kind: QrPrintTemplateKind, template: QrPrintTemplate) {
   const { widthMm, heightMm } = resolveQrPaperDimensions(template);
-  const headerHeight = 14;
+  const headerHeight = template.show_page_header ? 14 : 0;
   const contentWidth = Math.max(40, widthMm - template.margin_left_mm - template.margin_right_mm);
   const contentHeight = Math.max(40, heightMm - template.margin_top_mm - template.margin_bottom_mm - headerHeight);
   const cellWidth = (contentWidth - template.gap_x_mm * (template.cols - 1)) / template.cols;
   const cellHeight = (contentHeight - template.gap_y_mm * (template.rows - 1)) / template.rows;
   const pageSize = template.paper_size === 'custom' ? `${widthMm}mm ${heightMm}mm` : `${template.paper_size} ${template.orientation}`;
-  const qrColumnWidth = Math.min(cellWidth * 0.44, template.qr_size_mm + 5);
+  const qrColumnWidth = template.content_mode === 'qr_only' ? Math.min(cellWidth, template.qr_size_mm + 8) : Math.min(cellWidth * 0.44, template.qr_size_mm + 5);
   return {
     kind,
     pageWidthMm: widthMm,
     pageHeightMm: heightMm,
     pageSize,
+    headerHeight,
     cellWidth: Number(cellWidth.toFixed(2)),
     cellHeight: Number(cellHeight.toFixed(2)),
     qrColumnWidth: Number(qrColumnWidth.toFixed(2)),
@@ -164,13 +182,13 @@ function buildLayoutVars(kind: QrPrintTemplateKind, template: QrPrintTemplate) {
 function renderCardsPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number, template: QrPrintTemplate) {
   return `
   <section class="print-page cards-page">
-    <div class="page-topline">
+    ${template.show_page_header ? `<div class="page-topline">
       <div class="page-title">${escapeHtml(pageTitle)}</div>
       <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
-    </div>
+    </div>` : ''}
     <div class="cards-grid">
       ${cards.map((record) => `
-        <article class="qr-card">
+        <article class="qr-card ${template.content_mode === 'qr_only' ? 'qr-only' : ''}">
           <div class="qr-box">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
           <div class="card-content">
             ${template.show_title ? `<div class="card-title">${escapeHtml(record.title)}</div>` : ''}
@@ -186,7 +204,7 @@ function renderCardsPage(pageTitle: string, cards: PreparedQrCardRecord[], pageI
 async function renderQrCardsHtml(title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
   const template = normalizeQrPrintTemplate('cards', inputTemplate);
   const vars = buildLayoutVars('cards', template);
-  const cards = await prepareQrCards(records);
+  const cards = await prepareQrCards(records, template);
   const pages = chunkRecords(cards, Math.max(1, template.cols * template.rows));
   const cardTitleSize = Math.max(3.8, Math.min(6, vars.cellHeight * 0.11));
   const subtitleSize = Math.max(2.5, Math.min(3.2, cardTitleSize * 0.56));
@@ -208,8 +226,10 @@ body{padding:0}
 .page-topline{height:10mm;display:flex;align-items:flex-end;justify-content:space-between;padding:0 1mm 2mm 1mm;border-bottom:0.2mm solid #e5e7eb;margin-bottom:4mm}
 .page-title{font-size:5mm;font-weight:800;line-height:1}
 .page-sub{font-size:2.7mm;color:#6b7280;line-height:1}
-.cards-grid{height:calc(100% - 14mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
+.cards-grid{height:calc(100% - ${vars.headerHeight}mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
 .qr-card{display:grid;grid-template-columns:${vars.qrColumnWidth}mm minmax(0,1fr);gap:3.2mm;border:0.3mm solid #d1d5db;border-radius:2.8mm;padding:3.2mm;background:#fff;overflow:hidden;height:100%;break-inside:avoid;page-break-inside:avoid}
+.qr-card.qr-only{display:flex;align-items:center;justify-content:center}
+.qr-card.qr-only .card-content{display:none}
 .qr-box{display:flex;align-items:center;justify-content:center;border:0.3mm solid #e5e7eb;border-radius:2.2mm;padding:1.2mm;background:#fff}
 .qr-box svg{width:${template.qr_size_mm}mm;height:${template.qr_size_mm}mm;display:block}
 .card-content{display:flex;flex-direction:column;min-width:0;height:100%}
@@ -232,13 +252,13 @@ ${pages.map((pageCards, index) => renderCardsPage(title, pageCards, index, pages
 function renderSheetPage(pageTitle: string, cards: PreparedQrCardRecord[], pageIndex: number, totalPages: number, template: QrPrintTemplate) {
   return `
   <section class="print-page sheet-page">
-    <div class="sheet-topline">
+    ${template.show_page_header ? `<div class="sheet-topline">
       <div class="page-title">${escapeHtml(pageTitle)}</div>
       <div class="page-sub">第 ${pageIndex + 1} 页 / 共 ${totalPages} 页 · ${cards.length} 张</div>
-    </div>
+    </div>` : ''}
     <div class="sheet-grid">
       ${cards.map((record) => `
-        <article class="sheet-item">
+        <article class="sheet-item ${template.content_mode === 'qr_only' ? 'qr-only' : ''}">
           <div class="sheet-qr">${inlineSvgMarkup(record.svg, { role: 'img', 'aria-label': 'QR' })}</div>
           <div class="sheet-text">
             ${template.show_title ? `<div class="sheet-title">${escapeHtml(record.title)}</div>` : ''}
@@ -254,7 +274,7 @@ function renderSheetPage(pageTitle: string, cards: PreparedQrCardRecord[], pageI
 async function renderQrSheetHtml(title: string, records: QrCardRecord[], inputTemplate?: Partial<QrPrintTemplate>) {
   const template = normalizeQrPrintTemplate('sheet', inputTemplate);
   const vars = buildLayoutVars('sheet', template);
-  const cards = await prepareQrCards(records);
+  const cards = await prepareQrCards(records, template);
   const pages = chunkRecords(cards, Math.max(1, template.cols * template.rows));
   const titleSize = Math.max(3.6, Math.min(5.2, vars.cellHeight * 0.1));
   const subtitleSize = Math.max(2.4, Math.min(3, titleSize * 0.58));
@@ -276,8 +296,10 @@ body{padding:0}
 .sheet-topline{height:10mm;display:flex;align-items:flex-end;justify-content:space-between;padding:0 1mm 2mm 1mm;border-bottom:0.2mm solid #e5e7eb;margin-bottom:4mm}
 .page-title{font-size:5mm;font-weight:800;line-height:1}
 .page-sub{font-size:2.7mm;color:#6b7280;line-height:1}
-.sheet-grid{height:calc(100% - 14mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
+.sheet-grid{height:calc(100% - ${vars.headerHeight}mm);display:grid;grid-template-columns:repeat(${template.cols}, minmax(0, 1fr));grid-template-rows:repeat(${template.rows}, minmax(0, 1fr));gap:${template.gap_y_mm}mm ${template.gap_x_mm}mm}
 .sheet-item{display:grid;grid-template-columns:${vars.qrColumnWidth}mm minmax(0,1fr);gap:3mm;align-items:center;border:0.3mm solid #d1d5db;border-radius:2.6mm;padding:3.2mm;background:#fff;overflow:hidden;height:100%}
+.sheet-item.qr-only{display:flex;align-items:center;justify-content:center}
+.sheet-item.qr-only .sheet-text{display:none}
 .sheet-qr{display:flex;align-items:center;justify-content:center;border:0.3mm solid #e5e7eb;border-radius:2mm;padding:1.1mm;background:#fff}
 .sheet-qr svg{width:${template.qr_size_mm}mm;height:${template.qr_size_mm}mm;display:block}
 .sheet-text{min-width:0;display:flex;flex-direction:column;gap:1.2mm}
@@ -813,7 +835,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const ids = normalizeJobAssetIds(requestJson?.ids, 500);
     if (!ids.length) throw new Error('请至少选择一台电脑');
     const origin = String(requestJson?.origin || '');
-    const records = await buildPcQrRecords(db, origin, ids);
+    const records = await buildPcQrRecords(db, origin, ids, requestJson?.print_template);
     const html = await renderQrCardsHtml('电脑二维码卡片', records, requestJson?.print_template);
     return { text: html, filename: `pc_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张电脑二维码卡片` };
   }
@@ -822,7 +844,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const ids = normalizeJobAssetIds(requestJson?.ids, 500);
     if (!ids.length) throw new Error('请至少选择一台电脑');
     const origin = String(requestJson?.origin || '');
-    const records = await buildPcQrRecords(db, origin, ids);
+    const records = await buildPcQrRecords(db, origin, ids, requestJson?.print_template);
     const html = await renderQrSheetHtml('电脑二维码图版', records, requestJson?.print_template);
     return { text: html, filename: `pc_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台电脑的二维码图版打印页` };
   }
@@ -831,7 +853,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const ids = normalizeJobAssetIds(requestJson?.ids, 500);
     if (!ids.length) throw new Error('请至少选择一台显示器');
     const origin = String(requestJson?.origin || '');
-    const records = await buildMonitorQrRecords(db, origin, ids);
+    const records = await buildMonitorQrRecords(db, origin, ids, requestJson?.print_template);
     const html = await renderQrCardsHtml('显示器二维码卡片', records, requestJson?.print_template);
     return { text: html, filename: `monitor_qr_cards_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 张显示器二维码卡片` };
   }
@@ -840,7 +862,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const ids = normalizeJobAssetIds(requestJson?.ids, 500);
     if (!ids.length) throw new Error('请至少选择一台显示器');
     const origin = String(requestJson?.origin || '');
-    const records = await buildMonitorQrRecords(db, origin, ids);
+    const records = await buildMonitorQrRecords(db, origin, ids, requestJson?.print_template);
     const html = await renderQrSheetHtml('显示器二维码图版', records, requestJson?.print_template);
     return { text: html, filename: `monitor_qr_sheet_${Date.now()}.html`, contentType: 'text/html; charset=utf-8', message: `已生成 ${records.length} 台显示器的二维码图版打印页` };
   }

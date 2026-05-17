@@ -3,10 +3,12 @@ import { requirePermission } from '../_permissions';
 import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
 import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
+import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getUserDataScope } from './services/data-scope';
 import { logAudit } from './_audit';
 
 const QR_EXPORT_TYPES = new Set(['PC_QR_CARDS_EXPORT', 'PC_QR_SHEET_EXPORT', 'MONITOR_QR_CARDS_EXPORT', 'MONITOR_QR_SHEET_EXPORT']);
 const QR_EXPORT_CHUNK_SIZE = 500;
+const QR_EXPORT_NO_BUCKET_CHUNK_SIZE = 200;
 const JOBS_SCHEMA_CACHE_TTL_MS = 5 * 60_000;
 let jobsSchemaOkCache: { expiresAt: number; status: any } | null = null;
 
@@ -41,6 +43,22 @@ function chunkIds(ids: number[], size = QR_EXPORT_CHUNK_SIZE) {
   return chunks;
 }
 
+function resolveQrExportChunkSize(hasBucket: boolean) {
+  return hasBucket ? QR_EXPORT_CHUNK_SIZE : QR_EXPORT_NO_BUCKET_CHUNK_SIZE;
+}
+
+async function assertQrExportDataScope(db: D1Database, actor: { id: number }, jobType: string, ids: number[]) {
+  if (!QR_EXPORT_TYPES.has(jobType) || !ids.length) return;
+  const scope = await getUserDataScope(db, actor.id);
+  if (jobType.startsWith('PC_QR_')) {
+    await assertPcAssetIdsDataScopeAccess(db, scope, ids, '二维码导出');
+    return;
+  }
+  if (jobType.startsWith('MONITOR_QR_')) {
+    await assertMonitorAssetIdsDataScopeAccess(db, scope, ids, '二维码导出');
+  }
+}
+
 export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async ({ env, request }) => {
   try {
     const timing = (env as any).__timing;
@@ -72,15 +90,18 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
 export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }> = async (context) => {
   const { env, request, waitUntil } = context as any;
   try {
-    const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
+    const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json();
+    const jobType = String(job_type || '');
+    const actor = await requirePermission(env, request, QR_EXPORT_TYPES.has(jobType) ? 'qr_export' : 'async_job_manage', 'viewer');
     const status = await getCachedJobsSchemaStatus(env.DB);
     if (!status.ok) return json(false, status, status.message, 409);
-    const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json();
-    if (QR_EXPORT_TYPES.has(String(job_type || ''))) {
+    if (QR_EXPORT_TYPES.has(jobType)) {
       const ids = normalizeQrExportIds(request_json?.ids);
-      if (ids.length > QR_EXPORT_CHUNK_SIZE) {
+      await assertQrExportDataScope(env.DB, actor, jobType, ids);
+      const chunkSize = resolveQrExportChunkSize(!!env.BACKUP_BUCKET);
+      if (ids.length > chunkSize) {
         const batchKey = `qr_export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
-        const chunks = chunkIds(ids);
+        const chunks = chunkIds(ids, chunkSize);
         const createdIds: number[] = [];
         for (let index = 0; index < chunks.length; index += 1) {
           const chunkRequest = { ...(request_json || {}), ids: chunks[index], export_batch_key: batchKey, export_batch_index: index + 1, export_batch_total: chunks.length, export_total_ids: ids.length };
@@ -91,7 +112,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
           await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
         }
         await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', `batch:${batchKey}`, { job_type, retain_days, max_retries, batch_key: batchKey, split_count: createdIds.length, total_ids: ids.length });
-        return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length }, `已按每 500 条自动拆分为 ${createdIds.length} 个异步任务，后台将继续处理`);
+        return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length, chunk_size: chunkSize }, `已按每 ${chunkSize} 条自动拆分为 ${createdIds.length} 个异步任务，后台将继续处理`);
       }
     }
     const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries }, env.BACKUP_BUCKET);

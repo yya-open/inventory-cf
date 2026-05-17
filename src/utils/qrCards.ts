@@ -74,6 +74,20 @@ function chunkRecords<T>(items: T[], size: number) {
   return chunks;
 }
 
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>) {
+  const output = new Array<R>(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(Math.trunc(concurrency || 1), items.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      output[index] = await mapper(items[index] as T, index);
+    }
+  }));
+  return output;
+}
+
 function mmToPx(mm: number, pxPerMm: number) {
   return Math.max(1, Math.round(mm * pxPerMm));
 }
@@ -118,17 +132,19 @@ function buildMetrics(template: QrPrintTemplate): LayoutMetrics {
 
 async function prepareQrCards(records: QrCardRecord[], qrPixelSize: number, template: QrPrintTemplate, onProgress?: AssetQrExportProgressCallback): Promise<QrCardPreparedRecord[]> {
   const width = Math.max(256, Math.min(1600, Math.round(qrPixelSize * 2.4)));
-  const prepared: QrCardPreparedRecord[] = [];
   const total = Math.max(1, records.length);
-  for (let index = 0; index < records.length; index += 1) {
-    const record = records[index];
-    prepared.push({
+  const QR_GENERATION_CONCURRENCY = 6;
+  let completed = 0;
+  return mapWithConcurrency(records, QR_GENERATION_CONCURRENCY, async (record) => {
+    const qrCode = await loadQrCodeModule();
+    const prepared = {
       ...record,
-      dataUrl: await (await loadQrCodeModule()).toDataURL(record.url, { width, margin: Math.max(1, Math.trunc(template.qr_margin_modules || 2)), errorCorrectionLevel: template.output_dpi === 203 ? 'H' : 'Q' }),
-    });
-    onProgress?.({ stage: '生成二维码图片', current: index + 1, total, detail: `已生成 ${index + 1} / ${total} 张二维码` });
-  }
-  return prepared;
+      dataUrl: await qrCode.toDataURL(record.url, { width, margin: Math.max(1, Math.trunc(template.qr_margin_modules || 2)), errorCorrectionLevel: template.output_dpi === 203 ? 'H' : 'Q' }),
+    };
+    completed += 1;
+    onProgress?.({ stage: '生成二维码图片', current: completed, total, detail: `已生成 ${completed} / ${total} 张二维码` });
+    return prepared;
+  });
 }
 
 function roundRect(ctx: CanvasRenderingContext2D, x: number, y: number, width: number, height: number, radius: number) {
@@ -447,14 +463,18 @@ async function downloadQrPagesAsPng(kind: QrPrintTemplateKind, filename: string,
   downloadBlob(`${filename}.zip`, zipBlob);
 }
 
-export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+export async function downloadQrCardsPng(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
   await downloadQrPagesAsPng('cards', filename.replace(/\.html$/i, ''), title, records, template, onProgress);
 }
 
-export async function downloadQrSheetHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+export async function downloadQrSheetPng(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
   await downloadQrPagesAsPng('sheet', filename.replace(/\.html$/i, ''), title, records, template, onProgress);
 }
 
-export async function downloadQrCardsPng(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
-  await downloadQrPagesAsPng('cards', filename, title, records, template, onProgress);
+export async function downloadQrCardsHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  await downloadQrCardsPng(filename, title, records, template, onProgress);
+}
+
+export async function downloadQrSheetHtml(filename: string, title: string, records: QrCardRecord[], template?: Partial<QrPrintTemplate>, onProgress?: AssetQrExportProgressCallback) {
+  await downloadQrSheetPng(filename, title, records, template, onProgress);
 }
