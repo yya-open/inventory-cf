@@ -5,6 +5,7 @@ export type LoadContext<TFilters> = { filters: TFilters; page: number; pageSize:
 export type UsePagedAssetListOptions<TFilters, TItem> = {
   initialPageSize?: number;
   totalDebounceMs?: number;
+  requestTimeoutMs?: number;
   cacheNamespace?: string;
   cacheTtlMs?: number;
   createFilterKey: (filters: TFilters) => string;
@@ -243,6 +244,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const total = ref(0);
   const totalCache = new LruMap<string, number>(TOTAL_CACHE_MAX);
   let totalTimer: ReturnType<typeof setTimeout> | null = null;
+  let requestTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let requestSeq = 0;
   let pageController: AbortController | null = null;
   let totalController: AbortController | null = null;
@@ -252,6 +254,13 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (totalTimer) {
       clearTimeout(totalTimer);
       totalTimer = null;
+    }
+  }
+
+  function clearRequestTimeoutTimer() {
+    if (requestTimeoutTimer) {
+      clearTimeout(requestTimeoutTimer);
+      requestTimeoutTimer = null;
     }
   }
 
@@ -370,8 +379,22 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     refreshing.value = !shouldShowInitialLoading && !opts.silent;
     activePageRequestKey = pageKey;
     clearTotalTimer();
+    clearRequestTimeoutTimer();
     totalController?.abort();
     totalController = null;
+    const timeoutMs = Math.max(0, Number(options.requestTimeoutMs ?? 12_000) || 0);
+    let timedOut = false;
+    if (timeoutMs > 0) {
+      requestTimeoutTimer = setTimeout(() => {
+        if (currentSeq !== requestSeq) return;
+        timedOut = true;
+        pageController?.abort();
+        totalController?.abort();
+        loading.value = false;
+        refreshing.value = false;
+        initialLoading.value = false;
+      }, timeoutMs);
+    }
 
     try {
       let result: LoadResult<TItem>;
@@ -484,10 +507,13 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         }
       }, options.totalDebounceMs ?? 800);
     } finally {
+      clearRequestTimeoutTimer();
       if (currentSeq === requestSeq) {
-        loading.value = false;
-        refreshing.value = false;
-        initialLoading.value = false;
+        if (!timedOut) {
+          loading.value = false;
+          refreshing.value = false;
+          initialLoading.value = false;
+        }
       }
     }
   }
