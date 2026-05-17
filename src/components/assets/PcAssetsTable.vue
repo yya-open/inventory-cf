@@ -1,30 +1,32 @@
 <template>
-  <div :class="['ledger-table-shell', `ledger-table-shell--${density}`, { 'ledger-table-shell--mobile': mobileMode }]">
-    <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <div v-if="mobileMode && !initialLoading" class="ledger-mobile-table-hint">
-      <span>左右滑动查看完整表格</span>
-      <span>每页 {{ pageSize }} 条</span>
-    </div>
-    <el-table v-if="!initialLoading"
-      ref="tableRef"
-      class="ledger-table"
-      v-loading="loading"
-      :data="renderRows"
-      row-key="id"
-      border
-      :max-height="tableMaxHeight"
-      :row-class-name="rowClassName"
-      @selection-change="handleSelectionChange"
-      @header-dragend="handleHeaderDragend"
-    >
-      <el-table-column type="selection" width="48" :fixed="tableFixedLeft" />
-      <el-table-column label="ID" width="80" :fixed="tableFixedLeft" align="center">
-        <template #default="{ $index }">
-          {{ (page - 1) * pageSize + $index + 1 }}
-        </template>
-      </el-table-column>
-
-      <template v-for="key in renderVisibleColumns" :key="key">
+  <BaseAssetsTable
+    :rows="rows"
+    :loading="loading"
+    :initial-loading="initialLoading"
+    :page="page"
+    :page-size="pageSize"
+    :total="total"
+    :visible-columns="visibleColumns"
+    :column-widths="columnWidths"
+    :density="density"
+    :selected-ids="selectedIds"
+    :show-inventory-column="showInventoryColumn"
+    :enable-inventory-highlight="enableInventoryHighlight"
+    :has-filters="hasFilters"
+    :mobile-mode="mobileMode"
+    empty-data-tip="当前还没有电脑台账记录。"
+    sequence-label="ID"
+    :sequence-width="80"
+    use-lightweight-stage
+    :core-column-keys="['computer', 'status']"
+    @selection-change="emit('selection-change', $event)"
+    @column-resize="emit('column-resize', $event)"
+    @page-change="emit('page-change', $event)"
+    @page-size-change="emit('page-size-change', $event)"
+    @reset-filters="emit('reset-filters')"
+  >
+    <template #columns="{ effectiveColumns, getColumnWidth, isLightweightStage, tableFixedLeft }">
+      <template v-for="key in effectiveColumns" :key="key">
         <el-table-column
           v-if="key === 'computer'"
           column-key="computer"
@@ -97,7 +99,7 @@
                   本轮未盘
                 </template>
               </div>
-              <div v-if="props.showInventoryColumn && recommendedAction(row)" class="inventory-advice ellipsis">{{ recommendedAction(row)?.tip }}</div>
+              <div v-if="showInventoryColumn && recommendedAction(row)" class="inventory-advice ellipsis">{{ recommendedAction(row)?.tip }}</div>
             </div>
           </template>
         </el-table-column>
@@ -116,12 +118,14 @@
         <el-table-column v-else-if="key === 'recycleDate'" column-key="recycleDate" prop="last_recycle_date" label="回收日期" :width="getColumnWidth('recycleDate', 130)" />
         <el-table-column v-else-if="key === 'remark'" column-key="remark" prop="remark" label="备注" :width="getColumnWidth('remark')" :min-width="220" show-overflow-tooltip />
       </template>
+    </template>
 
+    <template #action-column="{ tableFixedRight, loading: tableLoading }">
       <el-table-column v-if="canOperator || isAdmin" label="操作" width="96" align="center" :fixed="tableFixedRight">
         <template #default="{ row }">
           <div v-if="Number(row.archived || 0) === 1" class="row-action-wrap">
-            <el-dropdown v-if="isAdmin" trigger="click" :disabled="loading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
-              <el-button link class="row-more-trigger" :disabled="loading">
+            <el-dropdown v-if="isAdmin" trigger="click" :disabled="tableLoading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="tableLoading">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
@@ -134,14 +138,14 @@
             <span v-else class="cell-secondary">已归档</span>
           </div>
           <div v-else class="row-action-wrap">
-            <el-dropdown trigger="click" :disabled="loading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
-              <el-button link class="row-more-trigger" :disabled="loading">
+            <el-dropdown trigger="click" :disabled="tableLoading" @command="(command: string | number | object) => handleRowMore(String(command), row)">
+              <el-button link class="row-more-trigger" :disabled="tableLoading">
                 更多<el-icon class="el-icon--right"><ArrowDown /></el-icon>
               </el-button>
               <template #dropdown>
                 <el-dropdown-menu>
-                  <el-dropdown-item v-if="props.showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
-                  <el-dropdown-item v-if="props.showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
+                  <el-dropdown-item v-if="showInventoryColumn && recommendedAction(row)" :command="String(recommendedAction(row)?.command || '')">{{ recommendedAction(row)?.label }}</el-dropdown-item>
+                  <el-dropdown-item v-if="showInventoryColumn && shouldShowLogsShortcut(row)" command="logs">看记录</el-dropdown-item>
                   <el-dropdown-item command="edit">修改</el-dropdown-item>
                   <el-dropdown-item command="qr">二维码</el-dropdown-item>
                   <el-dropdown-item v-if="isAdmin" command="delete" divided>删除</el-dropdown-item>
@@ -151,43 +155,20 @@
           </div>
         </template>
       </el-table-column>
-
-      <template #empty>
-        <el-empty :description="hasFilters ? '暂无匹配结果' : '暂无台账数据'">
-          <template #default>
-            <div class="empty-wrap">
-              <div class="empty-tip">{{ hasFilters ? '可尝试调整筛选条件后重试。' : '当前还没有电脑台账记录。' }}</div>
-              <el-button v-if="hasFilters" link type="primary" @click="emit('reset-filters')">清空筛选</el-button>
-            </div>
-          </template>
-        </el-empty>
-      </template>
-    </el-table>
-    <div v-if="loading && renderRows.length" class="ledger-refresh-badge">正在刷新当前列表</div>
-    <div v-if="isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
-    <div class="pager-wrap">
-      <el-pagination
-        :current-page="page"
-        :page-size="pageSize"
-        :total="total"
-        background
-        :layout="paginationLayout"
-        :page-sizes="[20, 50, 100, 200]"
-        @update:current-page="(value: number) => emit('page-change', value)"
-        @update:page-size="(value: number) => emit('page-size-change', value)"
-      />
-    </div>
-  </div>
+    </template>
+  </BaseAssetsTable>
 </template>
+
 <script setup lang="ts">
 import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus/es/components/dropdown/index';
 import { ElIcon } from 'element-plus/es/components/icon/index';
 import { ElPopover } from 'element-plus/es/components/popover/index';
-import LedgerTableSkeleton from './LedgerTableSkeleton.vue';
 import { ArrowDown } from '@element-plus/icons-vue';
-import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue';
-import { useChunkedRows } from '../../composables/useChunkedRows';
+import BaseAssetsTable from './BaseAssetsTable.vue';
+import { assetStatusClass, inventoryStatusClass } from '../../composables/useAssetTableShared';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../../types/assets';
+import '../../styles/ledger-table-shared.css';
+
 const props = defineProps<{
   rows: Array<Record<string, any>>;
   loading: boolean;
@@ -206,6 +187,7 @@ const props = defineProps<{
   hasFilters: boolean;
   mobileMode?: boolean;
 }>();
+
 const emit = defineEmits<{
   'open-info': [Record<string, any>];
   'open-edit': [Record<string, any>];
@@ -219,114 +201,8 @@ const emit = defineEmits<{
   'page-size-change': [number];
   'reset-filters': [];
 }>();
-const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
-const CORE_VISIBLE_KEYS = ['computer', 'status'] as const;
-const tableRef = ref<any>();
-const mobileMode = computed(() => Boolean(props.mobileMode));
-const tableFixedLeft = computed(() => mobileMode.value ? false : 'left');
-const tableFixedRight = computed(() => mobileMode.value ? false : 'right');
-const tableMaxHeight = computed(() => mobileMode.value ? 'calc(100vh - 250px)' : 'calc(100vh - 320px)');
-const paginationLayout = computed(() => mobileMode.value ? 'total, prev, pager, next' : 'total, sizes, prev, pager, next, jumper');
-const selectedSet = computed(() => new Set((props.selectedIds || []).map((item) => String(item))));
-const syncingSelection = ref(false);
-const { renderRows, renderProgress, isChunking } = useChunkedRows(() => props.rows, { threshold: 80, chunkSize: 40 });
-const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[key] || fallback;
-const isLightweightStage = ref(true);
-let revealColumnsTimer: number | null = null;
 
-const renderVisibleColumns = computed(() => {
-  if (!isLightweightStage.value) return orderedVisibleColumns.value;
-  const core = orderedVisibleColumns.value.filter((key) => CORE_VISIBLE_KEYS.includes(key as any));
-  if (core.length) return core;
-  return orderedVisibleColumns.value.slice(0, Math.min(2, orderedVisibleColumns.value.length));
-});
-
-function clearRevealColumnsTimer() {
-  if (revealColumnsTimer != null && typeof window !== 'undefined') {
-    window.clearTimeout(revealColumnsTimer);
-    revealColumnsTimer = null;
-  }
-}
-
-function scheduleRevealColumns() {
-  if (!isLightweightStage.value || typeof window === 'undefined') return;
-  clearRevealColumnsTimer();
-  revealColumnsTimer = window.setTimeout(() => {
-    revealColumnsTimer = null;
-    isLightweightStage.value = false;
-  }, 180);
-}
-
-function assetStatusClass(status: string) {
-  switch (String(status || '')) {
-    case 'IN_STOCK':
-      return 'status-chip--success';
-    case 'ASSIGNED':
-      return 'status-chip--warning';
-    case 'RECYCLED':
-      return 'status-chip--info';
-    default:
-      return 'status-chip--danger';
-  }
-}
-
-function inventoryStatusClass(status: string) {
-  switch (String(status || '').toUpperCase()) {
-    case 'CHECKED_OK':
-      return 'status-chip--success';
-    case 'CHECKED_ISSUE':
-      return 'status-chip--danger';
-    default:
-      return 'status-chip--info';
-  }
-}
-
-function rowClassName({ row }: { row: Record<string, any> }) {
-  if (!props.enableInventoryHighlight) return '';
-  const status = String(row?.inventory_status || '').toUpperCase();
-  if (status === 'CHECKED_ISSUE') return 'inventory-row-issue';
-  if (status === 'UNCHECKED' || !status) return 'inventory-row-unchecked';
-  return '';
-}
-
-async function syncSelection() {
-  if (!tableRef.value) return;
-  syncingSelection.value = true;
-  tableRef.value.clearSelection();
-  const selectedSet = new Set((props.selectedIds || []).map((item) => String(item)));
-  renderRows.value.forEach((row) => {
-    if (selectedSet.has(String(row.id))) tableRef.value.toggleRowSelection(row, true);
-  });
-  await nextTick();
-  syncingSelection.value = false;
-}
-
-watch(() => [renderRows.value, props.selectedIds], () => {
-  nextTick(syncSelection);
-}, { deep: true, immediate: true });
-
-watch(() => [props.initialLoading, props.loading, renderRows.value.length, mobileMode.value], ([initialLoading, loading, rowCount, isMobile]) => {
-  if (isMobile) {
-    isLightweightStage.value = false;
-    clearRevealColumnsTimer();
-    return;
-  }
-  if (initialLoading || loading || Number(rowCount || 0) <= 0) {
-    isLightweightStage.value = true;
-    clearRevealColumnsTimer();
-    return;
-  }
-  scheduleRevealColumns();
-}, { immediate: true });
-
-onBeforeUnmount(() => {
-  clearRevealColumnsTimer();
-});
-
-function handleSelectionChange(value: Record<string, any>[]) {
-  if (syncingSelection.value) return;
-  emit('selection-change', value);
-}
+void props;
 
 function recommendedAction(row: Record<string, any>) {
   const issue = String(row?.inventory_issue_type || '').toUpperCase();
@@ -350,320 +226,4 @@ function handleRowMore(command: string, row: Record<string, any>) {
   if (command === 'restore') return emit('restore', row);
   if (command) return emit('open-recommended', command, row);
 }
-
-function mobileSequence(index: number) {
-  return (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
-}
-
-function mobileInventoryText(row: Record<string, any>) {
-  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_ISSUE') return inventoryIssueTypeText(row.inventory_issue_type);
-  if (String(row.inventory_status || '').toUpperCase() === 'CHECKED_OK') return row.inventory_at || '-';
-  return '本轮未盘';
-}
-
-function toggleMobileSelection(row: Record<string, any>, checked: boolean) {
-  const next = new Set(selectedSet.value);
-  if (checked) next.add(String(row.id));
-  else next.delete(String(row.id));
-  emit('selection-change', renderRows.value.filter((item) => next.has(String(item.id))));
-}
-
-function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
-  const key = String(column?.columnKey || '');
-  if (!key) return;
-  emit('column-resize', { key, width: Number(newWidth) });
-}
 </script>
-<style scoped>
-.render-hint {
-  margin-top: 12px;
-  padding: 10px 14px;
-  color: #64748b;
-  font-size: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
-}
-
-.ledger-table-shell {
-  position: relative;
-}
-
-.ledger-mobile-table-hint,
-.ledger-refresh-badge {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  margin-bottom: 8px;
-  padding: 8px 12px;
-  border: 1px solid rgba(191, 219, 254, 0.72);
-  border-radius: 12px;
-  background: rgba(239, 246, 255, 0.86);
-  color: #475569;
-  font-size: 12px;
-  font-weight: 700;
-}
-
-.ledger-refresh-badge {
-  position: absolute;
-  top: 12px;
-  right: 12px;
-  z-index: 5;
-  margin: 0;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
-}
-
-.ledger-mobile-list { display: flex; flex-direction: column; gap: 12px; }
-
-.ledger-mobile-loading { padding: 24px 0; text-align: center; color: #64748b; }
-
-.ledger-mobile-card { border-radius: 18px; }
-
-.ledger-mobile-card__head, .ledger-mobile-card__actions { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
-.ledger-mobile-card__head { margin-bottom: 10px; }
-.ledger-mobile-card__select { display: inline-flex; align-items: center; gap: 8px; font-size: 13px; color: #475569; }
-.ledger-mobile-card__title { font-size: 15px; font-weight: 700; color: #0f172a; margin-bottom: 6px; }
-.ledger-mobile-card__meta { font-size: 12px; color: #64748b; margin-bottom: 8px; }
-.ledger-mobile-card__grid { display: grid; gap: 6px; font-size: 13px; color: #334155; margin-bottom: 8px; }
-.ledger-mobile-card__grid--muted { color: #64748b; }
-.ledger-mobile-card__inventory { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 10px; }
-.ledger-mobile-card__inventory-tip { font-size: 12px; color: #64748b; }
-.ledger-mobile-card__actions { justify-content: flex-start; }
-
-.pager-wrap--mobile { justify-content: center; margin-top: 4px; }
-
-.pager-wrap {
-  display: flex;
-  justify-content: flex-end;
-  margin-top: 16px;
-  padding-top: 14px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
-}
-
-.ledger-table-shell--mobile .pager-wrap {
-  justify-content: flex-start;
-  overflow-x: auto;
-  -webkit-overflow-scrolling: touch;
-}
-
-.table-cell {
-  min-height: 56px;
-  display: flex;
-  flex-direction: column;
-  justify-content: center;
-  gap: 5px;
-}
-
-.asset-cell {
-  cursor: pointer;
-}
-
-.asset-main,
-.cell-primary {
-  color: #0f172a;
-  font-weight: 600;
-  line-height: 1.5;
-}
-
-.asset-meta,
-.cell-secondary,
-.cell-placeholder {
-  color: #64748b;
-  font-size: 12px;
-  line-height: 1.5;
-}
-
-.asset-tags {
-  display: flex;
-  gap: 6px;
-  margin-top: 2px;
-}
-
-.status-cell {
-  gap: 7px;
-}
-
-.inventory-cell {
-  gap: 6px;
-}
-
-.status-chip {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: fit-content;
-  padding: 3px 10px;
-  border-radius: 999px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.01em;
-  line-height: 20px;
-  border: 1px solid transparent;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
-}
-
-.status-chip--success {
-  color: #0f8f57;
-  background: #ecf8f1;
-  border-color: #b7ebd0;
-}
-
-.status-chip--warning {
-  color: #c06a00;
-  background: #fff6e8;
-  border-color: #f6d7a6;
-}
-
-.status-chip--info {
-  color: #516072;
-  background: #f4f7fb;
-  border-color: #d8e0ea;
-}
-
-.status-chip--danger {
-  color: #c23d3d;
-  background: #fff1f1;
-  border-color: #f2b9b9;
-}
-
-.status-chip--archived {
-  color: #9a6700;
-  background: #fff8eb;
-  border-color: #f4d39b;
-}
-
-.status-chip--soft {
-  font-weight: 600;
-}
-
-.inventory-advice {
-  color: var(--el-color-danger);
-  font-size: 12px;
-  line-height: 1.45;
-}
-
-.row-action-wrap {
-  display: flex;
-  justify-content: center;
-}
-
-.row-more-trigger {
-  min-height: 32px;
-  padding: 0 12px;
-  border-radius: 10px;
-  color: #334155;
-  background: rgba(248, 250, 252, 0.94);
-  border: 1px solid rgba(148, 163, 184, 0.24);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.row-more-trigger:hover {
-  transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.98);
-  border-color: rgba(64, 158, 255, 0.28);
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.09);
-}
-
-.archive-detail {
-  line-height: 1.8;
-  font-size: 12px;
-  color: #475569;
-}
-
-.empty-wrap {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 8px;
-  padding-bottom: 4px;
-}
-
-.empty-tip {
-  color: #64748b;
-  font-size: 12px;
-  max-width: 320px;
-  text-align: center;
-}
-
-.ellipsis {
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
-}
-
-:deep(.ledger-table .cell) {
-  line-height: 1.45;
-}
-
-:deep(.ledger-table .el-table__inner-wrapper) {
-  border-radius: 20px;
-  overflow: hidden;
-}
-
-:deep(.ledger-table .el-table__inner-wrapper::before) {
-  height: 0;
-}
-
-:deep(.ledger-table__row td) {
-  padding-top: 10px;
-  padding-bottom: 10px;
-  border-bottom-color: rgba(226, 232, 240, 0.88);
-}
-
-:deep(.ledger-table__body tr:nth-child(even) > td.el-table__cell) {
-  background: rgba(248, 250, 252, 0.56);
-}
-
-:deep(.ledger-table__body tr:hover > td.el-table__cell) {
-  background: linear-gradient(90deg, rgba(64, 158, 255, 0.08), rgba(255, 255, 255, 0.96)) !important;
-}
-
-:deep(.ledger-table__header-wrapper th) {
-  background: linear-gradient(180deg, #f8fbff 0%, #f1f5fb 100%);
-  color: #475569;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.02em;
-}
-
-:deep(.ledger-table__header-wrapper th.el-table__cell.is-leaf) {
-  border-bottom-color: rgba(203, 213, 225, 0.8);
-}
-
-:deep(.ledger-table .el-table__fixed-right::before),
-:deep(.ledger-table .el-table__fixed::before) {
-  background-color: rgba(148, 163, 184, 0.16);
-}
-
-:deep(.ledger-table .el-table__fixed-right),
-:deep(.ledger-table .el-table__fixed) {
-  box-shadow: 0 0 0 1px rgba(241, 245, 249, 0.88);
-}
-
-:deep(.ledger-table .el-table__empty-block) {
-  background: linear-gradient(180deg, rgba(248, 250, 255, 0.74), rgba(255, 255, 255, 0.98));
-}
-
-:deep(.ledger-table .el-table__empty-text) {
-  padding: 18px 0;
-}
-
-:deep(.inventory-row-issue td) {
-  background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(245, 108, 108, 0.05);
-}
-
-:deep(.inventory-row-issue td:first-child) {
-  box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85);
-}
-
-:deep(.inventory-row-unchecked td) {
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(148, 163, 184, 0.04);
-}
-
-:deep(.inventory-row-unchecked td:first-child) {
-  box-shadow: inset 4px 0 0 rgba(100, 116, 139, 0.72);
-}
-</style>

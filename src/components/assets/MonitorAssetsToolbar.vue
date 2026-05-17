@@ -1,6 +1,6 @@
 <template>
   <el-card shadow="never" class="monitor-toolbar-card ledger-toolbar-card">
-    <div class="monitor-toolbar">
+    <div class="ledger-toolbar-shell">
       <div class="toolbar-left">
         <div class="toolbar-block toolbar-block--filters">
           <div class="toolbar-head toolbar-head--filters">
@@ -60,7 +60,7 @@
               :model-value="keyword"
               clearable
               placeholder="关键词：资产编号/SN/品牌/型号/备注"
-              class="toolbar-input"
+              class="toolbar-input toolbar-input--monitor"
               @update:model-value="emit('update:keyword', $event || '')"
               @keyup.enter="emit('search')"
             />
@@ -84,24 +84,12 @@
             </div>
           </div>
 
-          <div v-if="hasActiveBatch" class="inventory-summary-row">
-            <button type="button" class="summary-card" :class="{ active: inventoryStatus === '' }" @click="emit('set-inventory-filter', '')">
-              <span class="summary-label">全部设备</span>
-              <strong>{{ summary.total }}</strong>
-            </button>
-            <button type="button" class="summary-card checked" :class="{ active: inventoryStatus === 'CHECKED_OK' }" @click="emit('set-inventory-filter', 'CHECKED_OK')">
-              <span class="summary-label">已盘</span>
-              <strong>{{ summary.checked_ok }}</strong>
-            </button>
-            <button type="button" class="summary-card issue" :class="{ active: inventoryStatus === 'CHECKED_ISSUE' }" @click="emit('set-inventory-filter', 'CHECKED_ISSUE')">
-              <span class="summary-label">异常</span>
-              <strong>{{ summary.checked_issue }}</strong>
-            </button>
-            <button type="button" class="summary-card unchecked" :class="{ active: inventoryStatus === 'UNCHECKED' }" @click="emit('set-inventory-filter', 'UNCHECKED')">
-              <span class="summary-label">未盘</span>
-              <strong>{{ summary.unchecked }}</strong>
-            </button>
-          </div>
+          <LedgerInventorySummaryCards
+            v-if="hasActiveBatch"
+            :inventory-status="inventoryStatus"
+            :summary="summary"
+            @select="(value) => emit('set-inventory-filter', value)"
+          />
         </div>
       </div>
 
@@ -186,92 +174,36 @@
       </div>
     </div>
 
-    <el-dialog v-model="settingsVisible" title="表格设置" width="420px" class="ledger-toolbar-settings-dialog" append-to-body>
-      <div class="column-panel-head">
-        <div class="column-panel-title">表格密度</div>
-        <span class="toolbar-subtle toolbar-inline-tip">自动记住你的偏好</span>
-      </div>
-      <el-segmented
-        :model-value="density"
-        class="toolbar-density-mode"
-        :options="densityOptions"
-        @change="(value) => emit('update:density', String(value) as 'compact' | 'default' | 'comfortable')"
-      />
-
-      <div class="column-panel-title reorder-title">视图方案</div>
-      <div class="saved-view-input-row">
-        <el-input v-model="viewDraftName" placeholder="保存当前列设置" maxlength="24" clearable />
-        <el-button type="primary" plain @click="handleSaveView">保存</el-button>
-      </div>
-      <div class="saved-view-list">
-        <div class="saved-view-item" :class="{ active: activeViewName === 'default' }" role="button" tabindex="0" @click="emit('restore-columns')">
-          <div class="saved-view-main">
-            <div class="saved-view-name">默认视图</div>
-            <div class="saved-view-meta">默认列顺序 + 标准密度</div>
-          </div>
-          <span class="saved-view-action">恢复</span>
-        </div>
-        <div
-          v-for="item in savedViews"
-          :key="item.name"
-          class="saved-view-item"
-          role="button"
-          tabindex="0"
-          :class="{ active: item.name === activeViewName }"
-          @click="emit('apply-view', item.name)"
-        >
-          <div class="saved-view-main">
-            <div class="saved-view-name">{{ item.name }}</div>
-            <div class="saved-view-meta">{{ densityText(item.density) }} · {{ item.visibleColumns.length }} 列</div>
-          </div>
-          <div class="saved-view-actions">
-            <span class="saved-view-action">应用</span>
-            <el-button link type="primary" @click.stop="emit('set-default-view', item.name)">{{ item.name === defaultViewName ? '已默认' : '设为默认' }}</el-button>
-            <el-button link type="danger" @click.stop="emit('delete-view', item.name)">删除</el-button>
-          </div>
-        </div>
-        <div v-if="!savedViews.length" class="toolbar-subtle">还没有保存的视图，可将常用列布局保存起来反复使用。</div>
-      </div>
-
-      <div class="column-panel-head reorder-title">
-        <div class="column-panel-title">表格列显示</div>
-        <el-button text type="primary" @click="emit('restore-columns')">恢复默认</el-button>
-      </div>
-      <el-checkbox-group
-        :model-value="visibleColumns"
-        class="column-check-group"
-        @update:model-value="emit('update:visible-columns', $event as string[])"
-      >
-        <el-checkbox v-for="item in orderedColumnOptions" :key="item.value" :value="item.value">{{ item.label }}</el-checkbox>
-      </el-checkbox-group>
-      <div class="column-panel-title reorder-title">列顺序</div>
-      <div v-if="orderedVisibleOptions.length" class="column-order-list">
-        <div v-for="(item, index) in orderedVisibleOptions" :key="item.value" class="column-order-item">
-          <span>{{ index + 1 }}. {{ item.label }}</span>
-          <div class="column-order-actions">
-            <el-button text :disabled="index === 0" @click="emit('move-column', item.value, 'up')">上移</el-button>
-            <el-button text :disabled="index === orderedVisibleOptions.length - 1" @click="emit('move-column', item.value, 'down')">下移</el-button>
-          </div>
-        </div>
-      </div>
-      <div v-else class="toolbar-subtle">请至少保留一列显示。</div>
-      <template #footer>
-        <div class="ledger-drawer__footer">
-          <el-button @click="settingsVisible = false">完成</el-button>
-        </div>
-      </template>
-    </el-dialog>
+    <LedgerToolbarSettingsDialog
+      v-model:visible="settingsVisible"
+      :density="density"
+      :saved-views="savedViews"
+      :active-view-name="activeViewName"
+      :default-view-name="defaultViewName"
+      :visible-columns="visibleColumns"
+      :column-order="columnOrder"
+      :column-options="columnOptions"
+      @update:density="emit('update:density', $event)"
+      @update:visible-columns="emit('update:visible-columns', $event)"
+      @save-view="emit('save-view', $event)"
+      @apply-view="emit('apply-view', $event)"
+      @delete-view="emit('delete-view', $event)"
+      @set-default-view="emit('set-default-view', $event)"
+      @restore-columns="emit('restore-columns')"
+      @move-column="(name, dir) => emit('move-column', name, dir)"
+    />
   </el-card>
 </template>
 
 <script setup lang="ts">
-import { ElDialog } from 'element-plus/es/components/dialog/index';
 import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ElDropdown, ElDropdownItem, ElDropdownMenu } from 'element-plus/es/components/dropdown/index';
 import { ElIcon } from 'element-plus/es/components/icon/index';
-import { computed, ref, type ComponentPublicInstance } from 'vue';
 import { ArrowDown } from '@element-plus/icons-vue';
+import LedgerInventorySummaryCards from './LedgerInventorySummaryCards.vue';
+import LedgerToolbarSettingsDialog from './LedgerToolbarSettingsDialog.vue';
+import { archiveModeOptions, buildArchiveModeChangeHandler, useLedgerToolbarState, type ArchiveMode } from '../../composables/useLedgerToolbarShared';
 import type { AssetInventorySummary } from '../../types/assets';
 import type { LedgerSavedView, LedgerTableDensity } from '../../utils/ledgerViewPrefs';
 import '../../styles/ledger-toolbar-shared.css';
@@ -283,7 +215,7 @@ const props = defineProps<{
   keyword: string;
   archiveReason: string;
   archiveReasonOptions: string[];
-  archiveMode: 'active' | 'archived' | 'all';
+  archiveMode: ArchiveMode;
   showArchived: boolean;
   locationOptions: Array<{ value: number; label: string }>;
   canOperator: boolean;
@@ -312,7 +244,7 @@ const emit = defineEmits<{
   'update:inventory-status': [string];
   'update:keyword': [string];
   'update:archive-reason': [string];
-  'update:archive-mode': ['active' | 'archived' | 'all'];
+  'update:archive-mode': [ArchiveMode];
   'update:show-archived': [boolean];
   'update:visible-columns': [string[]];
   'move-column': [string, 'up' | 'down'];
@@ -345,61 +277,19 @@ const emit = defineEmits<{
   'toolbar-more': [string];
 }>();
 
-const orderedColumnOptions = computed(() => {
-  const map = new Map(props.columnOptions.map((item) => [item.value, item]));
-  return props.columnOrder.map((key) => map.get(key)).filter(Boolean) as Array<{ value: string; label: string }>;
-});
+const {
+  importUploadRef,
+  settingsVisible,
+  bulkWorkspaceExpanded,
+  selectionStateText,
+  bulkWorkspaceMounted,
+  openImportPicker,
+} = useLedgerToolbarState(
+  () => props.selectedCount,
+  () => [props.exportBusy, props.importBusy, props.initQrBusy, props.batchBusy],
+);
 
-const orderedVisibleOptions = computed(() => {
-  const visibleSet = new Set(props.visibleColumns);
-  return orderedColumnOptions.value.filter((item) => visibleSet.has(item.value));
-});
-
-const selectionStateText = computed(() => props.selectedCount > 0 ? `已选 ${props.selectedCount} 项` : '未选择设备');
-const importUploadRef = ref<ComponentPublicInstance | null>(null);
-const viewDraftName = ref('');
-const settingsVisible = ref(false);
-const bulkWorkspaceExpanded = ref(false);
-const bulkWorkspaceVisible = computed(() => bulkWorkspaceExpanded.value || props.selectedCount > 0 || props.exportBusy || props.importBusy || props.initQrBusy || props.batchBusy);
-const bulkWorkspaceMounted = computed(() => bulkWorkspaceVisible.value);
-
-const archiveModeOptions = [
-  { label: '在用', value: 'active' },
-  { label: '归档', value: 'archived' },
-  { label: '全部', value: 'all' },
-];
-
-const densityOptions = [
-  { label: '紧凑', value: 'compact' },
-  { label: '标准', value: 'default' },
-  { label: '宽松', value: 'comfortable' },
-];
-
-function openImportPicker() {
-  const root = importUploadRef.value?.$el as HTMLElement | undefined;
-  const input = root?.querySelector('input[type="file"]') as HTMLInputElement | null;
-  input?.click();
-}
-
-function densityText(value: LedgerTableDensity) {
-  if (value === 'compact') return '紧凑';
-  if (value === 'comfortable') return '宽松';
-  return '标准';
-}
-
-function handleSaveView() {
-  const nextName = viewDraftName.value.trim();
-  if (!nextName) return;
-  emit('save-view', nextName);
-  viewDraftName.value = '';
-}
-
-function handleArchiveModeChange(value: string | number | boolean) {
-  const mode = (String(value || 'active') as 'active' | 'archived' | 'all');
-  emit('update:archive-mode', mode);
-  emit('update:show-archived', mode !== 'active');
-  emit('search');
-}
+const handleArchiveModeChange = buildArchiveModeChangeHandler(emit);
 
 function handleLocationVisible(visible: boolean) {
   if (visible) emit('ensure-location-options');
@@ -434,511 +324,20 @@ function handleBatchCommand(command: string | number | object) {
 </script>
 
 <style scoped>
-.pc-toolbar,
-.monitor-toolbar {
-  display: grid;
-  grid-template-columns: minmax(0, 1.58fr) minmax(320px, 0.98fr);
-  gap: 16px;
-}
-
-.toolbar-left,
-.toolbar-right {
-  min-width: 0;
-}
-
-:deep(.ledger-toolbar-card > .el-card__body) {
-  padding: 0;
-}
-
-.toolbar-block {
-  position: relative;
-  padding: 18px 20px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 24px;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98) 0%, rgba(247, 250, 255, 0.95) 100%);
-  box-shadow: 0 24px 50px rgba(15, 23, 42, 0.08);
-  backdrop-filter: blur(8px);
-}
-
-.toolbar-block--filters::before,
-.toolbar-block--actions::before {
-  content: '';
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  background: radial-gradient(circle at top right, rgba(64, 158, 255, 0.10), transparent 42%);
-}
-
-.toolbar-block--filters::after,
-.toolbar-block--actions::after {
-  content: '';
-  position: absolute;
-  left: 20px;
-  right: 20px;
-  top: 0;
-  height: 1px;
-  background: linear-gradient(90deg, rgba(255,255,255,0), rgba(255,255,255,0.9), rgba(255,255,255,0));
-}
-
-.toolbar-title-wrap {
-  min-width: 0;
-}
-
-.toolbar-kicker {
-  margin-bottom: 6px;
-  font-size: 11px;
-  font-weight: 800;
-  letter-spacing: 0.14em;
-  color: #94a3b8;
-}
-
-.toolbar-block-title {
-  font-size: 15px;
-  font-weight: 700;
-  color: #1e293b;
-}
-
-.toolbar-subtle {
-  margin-top: 4px;
-  color: #8a94a6;
-  font-size: 12px;
-  line-height: 1.55;
-}
-
-.toolbar-head {
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 12px;
-  margin-bottom: 16px;
-}
-
-.toolbar-head--filters {
-  align-items: center;
-}
-
-.toolbar-inline-badge {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 8px;
-  min-height: 34px;
-  padding: 0 13px;
-  border-radius: 999px;
-  background: rgba(148, 163, 184, 0.12);
-  color: #64748b;
-  font-size: 12px;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.74);
-}
-
-.toolbar-inline-badge::before {
-  content: '';
-  width: 6px;
-  height: 6px;
-  border-radius: 999px;
-  background: currentColor;
-  opacity: 0.7;
-}
-
-.toolbar-inline-badge.is-active {
-  background: rgba(64, 158, 255, 0.14);
-  color: var(--el-color-primary-dark-2);
-}
-
-.toolbar-row,
-.toolbar-selection-row,
-.toolbar-action-group,
-.toolbar-utility-group,
-.toolbar-minor-group {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.toolbar-row--dense {
-  align-items: stretch;
-}
-
-.toolbar-action-group,
-.toolbar-utility-group,
-.toolbar-minor-group {
-  position: relative;
-  z-index: 1;
-  padding: 8px;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  border-radius: 18px;
-  background: rgba(255, 255, 255, 0.78);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.78);
-}
-
-.toolbar-action-group {
-  flex-wrap: nowrap;
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.94), rgba(248, 250, 255, 0.90));
-}
-
-.toolbar-utility-group,
-.toolbar-minor-group {
-  background: linear-gradient(180deg, rgba(249, 251, 255, 0.94), rgba(255, 255, 255, 0.88));
-}
-
-.toolbar-minor-group {
-  flex-wrap: nowrap;
-  margin-left: auto;
-}
-
-.toolbar-select,
-.toolbar-location {
-  width: 132px;
-}
-
-.toolbar-input {
+.monitor-toolbar-card :deep(.toolbar-input--monitor) {
   flex: 1 1 240px;
   min-width: 180px;
-  max-width: 100%;
 }
 
-.toolbar-archive-input {
-  width: 170px;
-  max-width: 100%;
-}
-
-.toolbar-actions-inline {
-  display: flex;
-  gap: 10px;
-  flex-wrap: wrap;
-}
-
-.toolbar-archive-mode {
-  min-width: 220px;
-}
-
-.toolbar-density-mode {
-  width: 100%;
-  overflow: hidden;
-}
-
-.toolbar-inline-tip {
-  margin-top: 0;
-}
-
-.toolbar-link-button {
-  padding-left: 2px;
-  padding-right: 2px;
-  font-weight: 600;
-}
-
-.toolbar-create-button {
-  margin-left: 0;
-}
-
-.toolbar-upload-hidden {
-  display: none;
-}
-
-.toolbar-primary-btn,
-.toolbar-secondary-btn,
-.toolbar-soft-btn {
-  height: 40px;
-  border-radius: 12px;
-  font-weight: 700;
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.toolbar-primary-btn {
-  border: none;
-  background: linear-gradient(135deg, #409eff 0%, #6ba8ff 100%);
-  box-shadow: 0 16px 28px rgba(64, 158, 255, 0.24);
-}
-
-.toolbar-primary-btn:hover,
-.toolbar-secondary-btn:hover,
-.toolbar-soft-btn:hover {
-  transform: translateY(-1px);
-}
-
-.toolbar-secondary-btn {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.05);
-}
-
-.toolbar-secondary-btn:hover {
-  border-color: rgba(64, 158, 255, 0.24);
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.07);
-}
-
-.toolbar-soft-btn {
-  border-color: rgba(148, 163, 184, 0.18);
-  background: rgba(248, 250, 252, 0.96);
-  color: #475569;
-}
-
-.toolbar-soft-btn:hover {
-  border-color: rgba(64, 158, 255, 0.20);
-  background: rgba(255, 255, 255, 0.98);
-}
-
-.column-panel-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-}
-
-.column-panel-title {
-  font-size: 13px;
-  font-weight: 700;
-  color: #475569;
-  margin-bottom: 8px;
-}
-
-.reorder-title {
-  margin-top: 12px;
-}
-
-.column-check-group {
-  display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 8px 12px;
-}
-
-.column-order-list {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
-
-.column-order-item {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  padding: 10px 12px;
-  border: 1px solid rgba(15, 23, 42, 0.06);
-  border-radius: 12px;
-  background: rgba(255, 255, 255, 0.92);
-}
-
-.column-order-actions {
-  display: flex;
-  gap: 4px;
-}
-
-.inventory-summary-row {
-  display: grid;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  gap: 10px;
-  margin-top: 16px;
-}
-
-.summary-card {
-  position: relative;
-  overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 18px;
-  padding: 14px 15px;
-  text-align: left;
-  cursor: pointer;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
-}
-
-.summary-card::before {
-  content: '';
-  position: absolute;
-  left: 0;
-  right: 0;
-  top: 0;
-  height: 3px;
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.7));
-}
-
-.summary-card.checked::before {
-  background: linear-gradient(90deg, rgba(103, 194, 58, 0.35), rgba(103, 194, 58, 0.86));
-}
-
-.summary-card.issue::before {
-  background: linear-gradient(90deg, rgba(245, 108, 108, 0.35), rgba(245, 108, 108, 0.86));
-}
-
-.summary-card.unchecked::before {
-  background: linear-gradient(90deg, rgba(144, 147, 153, 0.35), rgba(144, 147, 153, 0.86));
-}
-
-.summary-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
-}
-
-.summary-card strong {
-  font-size: 24px;
-  color: #0f172a;
-}
-
-.summary-label {
-  font-size: 12px;
-  color: #8a94a6;
-}
-
-.summary-card.active {
-  border-color: rgba(64, 158, 255, 0.34);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.10), 0 20px 32px rgba(64, 158, 255, 0.12);
-}
-
-.summary-card.checked strong { color: var(--el-color-success); }
-.summary-card.issue strong { color: var(--el-color-danger); }
-.summary-card.unchecked strong { color: var(--el-color-info); }
-
-:deep(.el-input__wrapper),
-:deep(.el-select__wrapper) {
-  min-height: 40px;
-  border-radius: 12px;
-  box-shadow: 0 0 0 1px rgba(15, 23, 42, 0.08);
-  background: rgba(255, 255, 255, 0.94);
-  transition: box-shadow 160ms ease, background 160ms ease;
-}
-
-:deep(.el-input__wrapper.is-focus),
-:deep(.el-select__wrapper.is-focused) {
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.34), 0 0 0 4px rgba(64, 158, 255, 0.10);
-}
-
-:deep(.el-segmented) {
-  padding: 4px;
-  border-radius: 14px;
-  background: rgba(148, 163, 184, 0.12);
-  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.76);
-}
-
-:deep(.el-segmented__item) {
-  min-height: 34px;
-  border-radius: 10px;
-  color: #475569;
-  font-weight: 600;
-}
-
-:deep(.el-segmented__item-selected) {
-  box-shadow: 0 10px 18px rgba(64, 158, 255, 0.18);
-}
-
-:deep(.el-segmented__item.is-selected),
-:deep(.el-segmented__item.is-selected .el-segmented__item-label) {
-  color: #fff;
-}
-
-@media (max-width: 1100px) {
-  .pc-toolbar,
-  .monitor-toolbar {
-    grid-template-columns: 1fr;
-  }
-}
-
-@media (max-width: 768px) {
-  .toolbar-block {
-    padding: 14px;
-    border-radius: 18px;
-  }
-
-  .toolbar-head,
-  .toolbar-head--filters,
-  .toolbar-selection-row,
-  .saved-view-input-row {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .toolbar-inline-badge,
-  .toolbar-select,
-  .toolbar-location,
-  .toolbar-input,
-  .toolbar-archive-input,
-  .toolbar-archive-mode,
-  .toolbar-actions-inline,
-  .toolbar-actions-inline :deep(.el-button),
-  .toolbar-action-group,
-  .toolbar-action-group :deep(.el-button),
-  .toolbar-utility-group,
-  .toolbar-utility-group :deep(.el-button),
-  .toolbar-minor-group,
-  .toolbar-minor-group :deep(.el-button),
-  .saved-view-input-row :deep(.el-button) {
-    width: 100%;
-  }
-
-  .toolbar-action-group,
-  .toolbar-utility-group,
-  .toolbar-minor-group {
-    align-items: stretch;
-    flex-wrap: wrap;
-  }
-
-  .toolbar-spacer {
-    display: none;
-  }
-
-  .column-check-group,
-
-  .column-order-item,
-  .saved-view-item {
-    flex-direction: column;
-    align-items: stretch;
-  }
-
-  .inventory-summary-row {
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-  }
-
-  .toolbar-lazy-actions-placeholder {
-    flex-direction: column;
-    align-items: flex-start;
-  }
-}
-
-:deep(.ledger-toolbar-settings-dialog .el-dialog__body) {
-  padding-top: 12px;
-}
-
-:deep(.ledger-toolbar-settings-dialog .el-dialog__header) {
-  padding-bottom: 4px;
-}
-
-:deep(.ledger-toolbar-settings-dialog .el-dialog__content) {
-  overflow: hidden;
-}
-
-.monitor-toolbar .toolbar-location {
+.monitor-toolbar-card :deep(.toolbar-location) {
   width: 136px;
 }
 
-.monitor-toolbar .toolbar-input {
-  min-width: 180px;
-}
-
-.toolbar-lazy-actions-placeholder {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 10px;
-  width: 100%;
-  min-height: 48px;
-  padding: 2px 0;
-}
-
 @media (max-width: 768px) {
-  .monitor-toolbar .toolbar-location,
-  .monitor-toolbar .toolbar-input {
+  .monitor-toolbar-card :deep(.toolbar-location),
+  .monitor-toolbar-card :deep(.toolbar-input--monitor) {
     width: 100%;
     min-width: 0;
   }
 }
-
 </style>

@@ -1,0 +1,134 @@
+.table-cell {
+  min-height: 56px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  gap: 5px;
+}
+
+.compact-cell {
+  min-height: 44px;
+}
+
+.asset-cell {
+  cursor: pointer;
+}
+
+.asset-main,
+.cell-primary {
+  color: #0f172a;
+  font-weight: 600;
+  line-height: 1.5;
+}
+
+.asset-meta,
+.cell-secondary,
+.cell-placeholder {
+  color: #64748b;
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.asset-tags {
+  display: flex;
+  gap: 6px;
+  margin-top: 2px;
+}
+
+.status-cell {
+  gap: 7px;
+}
+
+.inventory-cell {
+  gap: 6px;
+}
+
+.status-chip {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: fit-content;
+  padding: 3px 10px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  line-height: 20px;
+  border: 1px solid transparent;
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.72);
+}
+
+.status-chip--success {
+  color: #0f8f57;
+  background: #ecf8f1;
+  border-color: #b7ebd0;
+}
+
+.status-chip--warning {
+  color: #c06a00;
+  background: #fff6e8;
+  border-color: #f6d7a6;
+}
+
+.status-chip--info {
+  color: #516072;
+  background: #f4f7fb;
+  border-color: #d8e0ea;
+}
+
+.status-chip--danger {
+  color: #c23d3d;
+  background: #fff1f1;
+  border-color: #f2b9b9;
+}
+
+.status-chip--archived {
+  color: #9a6700;
+  background: #fff8eb;
+  border-color: #f4d39b;
+}
+
+.status-chip--soft {
+  font-weight: 600;
+}
+
+.inventory-advice {
+  color: var(--el-color-danger);
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.row-action-wrap {
+  display: flex;
+  justify-content: center;
+}
+
+.row-more-trigger {
+  min-height: 32px;
+  padding: 0 12px;
+  border-radius: 10px;
+  color: #334155;
+  background: rgba(248, 250, 252, 0.94);
+  border: 1px solid rgba(148, 163, 184, 0.24);
+  box-shadow: 0 10px 18px rgba(15, 23, 42, 0.06);
+  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+}
+
+.row-more-trigger:hover {
+  transform: translateY(-1px);
+  background: rgba(255, 255, 255, 0.98);
+  border-color: rgba(64, 158, 255, 0.28);
+  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.09);
+}
+
+.archive-detail {
+  line-height: 1.8;
+  font-size: 12px;
+  color: #475569;
+}
+
+.ellipsis {
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
