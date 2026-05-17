@@ -53,7 +53,7 @@ const pageRequests = new Map<string, InflightPageRequest>();
 const primedNamespaces = new Set<string>();
 
 function isAbortError(error: unknown) {
-  return error instanceof DOMException && error.name === 'AbortError';
+  return String((error as any)?.name || '') === 'AbortError';
 }
 
 function getNamespace(options: UsePagedAssetListOptions<any, any>) {
@@ -390,9 +390,13 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         timedOut = true;
         pageController?.abort();
         totalController?.abort();
+        const active = pageRequests.get(pageKey);
+        if (active?.controller === pageController) pageRequests.delete(pageKey);
+        initialized.value = true;
         loading.value = false;
         refreshing.value = false;
         initialLoading.value = false;
+        activePageRequestKey = '';
       }, timeoutMs);
     }
 
@@ -509,6 +513,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     } finally {
       clearRequestTimeoutTimer();
       if (currentSeq === requestSeq) {
+        activePageRequestKey = '';
         if (!timedOut) {
           loading.value = false;
           refreshing.value = false;
