@@ -49,6 +49,7 @@ import { primePagedListCache } from "../composables/usePagedAssetList";
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
 let routePageSkeletonTimer: ReturnType<typeof setTimeout> | null = null;
+let routePageSkeletonHardTimer: ReturnType<typeof setTimeout> | null = null;
 let firstRouteResolved = false;
 
 const preloadStockQuery = StockQuery;
@@ -61,13 +62,29 @@ function startRoutePagePending() {
     clearTimeout(routePageSkeletonTimer);
     routePageSkeletonTimer = null;
   }
+  if (routePageSkeletonHardTimer) {
+    clearTimeout(routePageSkeletonHardTimer);
+    routePageSkeletonHardTimer = null;
+  }
   if (!firstRouteResolved) {
     routePageSkeletonVisible.value = true;
+    routePageSkeletonHardTimer = setTimeout(() => {
+      routePagePending.value = false;
+      routePageSkeletonVisible.value = false;
+      routePageSkeletonHardTimer = null;
+      firstRouteResolved = true;
+    }, 3500);
     return;
   }
   routePageSkeletonTimer = setTimeout(() => {
     if (routePagePending.value) routePageSkeletonVisible.value = true;
   }, 180);
+  routePageSkeletonHardTimer = setTimeout(() => {
+    routePagePending.value = false;
+    routePageSkeletonVisible.value = false;
+    routePageSkeletonHardTimer = null;
+    firstRouteResolved = true;
+  }, 3500);
 }
 
 function finishRoutePagePending() {
@@ -75,6 +92,10 @@ function finishRoutePagePending() {
   if (routePageSkeletonTimer) {
     clearTimeout(routePageSkeletonTimer);
     routePageSkeletonTimer = null;
+  }
+  if (routePageSkeletonHardTimer) {
+    clearTimeout(routePageSkeletonHardTimer);
+    routePageSkeletonHardTimer = null;
   }
   routePageSkeletonVisible.value = false;
   firstRouteResolved = true;
