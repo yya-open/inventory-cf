@@ -353,6 +353,7 @@ const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, 
 pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
+let activatedOnce = false;
 
 const {
   refreshCurrent,
@@ -1262,6 +1263,10 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
+  if (!activatedOnce) {
+    activatedOnce = true;
+    return;
+  }
   if (consumeExternalPcAssetsMutation()) {
     void hydrateViewData({ keepPage: false, silent: false, forceRefresh: true });
     return;

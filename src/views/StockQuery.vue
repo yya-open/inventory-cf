@@ -129,6 +129,7 @@ const sort = ref<string>("warning_first");
 const exportLoading = ref(false);
 const SOFT_REFRESH_TTL_MS = 20_000;
 let lastRefreshAt = 0;
+let activatedOnce = false;
 
 const currentFilters = computed<StockFilters>(() => ({
   keyword: keyword.value.trim(),
@@ -241,6 +242,10 @@ onBeforeMount(() => {
 });
 
 onActivated(() => {
+  if (!activatedOnce) {
+    activatedOnce = true;
+    return;
+  }
   if (route.query.force_refresh === '1') {
     void router.replace({ path: '/stock', query: {} });
     void loadView({ forceRefresh: true });
