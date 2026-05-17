@@ -147,32 +147,28 @@ export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId
   }
 }
 
-export async function createItem(db: D1Database, input: ItemInput): Promise<{ id: number | null; row: any }> {
+export async function createItem(db: D1Database, input: ItemInput) {
   const category = await resolveItemCategory(db, input.category);
   const existing = await db.prepare('SELECT id, enabled FROM items WHERE sku=? LIMIT 1').bind(input.sku).first<any>();
   if (existing?.id) {
     await db.prepare(
       'UPDATE items SET name=?, brand=?, model=?, category=?, category_id=?, unit=?, warning_qty=?, enabled=1 WHERE id=?'
     ).bind(input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty, existing.id).run();
-    const row = await getItemById(db, Number(existing.id));
-    return { id: Number(existing.id), row };
+    return Number(existing.id);
   }
   const result = await db.prepare(
     `INSERT INTO items (sku, name, brand, model, category, category_id, unit, warning_qty, created_at)
      VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
   ).bind(input.sku, input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty).run();
   const last = (result as any)?.meta?.last_row_id;
-  const id = typeof last === 'number' ? last : (last ? Number(last) : null);
-  const row = id ? await getItemById(db, id) : null;
-  return { id, row };
+  return typeof last === 'number' ? last : (last ? Number(last) : null);
 }
 
-export async function updateItem(db: D1Database, id: number, input: ItemInput): Promise<any> {
+export async function updateItem(db: D1Database, id: number, input: ItemInput) {
   const category = await resolveItemCategory(db, input.category);
   await db.prepare(
     'UPDATE items SET sku=?, name=?, brand=?, model=?, category=?, category_id=?, unit=?, warning_qty=? WHERE id=?'
   ).bind(input.sku, input.name, input.brand, input.model, category.name, category.id, input.unit, input.warning_qty, id).run();
-  return getItemById(db, id);
 }
 
 export async function softDeleteItem(db: D1Database, id: number) {

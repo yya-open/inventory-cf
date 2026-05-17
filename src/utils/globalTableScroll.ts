@@ -88,12 +88,12 @@ function enhanceSingleTable(root: HTMLElement): EnhancedTable | null {
   };
 
   const scheduleRefresh = () => {
-    if (refreshTimer != null) return;
+    if (refreshTimer != null) window.cancelAnimationFrame(refreshTimer);
     refreshTimer = window.requestAnimationFrame(refresh);
   };
 
   resizeObserver.observe(root);
-  mutationObserver.observe(root, { subtree: true, childList: true });
+  mutationObserver.observe(root, { subtree: true, childList: true, attributes: true, characterData: false });
   scheduleRefresh();
 
   const cleanup = () => {
@@ -113,13 +113,8 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
   const enhanced = new Map<HTMLElement, EnhancedTable>();
-  let refreshAllTimer: number | null = null;
-  let lastRefreshAt = 0;
-  const THROTTLE_MS = 500;
 
   const refreshAll = () => {
-    refreshAllTimer = null;
-    lastRefreshAt = Date.now();
     const current = new Set(Array.from(document.querySelectorAll<HTMLElement>(TABLE_SELECTOR)));
 
     current.forEach((root) => {
@@ -135,28 +130,14 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
     });
   };
 
-  const scheduleRefreshAll = () => {
-    if (refreshAllTimer != null) return;
-    const elapsed = Date.now() - lastRefreshAt;
-    if (elapsed < THROTTLE_MS) {
-      refreshAllTimer = window.setTimeout(refreshAll, THROTTLE_MS - elapsed) as unknown as number;
-    } else {
-      refreshAllTimer = window.requestAnimationFrame(refreshAll);
-    }
-  };
-
-  const observer = new MutationObserver(() => scheduleRefreshAll());
+  const observer = new MutationObserver(() => refreshAll());
   observer.observe(document.body, { subtree: true, childList: true });
-  scheduleRefreshAll();
-  window.addEventListener('resize', scheduleRefreshAll, { passive: true });
+  refreshAll();
+  window.addEventListener('resize', refreshAll, { passive: true });
 
   return () => {
-    if (refreshAllTimer != null) {
-      window.cancelAnimationFrame(refreshAllTimer);
-      refreshAllTimer = null;
-    }
     observer.disconnect();
-    window.removeEventListener('resize', scheduleRefreshAll);
+    window.removeEventListener('resize', refreshAll);
     enhanced.forEach((item) => item.cleanup());
     enhanced.clear();
   };

@@ -47,16 +47,14 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     await assertItemSkuUnique(env.DB, input.sku, id);
 
     let entityId = id;
-    let after: any;
     if (id) {
-      after = await updateItem(env.DB, id, input);
+      await updateItem(env.DB, id, input);
     } else {
-      const created = await createItem(env.DB, input);
-      entityId = created.id;
-      after = created.row;
+      entityId = await createItem(env.DB, input);
     }
 
-    await logAudit(env.DB, request, user, id ? 'ITEM_UPDATE' : 'ITEM_CREATE', 'items', entityId, { before, after: after || input });
+    const after = entityId ? await getItemById(env.DB, entityId) : input;
+    await logAudit(env.DB, request, user, id ? 'ITEM_UPDATE' : 'ITEM_CREATE', 'items', entityId, { before, after });
 
     return Response.json({ ok: true, id: entityId });
   } catch (e: any) {

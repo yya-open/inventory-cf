@@ -97,7 +97,7 @@ async function logErrorRequest(context: MiddlewareContext, t: Timing, res: Respo
   try {
     if (res.status < 500) return;
     const db = context.env.DB;
-    if (!db || !shouldSample(context.env.ERROR_REQUEST_SAMPLE_RATE, 0.5)) return;
+    if (!db || !shouldSample(context.env.ERROR_REQUEST_SAMPLE_RATE, 1)) return;
     const url = new URL(context.request.url);
     await db.prepare(
       `INSERT INTO request_error_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)
@@ -121,7 +121,7 @@ async function logSlowRequest(context: MiddlewareContext, t: Timing, res: Respon
     const thresholdMs = Number(context.env.SLOW_REQUEST_MS || 1200);
     if (!Number.isFinite(total) || total < thresholdMs) return;
     const db = context.env.DB;
-    if (!db || !shouldSample(context.env.SLOW_REQUEST_SAMPLE_RATE, 0.2)) return;
+    if (!db || !shouldSample(context.env.SLOW_REQUEST_SAMPLE_RATE, 1)) return;
     const url = new URL(context.request.url);
     await db.prepare(
       `INSERT INTO slow_request_log (method, path, status, total_ms, sql_ms, auth_ms, created_at)

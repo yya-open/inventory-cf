@@ -93,28 +93,10 @@ function buildError(message: string, status: number, response: any, errorCode?: 
   return err;
 }
 
-const inflightGetRequests = new Map<string, Promise<any>>();
-
 export async function apiRequestJson<T>(path: string, init: RequestInit = {}, options: RequestOptions = {}) {
   const { handleUnauthorized: shouldHandleUnauthorized = true, credentials = "include" } = options;
-  const method = String(init.method || 'GET').toUpperCase();
   const requestEpoch = getAuthRequestEpoch();
   const sessionKey = getAuthSessionKey();
-
-  if (method === 'GET') {
-    const existing = inflightGetRequests.get(path);
-    if (existing) return existing as Promise<T>;
-    const promise = (async () => {
-      const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
-      const j = await parseJson(r);
-      if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch, sessionKey);
-      if (!r.ok || !j?.ok) throw buildError(j?.message || "请求失败", r.status, j, j?.error_code);
-      return j as T;
-    })().finally(() => { inflightGetRequests.delete(path); });
-    inflightGetRequests.set(path, promise);
-    return promise;
-  }
-
   const r = await fetch(path, { credentials, ...init, headers: { ...(init.headers || {}), 'x-auth-session-key': sessionKey } });
   const j = await parseJson(r);
   if (r.status === 401 && shouldHandleUnauthorized) return handleUnauthorized(j?.message, requestEpoch, sessionKey);

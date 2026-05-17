@@ -61,8 +61,8 @@
         <PcAssetsTable
       :mobile-mode="isMobile"
       :rows="rows"
-      :loading="loading || refreshing"
-      :initial-loading="initialLoading && loading && !initialized && !rows.length"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :page="page"
       :page-size="pageSize"
       :total="total"
@@ -148,7 +148,6 @@
       @submit="submitBatchArchive"
     />
     <QrPrintTemplateDialog
-      v-if="qrTemplateVisible"
       v-model:visible="qrTemplateVisible"
       :kind="qrTemplateKind"
       scope="pc"
@@ -156,7 +155,6 @@
       @submit="submitQrPrintTemplate"
     />
     <QrExportProgressDialog
-      v-if="qrExportProgress.visible"
       :visible="qrExportProgress.visible"
       :title="qrExportProgress.title"
       :stage="qrExportProgress.stage"
@@ -355,7 +353,6 @@ const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, 
 pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
-let activatedOnce = false;
 
 const {
   refreshCurrent,
@@ -1265,10 +1262,6 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
-  if (!activatedOnce) {
-    activatedOnce = true;
-    return;
-  }
   if (consumeExternalPcAssetsMutation()) {
     void hydrateViewData({ keepPage: false, silent: false, forceRefresh: true });
     return;

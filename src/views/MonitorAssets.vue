@@ -65,8 +65,8 @@
       <MonitorAssetsTable
       :mobile-mode="isMobile"
       :rows="rows"
-      :loading="loading || refreshing"
-      :initial-loading="initialLoading && loading && !initialized && !rows.length"
+      :loading="refreshing"
+      :initial-loading="initialLoading && !rows.length"
       :total="total"
       :page="page"
       :page-size="pageSize"
@@ -206,7 +206,6 @@
     />
 
     <QrPrintTemplateDialog
-      v-if="qrTemplateVisible"
       v-model:visible="qrTemplateVisible"
       :kind="qrTemplateKind"
       scope="monitor"
@@ -214,7 +213,6 @@
       @submit="submitQrPrintTemplate"
     />
     <QrExportProgressDialog
-      v-if="qrExportProgress.visible"
       :visible="qrExportProgress.visible"
       :title="qrExportProgress.title"
       :stage="qrExportProgress.stage"

@@ -11,7 +11,7 @@ import {
   pcAssetRestoreSql,
   buildMonitorAssetSearchText,
 } from './asset-ledger';
-import { batchUpsertPcLatestState } from './pc-latest-state';
+import { upsertPcLatestState } from './pc-latest-state';
 import { type AssetArchiveKind } from './asset-archive';
 
 const DEFAULT_BATCH_SIZE = 100;
@@ -216,14 +216,13 @@ export async function bulkUpdatePcOwner(
   const extraSkippedIds = targetIds.filter((id) => !effectiveIds.includes(id));
   const statements = effectiveIds.map((assetId) => db.prepare(pcAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, Number(latestOutByAsset.get(assetId) || 0)));
   await runBatchStatements(db, statements);
-  await batchUpsertPcLatestState(db, effectiveIds.map((assetId) => ({
-    assetId,
-    patch: {
+  for (const assetId of effectiveIds) {
+    await upsertPcLatestState(db, assetId, {
       current_employee_no: owner.employee_no,
       current_employee_name: owner.employee_name,
       current_department: owner.department,
-    },
-  })));
+    });
+  }
   return {
     changed: effectiveIds.length,
     skipped: skippedIds.length + extraSkippedIds.length,

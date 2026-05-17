@@ -1,6 +1,6 @@
 import { sqlNowStored } from '../_time';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
-import { batchUpsertPcLatestState, rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
+import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
@@ -155,6 +155,7 @@ export async function applyMonitorMovement(args: ApplyMonitorMovementArgs) {
     ),
     db.prepare(updateSqlByType[type].sql).bind(...updateSqlByType[type].binds),
   ]);
+  await syncSystemDictionaryUsageCounters(db, []);
 }
 
 type CreatePcAssetArgs = {
@@ -182,17 +183,17 @@ async function getPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
 }
 
 async function getPcAssetHistoryCounts(db: D1Database, assetId: number) {
-  const results = await db.batch([
-    db.prepare('SELECT COUNT(*) AS c FROM pc_in WHERE asset_id=?').bind(assetId),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_out WHERE asset_id=?').bind(assetId),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_recycle WHERE asset_id=?').bind(assetId),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_scrap WHERE asset_id=?').bind(assetId),
+  const [ins, outs, recycles, scraps] = await Promise.all([
+    db.prepare('SELECT COUNT(*) AS c FROM pc_in WHERE asset_id=?').bind(assetId).first<any>(),
+    db.prepare('SELECT COUNT(*) AS c FROM pc_out WHERE asset_id=?').bind(assetId).first<any>(),
+    db.prepare('SELECT COUNT(*) AS c FROM pc_recycle WHERE asset_id=?').bind(assetId).first<any>(),
+    db.prepare('SELECT COUNT(*) AS c FROM pc_scrap WHERE asset_id=?').bind(assetId).first<any>(),
   ]);
   return {
-    pcIn: Number((results[0].results?.[0] as any)?.c || 0),
-    pcOut: Number((results[1].results?.[0] as any)?.c || 0),
-    pcRecycle: Number((results[2].results?.[0] as any)?.c || 0),
-    pcScrap: Number((results[3].results?.[0] as any)?.c || 0),
+    pcIn: Number(ins?.c || 0),
+    pcOut: Number(outs?.c || 0),
+    pcRecycle: Number(recycles?.c || 0),
+    pcScrap: Number(scraps?.c || 0),
   };
 }
 
@@ -205,12 +206,8 @@ async function deletePcAssetIfOrphan(db: D1Database, assetId: number) {
   if (!assetId) return;
   const counts = await getPcAssetHistoryCounts(db, assetId);
   if (counts.pcIn || counts.pcOut || counts.pcRecycle || counts.pcScrap) return;
-  try {
-    await db.batch([
-      db.prepare('DELETE FROM pc_asset_latest_state WHERE asset_id=?').bind(assetId),
-      db.prepare('DELETE FROM pc_assets WHERE id=?').bind(assetId),
-    ]);
-  } catch {}
+  await db.prepare('DELETE FROM pc_asset_latest_state WHERE asset_id=?').bind(assetId).run().catch(() => {});
+  await db.prepare('DELETE FROM pc_assets WHERE id=?').bind(assetId).run().catch(() => {});
 }
 
 async function resolvePcAssetForInbound(db: D1Database, payload: {
@@ -293,8 +290,11 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
   try {
     try {
       assetId = await resolvePcAssetForInbound(db, { brand, serialNo: normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark });
-      const counts = await getPcAssetHistoryCounts(db, assetId);
-      if (!counts.pcIn && !counts.pcOut && !counts.pcRecycle && !counts.pcScrap) createdAssetId = assetId;
+      const existingNormalized = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
+      if (existingNormalized?.id && Number(existingNormalized.id) === assetId) {
+        const counts = await getPcAssetHistoryCounts(db, assetId);
+        if (!counts.pcIn && !counts.pcOut && !counts.pcRecycle && !counts.pcScrap) createdAssetId = assetId;
+      }
     } catch (error: any) {
       if (!isSqliteConstraintError(error)) throw error;
       const existing = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
@@ -435,6 +435,7 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
         updated_at=${sqlNowStored()}`
     ).bind(asset.id, outNo, employeeNo, employeeName, department, configDate, outNo),
   ]);
+  await syncSystemDictionaryUsageCounters(db, []);
 }
 
 type ApplyPcRecycleArgs = {
@@ -493,6 +494,7 @@ export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
         updated_at=${sqlNowStored()}`
     ).bind(asset.id, recycleNo, recycleDate, recycleNo),
   ]);
+  await syncSystemDictionaryUsageCounters(db, []);
   return statusAfter;
 }
 
@@ -536,12 +538,12 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
     );
   }
   await db.batch(stmts);
-  await batchUpsertPcLatestState(db, rows.map((row) => ({
-    assetId: Number(row.id || 0),
-    patch: {
+  for (const row of rows) {
+    await upsertPcLatestState(db, Number(row.id || 0), {
       current_employee_no: null,
       current_employee_name: null,
       current_department: null,
-    },
-  })));
+    });
+  }
+  await syncSystemDictionaryUsageCounters(db, []);
 }

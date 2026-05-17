@@ -1,1 +1,0 @@
-async function f(a,t,c,u="请先完善表单必填项"){var n;if(!a)return t(u),!1;try{return await a.validate(),!0}catch(e){const r=e&&typeof e=="object"?e:null;for(const y of Object.keys(c))if((n=r==null?void 0:r[y])!=null&&n.length)return t(c[y]),!1;return t(u),!1}}export{f as v};

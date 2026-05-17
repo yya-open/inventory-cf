@@ -5,7 +5,6 @@ export type LoadContext<TFilters> = { filters: TFilters; page: number; pageSize:
 export type UsePagedAssetListOptions<TFilters, TItem> = {
   initialPageSize?: number;
   totalDebounceMs?: number;
-  requestTimeoutMs?: number;
   cacheNamespace?: string;
   cacheTtlMs?: number;
   createFilterKey: (filters: TFilters) => string;
@@ -21,39 +20,12 @@ type PersistentPageCacheEntry = PageCacheEntry;
 
 type PersistentTotalEntry = { total: number; timestamp: number };
 
-const PAGE_CACHE_MAX = 60;
-const TOTAL_CACHE_MAX = 30;
-
-class LruMap<K, V> extends Map<K, V> {
-  private maxSize: number;
-  constructor(maxSize: number) {
-    super();
-    this.maxSize = maxSize;
-  }
-  get(key: K): V | undefined {
-    if (!super.has(key)) return undefined;
-    const value = super.get(key)!;
-    super.delete(key);
-    super.set(key, value);
-    return value;
-  }
-  set(key: K, value: V): this {
-    if (super.has(key)) super.delete(key);
-    super.set(key, value);
-    if (super.size > this.maxSize) {
-      const oldest = super.keys().next().value;
-      if (oldest !== undefined) super.delete(oldest);
-    }
-    return this;
-  }
-}
-
-const pageCache = new LruMap<string, PageCacheEntry>(PAGE_CACHE_MAX);
+const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
 const primedNamespaces = new Set<string>();
 
 function isAbortError(error: unknown) {
-  return String((error as any)?.name || '') === 'AbortError';
+  return error instanceof DOMException && error.name === 'AbortError';
 }
 
 function getNamespace(options: UsePagedAssetListOptions<any, any>) {
@@ -242,9 +214,8 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const clampPageSize = (value: number) => Math.min(maxPageSize, Math.max(20, Number(value || 50) || 50));
   const pageSize = ref(clampPageSize(options.initialPageSize ?? 50));
   const total = ref(0);
-  const totalCache = new LruMap<string, number>(TOTAL_CACHE_MAX);
+  const totalCache = new Map<string, number>();
   let totalTimer: ReturnType<typeof setTimeout> | null = null;
-  let requestTimeoutTimer: ReturnType<typeof setTimeout> | null = null;
   let requestSeq = 0;
   let pageController: AbortController | null = null;
   let totalController: AbortController | null = null;
@@ -254,13 +225,6 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (totalTimer) {
       clearTimeout(totalTimer);
       totalTimer = null;
-    }
-  }
-
-  function clearRequestTimeoutTimer() {
-    if (requestTimeoutTimer) {
-      clearTimeout(requestTimeoutTimer);
-      requestTimeoutTimer = null;
     }
   }
 
@@ -337,9 +301,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
       (window as any).requestIdleCallback(() => run(), { timeout: 1500 });
     } else if (typeof window !== 'undefined') {
-      const effectiveType = String((navigator as any)?.connection?.effectiveType || '').toLowerCase();
-      const delay = effectiveType === '3g' ? 600 : effectiveType.includes('2g') ? 1200 : 300;
-      window.setTimeout(run, delay);
+      window.setTimeout(run, 300);
     }
   }
 
@@ -379,26 +341,8 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     refreshing.value = !shouldShowInitialLoading && !opts.silent;
     activePageRequestKey = pageKey;
     clearTotalTimer();
-    clearRequestTimeoutTimer();
     totalController?.abort();
     totalController = null;
-    const timeoutMs = Math.max(0, Number(options.requestTimeoutMs ?? 12_000) || 0);
-    let timedOut = false;
-    if (timeoutMs > 0) {
-      requestTimeoutTimer = setTimeout(() => {
-        if (currentSeq !== requestSeq) return;
-        timedOut = true;
-        pageController?.abort();
-        totalController?.abort();
-        const active = pageRequests.get(pageKey);
-        if (active?.controller === pageController) pageRequests.delete(pageKey);
-        initialized.value = true;
-        loading.value = false;
-        refreshing.value = false;
-        initialLoading.value = false;
-        activePageRequestKey = '';
-      }, timeoutMs);
-    }
 
     try {
       let result: LoadResult<TItem>;
@@ -511,14 +455,10 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         }
       }, options.totalDebounceMs ?? 800);
     } finally {
-      clearRequestTimeoutTimer();
       if (currentSeq === requestSeq) {
-        activePageRequestKey = '';
-        if (!timedOut) {
-          loading.value = false;
-          refreshing.value = false;
-          initialLoading.value = false;
-        }
+        loading.value = false;
+        refreshing.value = false;
+        initialLoading.value = false;
       }
     }
   }

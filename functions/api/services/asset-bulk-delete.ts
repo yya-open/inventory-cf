@@ -1,7 +1,6 @@
 import {
   archiveAsset,
   deleteAssetRow,
-  getBulkRelatedRecordCounts,
   getRelatedRecordCounts,
   hasRelatedHistory,
   purgeArchivedAsset,
@@ -59,15 +58,6 @@ export async function bulkDeleteAssets(
   const successes: BulkDeleteSuccess[] = [];
   const failures: BulkDeleteFailure[] = [];
 
-  const needRefsIds = validIds.filter((id) => {
-    const row = rowsById.get(id);
-    if (!row) return false;
-    if (Number(row.archived || 0) === 1) return false;
-    if (kind === 'pc' && String(row.status || '') === 'ASSIGNED') return false;
-    return true;
-  });
-  const bulkRefs = await getBulkRelatedRecordCounts(db, kind, needRefsIds);
-
   for (const id of validIds) {
     const row = rowsById.get(id);
     if (!row) {
@@ -93,7 +83,7 @@ export async function bulkDeleteAssets(
         continue;
       }
 
-      const refs = bulkRefs.get(id) || {};
+      const refs = await getRelatedRecordCounts(db, kind, id);
       const relatedTotal = Object.values(refs || {}).reduce((sum, value) => sum + Number(value || 0), 0);
       const hasRefs = hasRelatedHistory(kind, refs);
       if (hasRefs || !options.allowPhysicalDelete) {

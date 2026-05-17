@@ -516,58 +516,6 @@ export async function logAudit(
   }
 }
 
-export type AuditEntry = {
-  action: string;
-  entity?: string | null;
-  entity_id?: string | number | null;
-  payload?: any;
-};
-
-export async function logAuditBatch(
-  db: D1Database,
-  request: Request,
-  user: AuthUser | null,
-  entries: AuditEntry[],
-) {
-  if (!entries.length) return;
-  try {
-    const ip = getIp(request);
-    const ua = request.headers.get('user-agent');
-    const stmts = entries.map((entry) => {
-      const normalizedAction = normalizeAuditAction(entry.action);
-      const normalizedEntity = entry.entity ?? null;
-      const enrichedPayload = enrichAuditPayload(entry.payload);
-      const payload_json = enrichedPayload === undefined ? null : JSON.stringify(enrichedPayload);
-      const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entry.entity_id, enrichedPayload);
-      return db.prepare(
-        `INSERT INTO audit_log (
-           user_id, username, action, entity, entity_id, payload_json, ip, ua,
-           module_code, high_risk, target_name, target_code, summary_text, search_text_norm, created_at
-         ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-      ).bind(
-        user?.id ?? null,
-        user?.username ?? null,
-        normalizedAction,
-        normalizedEntity,
-        entry.entity_id === undefined || entry.entity_id === null ? null : String(entry.entity_id),
-        payload_json,
-        ip,
-        ua,
-        resolveAuditModuleCode(normalizedAction, normalizedEntity),
-        isAuditHighRisk(normalizedAction),
-        materialized.target_name,
-        materialized.target_code,
-        materialized.summary_text,
-        materialized.search_text_norm,
-      );
-    });
-    await db.batch(stmts);
-    await maybeCleanupAudit(db);
-  } catch {
-    // best-effort audit; do not block business flows
-  }
-}
-
 export async function getAuditLifecycle(db: D1Database, options: { forceRefreshStats?: boolean } = {}): Promise<AuditLifecycleInfo> {
   const state = await ensureRetentionState(db);
   const stats = await refreshAuditStorageStats(db, { force: options.forceRefreshStats, state });

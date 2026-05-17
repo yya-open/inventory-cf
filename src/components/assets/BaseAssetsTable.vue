@@ -1,15 +1,15 @@
 <template>
   <div :class="['ledger-table-shell', `ledger-table-shell--${density}`, { 'ledger-table-shell--mobile': mobileMode }]">
-    <LedgerTableSkeleton v-if="displayInitialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-    <div v-if="mobileMode && !displayInitialLoading" class="ledger-mobile-table-hint">
+    <LedgerTableSkeleton v-if="initialLoading" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
+    <div v-if="mobileMode && !initialLoading" class="ledger-mobile-table-hint">
       <span>左右滑动查看完整表格</span>
       <span>每页 {{ pageSize }} 条</span>
     </div>
     <el-table
-      v-if="!displayInitialLoading"
+      v-if="!initialLoading"
       ref="tableRef"
       class="ledger-table"
-      v-loading="loading && !forceRevealInitialLoading"
+      v-loading="loading"
       :data="renderRows"
       row-key="id"
       :size="tableSize || undefined"
@@ -36,9 +36,9 @@
         </el-empty>
       </template>
     </el-table>
-    <div v-if="!displayInitialLoading && loading && renderRows.length" class="ledger-refresh-badge">正在刷新当前列表</div>
-    <div v-if="!displayInitialLoading && isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
-    <div v-if="!displayInitialLoading" class="pager-wrap">
+    <div v-if="!initialLoading && loading && renderRows.length" class="ledger-refresh-badge">正在刷新当前列表</div>
+    <div v-if="!initialLoading && isChunking" class="render-hint">大页数据分段渲染中：已加载 {{ renderProgress.visible }}/{{ renderProgress.total }}。为避免 DOM 过多，台账页每页最多 200 条</div>
+    <div v-if="!initialLoading" class="pager-wrap">
       <el-pagination
         background
         :layout="paginationLayoutValue"
@@ -114,16 +114,7 @@ const getColumnWidth = (key: string, fallback?: number) => props.columnWidths[ke
 const sequenceNumber = (index: number) => (Math.max(1, Number(props.page) || 1) - 1) * (Number(props.pageSize) || 0) + index + 1;
 
 const isLightweightStage = ref(props.useLightweightStage);
-const forceRevealInitialLoading = ref(false);
 let revealColumnsTimer: number | null = null;
-let initialLoadingGuardTimer: number | null = null;
-
-const displayInitialLoading = computed(() => (
-  props.initialLoading
-  && props.loading
-  && !forceRevealInitialLoading.value
-  && renderRows.value.length <= 0
-));
 
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 
@@ -138,13 +129,6 @@ function clearRevealColumnsTimer() {
   if (revealColumnsTimer != null && typeof window !== 'undefined') {
     window.clearTimeout(revealColumnsTimer);
     revealColumnsTimer = null;
-  }
-}
-
-function clearInitialLoadingGuardTimer() {
-  if (initialLoadingGuardTimer != null && typeof window !== 'undefined') {
-    window.clearTimeout(initialLoadingGuardTimer);
-    initialLoadingGuardTimer = null;
   }
 }
 
@@ -194,28 +178,8 @@ watch(() => [props.useLightweightStage, props.initialLoading, props.loading, ren
   scheduleRevealColumns();
 }, { immediate: true });
 
-watch(() => props.initialLoading, (value) => {
-  clearInitialLoadingGuardTimer();
-  forceRevealInitialLoading.value = false;
-  if (!value || typeof window === 'undefined') return;
-  initialLoadingGuardTimer = window.setTimeout(() => {
-    initialLoadingGuardTimer = null;
-    forceRevealInitialLoading.value = true;
-    console.warn('[inventory] ledger initial skeleton forced open', {
-      buildId: (window as any).__INVENTORY_BUILD_ID__ || 'unknown',
-      loading: props.loading,
-      initialLoading: props.initialLoading,
-      rows: renderRows.value.length,
-      page: props.page,
-      pageSize: props.pageSize,
-      total: props.total,
-    });
-  }, 3500);
-}, { immediate: true });
-
 onBeforeUnmount(() => {
   clearRevealColumnsTimer();
-  clearInitialLoadingGuardTimer();
 });
 
 function handleSelectionChange(value: Record<string, any>[]) {

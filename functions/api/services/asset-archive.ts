@@ -67,29 +67,6 @@ export async function getRelatedRecordCounts(db: D1Database, kind: AssetArchiveK
   }, {} as Record<string, number>);
 }
 
-export async function getBulkRelatedRecordCounts(db: D1Database, kind: AssetArchiveKind, ids: number[]): Promise<Map<number, Record<string, number>>> {
-  const config = configOf(kind);
-  const result = new Map<number, Record<string, number>>();
-  if (!ids.length) return result;
-
-  const placeholders = ids.map(() => '?').join(',');
-  const queries = config.relationKeys.map(({ key, table }) =>
-    db.prepare(`SELECT asset_id, COUNT(*) as cnt FROM ${table} WHERE asset_id IN (${placeholders}) GROUP BY asset_id`).bind(...ids).all<any>()
-  );
-  const results = await Promise.all(queries);
-
-  for (const id of ids) {
-    result.set(id, config.relationKeys.reduce((acc, item) => { acc[item.key] = 0; return acc; }, {} as Record<string, number>));
-  }
-  config.relationKeys.forEach(({ key }, index) => {
-    for (const row of results[index].results || []) {
-      const entry = result.get(Number(row.asset_id));
-      if (entry) entry[key] = Number(row.cnt || 0);
-    }
-  });
-  return result;
-}
-
 export function hasRelatedHistory(kind: AssetArchiveKind, counts: Record<string, number>) {
   const config = configOf(kind);
   return config.relationKeys.some((item) => item.countsAsHistory && Number(counts[item.key] || 0) > 0);
