@@ -177,7 +177,9 @@ router.beforeEach(async (to) => {
     if (cached) {
       if (shouldRefreshAuthInBackground()) {
         scheduleOnIdle(() => {
-          void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
+          void fetchMe({ force: true, handleUnauthorized: false }).catch((error) => {
+            const status = Number((error as any)?.status || 0);
+            if (status !== 401 && status !== 403) return;
             auth.user = null;
             const path = window.location.pathname;
             if (path !== '/login') {

@@ -11,6 +11,7 @@ const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
 const AUTH_SESSION_KEY = 'inventory:auth-session-key';
 const AUTH_CACHE_TTL_MS = 30 * 60_000;
 const AUTH_REFRESH_SOFT_TTL_MS = AUTH_CACHE_TTL_MS;
+const AUTH_ME_TIMEOUT_MS = 10_000;
 let pendingFetchMe: Promise<User> | null = null;
 let authCacheTimestamp = 0;
 let authRequestEpoch = 0;
@@ -116,9 +117,30 @@ function applyLoggedOutState(sessionKey?: string) {
 
 export const useAuth = () => state;
 
-export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean }) {
+function createAuthTimeoutController(timeoutMs: number) {
+  if (typeof AbortController === 'undefined' || !Number.isFinite(timeoutMs) || timeoutMs <= 0) {
+    return { signal: undefined as AbortSignal | undefined, cleanup: () => undefined };
+  }
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  return {
+    signal: controller.signal,
+    cleanup: () => clearTimeout(timer),
+  };
+}
+
+function normalizeAuthFetchError(error: unknown) {
+  const name = String((error as any)?.name || '');
+  if (name === 'AbortError') {
+    return new Error('登录状态验证超时，请检查网络后重试');
+  }
+  return error;
+}
+
+export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: boolean; timeoutMs?: number }) {
   const force = Boolean(options?.force);
   const handleUnauthorized = options?.handleUnauthorized !== false;
+  const timeoutMs = Number(options?.timeoutMs ?? AUTH_ME_TIMEOUT_MS);
   if (!force) {
     const cached = state.user || hydrateAuthFromCache();
     if (cached) return cached;
@@ -126,8 +148,9 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
   }
   const requestEpoch = getAuthRequestEpoch();
   const sessionKey = getAuthSessionKey();
+  const timeout = createAuthTimeoutController(timeoutMs);
   state.loading = true;
-  const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET' }, { handleUnauthorized }).then((r) => {
+  const task = apiRequestJson<{ ok: boolean; data: { user: User } }>("/api/auth/me", { method: 'GET', signal: timeout.signal }, { handleUnauthorized }).then((r) => {
     if (requestEpoch !== getAuthRequestEpoch() || sessionKey !== getAuthSessionKey()) return useAuth().user as User;
     bumpAuthRequestEpoch();
     applyAuthorizedUser(r.data.user, sessionKey);
@@ -137,8 +160,9 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
     if (isHttpError && requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey()) {
       applyLoggedOutState(sessionKey);
     }
-    throw e;
+    throw normalizeAuthFetchError(e);
   }).finally(() => {
+    timeout.cleanup();
     state.loading = false;
     if (pendingFetchMe === task) pendingFetchMe = null;
   });
