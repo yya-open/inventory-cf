@@ -70,6 +70,48 @@ export async function upsertPcLatestState(db: D1Database, assetId: number, patch
   ).run();
 }
 
+export async function batchUpsertPcLatestState(db: D1Database, entries: Array<{ assetId: number; patch: { current_employee_no?: string | null; current_employee_name?: string | null; current_department?: string | null; last_out_id?: number | null; last_in_id?: number | null; last_recycle_id?: number | null; last_config_date?: string | null; last_out_at?: string | null; last_in_at?: string | null; last_recycle_date?: string | null } }>) {
+  if (!entries.length) return;
+  await ensurePcLatestStateTable(db);
+  const statements = entries.map(({ assetId, patch }) =>
+    db.prepare(
+      `INSERT INTO pc_asset_latest_state (
+        asset_id, last_out_id, last_in_id, last_recycle_id,
+        current_employee_no, current_employee_name, current_department,
+        last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})
+      ON CONFLICT(asset_id) DO UPDATE SET
+        last_out_id=COALESCE(excluded.last_out_id, pc_asset_latest_state.last_out_id),
+        last_in_id=COALESCE(excluded.last_in_id, pc_asset_latest_state.last_in_id),
+        last_recycle_id=COALESCE(excluded.last_recycle_id, pc_asset_latest_state.last_recycle_id),
+        current_employee_no=excluded.current_employee_no,
+        current_employee_name=excluded.current_employee_name,
+        current_department=excluded.current_department,
+        last_config_date=COALESCE(excluded.last_config_date, pc_asset_latest_state.last_config_date),
+        last_out_at=COALESCE(excluded.last_out_at, pc_asset_latest_state.last_out_at),
+        last_in_at=COALESCE(excluded.last_in_at, pc_asset_latest_state.last_in_at),
+        last_recycle_date=COALESCE(excluded.last_recycle_date, pc_asset_latest_state.last_recycle_date),
+        updated_at=${sqlNowStored()}`
+    ).bind(
+      assetId,
+      patch.last_out_id ?? null,
+      patch.last_in_id ?? null,
+      patch.last_recycle_id ?? null,
+      patch.current_employee_no ?? null,
+      patch.current_employee_name ?? null,
+      patch.current_department ?? null,
+      patch.last_config_date ?? null,
+      patch.last_out_at ?? null,
+      patch.last_in_at ?? null,
+      patch.last_recycle_date ?? null,
+    )
+  );
+  const batchSize = 100;
+  for (let i = 0; i < statements.length; i += batchSize) {
+    await db.batch(statements.slice(i, i + batchSize));
+  }
+}
+
 export async function rebuildPcLatestStateForAssets(db: D1Database, assetIds: Array<number | string>) {
   await ensurePcLatestStateTable(db);
   const ids = Array.from(new Set((assetIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)));

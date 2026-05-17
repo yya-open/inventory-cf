@@ -17,15 +17,15 @@ export default defineConfig({
     extensions: ['.mjs', '.ts', '.tsx', '.js', '.jsx', '.json'],
   },
   build: {
-    chunkSizeWarningLimit: 800,
+    chunkSizeWarningLimit: 500,
     rollupOptions: {
       output: {
         manualChunks(id) {
-          // 让路由页面和工具模块尽量按需拆分，避免进入电脑台账时预先拉取系统页/Excel 工具等非首屏资源。
           if (!id.includes('node_modules')) return undefined;
           if (id.includes('xlsx')) return 'xlsx';
           if (id.includes('jszip')) return 'jszip';
           if (id.includes('qrcode')) return 'qrcode';
+          if (id.includes('zod')) return 'zod';
           if (/[\\/]node_modules[\\/](@vue|vue)[\\/]/.test(id)) return 'vue-vendor';
           if (id.includes('@element-plus/icons-vue')) return 'el-icons';
           if (id.includes('element-plus')) {

@@ -20,7 +20,34 @@ type PersistentPageCacheEntry = PageCacheEntry;
 
 type PersistentTotalEntry = { total: number; timestamp: number };
 
-const pageCache = new Map<string, PageCacheEntry>();
+const PAGE_CACHE_MAX = 60;
+const TOTAL_CACHE_MAX = 30;
+
+class LruMap<K, V> extends Map<K, V> {
+  private maxSize: number;
+  constructor(maxSize: number) {
+    super();
+    this.maxSize = maxSize;
+  }
+  get(key: K): V | undefined {
+    if (!super.has(key)) return undefined;
+    const value = super.get(key)!;
+    super.delete(key);
+    super.set(key, value);
+    return value;
+  }
+  set(key: K, value: V): this {
+    if (super.has(key)) super.delete(key);
+    super.set(key, value);
+    if (super.size > this.maxSize) {
+      const oldest = super.keys().next().value;
+      if (oldest !== undefined) super.delete(oldest);
+    }
+    return this;
+  }
+}
+
+const pageCache = new LruMap<string, PageCacheEntry>(PAGE_CACHE_MAX);
 const pageRequests = new Map<string, InflightPageRequest>();
 const primedNamespaces = new Set<string>();
 
@@ -214,7 +241,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   const clampPageSize = (value: number) => Math.min(maxPageSize, Math.max(20, Number(value || 50) || 50));
   const pageSize = ref(clampPageSize(options.initialPageSize ?? 50));
   const total = ref(0);
-  const totalCache = new Map<string, number>();
+  const totalCache = new LruMap<string, number>(TOTAL_CACHE_MAX);
   let totalTimer: ReturnType<typeof setTimeout> | null = null;
   let requestSeq = 0;
   let pageController: AbortController | null = null;
@@ -301,7 +328,9 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (typeof window !== 'undefined' && typeof (window as any).requestIdleCallback === 'function') {
       (window as any).requestIdleCallback(() => run(), { timeout: 1500 });
     } else if (typeof window !== 'undefined') {
-      window.setTimeout(run, 300);
+      const effectiveType = String((navigator as any)?.connection?.effectiveType || '').toLowerCase();
+      const delay = effectiveType === '3g' ? 600 : effectiveType.includes('2g') ? 1200 : 300;
+      window.setTimeout(run, delay);
     }
   }
 

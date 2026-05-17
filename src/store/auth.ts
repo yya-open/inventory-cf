@@ -133,7 +133,8 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
     applyAuthorizedUser(r.data.user, sessionKey);
     return r.data.user;
   }).catch((e) => {
-    if (requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey()) {
+    const isHttpError = typeof e?.status === 'number';
+    if (isHttpError && requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey()) {
       applyLoggedOutState(sessionKey);
     }
     throw e;

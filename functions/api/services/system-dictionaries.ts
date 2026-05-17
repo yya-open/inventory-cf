@@ -115,11 +115,12 @@ export function clearSystemDictionaryCaches(key?: SystemDictionaryKey) {
     dictionaryListPending.delete(dictionaryCacheKey(key));
     dictionaryVersionCache.delete(dictionaryCacheKey(key));
     dictionaryVersionPending.delete(dictionaryCacheKey(key));
+  } else {
+    dictionaryListCache.delete(dictionaryCacheKey(undefined));
+    dictionaryListPending.delete(dictionaryCacheKey(undefined));
+    dictionaryVersionCache.delete(dictionaryCacheKey(undefined));
+    dictionaryVersionPending.delete(dictionaryCacheKey(undefined));
   }
-  dictionaryListCache.delete(dictionaryCacheKey(undefined));
-  dictionaryListPending.delete(dictionaryCacheKey(undefined));
-  dictionaryVersionCache.delete(dictionaryCacheKey(undefined));
-  dictionaryVersionPending.delete(dictionaryCacheKey(undefined));
 }
 
 export function invalidateSystemDictionaryReferenceCache() {
@@ -410,10 +411,10 @@ export async function refreshSystemDictionaryUsageCounters(db: D1Database, keys?
   return wanted.length;
 }
 
-export async function refreshDirtySystemDictionaryUsageCounters(db: D1Database, keys?: SystemDictionaryKey[]) {
+export async function refreshDirtySystemDictionaryUsageCounters(db: D1Database, keys?: SystemDictionaryKey[]): Promise<SystemDictionaryKey[]> {
   await ensureDictionaryUsageDirtyTable(db);
   const wanted = Array.from(new Set((keys && keys.length ? keys : ALL_DICTIONARY_KEYS).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
-  if (!wanted.length) return 0;
+  if (!wanted.length) return [];
   const placeholders = wanted.map(() => '?').join(',');
   const { results } = await db.prepare(
     `SELECT dictionary_key
@@ -423,8 +424,9 @@ export async function refreshDirtySystemDictionaryUsageCounters(db: D1Database, 
       ORDER BY dirty_since ASC`
   ).bind(...wanted).all<any>();
   const dueKeys = Array.from(new Set((results || []).map((row: any) => String(row?.dictionary_key || '') as SystemDictionaryKey).filter((key) => ALL_DICTIONARY_KEYS.includes(key))));
-  if (!dueKeys.length) return 0;
-  return refreshSystemDictionaryUsageCounters(db, dueKeys);
+  if (!dueKeys.length) return [];
+  await refreshSystemDictionaryUsageCounters(db, dueKeys);
+  return dueKeys;
 }
 
 export async function syncSystemDictionaryUsageCounters(db: D1Database, keys?: SystemDictionaryKey[]) {
@@ -442,17 +444,22 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
      WHERE dictionary_key IN (${placeholders})`
   ).bind(...wanted).all<any>();
   const existingKeys = new Set((results || []).map((row: any) => String(row?.dictionary_key || '')).filter(Boolean));
-  const refreshedDirty = await refreshDirtySystemDictionaryUsageCounters(db, wanted);
+  const refreshedDirtyKeys = await refreshDirtySystemDictionaryUsageCounters(db, wanted);
   const missingKeys = wanted.filter((key) => !existingKeys.has(key));
   if (missingKeys.length) {
     await refreshSystemDictionaryUsageCounters(db, missingKeys);
   }
-  if (refreshedDirty > 0 || missingKeys.length) {
-    ({ results } = await db.prepare(
+  const staleKeys = Array.from(new Set([...refreshedDirtyKeys, ...missingKeys]));
+  if (staleKeys.length) {
+    const staleResults = await db.prepare(
       `SELECT dictionary_key, label, reference_count
        FROM dictionary_usage_counters
-       WHERE dictionary_key IN (${placeholders})`
-    ).bind(...wanted).all<any>());
+       WHERE dictionary_key IN (${staleKeys.map(() => '?').join(',')})`
+    ).bind(...staleKeys).all<any>();
+    results = [
+      ...(results || []).filter((row: any) => !staleKeys.includes(String(row?.dictionary_key || '') as SystemDictionaryKey)),
+      ...(staleResults.results || []),
+    ];
   }
   const counts: ReferenceCountMap = {};
   for (const key of wanted) counts[key] = {};

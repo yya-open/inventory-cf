@@ -1,6 +1,6 @@
 import { requireAuth, errorResponse } from '../_auth';
 import { requirePermission } from '../_permissions';
-import { logAudit } from './_audit';
+import { logAudit, logAuditBatch, type AuditEntry } from './_audit';
 import { ensureMonitorReadFastGuards, ensureMonitorSchemaIfAllowed } from './_monitor';
 import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
@@ -13,7 +13,7 @@ import {
   loadAssetRows,
 } from './services/asset-bulk';
 import { bulkDeleteAssets } from './services/asset-bulk-delete';
-import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
+import { getBulkRelatedRecordCounts, getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 
@@ -138,16 +138,19 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     if (action === 'delete') {
       const existingRows = await loadAssetRows(env.DB, 'monitor', ids);
       const settings = await getSystemSettings(env.DB);
+      const rowsById = new Map(existingRows.map((item) => [Number(item.id), item]));
       const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
       if (previewOnly) {
+        const validIds = ids.filter((id: number) => rowsById.has(Number(id)));
+        const bulkRefs = await getBulkRelatedRecordCounts(env.DB, 'monitor', validIds);
         const previewItems = [];
         for (const id of ids) {
-          const row = existingRows.find((item) => Number(item.id) === Number(id));
+          const row = rowsById.get(Number(id));
           if (!row) {
             previewItems.push({ id: Number(id), blocked: true, reason: '显示器台账不存在或已删除' });
             continue;
           }
-          const refs = await getRelatedRecordCounts(env.DB, 'monitor', Number(id));
+          const refs = bulkRefs.get(Number(id)) || {};
           const hasRefs = hasRelatedHistory('monitor', refs);
           const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
           const operation = Number(row.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
@@ -190,36 +193,16 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
         invalidateSystemDictionaryReferenceCache();
         await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
       }
-      for (const item of result.successes) {
+      const auditEntries: AuditEntry[] = result.successes.map((item) => {
         if (item.action === 'archive') {
-          await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', item.id, {
-            asset_code: item.row?.asset_code,
-            brand: item.row?.brand,
-            model: item.row?.model,
-            status: item.row?.status,
-            archived_reason: item.reason,
-          });
-          continue;
+          return { action: 'MONITOR_ASSET_ARCHIVE', entity: 'monitor_assets' as const, entity_id: item.id, payload: { asset_code: item.row?.asset_code, brand: item.row?.brand, model: item.row?.model, status: item.row?.status, archived_reason: item.reason } };
         }
         if (item.action === 'purge') {
-          await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', item.id, {
-            asset_code: item.row?.asset_code,
-            brand: item.row?.brand,
-            model: item.row?.model,
-            status: item.row?.status,
-            archived: true,
-            purge_related: item.related_counts || {},
-          });
-          continue;
+          return { action: 'MONITOR_ASSET_PURGE', entity: 'monitor_assets' as const, entity_id: item.id, payload: { asset_code: item.row?.asset_code, brand: item.row?.brand, model: item.row?.model, status: item.row?.status, archived: true, purge_related: item.related_counts || {} } };
         }
-        await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', item.id, {
-          asset_code: item.row?.asset_code,
-          brand: item.row?.brand,
-          model: item.row?.model,
-          status: item.row?.status,
-        });
-      }
-      await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE_BATCH', 'monitor_assets', String(ids.length), {
+        return { action: 'MONITOR_ASSET_DELETE', entity: 'monitor_assets' as const, entity_id: item.id, payload: { asset_code: item.row?.asset_code, brand: item.row?.brand, model: item.row?.model, status: item.row?.status } };
+      });
+      auditEntries.push({ action: 'MONITOR_ASSET_DELETE_BATCH', entity: 'monitor_assets' as const, entity_id: String(ids.length), payload: {
         requested_ids: ids,
         processed: result.processed,
         archived: result.archived,
@@ -227,7 +210,8 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
         purged: result.purged,
         failed: result.failed,
         failed_ids: result.failures.map((item) => item.id),
-      });
+      } });
+      await logAuditBatch(env.DB, request, user, auditEntries);
       return Response.json({
         ok: true,
         processed: result.processed,

@@ -3,7 +3,6 @@ import { requireConfirm } from "../../_confirm";
 import { ensureMonitorSchemaIfAllowed } from "../_monitor";
 import { logAudit } from "../_audit";
 import { recalcMonitorAssets } from "./_recalc";
-import { syncSystemDictionaryUsageCounters } from '../services/system-dictionaries';
 
 async function listLatestMonitorTxIds(db: D1Database, assetIds: number[]) {
   const ids = Array.from(new Set((assetIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)));
@@ -57,7 +56,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     const deleted = Number((del as any)?.meta?.changes || 0);
 
     if (recalcAssetIds.length) await recalcMonitorAssets(env.DB, recalcAssetIds);
-    await syncSystemDictionaryUsageCounters(env.DB, []);
     await logAudit(env.DB, request, actor, "MONITOR_TX_DELETE", "monitor_tx", null, {
       ids,
       deleted,
