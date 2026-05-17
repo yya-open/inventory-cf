@@ -148,6 +148,7 @@
       @submit="submitBatchArchive"
     />
     <QrPrintTemplateDialog
+      v-if="qrTemplateVisible"
       v-model:visible="qrTemplateVisible"
       :kind="qrTemplateKind"
       scope="pc"
@@ -155,6 +156,7 @@
       @submit="submitQrPrintTemplate"
     />
     <QrExportProgressDialog
+      v-if="qrExportProgress.visible"
       :visible="qrExportProgress.visible"
       :title="qrExportProgress.title"
       :stage="qrExportProgress.stage"

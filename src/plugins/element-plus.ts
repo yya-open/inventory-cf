@@ -3,6 +3,7 @@ import { ElAlert } from 'element-plus/es/components/alert/index';
 import { ElAside, ElContainer, ElHeader, ElMain } from 'element-plus/es/components/container/index';
 import { ElButton, ElButtonGroup } from 'element-plus/es/components/button/index';
 import { ElCard } from 'element-plus/es/components/card/index';
+import { ElCheckbox, ElCheckboxGroup } from 'element-plus/es/components/checkbox/index';
 import { ElDialog } from 'element-plus/es/components/dialog/index';
 import { ElDrawer } from 'element-plus/es/components/drawer/index';
 import { ElEmpty } from 'element-plus/es/components/empty/index';
@@ -10,6 +11,10 @@ import { ElForm, ElFormItem } from 'element-plus/es/components/form/index';
 import { ElInput } from 'element-plus/es/components/input/index';
 import { ElLoading } from 'element-plus/es/components/loading/index';
 import { ElMenu, ElMenuItem } from 'element-plus/es/components/menu/index';
+import { ElOption } from 'element-plus/es/components/select/index';
+import { ElPagination } from 'element-plus/es/components/pagination/index';
+import { ElSelect } from 'element-plus/es/components/select/index';
+import { ElTable, ElTableColumn } from 'element-plus/es/components/table/index';
 import { ElTag } from 'element-plus/es/components/tag/index';
 
 import 'element-plus/es/components/alert/style/css';
@@ -74,6 +79,8 @@ const coreComponents = [
   ElButton,
   ElButtonGroup,
   ElCard,
+  ElCheckbox,
+  ElCheckboxGroup,
   ElContainer,
   ElDialog,
   ElDrawer,
@@ -85,27 +92,25 @@ const coreComponents = [
   ElMain,
   ElMenu,
   ElMenuItem,
+  ElOption,
+  ElPagination,
+  ElSelect,
+  ElTable,
+  ElTableColumn,
   ElTag,
 ] as const;
 
 const asyncComponents: Record<string, () => Promise<Component>> = {
-  ElCheckbox: () => import('element-plus/es/components/checkbox/index').then((module) => module.ElCheckbox),
-  ElCheckboxGroup: () => import('element-plus/es/components/checkbox/index').then((module) => module.ElCheckboxGroup),
   ElCol: () => import('element-plus/es/components/col/index').then((module) => module.ElCol),
   ElDatePicker: () => import('element-plus/es/components/date-picker/index').then((module) => module.ElDatePicker),
   ElDescriptions: () => import('element-plus/es/components/descriptions/index').then((module) => module.ElDescriptions),
   ElDescriptionsItem: () => import('element-plus/es/components/descriptions/index').then((module) => module.ElDescriptionsItem),
   ElInputNumber: () => import('element-plus/es/components/input-number/index').then((module) => module.ElInputNumber),
-  ElOption: () => import('element-plus/es/components/select/index').then((module) => module.ElOption),
   ElOptionGroup: () => import('element-plus/es/components/select/index').then((module) => module.ElOptionGroup),
-  ElPagination: () => import('element-plus/es/components/pagination/index').then((module) => module.ElPagination),
   ElProgress: () => import('element-plus/es/components/progress/index').then((module) => module.ElProgress),
   ElRow: () => import('element-plus/es/components/row/index').then((module) => module.ElRow),
-  ElSelect: () => import('element-plus/es/components/select/index').then((module) => module.ElSelect),
   ElSkeleton: () => import('element-plus/es/components/skeleton/index').then((module) => module.ElSkeleton),
   ElSwitch: () => import('element-plus/es/components/switch/index').then((module) => module.ElSwitch),
-  ElTable: () => import('element-plus/es/components/table/index').then((module) => module.ElTable),
-  ElTableColumn: () => import('element-plus/es/components/table/index').then((module) => module.ElTableColumn),
 };
 
 export function installElementPlus(app: App) {
