@@ -65,8 +65,8 @@
       <MonitorAssetsTable
       :mobile-mode="isMobile"
       :rows="rows"
-      :loading="refreshing"
-      :initial-loading="initialLoading && !rows.length"
+      :loading="loading || refreshing"
+      :initial-loading="initialLoading && loading && !initialized && !rows.length"
       :total="total"
       :page="page"
       :page-size="pageSize"
