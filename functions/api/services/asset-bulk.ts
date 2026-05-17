@@ -11,8 +11,9 @@ import {
   pcAssetRestoreSql,
   buildMonitorAssetSearchText,
 } from './asset-ledger';
-import { upsertPcLatestState } from './pc-latest-state';
+import { ensurePcLatestStateTable } from './pc-latest-state';
 import { type AssetArchiveKind } from './asset-archive';
+import { sqlNowStored } from '../_time';
 
 const DEFAULT_BATCH_SIZE = 100;
 
@@ -216,13 +217,22 @@ export async function bulkUpdatePcOwner(
   const extraSkippedIds = targetIds.filter((id) => !effectiveIds.includes(id));
   const statements = effectiveIds.map((assetId) => db.prepare(pcAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, Number(latestOutByAsset.get(assetId) || 0)));
   await runBatchStatements(db, statements);
-  for (const assetId of effectiveIds) {
-    await upsertPcLatestState(db, assetId, {
-      current_employee_no: owner.employee_no,
-      current_employee_name: owner.employee_name,
-      current_department: owner.department,
-    });
-  }
+  await ensurePcLatestStateTable(db);
+  const latestStateStmts = effectiveIds.map((assetId) =>
+    db.prepare(
+      `INSERT INTO pc_asset_latest_state (
+        asset_id, last_out_id, last_in_id, last_recycle_id,
+        current_employee_no, current_employee_name, current_department,
+        last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+      ) VALUES (?, NULL, NULL, NULL, ?, ?, ?, NULL, NULL, NULL, NULL, ${sqlNowStored()})
+      ON CONFLICT(asset_id) DO UPDATE SET
+        current_employee_no=excluded.current_employee_no,
+        current_employee_name=excluded.current_employee_name,
+        current_department=excluded.current_department,
+        updated_at=${sqlNowStored()}`
+    ).bind(assetId, owner.employee_no, owner.employee_name, owner.department)
+  );
+  await runBatchStatements(db, latestStateStmts);
   return {
     changed: effectiveIds.length,
     skipped: skippedIds.length + extraSkippedIds.length,
