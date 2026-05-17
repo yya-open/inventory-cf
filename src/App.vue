@@ -415,7 +415,12 @@ const opsAlert = reactive<{ visible: boolean; type: 'warning' | 'error'; title: 
 
 let removeGlobalTableScrollEnhancer: (() => void) | null = null;
 onMounted(() => {
-  removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
+  // 延迟安装表格滚动增强，避免初始渲染期间 MutationObserver 风暴
+  const delayMs = 3000;
+  const timer = setTimeout(() => {
+    removeGlobalTableScrollEnhancer = installGlobalTableScrollEnhancer();
+  }, delayMs);
+  (window as any).__tableScrollTimer = timer;
   try {
     desktopSidebarCollapsed.value = localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === "1";
     mobileHeaderExpanded.value = localStorage.getItem(MOBILE_HEADER_EXPANDED_KEY) === "1";
@@ -424,6 +429,7 @@ onMounted(() => {
   } catch {}
 });
 onBeforeUnmount(() => {
+  if ((window as any).__tableScrollTimer) clearTimeout((window as any).__tableScrollTimer);
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
   window.removeEventListener("resize", updateViewport);

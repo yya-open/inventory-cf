@@ -21,6 +21,8 @@ function scheduleBuildVersionCheck(task: () => void, delayMs = 10_000) {
 
 export function startBuildVersionWatcher() {
   if (typeof window === 'undefined') return;
+  (window as any).__INVENTORY_BUILD_ID__ = APP_BUILD_ID;
+  console.info('[inventory] build', APP_BUILD_ID);
   let running = false;
   let lastCheckAt = 0;
   const run = async () => {

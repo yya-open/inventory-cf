@@ -114,9 +114,12 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
 
   const enhanced = new Map<HTMLElement, EnhancedTable>();
   let refreshAllTimer: number | null = null;
+  let lastRefreshAt = 0;
+  const THROTTLE_MS = 500;
 
   const refreshAll = () => {
     refreshAllTimer = null;
+    lastRefreshAt = Date.now();
     const current = new Set(Array.from(document.querySelectorAll<HTMLElement>(TABLE_SELECTOR)));
 
     current.forEach((root) => {
@@ -134,7 +137,12 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
 
   const scheduleRefreshAll = () => {
     if (refreshAllTimer != null) return;
-    refreshAllTimer = window.requestAnimationFrame(refreshAll);
+    const elapsed = Date.now() - lastRefreshAt;
+    if (elapsed < THROTTLE_MS) {
+      refreshAllTimer = window.setTimeout(refreshAll, THROTTLE_MS - elapsed) as unknown as number;
+    } else {
+      refreshAllTimer = window.requestAnimationFrame(refreshAll);
+    }
   };
 
   const observer = new MutationObserver(() => scheduleRefreshAll());

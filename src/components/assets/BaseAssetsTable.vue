@@ -118,7 +118,12 @@ const forceRevealInitialLoading = ref(false);
 let revealColumnsTimer: number | null = null;
 let initialLoadingGuardTimer: number | null = null;
 
-const displayInitialLoading = computed(() => props.initialLoading && !forceRevealInitialLoading.value);
+const displayInitialLoading = computed(() => (
+  props.initialLoading
+  && props.loading
+  && !forceRevealInitialLoading.value
+  && renderRows.value.length <= 0
+));
 
 const orderedVisibleColumns = computed(() => props.showInventoryColumn ? props.visibleColumns : props.visibleColumns.filter((key) => key !== 'inventory'));
 
@@ -196,6 +201,15 @@ watch(() => props.initialLoading, (value) => {
   initialLoadingGuardTimer = window.setTimeout(() => {
     initialLoadingGuardTimer = null;
     forceRevealInitialLoading.value = true;
+    console.warn('[inventory] ledger initial skeleton forced open', {
+      buildId: (window as any).__INVENTORY_BUILD_ID__ || 'unknown',
+      loading: props.loading,
+      initialLoading: props.initialLoading,
+      rows: renderRows.value.length,
+      page: props.page,
+      pageSize: props.pageSize,
+      total: props.total,
+    });
   }, 3500);
 }, { immediate: true });
 

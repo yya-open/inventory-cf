@@ -43,7 +43,6 @@ import { ElMessage } from "../utils/el-message";
 import { scheduleOnIdle } from "../utils/idle";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
-import { countMonitorAssets, countPcAssets, listMonitorAssets, listPcAssets } from "../api/assetLedgers";
 import { primePagedListCache } from "../composables/usePagedAssetList";
 
 export const routePagePending = ref(false);
@@ -291,8 +290,20 @@ function prefetchChunk(key: string, loader?: () => Promise<unknown>) {
       clearPrefetchedRouteChunk(key);
       return;
     }
-    loader().catch(() => {
+    loader().catch((error) => {
       clearPrefetchedRouteChunk(key);
+      // 动态 import 失败通常意味着部署版本更新，旧 chunk 已不存在
+      const msg = error instanceof Error ? error.message : String(error ?? '');
+      const isImportError = /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|fetch/i.test(msg);
+      if (isImportError && typeof window !== 'undefined') {
+        const reloadKey = '__inventory_preload_reload__';
+        try {
+          const last = Number(sessionStorage.getItem(reloadKey) || 0);
+          if (Date.now() - last < 10_000) return; // 10秒内不重复刷新
+          sessionStorage.setItem(reloadKey, String(Date.now()));
+        } catch {}
+        window.location.reload();
+      }
     });
   }, 1800);
 }
@@ -371,6 +382,7 @@ function readMonitorFiltersForPrewarm() {
 async function prewarmPcListData() {
   const filters = readPcFiltersForPrewarm();
   const key = pcFilterKey(filters);
+  const { listPcAssets, countPcAssets } = await import("../api/assetLedgers");
   const [listResult, total] = await Promise.all([
     listPcAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
     countPcAssets(filters).catch(() => 0),
@@ -385,6 +397,7 @@ async function prewarmPcListData() {
 async function prewarmMonitorListData() {
   const filters = readMonitorFiltersForPrewarm();
   const key = monitorFilterKey(filters);
+  const { listMonitorAssets, countMonitorAssets } = await import("../api/assetLedgers");
   const [listResult, total] = await Promise.all([
     listMonitorAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
     countMonitorAssets(filters).catch(() => 0),
