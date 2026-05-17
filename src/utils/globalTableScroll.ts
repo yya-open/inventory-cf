@@ -88,12 +88,12 @@ function enhanceSingleTable(root: HTMLElement): EnhancedTable | null {
   };
 
   const scheduleRefresh = () => {
-    if (refreshTimer != null) window.cancelAnimationFrame(refreshTimer);
+    if (refreshTimer != null) return;
     refreshTimer = window.requestAnimationFrame(refresh);
   };
 
   resizeObserver.observe(root);
-  mutationObserver.observe(root, { subtree: true, childList: true, attributes: true, characterData: false });
+  mutationObserver.observe(root, { subtree: true, childList: true });
   scheduleRefresh();
 
   const cleanup = () => {
@@ -113,8 +113,10 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
   const enhanced = new Map<HTMLElement, EnhancedTable>();
+  let refreshAllTimer: number | null = null;
 
   const refreshAll = () => {
+    refreshAllTimer = null;
     const current = new Set(Array.from(document.querySelectorAll<HTMLElement>(TABLE_SELECTOR)));
 
     current.forEach((root) => {
@@ -130,14 +132,23 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
     });
   };
 
-  const observer = new MutationObserver(() => refreshAll());
+  const scheduleRefreshAll = () => {
+    if (refreshAllTimer != null) return;
+    refreshAllTimer = window.requestAnimationFrame(refreshAll);
+  };
+
+  const observer = new MutationObserver(() => scheduleRefreshAll());
   observer.observe(document.body, { subtree: true, childList: true });
-  refreshAll();
-  window.addEventListener('resize', refreshAll, { passive: true });
+  scheduleRefreshAll();
+  window.addEventListener('resize', scheduleRefreshAll, { passive: true });
 
   return () => {
+    if (refreshAllTimer != null) {
+      window.cancelAnimationFrame(refreshAllTimer);
+      refreshAllTimer = null;
+    }
     observer.disconnect();
-    window.removeEventListener('resize', refreshAll);
+    window.removeEventListener('resize', scheduleRefreshAll);
     enhanced.forEach((item) => item.cleanup());
     enhanced.clear();
   };
