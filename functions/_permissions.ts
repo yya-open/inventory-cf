@@ -102,6 +102,17 @@ function nowSql() {
 let ensureUserPermissionsTablePromise: Promise<void> | null = null;
 let ensureUserPermissionTemplateColumnPromise: Promise<void> | null = null;
 
+const TEMPLATE_CODE_CACHE_TTL_MS = 30_000;
+const templateCodeCache = new Map<number, { rawCode: string | null; expiresAt: number }>();
+
+export function invalidateCachedTemplateCode(userId?: number | null) {
+  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
+    templateCodeCache.delete(userId);
+    return;
+  }
+  templateCodeCache.clear();
+}
+
 export async function ensureUserPermissionsTable(db: D1Database) {
   if (!ensureUserPermissionsTablePromise) {
     ensureUserPermissionsTablePromise = (async () => {
@@ -165,9 +176,8 @@ export function getPermissionTemplateMap(role: string | null | undefined, templa
 export async function getUserPermissionMap(db: D1Database, userId: number, role: string | null | undefined, templateCode?: string | null) {
   await ensureUserPermissionsTable(db);
   await ensureUserPermissionTemplateColumn(db);
-  const map: Record<string, boolean> = {};
-  for (const code of ALL_PERMISSION_CODES) map[code] = roleDefaultPermission(role, code);
   const template = getPermissionTemplateMap(role, templateCode);
+  const map: Record<string, boolean> = {};
   for (const code of ALL_PERMISSION_CODES) map[code] = !!template.permissions[code];
   const { results } = await db.prepare(
     `SELECT permission_code, allowed FROM user_permissions WHERE user_id=?`
@@ -217,13 +227,20 @@ export async function setUserPermissionTemplate(db: D1Database, userId: number, 
   await ensureUserPermissionTemplateColumn(db);
   const code = normalizePermissionTemplateCode(role, templateCode);
   await db.prepare(`UPDATE users SET permission_template_code=? WHERE id=?`).bind(code, userId).run();
+  templateCodeCache.delete(userId);
   return code;
 }
 
 export async function getUserTemplateCode(db: D1Database, userId: number, role: string | null | undefined) {
+  const cached = templateCodeCache.get(userId);
+  if (cached && cached.expiresAt > Date.now()) {
+    return normalizePermissionTemplateCode(role, cached.rawCode);
+  }
   await ensureUserPermissionTemplateColumn(db);
   const row = await db.prepare(`SELECT permission_template_code FROM users WHERE id=?`).bind(userId).first<any>();
-  return normalizePermissionTemplateCode(role, row?.permission_template_code);
+  const rawCode = row?.permission_template_code ?? null;
+  templateCodeCache.set(userId, { rawCode, expiresAt: Date.now() + TEMPLATE_CODE_CACHE_TTL_MS });
+  return normalizePermissionTemplateCode(role, rawCode);
 }
 
 export async function requirePermission(env: { DB: D1Database; JWT_SECRET?: string }, request: Request, code: PermissionCode, minRole: 'viewer'|'operator'|'admin' = 'viewer') {

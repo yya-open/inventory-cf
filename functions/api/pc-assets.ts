@@ -156,9 +156,11 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
 
     if (previewOnly) {
-      const refs = await getRelatedRecordCounts(env.DB, 'pc', id);
+      const [refs, settings] = await Promise.all([
+        getRelatedRecordCounts(env.DB, 'pc', id),
+        getSystemSettings(env.DB),
+      ]);
       const hasRefs = hasRelatedHistory('pc', refs);
-      const settings = await getSystemSettings(env.DB);
       const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
       const operation = Number(asset.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
       return Response.json({ ok: true, preview: true, data: {
@@ -198,8 +200,10 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       throw Object.assign(new Error('该电脑当前为已领用状态，请先办理回收/归还后再删除'), { status: 400 });
     }
 
-    const settings = await getSystemSettings(env.DB);
-    const refs = await getRelatedRecordCounts(env.DB, 'pc', id);
+    const [settings, refs] = await Promise.all([
+      getSystemSettings(env.DB),
+      getRelatedRecordCounts(env.DB, 'pc', id),
+    ]);
     const hasRefs = hasRelatedHistory('pc', refs);
 
     if (hasRefs || !settings.asset_allow_physical_delete) {

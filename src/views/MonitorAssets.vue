@@ -234,14 +234,13 @@ import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache, listMonitorAssets } from '../api/assetLedgers';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
-import { fetchBulkMonitorAssetQrLinks } from '../api/assetQr';
-import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr } from '../utils/assetQrCache';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
 import { useAssetSelectionSummary } from '../composables/useAssetSelectionSummary';
 import { useAssetBulkActions } from '../composables/useAssetBulkActions';
-import { useAssetQrExportActions } from '../composables/useAssetQrExportActions';
-import { trimText, useAssetFormActions, validateRequiredFields } from '../composables/useAssetFormActions';
+import { trimText, useAssetFormActions } from '../composables/useAssetFormActions';
+import { useMonitorAssetForm } from '../composables/useMonitorAssetForm';
+import { useMonitorAssetQr } from '../composables/useMonitorAssetQr';
 import { can, canCapability, canPerm } from '../store/auth';
 import type { AssetInventorySummary, LocationRow, MonitorAsset, MonitorFilters } from '../types/assets';
 import { assetStatusText, inventoryIssueTypeText, inventoryStatusText } from '../types/assets';
@@ -249,7 +248,6 @@ import { formatBeijingDateTime } from '../utils/datetime';
 import { fetchSystemSettings, getCachedSystemSettings, markMonitorBrandSettingsApplied, shouldRefreshMonitorBrandSettings } from '../api/systemSettings';
 import MonitorAssetsToolbar from '../components/assets/MonitorAssetsToolbar.vue';
 import MonitorAssetsTable from '../components/assets/MonitorAssetsTable.vue';
-import type { QrPrintTemplate } from '../utils/qrPrintTemplate';
 import type { AssetQrExportProgress } from '../utils/assetQrExport';
 import { useLocationCatalog } from '../composables/useLocationCatalog';
 import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
@@ -401,14 +399,8 @@ function handleSetDefaultView(name: string) {
   notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
-let qrCodeLibPromise: Promise<typeof import('qrcode')> | null = null;
 let excelUtilsPromise: Promise<typeof import('../utils/excel')> | null = null;
 let qrCardUtilsPromise: Promise<typeof import('../utils/qrCards')> | null = null;
-
-function loadQrCodeLib() {
-  qrCodeLibPromise ||= import('qrcode');
-  return qrCodeLibPromise;
-}
 
 function loadExcelUtils() {
   excelUtilsPromise ||= import('../utils/excel');
@@ -508,14 +500,6 @@ function loadQrCardUtils() {
   return qrCardUtilsPromise;
 }
 
-async function buildInlineQrSvg(link: string, size = 360) {
-  const QRCode = await loadQrCodeLib();
-  const svgMarkup = await QRCode.toString(link, { type: 'svg', width: Number(size), margin: 2, errorCorrectionLevel: 'Q' });
-  return {
-    svgMarkup,
-    dataUrl: `data:image/svg+xml;charset=utf-8,${encodeURIComponent(svgMarkup)}`
-  };
-}
 const locationText = (row: MonitorAsset) => [row.parent_location_name, row.location_name].filter(Boolean).join('/') || '-';
 
 const locationOptions = computed(() => {
@@ -623,6 +607,26 @@ function findLocationParts(locationId: number) {
   return { location_name: current?.name || '', parent_location_name: parent?.name || '' };
 }
 
+const {
+  dlgAsset,
+  assetSaving,
+  lazyAssetDialog,
+  openCreate,
+  openEdit,
+  closeAssetDialog,
+  saveAsset,
+} = useMonitorAssetForm({
+  ensureLocationOptionsReady,
+  monitorBrandOptions,
+  refreshMonitorBrandOptions,
+  handleMaybeMissingSchema,
+  systemSettings,
+  refreshCurrent,
+  patchCurrentRows,
+  findLocationParts,
+  ensureLocalPatchedPageStable,
+});
+
 function applyMonitorStatusPatch(ids: number[], nextStatus: string) {
   patchCurrentRows(ids, (row) => ({ ...row, status: nextStatus }));
 }
@@ -685,7 +689,6 @@ const batchOwnerForm = ref({ employee_name: '', employee_no: '', department: '' 
 const batchArchiveVisible = ref(false);
 const batchArchiveForm = ref({ reason: systemSettings.value.warehouse_default_archive_reason || '停用归档', note: '' });
 
-const lazyAssetDialog = ref(false);
 const lazyInfoDialog = ref(false);
 const lazyOperationDialog = ref(false);
 const lazyQrDialog = ref(false);
@@ -747,7 +750,6 @@ const { confirmBatchRisk, runBulkAction, runBulkDelete } = useAssetBulkActions({
   ensureLocalPatchedPageStable,
   loadExcelUtils,
 });
-const assetSaving = ref(false);
 const opSubmitting = ref(false);
 const locationSaving = ref(false);
 
@@ -1157,22 +1159,6 @@ async function onImportMonitorFile(uploadFile: any) {
   }
 }
 
-const dlgAsset = reactive({
-  show: false,
-  mode: 'create' as 'create' | 'edit',
-  form: {
-    id: 0,
-    asset_code: '',
-    sn: '',
-    brand: '',
-    model: '',
-    size_inch: '',
-    remark: '',
-    location_id: '' as any,
-  },
-});
-
-
 async function refreshMonitorBrandOptions(force = false) {
   try {
     systemSettings.value = await fetchSystemSettings(force ? { force: true } : undefined);
@@ -1192,107 +1178,10 @@ async function initMonitorBrandOptions() {
   }
 }
 
-function closeAssetDialog() {
-  if (assetSaving.value) return;
-  dlgAsset.show = false;
-}
-
-async function openCreate() {
-  await ensureLocationOptionsReady();
-  if (!monitorBrandOptions.value.length) void refreshMonitorBrandOptions(true);
-  dlgAsset.mode = 'create';
-  dlgAsset.form = { id: 0, asset_code: '', sn: '', brand: '', model: '', size_inch: '', remark: '', location_id: '' as any };
-  warmLazyDialog(lazyAssetDialog);
-  dlgAsset.show = true;
-}
-
 function openInfo(row: MonitorAsset) {
   infoRow.value = { ...row };
   warmLazyDialog(lazyInfoDialog);
   infoVisible.value = true;
-}
-
-async function openEdit(row: MonitorAsset) {
-  await ensureLocationOptionsReady();
-  if (!monitorBrandOptions.value.length) void refreshMonitorBrandOptions(true);
-  dlgAsset.mode = 'edit';
-  dlgAsset.form = {
-    id: row.id,
-    asset_code: row.asset_code || '',
-    sn: row.sn || '',
-    brand: row.brand || '',
-    model: row.model || '',
-    size_inch: row.size_inch || '',
-    remark: row.remark || '',
-    location_id: row.location_id || '',
-  } as any;
-  warmLazyDialog(lazyAssetDialog);
-  dlgAsset.show = true;
-}
-
-async function saveAsset() {
-  const sizePattern = /^\d+(\.\d{1,2})?(\s*寸)?$/;
-  await runSaveAction<Record<string, any>>({
-    busy: assetSaving,
-    buildPayload: () => ({
-      ...dlgAsset.form,
-      asset_code: trimText(dlgAsset.form.asset_code),
-      sn: trimText(dlgAsset.form.sn),
-      brand: trimText(dlgAsset.form.brand),
-      model: trimText(dlgAsset.form.model),
-      size_inch: trimText(dlgAsset.form.size_inch),
-      remark: trimText(dlgAsset.form.remark),
-      location_id: dlgAsset.form.location_id || '',
-    }),
-    validate: (payload) => {
-      if (!validateRequiredFields(payload, [
-        { key: 'asset_code', label: '资产编号' },
-        { key: 'brand', label: '品牌' },
-        { key: 'model', label: '型号' },
-      ])) return false;
-      if (payload.size_inch && !sizePattern.test(payload.size_inch)) {
-        ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
-        return false;
-      }
-      return true;
-    },
-    submit: (payload) => {
-      dlgAsset.form = { ...(payload as any) };
-      return dlgAsset.mode === 'create'
-        ? apiPost('/api/monitor-assets', payload)
-        : apiPut('/api/monitor-assets', payload);
-    },
-    recoverBeforeRetry: handleMaybeMissingSchema,
-    successMessage: dlgAsset.mode === 'create' ? '新增成功' : '保存成功',
-    notificationTitle: dlgAsset.mode === 'create' ? '显示器已新增' : '显示器已更新',
-    notificationMessage: (payload) => dlgAsset.mode === 'create'
-      ? `已创建 ${payload.asset_code || '新显示器'}。`
-      : `已更新 ${payload.asset_code || '显示器记录'}。`,
-    errorMessage: '操作失败',
-    onSuccess: async (payload) => {
-      dlgAsset.show = false;
-      if (dlgAsset.mode === 'create') {
-        await refreshCurrent(true, true);
-        return;
-      }
-      if (systemSettings.value.ui_write_local_refresh) {
-        patchCurrentRows([Number(payload.id)], (row) => ({
-          ...row,
-          asset_code: payload.asset_code,
-          sn: payload.sn,
-          brand: payload.brand,
-          model: payload.model,
-          size_inch: payload.size_inch || '',
-          remark: payload.remark || '',
-          location_id: payload.location_id || null,
-          ...findLocationParts(Number(payload.location_id || 0) || 0),
-        }));
-        await ensureLocalPatchedPageStable(false);
-      } else {
-        await refreshCurrent(true, true);
-      }
-    },
-  });
 }
 
 async function removeAsset(row: MonitorAsset) {
@@ -1468,127 +1357,34 @@ async function submitOp() {
   });
 }
 
-const qrVisible = ref(false);
-
-
-const qrLoading = ref(false);
-const qrRow = ref<MonitorAsset | null>(null);
-const qrLink = ref('');
-const qrDataUrl = ref('');
-const qrSvgMarkup = ref('');
-
-function monitorQrVersionOf(row?: Partial<MonitorAsset> | null) {
-  return String(row?.qr_updated_at || row?.updated_at || '');
-}
-
-
-function buildMonitorQrSheetRecord(row: MonitorAsset, url: string, template?: Partial<QrPrintTemplate>) {
-  if (!url) return null;
-  const mode = template?.content_mode || 'detail';
-  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `显示器 #${row.id}`;
-  const assetCode = row.asset_code || '-';
-  const sn = row.sn || '-';
-  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
-  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${sn}`, meta: [], url };
-  if (mode === 'model_asset') return { title: modelText, subtitle: `资产编号：${assetCode}`, meta: [], url };
-  return {
-    title: assetCode || `显示器 #${row.id}`,
-    subtitle: [row.brand, row.model].filter(Boolean).join(' · ') || `SN：${sn}`,
-    meta: [
-      { label: '状态', value: assetStatusText(row.status) },
-      { label: '位置', value: locationText(row) },
-      { label: '领用人', value: row.employee_name || '-' },
-      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-    ],
-    url,
-  };
-}
-
-function buildMonitorQrCardRecord(row: MonitorAsset, url: string, template?: Partial<QrPrintTemplate>) {
-  if (!url) return null;
-  const mode = template?.content_mode || 'detail';
-  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `显示器 #${row.id}`;
-  const assetCode = row.asset_code || '-';
-  const sn = row.sn || '-';
-  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
-  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${sn}`, meta: [], url };
-  if (mode === 'model_asset') return { title: modelText, subtitle: `资产编号：${assetCode}`, meta: [], url };
-  return {
-    title: `${row.asset_code || '-'} ${row.brand || ''}`.trim(),
-    subtitle: `${row.model || '-'} · SN：${sn}`,
-    meta: [
-      { label: '状态', value: assetStatusText(row.status) },
-      { label: '位置', value: locationText(row) },
-      { label: '领用人', value: row.employee_name || '-' },
-    ],
-    url,
-  };
-}
-
 const {
+  visible: qrVisible,
+  loading: qrLoading,
+  dataUrl: qrDataUrl,
+  link: qrLink,
+  row: qrRow,
+  openQr: openAssetQr,
+  resetQr,
+  copyLink: copyQrLink,
+  openLink: openQrInNewTab,
   qrTemplateVisible,
   qrTemplateKind,
-  openQrPrintTemplate,
   submitQrPrintTemplate,
   exportSelectedQrLinks,
   exportSelectedQrCards,
   exportSelectedQrPng,
   downloadQr,
   downloadLabel,
-} = useAssetQrExportActions<MonitorAsset>({
-  scope: 'monitor',
+} = useMonitorAssetQr({
   canExport: canQrExport,
+  canReset: canQrReset,
   selectedRows,
   selectedCount,
-  singleRow: qrRow,
   exportBusy,
   batchBusy,
-  getId: (row) => Number(row.id),
-  fetchBulkLinks: fetchBulkMonitorAssetQrLinks,
+  locationText,
   loadExcelUtils,
   loadQrCardUtils,
-  mapSheetRecord: buildMonitorQrSheetRecord,
-  mapCardRecord: buildMonitorQrCardRecord,
-  linkFilename: (count) => `显示器二维码链接_${count}条.xlsx`,
-  linkHeaders: [
-    { key: 'id', title: 'ID' },
-    { key: 'asset_code', title: '资产编号' },
-    { key: 'sn', title: 'SN' },
-    { key: 'brand', title: '品牌' },
-    { key: 'model', title: '型号' },
-    { key: 'status', title: '状态' },
-    { key: 'url', title: '二维码链接' },
-  ],
-  mapLinkWorkbookRow: (row, url) => ({
-    id: row.id,
-    asset_code: row.asset_code,
-    sn: row.sn,
-    brand: row.brand,
-    model: row.model,
-    status: assetStatusText(row.status),
-    url,
-  }),
-  singleSheetLabel: (row) => `显示器二维码_${row.asset_code || row.id || 'monitor'}`,
-  singleCardsLabel: (row) => `显示器标签_${row.asset_code || row.id || 'monitor'}`,
-  sheetTitle: '显示器二维码',
-  cardsTitle: '显示器标签',
-  selectedSheetTitle: '显示器二维码图版',
-  selectedCardsTitle: '显示器二维码卡片',
-  messages: {
-    noPermission: '当前账号没有二维码/标签导出权限',
-    noSelection: '请先勾选显示器',
-    noSingle: '请先打开要导出的二维码',
-    selectedEmpty: '当前选中项没有可导出的二维码',
-    singleEmpty: '当前记录没有可导出的二维码',
-    sheetSuccess: '二维码打印页已导出，可直接打印',
-    cardsSuccess: '标签打印页已导出，可直接打印',
-    linksSuccess: '二维码链接已导出',
-    sheetFailed: '导出二维码图版失败',
-    cardsFailed: '导出二维码卡片失败',
-    linksFailed: '导出二维码链接失败',
-    progressSheet: '正在导出二维码图版',
-    progressCards: '正在导出二维码标签',
-  },
   startProgress: startQrExportProgress,
   updateProgress: updateQrExportProgress,
   finishProgress: finishQrExportProgress,
@@ -1603,82 +1399,7 @@ function openAuditHistory(row?: MonitorAsset | null) {
 
 async function openQr(row: MonitorAsset) {
   warmLazyDialog(lazyQrDialog);
-  qrVisible.value = true;
-  qrRow.value = { ...row };
-  qrLink.value = '';
-  qrDataUrl.value = '';
-  qrSvgMarkup.value = '';
-  qrLoading.value = true;
-  try {
-    const id = Number(row?.id || 0);
-    if (!id) throw new Error('缺少资产ID');
-    const version = monitorQrVersionOf(row);
-    const cached = getCachedAssetQr('monitor', id, version);
-    if (cached) {
-      qrLink.value = cached.link;
-      qrDataUrl.value = cached.dataUrl;
-      qrSvgMarkup.value = cached.svgMarkup || '';
-      return;
-    }
-    const result: any = await apiGet(`/api/monitor-asset-qr-token?id=${encodeURIComponent(String(id))}`);
-    const link = String(result?.url || '');
-    qrLink.value = link;
-    if (link) {
-      const qrImage = await buildInlineQrSvg(link, 360);
-      qrDataUrl.value = qrImage.dataUrl;
-      qrSvgMarkup.value = qrImage.svgMarkup;
-      setCachedAssetQr('monitor', id, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
-    }
-  } catch (error: any) {
-    ElMessage.error(error?.message || '生成二维码失败');
-  } finally {
-    qrLoading.value = false;
-  }
-}
-
-async function copyQrLink() {
-  try {
-    await navigator.clipboard.writeText(qrLink.value || '');
-    ElMessage.success('已复制');
-  } catch {
-    ElMessage.warning('复制失败，请手动复制');
-  }
-}
-
-const openQrInNewTab = () => {
-  if (qrLink.value) window.open(qrLink.value, '_blank');
-};
-
-async function resetQr() {
-  if (!canQrReset.value) return ElMessage.warning('当前账号没有重置二维码权限');
-  try {
-    const id = Number(qrRow.value?.id || 0);
-    if (!id) return;
-    await ElMessageBox.confirm('重置后旧二维码将立即失效，确认继续？', '重置二维码', {
-      type: 'warning',
-      confirmButtonText: '重置',
-      cancelButtonText: '取消',
-    });
-    qrLoading.value = true;
-    invalidateAssetQr('monitor', id);
-    const result: any = await apiPost(`/api/monitor-assets-reset-qr?id=${id}`, {});
-    const link = String(result?.url || '');
-    qrLink.value = link;
-    if (link) {
-      const qrImage = await buildInlineQrSvg(link, 360);
-      qrDataUrl.value = qrImage.dataUrl;
-      qrSvgMarkup.value = qrImage.svgMarkup;
-      const version = new Date().toISOString();
-      qrRow.value = qrRow.value ? { ...qrRow.value, qr_updated_at: version } : qrRow.value;
-      setCachedAssetQr('monitor', id, version, { link, dataUrl: qrImage.dataUrl, svgMarkup: qrImage.svgMarkup });
-    }
-    ElMessage.success('已重置');
-  } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '重置失败');
-  } finally {
-    qrLoading.value = false;
-  }
+  await openAssetQr(row);
 }
 
 async function initQrKeys() {

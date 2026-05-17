@@ -178,9 +178,11 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
 
     if (previewOnly) {
-      const refs = await getRelatedRecordCounts(env.DB, 'monitor', id);
+      const [refs, settings] = await Promise.all([
+        getRelatedRecordCounts(env.DB, 'monitor', id),
+        getSystemSettings(env.DB),
+      ]);
       const hasRefs = hasRelatedHistory('monitor', refs);
-      const settings = await getSystemSettings(env.DB);
       const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
       const operation = Number(asset.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
       return Response.json({ ok: true, preview: true, data: {
@@ -215,8 +217,10 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       });
     }
 
-    const settings = await getSystemSettings(env.DB);
-    const refs = await getRelatedRecordCounts(env.DB, 'monitor', id);
+    const [settings, refs] = await Promise.all([
+      getSystemSettings(env.DB),
+      getRelatedRecordCounts(env.DB, 'monitor', id),
+    ]);
     const hasRefs = hasRelatedHistory('monitor', refs);
 
     if (hasRefs || !settings.asset_allow_physical_delete) {

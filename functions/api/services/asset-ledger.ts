@@ -3,6 +3,10 @@ import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, getRequiredDepartment, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
+import { parseMonitorAssetInput as parseMonitorAssetInputFromSchema, type MonitorAssetInput } from '../../../shared/schemas/monitor-asset';
+
+export { parseMonitorAssetInputFromSchema as parseMonitorAssetInput };
+export type { MonitorAssetInput };
 
 export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean };
 
@@ -15,16 +19,6 @@ export type PcAssetInput = {
   disk_capacity: string | null;
   memory_size: string | null;
   remark: string | null;
-};
-
-export type MonitorAssetInput = {
-  asset_code: string;
-  sn: string | null;
-  brand: string | null;
-  model: string | null;
-  size_inch: string | null;
-  remark: string | null;
-  location_id: number | null;
 };
 
 export function getPageParams(url: URL, defaultPageSize = 50, maxPageSize = 200) {
@@ -405,17 +399,6 @@ export function parsePcAssetInput(body: any): PcAssetInput {
   };
 }
 
-export function parseMonitorAssetInput(body: any): MonitorAssetInput {
-  return {
-    asset_code: must(body?.asset_code, '资产编号', 120),
-    sn: optional(body?.sn, 120),
-    brand: optional(body?.brand, 120),
-    model: optional(body?.model, 200),
-    size_inch: optional(body?.size_inch, 60),
-    remark: optional(body?.remark, 1000),
-    location_id: Number(body?.location_id || 0) || null,
-  };
-}
 
 export function parseArchiveMeta(body: any) {
   return {
