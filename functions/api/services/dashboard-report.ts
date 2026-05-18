@@ -1,4 +1,5 @@
 import { sqlBjDate } from '../_time';
+import { throwHttpError } from '../_error';
 import { readDashboardSnapshots, refreshDashboardSnapshots } from './report-snapshot';
 import { resolvePartsWarehouseId, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 
@@ -119,7 +120,7 @@ export async function getDashboardSummary(db: D1Database, user: UserDataScope, p
   const governance = await buildGovernance(db, user, from, to);
 
   if (mode === 'pc') {
-    if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throw Object.assign(new Error('当前账号的数据范围未包含电脑仓，看板不可访问'), { status: 403 });
+    if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throwHttpError('当前账号的数据范围未包含电脑仓，看板不可访问', 403);
     const snapshots = await readDashboardSnapshots(db, { mode: 'pc', from, to, scope: user });
     const summary = {
       in_qty: snapshotSum(snapshots, 'in_qty'),
@@ -147,7 +148,7 @@ export async function getDashboardSummary(db: D1Database, user: UserDataScope, p
   }
 
   if (mode === 'monitor') {
-    if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throw Object.assign(new Error('当前账号的数据范围未包含显示器仓，看板不可访问'), { status: 403 });
+    if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throwHttpError('当前账号的数据范围未包含显示器仓，看板不可访问', 403);
     const snapshots = await readDashboardSnapshots(db, { mode: 'monitor', from, to, scope: user });
     const summary = {
       in_qty: snapshotSum(snapshots, 'in_qty'),
@@ -175,11 +176,11 @@ export async function getDashboardSummary(db: D1Database, user: UserDataScope, p
   }
 
   if (departmentScopeValue(user)) {
-    throw Object.assign(new Error(`当前账号的数据可见范围包含部门：${departmentScopeValue(user)}，配件仓看板暂不支持按部门隔离，请切换到电脑仓/显示器仓看板或改为按仓库授权`), { status: 403 });
+    throwHttpError(`当前账号的数据可见范围包含部门：${departmentScopeValue(user)}，配件仓看板暂不支持按部门隔离，请切换到电脑仓/显示器仓看板或改为按仓库授权`, 403);
   }
-  if (!scopeAllowsAssetWarehouse(user, '配件仓')) throw Object.assign(new Error('当前账号的数据范围未包含配件仓，看板不可访问'), { status: 403 });
+  if (!scopeAllowsAssetWarehouse(user, '配件仓')) throwHttpError('当前账号的数据范围未包含配件仓，看板不可访问', 403);
   const warehouse_id = await resolvePartsWarehouseId(db, user, requestedWarehouseId);
-  if (warehouse_id <= 0) throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403 });
+  if (warehouse_id <= 0) throwHttpError('当前账号未授权访问该配件仓', 403);
   const snapshots = await readDashboardSnapshots(db, { mode: 'parts', from, to, warehouseId: warehouse_id, scope: user });
   const summary = {
     in_qty: snapshotSum(snapshots, 'in_qty'),
@@ -206,7 +207,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
   const departmentScope = departmentScopeValue(user);
 
   if (mode === 'pc') {
-    if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throw Object.assign(new Error('当前账号的数据范围未包含电脑仓，看板不可访问'), { status: 403 });
+    if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throwHttpError('当前账号的数据范围未包含电脑仓，看板不可访问', 403);
     const scopeJoin = departmentScope ? `JOIN pc_asset_latest_state s ON s.asset_id=t.asset_id` : '';
     const scopeWhere = departmentScope ? ` AND COALESCE(s.current_department,'')=?` : '';
     const scopeBinds = departmentScope ? [departmentScope] : [];
@@ -242,7 +243,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
   }
 
   if (mode === 'monitor') {
-    if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throw Object.assign(new Error('当前账号的数据范围未包含显示器仓，看板不可访问'), { status: 403 });
+    if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throwHttpError('当前账号的数据范围未包含显示器仓，看板不可访问', 403);
     const scopeWhere = departmentScope ? ` AND COALESCE(t.department,'')=?` : '';
     const scopeBinds = departmentScope ? [departmentScope] : [];
     const qTopMonitor = (txType: string) => db.prepare(
@@ -276,10 +277,10 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     return { ok: true, mode: 'monitor', range: { from, to, days }, top_out: topOut, top_in: topIn, top_return: topReturn, top_transfer: topTransfer, top_scrap: topScrap, category_out: catOut, category_in: catIn, category_return: catReturn, category_transfer: catTransfer, category_scrap: catScrap };
   }
 
-  if (departmentScope) throw Object.assign(new Error(`当前账号的数据可见范围包含部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓/显示器仓看板或改为按仓库授权`), { status: 403 });
-  if (!scopeAllowsAssetWarehouse(user, '配件仓')) throw Object.assign(new Error('当前账号的数据范围未包含配件仓，看板不可访问'), { status: 403 });
+  if (departmentScope) throwHttpError(`当前账号的数据可见范围包含部门：${departmentScope}，配件仓看板暂不支持按部门隔离，请切换到电脑仓/显示器仓看板或改为按仓库授权`, 403);
+  if (!scopeAllowsAssetWarehouse(user, '配件仓')) throwHttpError('当前账号的数据范围未包含配件仓，看板不可访问', 403);
   const warehouse_id = await resolvePartsWarehouseId(db, user, requestedWarehouseId);
-  if (warehouse_id <= 0) throw Object.assign(new Error('当前账号未授权访问该配件仓'), { status: 403 });
+  if (warehouse_id <= 0) throwHttpError('当前账号未授权访问该配件仓', 403);
   const [{ results: topOut }, { results: topIn }, { results: catOut }, { results: catIn }] = await Promise.all([
     db.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty

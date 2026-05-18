@@ -1,4 +1,5 @@
 import { sqlNowStored } from '../_time';
+import { throwHttpError } from '../_error';
 import { parseJsonSafe } from '../_json';
 import { ensurePcQrColumns } from '../_pc';
 import { ensureMonitorQrColumns } from '../_monitor';
@@ -749,13 +750,13 @@ async function loadAsyncJobStoredObject(bucket: AsyncJobResultBucket, row: any) 
 }
 
 export async function buildAsyncJobDownloadResponse(row: any, bucket: AsyncJobResultBucket, options: { inline?: boolean; print?: boolean } = {}) {
-  if (String(row?.status) !== 'success') throw Object.assign(new Error('任务尚未完成'), { status: 400 });
+  if (String(row?.status) !== 'success') throwHttpError('任务尚未完成', 400);
   const hasObject = !!row?.result_object_key;
   const hasBlob = !!row?.result_blob_base64;
   const hasText = row?.result_text != null;
   if (!hasObject && !hasBlob && !hasText) {
-    if (row?.result_deleted_at) throw Object.assign(new Error('结果文件已过保留期，请重试重新生成'), { status: 410 });
-    throw Object.assign(new Error('任务结果不可用'), { status: 400 });
+    if (row?.result_deleted_at) throwHttpError('结果文件已过保留期，请重试重新生成', 410);
+    throwHttpError('任务结果不可用', 400);
   }
   const filename = String(row?.result_filename || `job_${Number(row?.id || 0)}.txt`);
   const contentType = String(row?.result_content_type || 'text/plain; charset=utf-8');
@@ -766,7 +767,7 @@ export async function buildAsyncJobDownloadResponse(row: any, bucket: AsyncJobRe
   };
   if (hasObject) {
     const obj = await loadAsyncJobStoredObject(bucket, row);
-    if (!obj?.body) throw Object.assign(new Error('结果文件不存在或已被删除'), { status: 410 });
+    if (!obj?.body) throwHttpError('结果文件不存在或已被删除', 410);
     return new Response(obj.body, { headers });
   }
   if (hasBlob) {
@@ -1060,7 +1061,7 @@ export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJob
 export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await cleanupAsyncJobHousekeeping(db, bucket);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
-  if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
+  if (!row) throwHttpError('任务不存在', 404);
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
     await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), updated_at=${sqlNowStored()} WHERE id=?`).bind(id).run();
     const req = parseJsonSafe(row.request_json, {});
@@ -1234,9 +1235,9 @@ export async function getAsyncJob(db: D1Database, id: number, bucket?: AsyncJobR
 export async function cancelAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
   const row = await getAsyncJob(db, id, bucket);
-  if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
-  if (String(row.status) === 'success') throw Object.assign(new Error('任务已完成，不能取消'), { status: 409 });
-  if (String(row.status) === 'failed') throw Object.assign(new Error('任务已失败，请直接重试'), { status: 409 });
+  if (!row) throwHttpError('任务不存在', 404);
+  if (String(row.status) === 'success') throwHttpError('任务已完成，不能取消', 409);
+  if (String(row.status) === 'failed') throwHttpError('任务已失败，请直接重试', 409);
   const res = await db.prepare(
     `UPDATE async_jobs SET cancel_requested=1, status=CASE WHEN status='queued' THEN 'canceled' ELSE status END, canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END, updated_at=${sqlNowStored()}, message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END WHERE id=?`
   ).bind(id).run();
@@ -1248,11 +1249,11 @@ export async function cancelAsyncJob(db: D1Database, id: number, bucket?: AsyncJ
 export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
   const row = await getAsyncJob(db, id, bucket);
-  if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
-  if (!['failed', 'canceled'].includes(String(row.status))) throw Object.assign(new Error('仅失败或已取消任务可重试'), { status: 409 });
+  if (!row) throwHttpError('任务不存在', 404);
+  if (!['failed', 'canceled'].includes(String(row.status))) throwHttpError('仅失败或已取消任务可重试', 409);
   const retryCount = Number(row.retry_count || 0);
   const maxRetries = Number(row.max_retries || 1);
-  if (retryCount >= maxRetries) throw Object.assign(new Error(`已超过最大重试次数（${maxRetries}）`), { status: 409 });
+  if (retryCount >= maxRetries) throwHttpError(`已超过最大重试次数（${maxRetries}）`, 409);
   await db.prepare(
     `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_object_key=NULL, result_file_size=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
@@ -1263,8 +1264,8 @@ export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJo
 export async function deleteAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
   await ensureAsyncJobsTable(db);
   const row = await getAsyncJob(db, id, bucket);
-  if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
-  if (['queued', 'running'].includes(String(row.status || ''))) throw Object.assign(new Error('运行中的任务不能直接删除，请先取消'), { status: 409 });
+  if (!row) throwHttpError('任务不存在', 404);
+  if (['queued', 'running'].includes(String(row.status || ''))) throwHttpError('运行中的任务不能直接删除，请先取消', 409);
   const objectKey = String(row.result_object_key || '').trim();
   if (objectKey && bucket && typeof bucket.delete === 'function') {
     try { await bucket.delete(objectKey); } catch {}

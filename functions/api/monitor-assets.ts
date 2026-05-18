@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { throwHttpError } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
@@ -125,11 +126,11 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
-    if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    if (!id) throwHttpError('缺少资产ID', 400);
 
     const old = await env.DB.prepare('SELECT * FROM monitor_assets WHERE id=?').bind(id).first<any>();
-    if (!old) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
-    if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该显示器已归档，请先恢复归档后再编辑'), { status: 400 });
+    if (!old) throwHttpError('显示器台账不存在', 404);
+    if (Number(old.archived || 0) === 1) throwHttpError('该显示器已归档，请先恢复归档后再编辑', 400);
 
     const payload = parseMonitorAssetInput(body);
     await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
@@ -170,12 +171,12 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || url.searchParams.get('id') || 0);
-    if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    if (!id) throwHttpError('缺少资产ID', 400);
 
 
     const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
     const asset = await getAssetById(env.DB, 'monitor', id);
-    if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
+    if (!asset) throwHttpError('显示器台账不存在', 404);
 
     if (previewOnly) {
       const [refs, settings] = await Promise.all([

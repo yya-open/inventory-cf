@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from "../_auth";
+import { throwHttpError } from "./_error";
 import { ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { must } from "./_pc";
 import { logAudit } from "./_audit";
@@ -42,7 +43,7 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
       .prepare("SELECT id FROM pc_locations WHERE name=? AND IFNULL(parent_id,0)=IFNULL(?,0)")
       .bind(name, parent_id)
       .first<any>();
-    if (dup) throw Object.assign(new Error("该位置已存在"), { status: 400 });
+    if (dup) throwHttpError("该位置已存在", 400);
 
     const res = await env.DB
       .prepare("INSERT INTO pc_locations (name, parent_id, enabled) VALUES (?,?,1)")
@@ -65,21 +66,21 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
-    if (!id) throw Object.assign(new Error("缺少位置ID"), { status: 400 });
+    if (!id) throwHttpError("缺少位置ID", 400);
     const old = await env.DB.prepare("SELECT * FROM pc_locations WHERE id=?").bind(id).first<any>();
-    if (!old) throw Object.assign(new Error("位置不存在"), { status: 404 });
+    if (!old) throwHttpError("位置不存在", 404);
 
     const name = must(body?.name, "位置名称", 120);
     const enabled = Number(body?.enabled ?? old.enabled) ? 1 : 0;
     const parent_id = (Number(body?.parent_id || 0) || null) as any;
 
-    if (parent_id && parent_id === id) throw Object.assign(new Error("父级位置不能是自己"), { status: 400 });
+    if (parent_id && parent_id === id) throwHttpError("父级位置不能是自己", 400);
 
     const dup = await env.DB
       .prepare("SELECT id FROM pc_locations WHERE name=? AND IFNULL(parent_id,0)=IFNULL(?,0) AND id<>?")
       .bind(name, parent_id, id)
       .first<any>();
-    if (dup) throw Object.assign(new Error("该位置已存在"), { status: 400 });
+    if (dup) throwHttpError("该位置已存在", 400);
 
     await env.DB.prepare("UPDATE pc_locations SET name=?, parent_id=?, enabled=? WHERE id=?").bind(name, parent_id, enabled, id).run();
     await logAudit(env.DB, request, user, "PC_LOCATION_UPDATE", "pc_locations", id, { before: { name: old.name, parent_id: old.parent_id, enabled: old.enabled }, after: { name, parent_id, enabled } });
@@ -99,7 +100,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     const body = await request.json().catch(() => ({} as any));
     requireConfirm(body, "删除", "二次确认不通过");
     const id = Number(body?.id || 0);
-    if (!id) throw Object.assign(new Error("缺少位置ID"), { status: 400 });
+    if (!id) throwHttpError("缺少位置ID", 400);
 
     const used = await env.DB
       .prepare(
@@ -112,11 +113,11 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
       .bind(id, id, id, id)
       .first<any>();
     if (Number(used?.m1 || 0) > 0 || Number(used?.m2 || 0) > 0 || Number(used?.c || 0) > 0) {
-      throw Object.assign(new Error("该位置已被使用或存在子级位置，无法删除"), { status: 400 });
+      throwHttpError("该位置已被使用或存在子级位置，无法删除", 400);
     }
 
     const old = await env.DB.prepare("SELECT * FROM pc_locations WHERE id=?").bind(id).first<any>();
-    if (!old) throw Object.assign(new Error("位置不存在"), { status: 404 });
+    if (!old) throwHttpError("位置不存在", 404);
 
     await env.DB.prepare("DELETE FROM pc_locations WHERE id=?").bind(id).run();
     await logAudit(env.DB, request, user, "PC_LOCATION_DELETE", "pc_locations", id, { name: old.name, parent_id: old.parent_id });

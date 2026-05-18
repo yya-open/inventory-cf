@@ -1,4 +1,5 @@
 import { sqlNowStored } from '../_time';
+import { throwHttpError } from '../_error';
 import { getSystemSettings } from './system-settings';
 
 export type AssetQrConfig = {
@@ -45,11 +46,11 @@ export async function getOrCreateAssetQr(db: D1Database, config: AssetQrConfig, 
   const settings = await getSystemSettings(db);
   mustAssetTable(config.assetTable);
   if (!Number.isFinite(id) || id <= 0) {
-    throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    throwHttpError('缺少资产ID', 400);
   }
   const row = await db.prepare(`SELECT id, qr_key FROM ${config.assetTable} WHERE id=?`).bind(id).first<any>();
   if (!row) {
-    throw Object.assign(new Error(config.notFoundMessage), { status: 404 });
+    throwHttpError(config.notFoundMessage, 404);
   }
   let key = String(row.qr_key || '').trim();
   if (!key) {
@@ -63,11 +64,11 @@ export async function resetAssetQr(db: D1Database, config: AssetQrConfig, id: nu
   const settings = await getSystemSettings(db);
   mustAssetTable(config.assetTable);
   if (!Number.isFinite(id) || id <= 0) {
-    throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    throwHttpError('缺少资产ID', 400);
   }
   const row = await db.prepare(`SELECT id FROM ${config.assetTable} WHERE id=?`).bind(id).first<any>();
   if (!row) {
-    throw Object.assign(new Error(config.notFoundMessage), { status: 404 });
+    throwHttpError(config.notFoundMessage, 404);
   }
   const key = genQrKey();
   await db.prepare(`UPDATE ${config.assetTable} SET qr_key=?, qr_updated_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(key, id).run();
@@ -93,7 +94,7 @@ export async function getOrCreateAssetQrBulk(db: D1Database, config: AssetQrConf
   mustAssetTable(config.assetTable);
   const normalizedIds = normalizeAssetIds(ids);
   if (!normalizedIds.length) {
-    throw Object.assign(new Error('请至少传入一个资产ID'), { status: 400 });
+    throwHttpError('请至少传入一个资产ID', 400);
   }
   const placeholders = normalizedIds.map(() => '?').join(',');
   const result = await db.prepare(`SELECT id, qr_key FROM ${config.assetTable} WHERE id IN (${placeholders})`).bind(...normalizedIds).all<any>();

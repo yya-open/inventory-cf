@@ -1,4 +1,5 @@
 import { toSqlRange } from '../_date';
+import { throwHttpError } from '../_error';
 import { buildKeywordWhere } from '../_search';
 import { sqlBjDateTime, sqlNowStored } from '../_time';
 import { resolveItemCategory } from './item-categories';
@@ -118,7 +119,7 @@ export function parseItemInput(body: any): ItemInput {
   const sku = String(body?.sku || '').trim();
   const name = String(body?.name || '').trim();
   if (!sku || !name) {
-    throw Object.assign(new Error('sku/name 必填'), { status: 400 });
+    throwHttpError('sku/name 必填', 400);
   }
   return {
     sku,
@@ -143,7 +144,7 @@ export async function assertItemSkuUnique(db: D1Database, sku: string, excludeId
     ? await db.prepare('SELECT id FROM items WHERE sku=? AND enabled=1 AND id<>? LIMIT 1').bind(sku, excludeId).first<any>()
     : await db.prepare('SELECT id FROM items WHERE sku=? AND enabled=1 LIMIT 1').bind(sku).first<any>();
   if (row?.id) {
-    throw Object.assign(new Error('SKU 已存在'), { status: 400 });
+    throwHttpError('SKU 已存在', 400);
   }
 }
 

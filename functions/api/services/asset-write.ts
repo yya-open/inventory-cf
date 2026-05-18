@@ -1,4 +1,5 @@
 import { sqlNowStored } from '../_time';
+import { throwHttpError } from '../_error';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
 import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
@@ -37,28 +38,28 @@ export async function getMonitorAssetByIdOrCode(db: D1Database, assetId?: number
 
 export function assertMonitorMovementAllowed(asset: any, type: MonitorMovementType) {
   const status = String(asset?.status || '');
-  if (!asset) throw Object.assign(new Error('显示器台账不存在'), { status: 404 });
-  if (Number(asset?.archived || 0) === 1) throw Object.assign(new Error('该显示器已归档，请先恢复归档后再执行操作'), { status: 400 });
+  if (!asset) throwHttpError('显示器台账不存在', 404);
+  if (Number(asset?.archived || 0) === 1) throwHttpError('该显示器已归档，请先恢复归档后再执行操作', 400);
   if (type === 'IN') {
-    if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废，无法入库'), { status: 400 });
+    if (status === 'SCRAPPED') throwHttpError('该资产已报废，无法入库', 400);
     return;
   }
   if (type === 'OUT') {
-    if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废，无法出库'), { status: 400 });
-    if (status === 'ASSIGNED') throw Object.assign(new Error('该显示器当前为已领用状态，请先办理归还/回收'), { status: 400 });
+    if (status === 'SCRAPPED') throwHttpError('该资产已报废，无法出库', 400);
+    if (status === 'ASSIGNED') throwHttpError('该显示器当前为已领用状态，请先办理归还/回收', 400);
     return;
   }
   if (type === 'RETURN') {
-    if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废，无法归还'), { status: 400 });
-    if (status !== 'ASSIGNED') throw Object.assign(new Error('该资产当前不是已领用状态，无需归还'), { status: 400 });
+    if (status === 'SCRAPPED') throwHttpError('该资产已报废，无法归还', 400);
+    if (status !== 'ASSIGNED') throwHttpError('该资产当前不是已领用状态，无需归还', 400);
     return;
   }
   if (type === 'TRANSFER') {
-    if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废，无法调拨'), { status: 400 });
+    if (status === 'SCRAPPED') throwHttpError('该资产已报废，无法调拨', 400);
     return;
   }
   if (type === 'SCRAP') {
-    if (status === 'SCRAPPED') throw Object.assign(new Error('该资产已报废'), { status: 400 });
+    if (status === 'SCRAPPED') throwHttpError('该资产已报废', 400);
   }
 }
 
@@ -237,7 +238,7 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
   if (existing?.id) {
     const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
     if (counts.pcIn > 0) {
-      throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
+      throwHttpError('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）', 400);
     }
     await db.prepare(
       `UPDATE pc_assets
@@ -280,7 +281,7 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
   ).run();
   const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
   const assetId = Number(lastId || 0);
-  if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
+  if (!assetId) throwHttpError('创建资产失败', 500);
   return { assetId, isNew: true };
 }
 
@@ -300,7 +301,7 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
       if (!existing?.id) throw error;
       const counts = await getPcAssetHistoryCounts(db, Number(existing.id));
       if (counts.pcIn > 0) {
-        throw Object.assign(new Error('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）'), { status: 400 });
+        throwHttpError('该序列号已存在，请勿重复入库（如需入库/归还请使用「电脑回收/归还」功能）', 400);
       }
       assetId = Number(existing.id);
       await db.prepare(
@@ -324,7 +325,7 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
       ).run();
     }
 
-    if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
+    if (!assetId) throwHttpError('创建资产失败', 500);
 
     const existingIn = await db.prepare('SELECT id, asset_id, created_at FROM pc_in WHERE in_no=?').bind(inNo).first<any>();
     if (!existingIn?.id) {

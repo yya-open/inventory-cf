@@ -1,4 +1,5 @@
 import { requireAuth, errorResponse } from '../_auth';
+import { throwHttpError } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
@@ -83,11 +84,11 @@ export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
 
     const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || 0);
-    if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    if (!id) throwHttpError('缺少资产ID', 400);
 
     const old = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
-    if (!old) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
-    if (Number(old.archived || 0) === 1) throw Object.assign(new Error('该电脑已归档，请先恢复归档后再编辑'), { status: 400 });
+    if (!old) throwHttpError('电脑台账不存在或已删除', 404);
+    if (Number(old.archived || 0) === 1) throwHttpError('该电脑已归档，请先恢复归档后再编辑', 400);
     await assertPcAssetDataScopeAccess(env.DB, user, id, '电脑台账');
 
     const payload = parsePcAssetInput(body);
@@ -147,12 +148,12 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
 
     const body = await request.json().catch(() => ({} as any));
     const id = Number(body?.id || url.searchParams.get('id') || 0);
-    if (!id) throw Object.assign(new Error('缺少资产ID'), { status: 400 });
+    if (!id) throwHttpError('缺少资产ID', 400);
 
 
     const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
     const asset = await getAssetById(env.DB, 'pc', id);
-    if (!asset) throw Object.assign(new Error('电脑台账不存在或已删除'), { status: 404 });
+    if (!asset) throwHttpError('电脑台账不存在或已删除', 404);
 
 
     if (previewOnly) {
@@ -197,7 +198,7 @@ export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string
     }
 
     if (String(asset.status) === 'ASSIGNED') {
-      throw Object.assign(new Error('该电脑当前为已领用状态，请先办理回收/归还后再删除'), { status: 400 });
+      throwHttpError('该电脑当前为已领用状态，请先办理回收/归还后再删除', 400);
     }
 
     const [settings, refs] = await Promise.all([

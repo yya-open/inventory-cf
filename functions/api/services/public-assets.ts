@@ -1,5 +1,6 @@
 import { verifyJwt } from '../_auth';
 import { sqlNowStored } from '../_time';
+import { throwHttpError } from '../_error';
 import { resolveInventoryBatchIdForWrite } from './asset-inventory-batches';
 import { cleanupPublicThrottleBuckets, ensurePublicThrottleTable, getClientIp, incrementPublicThrottleBucket } from './rate-limit';
 
@@ -54,7 +55,7 @@ export async function rateLimitPublic(db: D1Database, request: Request, route: s
 
   const row = await incrementPublicThrottleBucket(db, key);
   if (Number(row?.count || 0) > limitPerMinute) {
-    throw Object.assign(new Error('访问过于频繁，请稍后再试'), { status: 429 });
+    throwHttpError('访问过于频繁，请稍后再试', 429);
   }
 }
 
@@ -64,10 +65,10 @@ export function parsePublicInventoryBody(body: any) {
   const remark = String(body?.remark || '').slice(0, 500).trim();
 
   if (action !== 'OK' && action !== 'ISSUE') {
-    throw Object.assign(new Error('action 参数无效'), { status: 400 });
+    throwHttpError('action 参数无效', 400);
   }
   if (action === 'ISSUE' && !PUBLIC_INVENTORY_ISSUE_TYPES.has(issueType)) {
-    throw Object.assign(new Error('issue_type 参数无效'), { status: 400 });
+    throwHttpError('issue_type 参数无效', 400);
   }
 
   return {
@@ -93,41 +94,41 @@ export async function resolvePublicAssetId(args: ResolvePublicAssetArgs) {
   if (idParam && keyParam) {
     const id = Number(idParam || 0);
     if (!id || !keyParam) {
-      throw Object.assign(new Error('二维码参数无效'), { status: 400 });
+      throwHttpError('二维码参数无效', 400);
     }
     const row = await env.DB.prepare(`SELECT id, qr_key FROM ${cfg.assetTable} WHERE id=?`).bind(id).first<any>();
     if (!row) {
-      throw Object.assign(new Error(`${cfg.label}不存在或已删除`), { status: 404 });
+      throwHttpError(`${cfg.label}不存在或已删除`, 404);
     }
     const dbKey = String(row.qr_key || '').trim();
     if (!dbKey) {
-      throw Object.assign(new Error(`该${kind === 'pc' ? '电脑' : '显示器'}尚未启用二维码（请先在系统里生成一次二维码）`), { status: 400 });
+      throwHttpError(`该${kind === 'pc' ? '电脑' : '显示器'}尚未启用二维码（请先在系统里生成一次二维码）`, 400);
     }
     if (dbKey !== keyParam) {
-      throw Object.assign(new Error('二维码已失效（可能已被重置）'), { status: 401 });
+      throwHttpError('二维码已失效（可能已被重置）', 401);
     }
     return id;
   }
 
   if (allowToken && token) {
     if (!env.JWT_SECRET) {
-      throw Object.assign(new Error('缺少 JWT_SECRET'), { status: 500 });
+      throwHttpError('缺少 JWT_SECRET', 500);
     }
     const payload = await verifyJwt(token, env.JWT_SECRET);
     if (!payload) {
-      throw Object.assign(new Error('二维码已失效'), { status: 401 });
+      throwHttpError('二维码已失效', 401);
     }
     if (payload.scope !== cfg.scope) {
-      throw Object.assign(new Error('二维码无效'), { status: 401 });
+      throwHttpError('二维码无效', 401);
     }
     const id = Number(payload[cfg.tokenField] || 0);
     if (!id) {
-      throw Object.assign(new Error('二维码无效'), { status: 401 });
+      throwHttpError('二维码无效', 401);
     }
     return id;
   }
 
-  throw Object.assign(new Error('缺少二维码参数'), { status: 400 });
+  throwHttpError('缺少二维码参数', 400);
 }
 
 function duplicateInventoryPrompt(kind: PublicAssetKind, existing: any) {
