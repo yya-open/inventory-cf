@@ -20,9 +20,22 @@ type PersistentPageCacheEntry = PageCacheEntry;
 
 type PersistentTotalEntry = { total: number; timestamp: number };
 
+const PAGE_CACHE_MAX_SIZE = 100;
 const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
 const primedNamespaces = new Set<string>();
+
+function evictStaleCacheEntries(ttlMs = 60_000) {
+  if (pageCache.size <= PAGE_CACHE_MAX_SIZE) return;
+  const now = Date.now();
+  for (const [key, entry] of pageCache) {
+    if (now - entry.timestamp > ttlMs) pageCache.delete(key);
+  }
+  if (pageCache.size <= PAGE_CACHE_MAX_SIZE) return;
+  const entries = [...pageCache.entries()].sort((a, b) => a[1].timestamp - b[1].timestamp);
+  const toRemove = entries.slice(0, entries.length - PAGE_CACHE_MAX_SIZE);
+  for (const [key] of toRemove) pageCache.delete(key);
+}
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
@@ -157,7 +170,8 @@ function canPrefetchNextPage() {
   const connection = (navigator as any)?.connection;
   if (connection?.saveData) return false;
   const effectiveType = String(connection?.effectiveType || '').toLowerCase();
-  if (effectiveType.includes('2g') || effectiveType === 'slow-2g') return false;
+  if (effectiveType === 'slow-2g' || effectiveType === '2g' || effectiveType === '3g') return false;
+  if (typeof connection?.downlink === 'number' && connection.downlink < 1.5) return false;
   return true;
 }
 
@@ -387,6 +401,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
         timestamp: Date.now(),
       } satisfies PageCacheEntry;
       pageCache.set(pageKey, entry);
+      evictStaleCacheEntries(ttlMs);
       persistPageCache(options, filterKey, nextPage, effectivePageSize, entry);
 
       if (typeof result.total === 'number') {

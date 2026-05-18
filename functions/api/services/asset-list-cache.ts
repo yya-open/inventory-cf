@@ -1,8 +1,23 @@
 const ASSET_LIST_CACHE_TTL_MS = 30_000;
+const ASSET_LIST_CACHE_MAX_SIZE = 50;
 
 const assetListCache = new Map<string, { expiresAt: number; payload: any }>();
 const assetListPending = new Map<string, Promise<any>>();
 const assetListVersions = new Map<string, number>();
+
+function evictExpiredEntries() {
+  if (assetListCache.size <= ASSET_LIST_CACHE_MAX_SIZE) return;
+  const now = Date.now();
+  for (const [key, entry] of assetListCache) {
+    if (entry.expiresAt <= now) assetListCache.delete(key);
+  }
+  if (assetListCache.size <= ASSET_LIST_CACHE_MAX_SIZE) {
+    return;
+  }
+  const oldest = [...assetListCache.entries()].sort((a, b) => a[1].expiresAt - b[1].expiresAt);
+  const toRemove = oldest.slice(0, oldest.length - ASSET_LIST_CACHE_MAX_SIZE);
+  for (const [key] of toRemove) assetListCache.delete(key);
+}
 
 export function buildAssetListCacheKey(namespace: string, user: any, url: URL) {
   return [
@@ -35,6 +50,7 @@ export function writeAssetListCache(key: string, payload: any, namespace?: strin
     return payload;
   }
   assetListCache.set(key, { expiresAt: Date.now() + ASSET_LIST_CACHE_TTL_MS, payload });
+  evictExpiredEntries();
   return payload;
 }
 
@@ -59,10 +75,10 @@ export function invalidateAssetListCache(namespace?: string) {
   }
   assetListVersions.set(namespace, getAssetListCacheVersion(namespace) + 1);
   const prefix = `${namespace}::`;
-  for (const key of assetListCache.keys()) {
-    if (key.startsWith(prefix)) assetListCache.delete(key);
-  }
-  for (const key of assetListPending.keys()) {
-    if (key.startsWith(prefix)) assetListPending.delete(key);
+  for (const key of [...assetListCache.keys(), ...assetListPending.keys()]) {
+    if (key.startsWith(prefix)) {
+      assetListCache.delete(key);
+      assetListPending.delete(key);
+    }
   }
 }
