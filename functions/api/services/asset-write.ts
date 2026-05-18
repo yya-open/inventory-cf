@@ -1,6 +1,6 @@
 import { sqlNowStored } from '../_time';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
-import { rebuildPcLatestStateForAssets, upsertPcLatestState } from './pc-latest-state';
+import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
@@ -183,17 +183,18 @@ async function getPcAssetByNormalizedSerial(db: D1Database, serialNo: string) {
 }
 
 async function getPcAssetHistoryCounts(db: D1Database, assetId: number) {
-  const [ins, outs, recycles, scraps] = await Promise.all([
-    db.prepare('SELECT COUNT(*) AS c FROM pc_in WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_out WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_recycle WHERE asset_id=?').bind(assetId).first<any>(),
-    db.prepare('SELECT COUNT(*) AS c FROM pc_scrap WHERE asset_id=?').bind(assetId).first<any>(),
-  ]);
+  const row = await db.prepare(
+    `SELECT
+      (SELECT COUNT(*) FROM pc_in WHERE asset_id=?1) AS pc_in,
+      (SELECT COUNT(*) FROM pc_out WHERE asset_id=?1) AS pc_out,
+      (SELECT COUNT(*) FROM pc_recycle WHERE asset_id=?1) AS pc_recycle,
+      (SELECT COUNT(*) FROM pc_scrap WHERE asset_id=?1) AS pc_scrap`
+  ).bind(assetId).first<any>();
   return {
-    pcIn: Number(ins?.c || 0),
-    pcOut: Number(outs?.c || 0),
-    pcRecycle: Number(recycles?.c || 0),
-    pcScrap: Number(scraps?.c || 0),
+    pcIn: Number(row?.pc_in || 0),
+    pcOut: Number(row?.pc_out || 0),
+    pcRecycle: Number(row?.pc_recycle || 0),
+    pcScrap: Number(row?.pc_scrap || 0),
   };
 }
 
@@ -538,12 +539,6 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
     );
   }
   await db.batch(stmts);
-  for (const row of rows) {
-    await upsertPcLatestState(db, Number(row.id || 0), {
-      current_employee_no: null,
-      current_employee_name: null,
-      current_department: null,
-    });
-  }
+  await rebuildPcLatestStateForAssets(db, rows.map((row) => Number(row.id || 0)));
   await syncSystemDictionaryUsageCounters(db, []);
 }

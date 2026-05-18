@@ -165,8 +165,22 @@ export async function logout() {
   bumpAuthRequestEpoch();
   rotateSessionKey();
   applyLoggedOutState(getAuthSessionKey());
+  clearInventorySessionCaches();
   try {
     await apiPost('/api/auth/logout', {});
+  } catch {}
+}
+
+function clearInventorySessionCaches() {
+  const storage = getSessionStorage();
+  if (!storage) return;
+  try {
+    const keys: string[] = [];
+    for (let i = 0; i < storage.length; i++) {
+      const key = storage.key(i);
+      if (key && key.startsWith('inventory:') && key !== AUTH_SESSION_KEY) keys.push(key);
+    }
+    keys.forEach((k) => storage.removeItem(k));
   } catch {}
 }
 export function can(min: Role) { return hasRole(state.user?.role, min); }
