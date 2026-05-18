@@ -23,6 +23,7 @@ class FakeStmt {
 
 class FakeDB {
   prepare(sql: string) { return new FakeStmt(this, sql); }
+  async batch(stmts: FakeStmt[]) { return stmts.map(() => ({ results: [], success: true })); }
   all(sql: string, _params: any[]) {
     const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
     if (normalized.startsWith('create table if not exists async_jobs')) return [];

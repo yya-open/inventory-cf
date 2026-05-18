@@ -1,6 +1,7 @@
 import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
 import { invalidateSchemaStatusCache } from './services/schema-status';
+import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
 
 /**
  * PC warehouse (仓库2：电脑仓) - self-healing schema helper
@@ -54,44 +55,33 @@ async function probePcReadFastGuards(db: D1Database) {
   return columnsReady && triggersReady;
 }
 
+const PC_DDL_MAP: Record<string, string> = {
+  search_text_norm: "ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT",
+  archived: "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+  archived_at: "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
+  archived_reason: "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
+  archived_note: "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
+  archived_by: "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
+  inventory_status: "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+  inventory_at: "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
+  inventory_issue_type: "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
+  manufacture_ts: "ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER",
+  warranty_end_ts: "ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER",
+};
+
+const PC_TRIGGER_SQLS = [
+  `CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`,
+];
+
 async function ensurePcQueryColumns(db: D1Database) {
   if (__pcColumnsReady) return;
   if (Date.now() - __pcColumnsEnsuredAt < PC_GUARD_COLUMNS_TTL_MS) return;
   __pcColumnsEnsuredAt = Date.now();
   try {
-    const tableRow = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
-    if (Number(tableRow?.ok || 0) !== 1) return;
-    const { results } = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
-    const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    const missingColumns = PC_REQUIRED_QUERY_COLUMNS.filter((column) => !columns.has(column));
-    if (!missingColumns.length) {
-      __pcColumnsReady = true;
-      return;
-    }
-    const ddlMap: Record<string, string> = {
-      search_text_norm: "ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT",
-      archived: "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-      archived_at: "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
-      archived_reason: "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
-      archived_note: "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
-      archived_by: "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
-      inventory_status: "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
-      inventory_at: "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
-      inventory_issue_type: "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
-      manufacture_ts: "ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER",
-      warranty_end_ts: "ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER",
-    };
-    const ddls = missingColumns.map((column) => ddlMap[column]).filter(Boolean);
-    for (const ddl of ddls) {
-      try { await db.prepare(ddl).run(); } catch {}
-    }
-    const verify = await db.prepare("PRAGMA table_info('pc_assets')").all<any>();
-    const verifyColumns = new Set((verify?.results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    __pcColumnsReady = PC_REQUIRED_QUERY_COLUMNS.every((column) => verifyColumns.has(column));
+    __pcColumnsReady = await ensureTableColumns(db, { table: 'pc_assets', requiredColumns: PC_REQUIRED_QUERY_COLUMNS, ddlMap: PC_DDL_MAP });
     if (__pcColumnsReady) invalidateSchemaStatusCache();
-  } catch {
-    // best-effort column guard
-  }
+  } catch {}
 }
 
 async function ensurePcGuardTriggers(db: D1Database) {
@@ -99,21 +89,9 @@ async function ensurePcGuardTriggers(db: D1Database) {
   if (Date.now() - __pcGuardEnsuredAt < PC_GUARD_TRIGGER_TTL_MS) return;
   __pcGuardEnsuredAt = Date.now();
   try {
-    const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='pc_assets'").first<any>();
-    if (Number(row?.ok || 0) !== 1) return;
-    const before = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_pc_assets_serial_non_blank_insert','trg_pc_assets_serial_non_blank_update')").first<any>();
-    if (Number(before?.c || 0) >= 2) {
-      __pcGuardTriggersReady = true;
-      return;
-    }
-    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
-    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`).run();
-    const triggerRow = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_pc_assets_serial_non_blank_insert','trg_pc_assets_serial_non_blank_update')").first<any>();
-    __pcGuardTriggersReady = Number(triggerRow?.c || 0) >= 2;
+    __pcGuardTriggersReady = await ensureTableTriggers(db, { table: 'pc_assets', triggerNames: PC_REQUIRED_TRIGGER_NAMES, triggerSqls: PC_TRIGGER_SQLS });
     if (__pcGuardTriggersReady) invalidateSchemaStatusCache();
-  } catch {
-    // best-effort guard creation
-  }
+  } catch {}
 }
 
 export async function ensurePcReadFastGuards(db: D1Database) {

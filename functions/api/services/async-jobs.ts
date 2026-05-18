@@ -62,11 +62,13 @@ export async function ensureAsyncJobsTable(db: D1Database) {
   for (const sql of alters) {
     try { await db.prepare(sql).run(); } catch {}
   }
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_status_created_at ON async_jobs(status, created_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_status ON async_jobs(created_by, status, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_job_type_status_created_at ON async_jobs(job_type, status, created_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_job_type_status ON async_jobs(created_by, job_type, status, created_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_retain_until ON async_jobs(retain_until, id DESC)`).run();
+  await db.batch([
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_status_created_at ON async_jobs(status, created_at DESC, id DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_status ON async_jobs(created_by, status, id DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_job_type_status_created_at ON async_jobs(job_type, status, created_at DESC, id DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_created_by_job_type_status ON async_jobs(created_by, job_type, status, created_at DESC, id DESC)`),
+    db.prepare(`CREATE INDEX IF NOT EXISTS idx_async_jobs_retain_until ON async_jobs(retain_until, id DESC)`),
+  ]);
   asyncJobsSchemaReady = true;
   })().finally(() => {
     asyncJobsSchemaPending = null;

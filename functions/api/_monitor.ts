@@ -1,6 +1,7 @@
 import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
 import { invalidateSchemaStatusCache } from './services/schema-status';
+import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
 
 /**
  * Monitor warehouse (仓库2：显示器) - optional runtime schema helper
@@ -52,42 +53,31 @@ async function probeMonitorReadFastGuards(db: D1Database) {
   return columnsReady && triggersReady;
 }
 
+const MONITOR_DDL_MAP: Record<string, string> = {
+  search_text_norm: "ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT",
+  archived: "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
+  archived_at: "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
+  archived_reason: "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
+  archived_note: "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
+  archived_by: "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
+  inventory_status: "ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
+  inventory_at: "ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT",
+  inventory_issue_type: "ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT",
+};
+
+const MONITOR_TRIGGER_SQLS = [
+  `CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`,
+  `CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`,
+];
+
 async function ensureMonitorQueryColumns(db: D1Database) {
   if (__monitorColumnsReady) return;
   if (Date.now() - __monitorColumnsEnsuredAt < MONITOR_GUARD_COLUMNS_TTL_MS) return;
   __monitorColumnsEnsuredAt = Date.now();
   try {
-    const tableRow = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'").first<any>();
-    if (Number(tableRow?.ok || 0) !== 1) return;
-    const { results } = await db.prepare("PRAGMA table_info('monitor_assets')").all<any>();
-    const columns = new Set((results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    const missingColumns = MONITOR_REQUIRED_QUERY_COLUMNS.filter((column) => !columns.has(column));
-    if (!missingColumns.length) {
-      __monitorColumnsReady = true;
-      return;
-    }
-    const ddlMap: Record<string, string> = {
-      search_text_norm: "ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT",
-      archived: "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-      archived_at: "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
-      archived_reason: "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
-      archived_note: "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
-      archived_by: "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
-      inventory_status: "ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
-      inventory_at: "ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT",
-      inventory_issue_type: "ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT",
-    };
-    const ddls = missingColumns.map((column) => ddlMap[column]).filter(Boolean);
-    for (const ddl of ddls) {
-      try { await db.prepare(ddl).run(); } catch {}
-    }
-    const verify = await db.prepare("PRAGMA table_info('monitor_assets')").all<any>();
-    const verifyColumns = new Set((verify?.results || []).map((row: any) => String(row?.name || '').trim()).filter(Boolean));
-    __monitorColumnsReady = MONITOR_REQUIRED_QUERY_COLUMNS.every((column) => verifyColumns.has(column));
+    __monitorColumnsReady = await ensureTableColumns(db, { table: 'monitor_assets', requiredColumns: MONITOR_REQUIRED_QUERY_COLUMNS, ddlMap: MONITOR_DDL_MAP });
     if (__monitorColumnsReady) invalidateSchemaStatusCache();
-  } catch {
-    // best-effort column guard
-  }
+  } catch {}
 }
 
 async function ensureMonitorGuardTriggers(db: D1Database) {
@@ -95,21 +85,9 @@ async function ensureMonitorGuardTriggers(db: D1Database) {
   if (Date.now() - __monitorGuardEnsuredAt < MONITOR_GUARD_TRIGGER_TTL_MS) return;
   __monitorGuardEnsuredAt = Date.now();
   try {
-    const row = await db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='monitor_assets'").first<any>();
-    if (Number(row?.ok || 0) !== 1) return;
-    const before = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_monitor_assets_code_non_blank_insert','trg_monitor_assets_code_non_blank_update')").first<any>();
-    if (Number(before?.c || 0) >= 2) {
-      __monitorGuardTriggersReady = true;
-      return;
-    }
-    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
-    await db.prepare(`CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`).run();
-    const triggerRow = await db.prepare("SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN ('trg_monitor_assets_code_non_blank_insert','trg_monitor_assets_code_non_blank_update')").first<any>();
-    __monitorGuardTriggersReady = Number(triggerRow?.c || 0) >= 2;
+    __monitorGuardTriggersReady = await ensureTableTriggers(db, { table: 'monitor_assets', triggerNames: MONITOR_REQUIRED_TRIGGER_NAMES, triggerSqls: MONITOR_TRIGGER_SQLS });
     if (__monitorGuardTriggersReady) invalidateSchemaStatusCache();
-  } catch {
-    // best-effort guard creation
-  }
+  } catch {}
 }
 
 export async function ensureMonitorReadFastGuards(db: D1Database) {
