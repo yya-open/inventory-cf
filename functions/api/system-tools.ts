@@ -1,4 +1,5 @@
-import { errorResponse, json } from '../_auth';
+import { json } from '../_auth';
+import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import {
   actionLabel,
@@ -18,9 +19,8 @@ import { listAsyncJobs } from './services/async-jobs';
 import { getSchemaStatus } from './services/schema-status';
 import { logAudit } from './_audit';
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
-  try {
-    await requirePermission(env, request, 'ops_tools', 'viewer');
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
+  await requirePermission(env, request, 'ops_tools', 'viewer');
     const url = new URL(request.url);
     const section = String(url.searchParams.get('section') || 'all').trim().toLowerCase();
     if (section === 'base') {
@@ -47,10 +47,7 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; B
       listRepairHistory(env.DB, 20),
     ]);
     return json(true, { schema, dashboard, jobs, scan, history });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
 
 async function runRepairAction(db: D1Database, action: string) {
   if (action === 'repair_pc_latest_state') return await repairPcLatestState(db);
@@ -61,66 +58,62 @@ async function runRepairAction(db: D1Database, action: string) {
   throw Object.assign(new Error('不支持的操作'), { status: 400 });
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
-  try {
-    const actor = await requirePermission(env, request, 'ops_tools', 'viewer');
-    const { action } = await request.json();
-    const schema = await getSchemaStatus(env.DB);
-    if (!schema.ok && !['scan_all'].includes(String(action || ''))) return json(false, schema, schema.message, 409);
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
+  const actor = await requirePermission(env, request, 'ops_tools', 'viewer');
+  const { action } = await request.json();
+  const schema = await getSchemaStatus(env.DB);
+  if (!schema.ok && !['scan_all'].includes(String(action || ''))) return json(false, schema, schema.message, 409);
 
-    if (action === 'scan_all') {
-      const data = await forceRefreshRepairScan(env.DB);
-      await logAudit(env.DB, request, actor, 'ADMIN_REPAIR_SCAN', 'system_tools', action, { action, result: data });
-      return json(true, data, buildRepairResultSummary(String(action || ''), data));
-    }
-
-    const before = await forceRefreshRepairScan(env.DB);
-    let data: any = null;
-    try {
-      if (action === 'repair_all') {
-        const [a, b, c, d, e] = await Promise.all([
-          repairPcLatestState(env.DB),
-          repairDictionaryCounters(env.DB),
-          repairAuditMaterialized(env.DB),
-          repairSearchNormalize(env.DB),
-          repairUserScopeFormat(env.DB),
-        ]);
-        const after = await forceRefreshRepairScan(env.DB);
-        data = { before_scan: before, repair: { pc_latest_state: a, dictionary_counters: b, audit_materialized: c, search_norm: d, user_scope_format: e }, after_scan: after, after };
-      } else {
-        const result = await runRepairAction(env.DB, String(action || ''));
-        const after = await forceRefreshRepairScan(env.DB);
-        data = { ...result, before_scan: before, after_scan: after };
-      }
-      const summary = buildRepairResultSummary(String(action || ''), data);
-      await recordRepairHistory(env.DB, {
-        action: String(action || ''),
-        actor_id: actor.id,
-        actor_name: actor.username,
-        before_scan: before,
-        after_scan: data?.after_scan || data?.after || null,
-        result: data,
-        summary,
-        success: true,
-      });
-      await logAudit(env.DB, request, actor, 'ADMIN_REPAIR_RUN', 'system_tools', action, { action, result: data });
-      return json(true, data, summary);
-    } catch (error: any) {
-      const after = await forceRefreshRepairScan(env.DB).catch(() => before);
-      await recordRepairHistory(env.DB, {
-        action: String(action || ''),
-        actor_id: actor.id,
-        actor_name: actor.username,
-        before_scan: before,
-        after_scan: after,
-        result: null,
-        summary: `${actionLabel(String(action || ''))}失败`,
-        success: false,
-        error_text: String(error?.message || error || '执行失败'),
-      });
-      throw error;
-    }
-  } catch (e: any) {
-    return errorResponse(e);
+  if (action === 'scan_all') {
+    const data = await forceRefreshRepairScan(env.DB);
+    await logAudit(env.DB, request, actor, 'ADMIN_REPAIR_SCAN', 'system_tools', action, { action, result: data });
+    return json(true, data, buildRepairResultSummary(String(action || ''), data));
   }
-};
+
+  const before = await forceRefreshRepairScan(env.DB);
+  let data: any = null;
+  try {
+    if (action === 'repair_all') {
+      const [a, b, c, d, e] = await Promise.all([
+        repairPcLatestState(env.DB),
+        repairDictionaryCounters(env.DB),
+        repairAuditMaterialized(env.DB),
+        repairSearchNormalize(env.DB),
+        repairUserScopeFormat(env.DB),
+      ]);
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { before_scan: before, repair: { pc_latest_state: a, dictionary_counters: b, audit_materialized: c, search_norm: d, user_scope_format: e }, after_scan: after, after };
+    } else {
+      const result = await runRepairAction(env.DB, String(action || ''));
+      const after = await forceRefreshRepairScan(env.DB);
+      data = { ...result, before_scan: before, after_scan: after };
+    }
+    const summary = buildRepairResultSummary(String(action || ''), data);
+    await recordRepairHistory(env.DB, {
+      action: String(action || ''),
+      actor_id: actor.id,
+      actor_name: actor.username,
+      before_scan: before,
+      after_scan: data?.after_scan || data?.after || null,
+      result: data,
+      summary,
+      success: true,
+    });
+    await logAudit(env.DB, request, actor, 'ADMIN_REPAIR_RUN', 'system_tools', action, { action, result: data });
+    return json(true, data, summary);
+  } catch (error: any) {
+    const after = await forceRefreshRepairScan(env.DB).catch(() => before);
+    await recordRepairHistory(env.DB, {
+      action: String(action || ''),
+      actor_id: actor.id,
+      actor_name: actor.username,
+      before_scan: before,
+      after_scan: after,
+      result: null,
+      summary: `${actionLabel(String(action || ''))}失败`,
+      success: false,
+      error_text: String(error?.message || error || '执行失败'),
+    });
+    throw error;
+  }
+});

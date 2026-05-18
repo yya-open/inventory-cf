@@ -1,15 +1,11 @@
-import { errorResponse } from "../../_auth";
+import { withErrorHandling } from '../_error';
 import { requirePermission } from '../../_permissions';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from "../services/audit-log";
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    await requirePermission(env, request, 'audit_export', 'viewer');
-    const filters = parseAuditListFilters(new URL(request.url));
-    const total = await countAuditRows(env.DB, filters);
-    const data = await listAuditRows(env.DB, filters);
-    return Response.json({ ok: true, data, total, page: filters.page, pageSize: filters.pageSize });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  await requirePermission(env, request, 'audit_export', 'viewer');
+  const filters = parseAuditListFilters(new URL(request.url));
+  const total = await countAuditRows(env.DB, filters);
+  const data = await listAuditRows(env.DB, filters);
+  return Response.json({ ok: true, data, total, page: filters.page, pageSize: filters.pageSize });
+});

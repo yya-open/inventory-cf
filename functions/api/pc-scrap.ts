@@ -1,13 +1,12 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchema, optional, pcScrapNo } from './_pc';
 import { applyPcScrap } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'viewer');
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'viewer');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
     assertAssetWarehouseAccess(user, '电脑仓', '电脑报废');
@@ -29,14 +28,10 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
     if (assetIds.length) await assertPcAssetIdsDataScopeAccess(env.DB, user, assetIds, '电脑报废记录');
 
     return Response.json({ ok: true, data: (rows as any)?.results || [] });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'operator');
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
+  const user = await requireAuthWithDataScope(env, request, 'operator');
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await ensurePcSchema(env.DB);
 
@@ -104,7 +99,4 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     }).catch(() => {}));
 
     return Response.json({ ok: true, scrap_no, count: rows.length, duplicate: false });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

@@ -1,4 +1,4 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
@@ -21,10 +21,9 @@ function mustAction(v: any) {
   return a as 'RETURN' | 'RECYCLE';
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
   const url = new URL(request.url);
-  try {
     const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
@@ -83,8 +82,5 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       department: lastOut?.department ?? null,
     }).catch(() => {}));
 
-    return Response.json({ ok: true, recycle_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+  return Response.json({ ok: true, recycle_no: no, asset_id: asset.id, status_after: afterStatus, duplicate: false });
+});

@@ -1,4 +1,4 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, pcInNo } from './_pc';
 import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
@@ -9,9 +9,8 @@ import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
-  try {
     const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
@@ -66,8 +65,5 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       remark,
     }).catch(() => {}));
 
-    return Response.json({ ok: true, in_no: no, asset_id: assetId, created: true, duplicate: false });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+  return Response.json({ ok: true, in_no: no, asset_id: assetId, created: true, duplicate: false });
+});

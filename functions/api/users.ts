@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse, invalidateCachedAuthUser } from "../_auth";
+import { requireAuth, invalidateCachedAuthUser } from "../_auth";
+import { withErrorHandling } from './_error';
 import { apiFail, apiOk } from "./_response";
 import { logAudit } from "./_audit";
 import { sqlNowStored } from "./_time";
@@ -32,10 +33,9 @@ function assertPermissionWarehouseScope(scope: ReturnType<typeof normalizeUserDa
   }
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    await requireAuth(env, request, "admin");
-    const url = new URL(request.url);
+export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
+  await requireAuth(env, request, "admin");
+  const url = new URL(request.url);
     const keyword = (url.searchParams.get("keyword") || "").trim();
 
     const page = Math.max(1, Number(url.searchParams.get("page") || 1));
@@ -111,14 +111,10 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     });
 
     return apiOk(rows, { meta: { total: Number(totalRow?.c || 0), page, pageSize, keyword_mode: kw.mode, sort_by: sortByRaw, sort_dir: sortDirRaw, permission_codes: ALL_PERMISSION_CODES, permission_template_codes: ALL_PERMISSION_TEMPLATE_CODES } });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    const actor = await requireAuth(env, request, "admin");
+export const onRequestPost = withErrorHandling<Env>(async ({ env, request }) => {
+  const actor = await requireAuth(env, request, "admin");
     const { username, password, role, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json();
 
     const u = String(username || "").trim();
@@ -168,15 +164,11 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
     await logAudit(env.DB, request, actor, "USER_CREATE", "users", newId ?? u, { after: enriched });
 
     return apiOk(enriched);
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
 
-export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    const actor = await requireAuth(env, request, "admin");
-    const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json();
+export const onRequestPut = withErrorHandling<Env>(async ({ env, request }) => {
+  const actor = await requireAuth(env, request, "admin");
+  const { id, role, is_active, reset_password, permissions, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 } = await request.json();
 
     const uid = Number(id);
     if (!uid) return apiFail('id 无效', { status: 400, errorCode: 'USER_ID_INVALID' });
@@ -271,15 +263,11 @@ export const onRequestPut: PagesFunction<Env> = async ({ env, request }) => {
     await logAudit(env.DB, request, actor, "USER_UPDATE", "users", uid, { before, after: enrichedAfter, changes });
 
     return apiOk(enrichedAfter);
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
 
-export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    const actor = await requireAuth(env, request, "admin");
-    const { id } = await request.json();
+export const onRequestDelete = withErrorHandling<Env>(async ({ env, request }) => {
+  const actor = await requireAuth(env, request, "admin");
+  const { id } = await request.json();
 
     const uid = Number(id);
     if (!uid) return apiFail('id 无效', { status: 400, errorCode: 'USER_ID_INVALID' });
@@ -310,7 +298,4 @@ export const onRequestDelete: PagesFunction<Env> = async ({ env, request }) => {
     await logAudit(env.DB, request, actor, "USER_DELETE", "users", uid, { before: target });
 
     return apiOk({});
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

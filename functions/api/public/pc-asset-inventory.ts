@@ -1,4 +1,4 @@
-import { errorResponse } from "../../_auth";
+import { withErrorHandling } from '../_error';
 import {
   insertPublicInventoryLog,
   parsePublicInventoryBody,
@@ -34,37 +34,33 @@ async function resolvePublicAssetIdCached(env: Env, request: Request) {
   return { id, cacheHit: false };
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    const timing = ((env as any).__timing || null) as TimingLike;
+export const onRequestPost = withErrorHandling<Env>(async ({ env, request }) => {
+  if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+  const timing = ((env as any).__timing || null) as TimingLike;
 
-    const url = new URL(request.url);
-    if (timing?.measure) {
-      await timing.measure('public_pc_inventory_rate_limit', () => rateLimitPublic(env.DB, request, "public_pc_inventory", publicAssetSubject(url), 8));
-    } else {
-      await rateLimitPublic(env.DB, request, "public_pc_inventory", publicAssetSubject(url), 8);
-    }
-    const resolved = timing?.measure
-      ? await timing.measure('public_pc_inventory_resolve_id', () => resolvePublicAssetIdCached(env, request))
-      : await resolvePublicAssetIdCached(env, request);
-    if (timing?.measure) {
-      if (resolved.cacheHit) await timing.measure('public_pc_inventory_resolve_id_cache_hit', () => 1);
-      else await timing.measure('public_pc_inventory_resolve_id_cache_miss', () => 1);
-    }
-    const assetId = resolved.id;
-    const payload = timing?.measure
-      ? await timing.measure('public_pc_inventory_parse_body', async () => parsePublicInventoryBody(await request.json().catch(() => ({}))))
-      : parsePublicInventoryBody(await request.json().catch(() => ({})));
-
-    if (timing?.measure) {
-      await timing.measure('public_pc_inventory_insert_log', () => insertPublicInventoryLog(env.DB, "pc", assetId, payload.action, payload.issueType, payload.remark, request));
-    } else {
-      await insertPublicInventoryLog(env.DB, "pc", assetId, payload.action, payload.issueType, payload.remark, request);
-    }
-    if (timing?.measure) await timing.measure('public_pc_inventory_submit_ok', () => 1);
-    return Response.json({ ok: true });
-  } catch (e: any) {
-    return errorResponse(e);
+  const url = new URL(request.url);
+  if (timing?.measure) {
+    await timing.measure('public_pc_inventory_rate_limit', () => rateLimitPublic(env.DB, request, "public_pc_inventory", publicAssetSubject(url), 8));
+  } else {
+    await rateLimitPublic(env.DB, request, "public_pc_inventory", publicAssetSubject(url), 8);
   }
-};
+  const resolved = timing?.measure
+    ? await timing.measure('public_pc_inventory_resolve_id', () => resolvePublicAssetIdCached(env, request))
+    : await resolvePublicAssetIdCached(env, request);
+  if (timing?.measure) {
+    if (resolved.cacheHit) await timing.measure('public_pc_inventory_resolve_id_cache_hit', () => 1);
+    else await timing.measure('public_pc_inventory_resolve_id_cache_miss', () => 1);
+  }
+  const assetId = resolved.id;
+  const payload = timing?.measure
+    ? await timing.measure('public_pc_inventory_parse_body', async () => parsePublicInventoryBody(await request.json().catch(() => ({}))))
+    : parsePublicInventoryBody(await request.json().catch(() => ({})));
+
+  if (timing?.measure) {
+    await timing.measure('public_pc_inventory_insert_log', () => insertPublicInventoryLog(env.DB, "pc", assetId, payload.action, payload.issueType, payload.remark, request));
+  } else {
+    await insertPublicInventoryLog(env.DB, "pc", assetId, payload.action, payload.issueType, payload.remark, request);
+  }
+  if (timing?.measure) await timing.measure('public_pc_inventory_submit_ok', () => 1);
+  return Response.json({ ok: true });
+});

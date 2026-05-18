@@ -1,27 +1,23 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { buildTxListQuery, countTxRows, listTxRows } from './services/inventory';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'viewer');
-    const url = new URL(request.url);
-    url.searchParams.set('warehouse_id', String(await assertPartsWarehouseAccess(env.DB, user, Number(url.searchParams.get('warehouse_id') || 1), '出入库明细')));
-    const query = buildTxListQuery(url);
-    const total = query.fast ? null : await countTxRows(env.DB, query);
-    const rows = await listTxRows(env.DB, query);
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'viewer');
+  const url = new URL(request.url);
+  url.searchParams.set('warehouse_id', String(await assertPartsWarehouseAccess(env.DB, user, Number(url.searchParams.get('warehouse_id') || 1), '出入库明细')));
+  const query = buildTxListQuery(url);
+  const total = query.fast ? null : await countTxRows(env.DB, query);
+  const rows = await listTxRows(env.DB, query);
 
-    return Response.json({
-      ok: true,
-      data: rows,
-      total,
-      page: query.page,
-      pageSize: query.pageSize,
-      sort_by: query.sort_by,
-      sort_dir: query.sort_dir,
-      keyword_mode: query.keyword_mode,
-    });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+  return Response.json({
+    ok: true,
+    data: rows,
+    total,
+    page: query.page,
+    pageSize: query.pageSize,
+    sort_by: query.sort_by,
+    sort_dir: query.sort_dir,
+    keyword_mode: query.keyword_mode,
+  });
+});

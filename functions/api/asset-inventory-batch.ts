@@ -1,4 +1,4 @@
-import { errorResponse } from './_auth';
+import { withErrorHandling } from './_error';
 import { apiFail, apiOk } from './_response';
 import { logAudit } from './_audit';
 import { requireCapability } from '../_capabilities';
@@ -44,24 +44,19 @@ function invalidateInventoryBatchCache(kind?: AssetInventoryKind | null) {
   inventoryBatchGetCache.clear();
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    await requireCapability(env, request, 'inventory.view');
-    if (!env.DB) return apiFail('未绑定 D1 数据库(DB)', { status: 500 });
-    const url = new URL(request.url);
-    const kind = parseKind(url.searchParams.get('kind'));
-    const cached = readInventoryBatchCache(kind);
-    if (cached) return apiOk(cached);
-    const payload = writeInventoryBatchCache(kind, await getInventoryBatchDomainSnapshot(env.DB, kind));
-    return apiOk(payload);
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
+  await requireCapability(env, request, 'inventory.view');
+  if (!env.DB) return apiFail('未绑定 D1 数据库(DB)', { status: 500 });
+  const url = new URL(request.url);
+  const kind = parseKind(url.searchParams.get('kind'));
+  const cached = readInventoryBatchCache(kind);
+  if (cached) return apiOk(cached);
+  const payload = writeInventoryBatchCache(kind, await getInventoryBatchDomainSnapshot(env.DB, kind));
+  return apiOk(payload);
+});
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
-  try {
-    const actor = await requireCapability(env, request, 'inventory.manage');
+export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitUntil }) => {
+  const actor = await requireCapability(env, request, 'inventory.manage');
     if (!env.DB) return apiFail('未绑定 D1 数据库(DB)', { status: 500 });
     const body: any = await request.json().catch(() => ({}));
     const kind = parseKind(body?.kind);
@@ -103,7 +98,4 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
     }
 
     return apiFail('action 参数无效', { status: 400 });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

@@ -1,4 +1,4 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import {
   ensurePcSchemaIfAllowed,
@@ -28,10 +28,9 @@ type Item = {
   remark?: string;
 };
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
   const url = new URL(request.url);
-  try {
     const user = await t.measure('auth', () => requireAuthWithDataScope(env, request, 'operator'));
     if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
     await t.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
@@ -98,9 +97,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
       }
     }
 
-    if (success > duplicated) invalidateAssetListCache('pc-assets');
-    return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+  if (success > duplicated) invalidateAssetListCache('pc-assets');
+  return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
+});

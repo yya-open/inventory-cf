@@ -1,5 +1,5 @@
-import { errorResponse } from '../../_auth';
 import { ensurePcSchemaIfAllowed } from '../_pc';
+import { withErrorHandling } from '../_error';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from '../services/asset-ledger';
 import { requireAuthWithDataScope } from '../services/data-scope';
 
@@ -22,34 +22,30 @@ async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limi
   return rows;
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'viewer');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'viewer');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    const url = new URL(request.url);
-    await ensurePcSchemaIfAllowed(env.DB, env, url);
+  const url = new URL(request.url);
+  await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const scope = String(url.searchParams.get('scope') || 'all').trim().toLowerCase();
-    const maxRows = Math.max(1, Math.min(MAX_EXPORT_ROWS, Number(url.searchParams.get('max_rows') || MAX_EXPORT_ROWS)));
-    const query = buildPcAssetQuery(url, user);
-    const total = await countByWhere(env.DB, 'pc_assets a', query);
+  const scope = String(url.searchParams.get('scope') || 'all').trim().toLowerCase();
+  const maxRows = Math.max(1, Math.min(MAX_EXPORT_ROWS, Number(url.searchParams.get('max_rows') || MAX_EXPORT_ROWS)));
+  const query = buildPcAssetQuery(url, user);
+  const total = await countByWhere(env.DB, 'pc_assets a', query);
 
-    const isCurrent = scope === 'current';
-    const limit = isCurrent ? query.pageSize : Math.min(total, maxRows);
-    const offset = isCurrent ? query.offset : 0;
-    const data = limit > 0 ? await listPcAssetsForExport(env.DB, query, limit, offset) : [];
+  const isCurrent = scope === 'current';
+  const limit = isCurrent ? query.pageSize : Math.min(total, maxRows);
+  const offset = isCurrent ? query.offset : 0;
+  const data = limit > 0 ? await listPcAssetsForExport(env.DB, query, limit, offset) : [];
 
-    return Response.json({
-      ok: true,
-      data,
-      total,
-      limited: !isCurrent && total > maxRows,
-      exported: data.length,
-      scope: isCurrent ? 'current' : 'all',
-      maxRows,
-    });
-  } catch (error: any) {
-    return errorResponse(error);
-  }
-};
+  return Response.json({
+    ok: true,
+    data,
+    total,
+    limited: !isCurrent && total > maxRows,
+    exported: data.length,
+    scope: isCurrent ? 'current' : 'all',
+    maxRows,
+  });
+});

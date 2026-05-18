@@ -1,4 +1,5 @@
-import { buildAuthCookie, json, signJwt, errorResponse, getJwtTtlSeconds, invalidateCachedAuthUser, primeCachedAuthUser } from '../../_auth';
+import { buildAuthCookie, json, signJwt, getJwtTtlSeconds, invalidateCachedAuthUser, primeCachedAuthUser } from '../../_auth';
+import { withErrorHandling } from '../_error';
 import { verifyPassword } from '../../_password';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
@@ -33,9 +34,8 @@ function datetimeToMsBj(dt: string | null) {
   return Number.isFinite(ms) ? ms : null;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const { username, password, turnstile_token } = await request.json();
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const { username, password, turnstile_token } = await request.json();
     const u = (username || '').trim();
     const p = String(password || '');
     if (!u || !p) return json(false, null, '请输入账号和密码', 400);
@@ -133,7 +133,4 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     });
     res.headers.append('Set-Cookie', buildAuthCookie(token, ttlSeconds));
     return res;
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

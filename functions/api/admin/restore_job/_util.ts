@@ -1,4 +1,3 @@
-import { errorResponse } from "../../../_auth";
 import { DELETE_ORDER, TABLE_COLUMNS } from "../_backup_schema";
 
 export { DELETE_ORDER, TABLE_COLUMNS };

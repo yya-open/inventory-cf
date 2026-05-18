@@ -1,4 +1,4 @@
-import { requireAuth, errorResponse } from '../_auth';
+import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { ensurePcReadFastGuards, ensurePcSchemaIfAllowed } from './_pc';
@@ -13,8 +13,7 @@ import { invalidateAssetListCache } from './services/asset-list-cache';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; __timing?: any }> = async ({ env, request, waitUntil }) => {
-  try {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
     const timing = (env as any).__timing;
     const user = timing?.measure
       ? await timing.measure('permission', () => requirePermission(env, request, 'bulk_operation', 'viewer'))
@@ -272,7 +271,4 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string; 
     }
 
     throw Object.assign(new Error('不支持的批量操作'), { status: 400 });
-  } catch (error: any) {
-    return errorResponse(error);
-  }
-};
+});

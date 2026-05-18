@@ -1,4 +1,4 @@
-import { errorResponse } from "../_auth";
+import { withErrorHandling } from './_error';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
@@ -15,7 +15,7 @@ function txNo() {
   return `OUT${y}${m}${day}-${rand}`;
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request, waitUntil }) => {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   try {
     const user = await requireAuthWithDataScope(env, request, "operator");
     const { item_id, warehouse_id = 1, qty, target, remark, client_request_id } = await request.json();
@@ -107,6 +107,6 @@ export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET: string }
     if (e instanceof GuardRollbackError) {
       return apiFail('并发出库冲突，本次已回滚，请重试', { status: 409, errorCode: 'WRITE_CONFLICT' });
     }
-    return errorResponse(e);
+    throw e;
   }
-};
+});

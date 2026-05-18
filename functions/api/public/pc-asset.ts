@@ -1,4 +1,4 @@
-import { errorResponse } from "../../_auth";
+import { withErrorHandling } from '../_error';
 import { publicAssetSubject, rateLimitPublic, resolvePublicAssetId } from "../services/public-assets";
 import { getActiveInventoryBatch } from "../services/asset-inventory-batches";
 import { ensurePcLatestStateTable } from '../services/pc-latest-state';
@@ -103,10 +103,9 @@ function writeDetailCache(id: number, payload: any) {
   detailCache.set(id, { payload, expiresAt: Date.now() + DETAIL_CACHE_TTL_MS });
 }
 
-export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
-  try {
-    if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-    const timing = ((env as any).__timing || null) as TimingLike;
+export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
+  if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
+  const timing = ((env as any).__timing || null) as TimingLike;
 
     const url = new URL(request.url);
     const token = (url.searchParams.get("token") || "").trim();
@@ -179,7 +178,4 @@ export const onRequestGet: PagesFunction<Env> = async ({ env, request }) => {
     });
     writeDetailCache(id, payload);
     return Response.json({ ok: true, data: payload });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

@@ -1,12 +1,12 @@
-import { requireAuth, errorResponse, json } from '../../../_auth';
+import { requireAuth, json } from '../../../_auth';
+import { withErrorHandling } from '../../_error';
 import { ensureCoreSchema } from '../../_schema';
 import { logAudit } from '../../_audit';
 import { sqlNowStored } from '../../_time';
 
 type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET: any };
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
-  try {
+export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitUntil }) => {
     const actor = await requireAuth(env, request, 'admin');
     await ensureCoreSchema(env.DB);
     const body = await request.json().catch(() => ({}));
@@ -33,7 +33,4 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
 
     waitUntil(logAudit(env.DB, request, actor, 'ADMIN_RESTORE_JOB_ROLLBACK_CREATE', 'restore_job', rollbackId, { source_job_id: id, snapshot_key: job.snapshot_key }).catch(() => {}));
     return json(true, { id: rollbackId, status: 'QUEUED', stage: 'SCAN' });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

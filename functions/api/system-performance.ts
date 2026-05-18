@@ -1,4 +1,5 @@
-import { errorResponse, json } from '../_auth';
+import { json } from '../_auth';
+import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { ensureRequestErrorLogTable, ensureSlowRequestLogTable } from './services/ops-tools';
 import { ensureBrowserObservabilityTables, getObservabilityRetentionPolicy, percentile, summarizeRouteDurations } from './services/observability';
@@ -181,27 +182,23 @@ async function loadPerfPayload(db: D1Database, days: number): Promise<PerfPayloa
   };
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    await requirePermission(env, request, 'ops_tools', 'viewer');
-    const url = new URL(request.url);
-    const days = Math.max(1, Math.min(30, Number(url.searchParams.get('days') || 7) || 7));
-    const force = url.searchParams.get('force') === '1';
-    const key = `perf:${days}`;
-    const now = Date.now();
-    const hit = cache.get(key);
-    if (!force && hit?.value && hit.expiresAt > now) return json(true, hit.value);
-    if (!force && hit?.pending) return json(true, await hit.pending);
-    const pending = loadPerfPayload(env.DB, days).then((value) => {
-      cache.set(key, { value, expiresAt: Date.now() + TTL_MS });
-      return value;
-    }).finally(() => {
-      const latest = cache.get(key);
-      if (latest?.pending) latest.pending = undefined;
-    });
-    cache.set(key, { value: hit?.value, expiresAt: hit?.expiresAt || 0, pending });
-    return json(true, await pending);
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  await requirePermission(env, request, 'ops_tools', 'viewer');
+  const url = new URL(request.url);
+  const days = Math.max(1, Math.min(30, Number(url.searchParams.get('days') || 7) || 7));
+  const force = url.searchParams.get('force') === '1';
+  const key = `perf:${days}`;
+  const now = Date.now();
+  const hit = cache.get(key);
+  if (!force && hit?.value && hit.expiresAt > now) return json(true, hit.value);
+  if (!force && hit?.pending) return json(true, await hit.pending);
+  const pending = loadPerfPayload(env.DB, days).then((value) => {
+    cache.set(key, { value, expiresAt: Date.now() + TTL_MS });
+    return value;
+  }).finally(() => {
+    const latest = cache.get(key);
+    if (latest?.pending) latest.pending = undefined;
+  });
+  cache.set(key, { value: hit?.value, expiresAt: hit?.expiresAt || 0, pending });
+  return json(true, await pending);
+});

@@ -1,4 +1,4 @@
-import { errorResponse } from '../_auth';
+import { withErrorHandling } from '../_error';
 import { logAudit } from '../_audit';
 import { ensureMonitorSchemaIfAllowed, monitorTxNo } from '../_monitor';
 import { normalizeText } from '../_pc';
@@ -33,9 +33,8 @@ type MonitorMovementHandlerOptions = {
 };
 
 export function createMonitorMovementHandler(options: MonitorMovementHandlerOptions): PagesFunction<Env> {
-  return async ({ env, request }) => {
-    try {
-      const user = await requireAuthWithDataScope(env, request, 'operator');
+  return withErrorHandling<Env>(async ({ env, request }) => {
+    const user = await requireAuthWithDataScope(env, request, 'operator');
       if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
       const url = new URL(request.url);
       await ensureMonitorSchemaIfAllowed(env.DB, env, url);
@@ -112,8 +111,5 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
         duplicate: false,
         data: { tx_no: txNo, asset_id: Number(asset.id || 0) || null },
       });
-    } catch (e: any) {
-      return errorResponse(e);
-    }
-  };
+  });
 }

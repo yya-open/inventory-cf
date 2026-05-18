@@ -1,4 +1,5 @@
-import { errorResponse, json } from '../_auth';
+import { json } from '../_auth';
+import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { ensureBrowserObservabilityTables } from './services/observability';
 
@@ -54,31 +55,27 @@ function normalizeSample(input: Sample): RouteSample | EventSample | null {
   return { kind: 'route', path, fullPath, duration };
 }
 
-export const onRequestPost: PagesFunction<{ DB: D1Database; JWT_SECRET?: string }> = async ({ env, request }) => {
-  try {
-    const user = await requirePermission(env, request, 'ops_tools', 'viewer').catch(() => null);
-    await ensureBrowserObservabilityTables(env.DB);
-    const body = await request.json().catch(() => ({} as any));
-    const rawSamples = Array.isArray(body?.samples) ? body.samples : [];
-    const samples = rawSamples.map(normalizeSample).filter(Boolean).slice(0, 20) as Array<RouteSample | EventSample>;
-    if (!samples.length) return json(true, { inserted: 0, route_inserted: 0, event_inserted: 0 });
-    const stmts = samples.map((sample) => {
-      if (sample.kind === 'event') {
-        return env.DB.prepare(
-          `INSERT INTO browser_event_log (event_name, path, full_path, metadata_json, username)
-           VALUES (?, ?, ?, ?, ?)`
-        ).bind(sample.eventName, sample.path, sample.fullPath, sample.metadataJson, user?.username || null);
-      }
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET?: string }>(async ({ env, request }) => {
+  const user = await requirePermission(env, request, 'ops_tools', 'viewer').catch(() => null);
+  await ensureBrowserObservabilityTables(env.DB);
+  const body = await request.json().catch(() => ({} as any));
+  const rawSamples = Array.isArray(body?.samples) ? body.samples : [];
+  const samples = rawSamples.map(normalizeSample).filter(Boolean).slice(0, 20) as Array<RouteSample | EventSample>;
+  if (!samples.length) return json(true, { inserted: 0, route_inserted: 0, event_inserted: 0 });
+  const stmts = samples.map((sample) => {
+    if (sample.kind === 'event') {
       return env.DB.prepare(
-        `INSERT INTO browser_perf_log (kind, path, full_path, duration_ms, username)
+        `INSERT INTO browser_event_log (event_name, path, full_path, metadata_json, username)
          VALUES (?, ?, ?, ?, ?)`
-      ).bind(sample.kind, sample.path, sample.fullPath, sample.duration, user?.username || null);
-    });
-    await env.DB.batch(stmts);
-    const routeInserted = samples.filter((sample) => sample.kind === 'route').length;
-    const eventInserted = samples.length - routeInserted;
-    return json(true, { inserted: stmts.length, route_inserted: routeInserted, event_inserted: eventInserted });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+      ).bind(sample.eventName, sample.path, sample.fullPath, sample.metadataJson, user?.username || null);
+    }
+    return env.DB.prepare(
+      `INSERT INTO browser_perf_log (kind, path, full_path, duration_ms, username)
+       VALUES (?, ?, ?, ?, ?)`
+    ).bind(sample.kind, sample.path, sample.fullPath, sample.duration, user?.username || null);
+  });
+  await env.DB.batch(stmts);
+  const routeInserted = samples.filter((sample) => sample.kind === 'route').length;
+  const eventInserted = samples.length - routeInserted;
+  return json(true, { inserted: stmts.length, route_inserted: routeInserted, event_inserted: eventInserted });
+});

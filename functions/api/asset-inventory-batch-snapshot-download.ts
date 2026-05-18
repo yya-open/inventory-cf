@@ -1,4 +1,5 @@
-import { errorResponse, json, requireAuth } from './_auth';
+import { json, requireAuth } from './_auth';
+import { withErrorHandling } from './_error';
 import { buildAsyncJobDownloadResponse, getAsyncJob } from './services/async-jobs';
 import { ensureAssetInventoryBatchSchema } from './services/asset-inventory-batches';
 
@@ -8,24 +9,20 @@ function parseKind(input: any) {
   throw Object.assign(new Error('kind 参数无效'), { status: 400 });
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }> = async ({ env, request }) => {
-  try {
-    await requireAuth(env, request, 'viewer');
-    await ensureAssetInventoryBatchSchema(env.DB);
-    const url = new URL(request.url);
-    const kind = parseKind(url.searchParams.get('kind'));
-    const batchId = Number(url.searchParams.get('id') || url.searchParams.get('batch_id') || 0);
-    if (!batchId) return json(false, null, 'id 无效', 400);
-    const batch = await env.DB.prepare(
-      `SELECT id, kind, snapshot_job_id, snapshot_job_status FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`
-    ).bind(kind, batchId).first<any>();
-    if (!batch?.id) return json(false, null, '盘点批次不存在', 404);
-    if (!Number(batch.snapshot_job_id || 0)) return json(false, null, '该批次暂无可下载结果快照', 404);
-    const row = await getAsyncJob(env.DB, Number(batch.snapshot_job_id), env.BACKUP_BUCKET);
-    if (!row) return json(false, null, '结果快照任务不存在', 404);
-    const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
-    return await buildAsyncJobDownloadResponse(row, env.BACKUP_BUCKET, { inline, print: false });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
+  await requireAuth(env, request, 'viewer');
+  await ensureAssetInventoryBatchSchema(env.DB);
+  const url = new URL(request.url);
+  const kind = parseKind(url.searchParams.get('kind'));
+  const batchId = Number(url.searchParams.get('id') || url.searchParams.get('batch_id') || 0);
+  if (!batchId) return json(false, null, 'id 无效', 400);
+  const batch = await env.DB.prepare(
+    `SELECT id, kind, snapshot_job_id, snapshot_job_status FROM asset_inventory_batch WHERE kind=? AND id=? LIMIT 1`
+  ).bind(kind, batchId).first<any>();
+  if (!batch?.id) return json(false, null, '盘点批次不存在', 404);
+  if (!Number(batch.snapshot_job_id || 0)) return json(false, null, '该批次暂无可下载结果快照', 404);
+  const row = await getAsyncJob(env.DB, Number(batch.snapshot_job_id), env.BACKUP_BUCKET);
+  if (!row) return json(false, null, '结果快照任务不存在', 404);
+  const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
+  return await buildAsyncJobDownloadResponse(row, env.BACKUP_BUCKET, { inline, print: false });
+});

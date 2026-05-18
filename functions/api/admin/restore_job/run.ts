@@ -1,4 +1,5 @@
-import { requireAuth, errorResponse, json } from '../../../_auth';
+import { requireAuth, json } from '../../../_auth';
+import { withErrorHandling } from '../../_error';
 import { apiFail } from '../../_response';
 import { logAudit } from '../../_audit';
 import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
@@ -44,8 +45,7 @@ function summarizeRestoreVerification(verification: any) {
   return `恢复后校验未完全通过：${parts.join('，')}`;
 }
 
-export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUntil }) => {
-  try {
+export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitUntil }) => {
     const actor = await requireAuth(env, request, 'admin');
     const body: any = await request.json().catch(() => ({}));
     const jobId = String(body?.id || '').trim();
@@ -289,7 +289,4 @@ export const onRequestPost: PagesFunction<Env> = async ({ env, request, waitUnti
       await env.DB.prepare(`UPDATE restore_job SET status='FAILED', integrity_status='FAILED', error_count=error_count+1, last_error=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(String(e?.message || e), jobId).run();
       return apiFail(String(e?.message || e), { status: 500, errorCode: 'RESTORE_RUN_FAILED' });
     }
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

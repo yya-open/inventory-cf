@@ -1,5 +1,5 @@
-import { requireAuth, errorResponse } from '../_auth';
-import { throwHttpError } from './_error';
+import { requireAuth } from '../_auth';
+import { throwHttpError, withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
@@ -38,204 +38,190 @@ import {
 
 const PC_ASSET_LIST_CACHE_NAMESPACE = 'pc-assets';
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'viewer');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'viewer');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    const url = new URL(request.url);
-    await ensureSchemaTimed(env as any, 'schema', () => ensurePcReadFastGuards(env.DB));
-    const query = buildPcAssetQuery(url, user);
-    const noCache = url.searchParams.has('no_cache');
-    const cacheable = query.fast && !query.usesFts && !noCache;
-    const cacheKey = cacheable ? buildAssetListCacheKey(PC_ASSET_LIST_CACHE_NAMESPACE, user, url) : '';
-    const cacheVersion = cacheable ? getAssetListCacheVersion(PC_ASSET_LIST_CACHE_NAMESPACE) : 0;
-    if (cacheable) {
-      const cached = readAssetListCache(cacheKey);
-      if (cached) return Response.json({ ok: true, ...cached });
-      const pending = getPendingAssetListRequest(cacheKey);
-      if (pending) {
-        const payload = await pending;
-        return Response.json({ ok: true, ...payload });
-      }
+  const url = new URL(request.url);
+  await ensureSchemaTimed(env as any, 'schema', () => ensurePcReadFastGuards(env.DB));
+  const query = buildPcAssetQuery(url, user);
+  const noCache = url.searchParams.has('no_cache');
+  const cacheable = query.fast && !query.usesFts && !noCache;
+  const cacheKey = cacheable ? buildAssetListCacheKey(PC_ASSET_LIST_CACHE_NAMESPACE, user, url) : '';
+  const cacheVersion = cacheable ? getAssetListCacheVersion(PC_ASSET_LIST_CACHE_NAMESPACE) : 0;
+  if (cacheable) {
+    const cached = readAssetListCache(cacheKey);
+    if (cached) return Response.json({ ok: true, ...cached });
+    const pending = getPendingAssetListRequest(cacheKey);
+    if (pending) {
+      const payload = await pending;
+      return Response.json({ ok: true, ...payload });
     }
-    const task = listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets, 'pc_assets')
-      .finally(() => {
-        if (cacheable) clearPendingAssetListRequest(cacheKey, task);
-      });
-    if (cacheable) setPendingAssetListRequest(cacheKey, task);
-    const payload = await task;
-    if (cacheable) writeAssetListCache(cacheKey, payload, PC_ASSET_LIST_CACHE_NAMESPACE, cacheVersion);
-    return Response.json({ ok: true, ...payload });
-  } catch (error: any) {
-    return errorResponse(error);
   }
-};
-
-export const onRequestPut: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'operator');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-
-    const url = new URL(request.url);
-    const timing = (env as any).__timing;
-    if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
-    else await ensurePcSchemaIfAllowed(env.DB, env, url);
-
-    const body = await request.json().catch(() => ({} as any));
-    const id = Number(body?.id || 0);
-    if (!id) throwHttpError('缺少资产ID', 400);
-
-    const old = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
-    if (!old) throwHttpError('电脑台账不存在或已删除', 404);
-    if (Number(old.archived || 0) === 1) throwHttpError('该电脑已归档，请先恢复归档后再编辑', 400);
-    await assertPcAssetDataScopeAccess(env.DB, user, id, '电脑台账');
-
-    const payload = parsePcAssetInput(body);
-    await assertPcBrandDictionaryValue(env.DB, payload.brand, '电脑品牌');
-    await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE serial_no=? AND id<>?', [payload.serial_no, id], '序列号已存在');
-
-    await env.DB
-      .prepare(pcAssetUpdateSql())
-      .bind(
-        payload.brand,
-        payload.serial_no,
-        payload.model,
-        payload.manufacture_date,
-        payload.warranty_end,
-        pcDateTextToUnixTs(payload.manufacture_date),
-        pcDateTextToUnixTs(payload.warranty_end),
-        payload.disk_capacity,
-        payload.memory_size,
-        payload.remark,
-        buildPcAssetSearchText(payload),
-        id
-      )
-      .run();
-
-    invalidateSystemDictionaryReferenceCache();
-    invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
-    await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']);
-    await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
-      before: {
-        brand: old.brand,
-        serial_no: old.serial_no,
-        model: old.model,
-        manufacture_date: old.manufacture_date,
-        warranty_end: old.warranty_end,
-        disk_capacity: old.disk_capacity,
-        memory_size: old.memory_size,
-        remark: old.remark,
-      },
-      after: payload,
+  const task = listAssetPage(env.DB, env as any, 'pc_assets a', query, listPcAssets, 'pc_assets')
+    .finally(() => {
+      if (cacheable) clearPendingAssetListRequest(cacheKey, task);
     });
+  if (cacheable) setPendingAssetListRequest(cacheKey, task);
+  const payload = await task;
+  if (cacheable) writeAssetListCache(cacheKey, payload, PC_ASSET_LIST_CACHE_NAMESPACE, cacheVersion);
+  return Response.json({ ok: true, ...payload });
+});
 
-    return Response.json({ ok: true, message: '修改成功' });
-  } catch (error: any) {
-    return errorResponse(error);
-  }
-};
+export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'operator');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-export const onRequestDelete: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuth(env, request, 'admin');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+  const url = new URL(request.url);
+  const timing = (env as any).__timing;
+  if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
+  else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const url = new URL(request.url);
-    const timing = (env as any).__timing;
-    if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
-    else await ensurePcSchemaIfAllowed(env.DB, env, url);
+  const body = await request.json().catch(() => ({} as any));
+  const id = Number(body?.id || 0);
+  if (!id) throwHttpError('缺少资产ID', 400);
 
-    const body = await request.json().catch(() => ({} as any));
-    const id = Number(body?.id || url.searchParams.get('id') || 0);
-    if (!id) throwHttpError('缺少资产ID', 400);
+  const old = await env.DB.prepare('SELECT * FROM pc_assets WHERE id=?').bind(id).first<any>();
+  if (!old) throwHttpError('电脑台账不存在或已删除', 404);
+  if (Number(old.archived || 0) === 1) throwHttpError('该电脑已归档，请先恢复归档后再编辑', 400);
+  await assertPcAssetDataScopeAccess(env.DB, user, id, '电脑台账');
 
+  const payload = parsePcAssetInput(body);
+  await assertPcBrandDictionaryValue(env.DB, payload.brand, '电脑品牌');
+  await assertUnique(env.DB, 'SELECT id FROM pc_assets WHERE serial_no=? AND id<>?', [payload.serial_no, id], '序列号已存在');
 
-    const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
-    const asset = await getAssetById(env.DB, 'pc', id);
-    if (!asset) throwHttpError('电脑台账不存在或已删除', 404);
+  await env.DB
+    .prepare(pcAssetUpdateSql())
+    .bind(
+      payload.brand,
+      payload.serial_no,
+      payload.model,
+      payload.manufacture_date,
+      payload.warranty_end,
+      pcDateTextToUnixTs(payload.manufacture_date),
+      pcDateTextToUnixTs(payload.warranty_end),
+      payload.disk_capacity,
+      payload.memory_size,
+      payload.remark,
+      buildPcAssetSearchText(payload),
+      id
+    )
+    .run();
 
+  invalidateSystemDictionaryReferenceCache();
+  invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
+  await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']);
+  await logAudit(env.DB, request, user, 'PC_ASSET_UPDATE', 'pc_assets', id, {
+    before: {
+      brand: old.brand,
+      serial_no: old.serial_no,
+      model: old.model,
+      manufacture_date: old.manufacture_date,
+      warranty_end: old.warranty_end,
+      disk_capacity: old.disk_capacity,
+      memory_size: old.memory_size,
+      remark: old.remark,
+    },
+    after: payload,
+  });
 
-    if (previewOnly) {
-      const [refs, settings] = await Promise.all([
-        getRelatedRecordCounts(env.DB, 'pc', id),
-        getSystemSettings(env.DB),
-      ]);
-      const hasRefs = hasRelatedHistory('pc', refs);
-      const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
-      const operation = Number(asset.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
-      return Response.json({ ok: true, preview: true, data: {
-        operation,
-        archived: Number(asset.archived || 0) === 1,
-        related_total: relatedTotal,
-        related_counts: refs,
-        reason: operation === 'purge' ? '归档资产将被彻底删除并级联清理历史记录' : operation === 'archive' ? '存在历史记录或系统策略禁用物理删除，将自动归档' : '满足物理删除条件',
-      } });
-    }
+  return Response.json({ ok: true, message: '修改成功' });
+});
 
-    if (Number(asset.archived || 0) === 1) {
-      await requirePermission(env, request, 'asset_purge', 'viewer');
-      const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
-      invalidateSystemDictionaryReferenceCache();
-      invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
-      await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
-      await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
-        brand: asset.brand,
-        serial_no: asset.serial_no,
-        model: asset.model,
-        status: asset.status,
-        archived: true,
-        purge_related: purgeSummary,
-      });
-      return Response.json({
-        ok: true,
-        purged: true,
-        related_deleted: purgeSummary.related_total,
-        message: purgeSummary.related_total
-          ? `已彻底删除归档电脑，并清理 ${purgeSummary.related_total} 条关联记录`
-          : '已彻底删除归档电脑',
-      });
-    }
+export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuth(env, request, 'admin');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    if (String(asset.status) === 'ASSIGNED') {
-      throwHttpError('该电脑当前为已领用状态，请先办理回收/归还后再删除', 400);
-    }
+  const url = new URL(request.url);
+  const timing = (env as any).__timing;
+  if (timing?.measure) await timing.measure('schema', () => ensurePcSchemaIfAllowed(env.DB, env, url));
+  else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
-    const [settings, refs] = await Promise.all([
-      getSystemSettings(env.DB),
+  const body = await request.json().catch(() => ({} as any));
+  const id = Number(body?.id || url.searchParams.get('id') || 0);
+  if (!id) throwHttpError('缺少资产ID', 400);
+
+  const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
+  const asset = await getAssetById(env.DB, 'pc', id);
+  if (!asset) throwHttpError('电脑台账不存在或已删除', 404);
+
+  if (previewOnly) {
+    const [refs, settings] = await Promise.all([
       getRelatedRecordCounts(env.DB, 'pc', id),
+      getSystemSettings(env.DB),
     ]);
     const hasRefs = hasRelatedHistory('pc', refs);
+    const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
+    const operation = Number(asset.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');
+    return Response.json({ ok: true, preview: true, data: {
+      operation,
+      archived: Number(asset.archived || 0) === 1,
+      related_total: relatedTotal,
+      related_counts: refs,
+      reason: operation === 'purge' ? '归档资产将被彻底删除并级联清理历史记录' : operation === 'archive' ? '存在历史记录或系统策略禁用物理删除，将自动归档' : '满足物理删除条件',
+    } });
+  }
 
-    if (hasRefs || !settings.asset_allow_physical_delete) {
-      const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
-      await archiveAsset(env.DB, 'pc', id, user.username || null, archiveReason, null);
-      invalidateSystemDictionaryReferenceCache();
-      invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
-      await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
-      await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
-        brand: asset.brand,
-        serial_no: asset.serial_no,
-        model: asset.model,
-        status: asset.status,
-        archived_reason: archiveReason,
-      });
-      return Response.json({ ok: true, archived: true, message: hasRefs ? '该电脑已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
-    }
-
-    await deleteAssetRow(env.DB, 'pc', id);
+  if (Number(asset.archived || 0) === 1) {
+    await requirePermission(env, request, 'asset_purge', 'viewer');
+    const purgeSummary = await purgeArchivedAsset(env.DB, 'pc', id);
     invalidateSystemDictionaryReferenceCache();
     invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
     await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
-    await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
+    await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', id, {
       brand: asset.brand,
       serial_no: asset.serial_no,
       model: asset.model,
       status: asset.status,
+      archived: true,
+      purge_related: purgeSummary,
     });
-
-    return Response.json({ ok: true, message: '删除成功' });
-  } catch (error: any) {
-    return errorResponse(error);
+    return Response.json({
+      ok: true,
+      purged: true,
+      related_deleted: purgeSummary.related_total,
+      message: purgeSummary.related_total
+        ? `已彻底删除归档电脑，并清理 ${purgeSummary.related_total} 条关联记录`
+        : '已彻底删除归档电脑',
+    });
   }
-};
+
+  if (String(asset.status) === 'ASSIGNED') {
+    throwHttpError('该电脑当前为已领用状态，请先办理回收/归还后再删除', 400);
+  }
+
+  const [settings, refs] = await Promise.all([
+    getSystemSettings(env.DB),
+    getRelatedRecordCounts(env.DB, 'pc', id),
+  ]);
+  const hasRefs = hasRelatedHistory('pc', refs);
+
+  if (hasRefs || !settings.asset_allow_physical_delete) {
+    const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
+    await archiveAsset(env.DB, 'pc', id, user.username || null, archiveReason, null);
+    invalidateSystemDictionaryReferenceCache();
+    invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
+    await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
+    await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', id, {
+      brand: asset.brand,
+      serial_no: asset.serial_no,
+      model: asset.model,
+      status: asset.status,
+      archived_reason: archiveReason,
+    });
+    return Response.json({ ok: true, archived: true, message: hasRefs ? '该电脑已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
+  }
+
+  await deleteAssetRow(env.DB, 'pc', id);
+  invalidateSystemDictionaryReferenceCache();
+  invalidateAssetListCache(PC_ASSET_LIST_CACHE_NAMESPACE);
+  await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
+  await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', id, {
+    brand: asset.brand,
+    serial_no: asset.serial_no,
+    model: asset.model,
+    status: asset.status,
+  });
+
+  return Response.json({ ok: true, message: '删除成功' });
+});

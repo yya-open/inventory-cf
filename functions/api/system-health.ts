@@ -1,4 +1,5 @@
-import { errorResponse, json } from '../_auth';
+import { json } from '../_auth';
+import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { getSchemaStatus } from './services/schema-status';
 import { ensureRequestErrorLogTable, getAutoRepairScan, ensureAdminRepairHistoryTable } from './services/ops-tools';
@@ -19,9 +20,8 @@ function readSystemHealthCache() {
 }
 
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    await requirePermission(env, request, 'ops_tools', 'viewer');
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  await requirePermission(env, request, 'ops_tools', 'viewer');
     const url = new URL(request.url);
     const force = url.searchParams.get('force') === '1';
     if (!force) {
@@ -113,7 +113,4 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       systemHealthCache = null;
     }
     return json(true, payload);
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});

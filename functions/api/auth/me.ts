@@ -1,4 +1,5 @@
-import { json, requireAuth, errorResponse } from "../../_auth";
+import { json, requireAuth } from "../../_auth";
+import { withErrorHandling } from '../_error';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
 
@@ -189,42 +190,38 @@ export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null
   }
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const timing = (env as any).__timing;
-    const user = await requireAuth(env, request, "viewer");
-    const expectedAclVersion = Number((user as any)?.acl_version || 0);
-    const memory = readCachedMe(user.id, expectedAclVersion);
-    if (memory.payload) {
-      markTiming(timing, 'auth_me_cache_hit_mem');
-      return json(true, memory.payload);
-    }
-    markTiming(timing, `auth_me_cache_miss_${memory.reason || 'not_found'}`);
-
-    ensureMeHotCacheTableBackground(env.DB);
-
-    const hotReadStarted = Date.now();
-    const hot = timing?.measure
-      ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion))
-      : await readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion);
-    const hotReadDur = Date.now() - hotReadStarted;
-    if (hotReadDur >= ME_HOT_READ_SLOW_MS) markTiming(timing, 'auth_me_hot_cache_read_slow');
-    if (hot.payload) {
-      markTiming(timing, 'auth_me_cache_hit_hot');
-      writeCachedMe(user.id, hot.payload);
-      return json(true, hot.payload);
-    }
-    markTiming(timing, `auth_me_hot_cache_miss_${hot.reason || 'not_found'}`);
-
-    const permission_template_code = await getUserTemplateCode(env.DB, user.id, user.role);
-    const permissions = await getUserPermissionMap(env.DB, user.id, user.role, permission_template_code);
-    const dataScope = await getUserDataScope(env.DB, user.id);
-    const payload = writeCachedMe(user.id, { user: { ...user, acl_version: expectedAclVersion, permission_template_code, permissions, ...dataScope } });
-    markTiming(timing, 'auth_me_cache_rebuild');
-    queueMeHotCacheWrite(env.DB, user.id, payload, expectedAclVersion);
-    markTiming(timing, 'auth_me_hot_cache_write_queued');
-    return json(true, payload);
-  } catch (e: any) {
-    return errorResponse(e);
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const timing = (env as any).__timing;
+  const user = await requireAuth(env, request, "viewer");
+  const expectedAclVersion = Number((user as any)?.acl_version || 0);
+  const memory = readCachedMe(user.id, expectedAclVersion);
+  if (memory.payload) {
+    markTiming(timing, 'auth_me_cache_hit_mem');
+    return json(true, memory.payload);
   }
-};
+  markTiming(timing, `auth_me_cache_miss_${memory.reason || 'not_found'}`);
+
+  ensureMeHotCacheTableBackground(env.DB);
+
+  const hotReadStarted = Date.now();
+  const hot = timing?.measure
+    ? await timing.measure('auth_me_hot_cache_read', () => readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion))
+    : await readMeHotCacheWithSoftTimeout(env.DB, user.id, expectedAclVersion);
+  const hotReadDur = Date.now() - hotReadStarted;
+  if (hotReadDur >= ME_HOT_READ_SLOW_MS) markTiming(timing, 'auth_me_hot_cache_read_slow');
+  if (hot.payload) {
+    markTiming(timing, 'auth_me_cache_hit_hot');
+    writeCachedMe(user.id, hot.payload);
+    return json(true, hot.payload);
+  }
+  markTiming(timing, `auth_me_hot_cache_miss_${hot.reason || 'not_found'}`);
+
+  const permission_template_code = await getUserTemplateCode(env.DB, user.id, user.role);
+  const permissions = await getUserPermissionMap(env.DB, user.id, user.role, permission_template_code);
+  const dataScope = await getUserDataScope(env.DB, user.id);
+  const payload = writeCachedMe(user.id, { user: { ...user, acl_version: expectedAclVersion, permission_template_code, permissions, ...dataScope } });
+  markTiming(timing, 'auth_me_cache_rebuild');
+  queueMeHotCacheWrite(env.DB, user.id, payload, expectedAclVersion);
+  markTiming(timing, 'auth_me_hot_cache_write_queued');
+  return json(true, payload);
+});

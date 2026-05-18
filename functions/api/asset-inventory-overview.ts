@@ -1,6 +1,6 @@
-import { errorResponse } from '../_auth';
 import { ensurePcSchemaIfAllowed } from './_pc';
 import { ensureMonitorSchemaIfAllowed } from './_monitor';
+import { withErrorHandling } from './_error';
 import { buildPcAssetQuery, buildMonitorAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
 import { getInventoryBatchDomainSnapshot, type AssetInventoryKind } from './services/asset-inventory-domain';
@@ -77,38 +77,34 @@ async function queryIssueBreakdown(db: D1Database, kind: AssetInventoryKind, bat
   return breakdown;
 }
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
-    const user = await requireAuthWithDataScope(env, request, 'viewer');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+  const user = await requireAuthWithDataScope(env, request, 'viewer');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
-    const url = new URL(request.url);
-    const kind = String(url.searchParams.get('kind') || '').trim().toLowerCase() === 'monitor' ? 'monitor' : 'pc';
-    if (kind === 'pc') await ensurePcSchemaIfAllowed(env.DB, env, url);
-    else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
+  const url = new URL(request.url);
+  const kind = String(url.searchParams.get('kind') || '').trim().toLowerCase() === 'monitor' ? 'monitor' : 'pc';
+  if (kind === 'pc') await ensurePcSchemaIfAllowed(env.DB, env, url);
+  else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
-    const batchPayload = await getInventoryBatchDomainSnapshot(env.DB, kind);
-    const activeBatchId = Number(batchPayload.active?.id || 0) || 0;
+  const batchPayload = await getInventoryBatchDomainSnapshot(env.DB, kind);
+  const activeBatchId = Number(batchPayload.active?.id || 0) || 0;
 
-    const summary = activeBatchId > 0
-      ? await getInventoryBatchSummaryForAssets(env.DB, kind, activeBatchId)
-      : await queryInventorySummaryByWhere(
-          env.DB,
-          kind === 'pc' ? 'pc_assets a' : 'monitor_assets a',
-          kind === 'pc' ? buildPcAssetQuery(new URL(request.url), user) : buildMonitorAssetQuery(new URL(request.url), user),
-        );
-    const issue_breakdown = await queryIssueBreakdown(env.DB, kind, activeBatchId || null);
+  const summary = activeBatchId > 0
+    ? await getInventoryBatchSummaryForAssets(env.DB, kind, activeBatchId)
+    : await queryInventorySummaryByWhere(
+        env.DB,
+        kind === 'pc' ? 'pc_assets a' : 'monitor_assets a',
+        kind === 'pc' ? buildPcAssetQuery(new URL(request.url), user) : buildMonitorAssetQuery(new URL(request.url), user),
+      );
+  const issue_breakdown = await queryIssueBreakdown(env.DB, kind, activeBatchId || null);
 
-    return Response.json({
-      ok: true,
-      data: {
-        kind,
-        batch: batchPayload,
-        summary,
-        issue_breakdown,
-      },
-    });
-  } catch (error: any) {
-    return errorResponse(error);
-  }
-};
+  return Response.json({
+    ok: true,
+    data: {
+      kind,
+      batch: batchPayload,
+      summary,
+      issue_breakdown,
+    },
+  });
+});

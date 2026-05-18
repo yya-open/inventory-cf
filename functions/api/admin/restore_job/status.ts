@@ -1,8 +1,8 @@
-import { requireAuth, errorResponse, json } from "../../../_auth";
+import { requireAuth, json } from "../../../_auth";
+import { withErrorHandling } from "../../_error";
 import { ensureCoreSchema } from "../../_schema";
 
-export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }> = async ({ env, request }) => {
-  try {
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
     await requireAuth(env, request, "admin");
     await ensureCoreSchema(env.DB);
     const url = new URL(request.url);
@@ -45,7 +45,4 @@ export const onRequestGet: PagesFunction<{ DB: D1Database; JWT_SECRET: string }>
       created_at: job.created_at,
       updated_at: job.updated_at,
     });
-  } catch (e: any) {
-    return errorResponse(e);
-  }
-};
+});
