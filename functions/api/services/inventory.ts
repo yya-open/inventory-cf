@@ -65,8 +65,8 @@ export type ItemInput = {
 };
 
 function getPageParams(url: URL, defaultPageSize = 50, maxPageSize = 200): PagedQuery {
-  const page = Math.max(1, Number(url.searchParams.get('page') || 1));
-  const pageSize = Math.min(maxPageSize, Math.max(20, Number(url.searchParams.get('page_size') || defaultPageSize)));
+  const page = Math.max(1, Math.floor(Number(url.searchParams.get('page') || 1)) || 1);
+  const pageSize = Math.min(maxPageSize, Math.max(20, Math.floor(Number(url.searchParams.get('page_size') || defaultPageSize)) || defaultPageSize));
   return { page, pageSize, offset: (page - 1) * pageSize };
 }
 

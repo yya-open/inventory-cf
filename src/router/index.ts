@@ -167,44 +167,40 @@ const router = createRouter({
   ],
 });
 
-router.beforeEach(async (to) => {
-  startRoutePagePending();
-  if ((to.meta as any)?.public) return true;
+async function guardEnsureAuth(to: any) {
   const auth = useAuth();
-
-  if (!auth.user) {
-    const cached = hydrateAuthFromCache();
-    if (cached) {
-      if (shouldRefreshAuthInBackground()) {
-        scheduleOnIdle(() => {
-          void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
-            auth.user = null;
-            const path = window.location.pathname;
-            if (path !== '/login') {
-              const redirect = encodeURIComponent(to.fullPath);
-              window.location.replace(`/login?redirect=${redirect}`);
-            }
-          });
-        }, 1500);
-      }
-    } else {
-      try {
-        await fetchMe({ force: true });
-      } catch (e: any) {
-        auth.user = null;
-        return { path: "/login", query: { redirect: to.fullPath } };
-      }
+  if (auth.user) return null;
+  const cached = hydrateAuthFromCache();
+  if (cached) {
+    if (shouldRefreshAuthInBackground()) {
+      scheduleOnIdle(() => {
+        void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
+          auth.user = null;
+          const path = window.location.pathname;
+          if (path !== '/login') {
+            const redirect = encodeURIComponent(to.fullPath);
+            window.location.replace(`/login?redirect=${redirect}`);
+          }
+        });
+      }, 1500);
     }
+    return null;
   }
+  try {
+    await fetchMe({ force: true });
+    return null;
+  } catch {
+    auth.user = null;
+    return { path: "/login", query: { redirect: to.fullPath } };
+  }
+}
 
-  const fallbackPath = firstAccessibleRoute(auth.user);
-  const systemAllowed = canAccessSystemArea(auth.user);
-  const partsAllowed = canAccessModuleArea(auth.user, 'parts');
-  const pcModuleAllowed = canAccessModuleArea(auth.user, 'pc');
-  const pcAllowed = canAccessPcSection(auth.user, 'pc');
-  const monitorAllowed = canAccessPcSection(auth.user, 'monitor');
+function guardModuleAccess(to: any, user: any) {
+  const fallbackPath = firstAccessibleRoute(user);
+  const partsAllowed = canAccessModuleArea(user, 'parts');
+  const pcModuleAllowed = canAccessModuleArea(user, 'pc');
 
-  if (to.path.startsWith('/system') && !systemAllowed) {
+  if (to.path.startsWith('/system') && !canAccessSystemArea(user)) {
     ElMessage.warning('当前账号未授权访问系统模块');
     return { path: fallbackPath };
   }
@@ -217,6 +213,8 @@ router.beforeEach(async (to) => {
       ElMessage.warning('当前账号未授权访问电脑/显示器仓');
       return { path: fallbackPath };
     }
+    const pcAllowed = canAccessPcSection(user, 'pc');
+    const monitorAllowed = canAccessPcSection(user, 'monitor');
     if (isPcOnlyRoute(to.path) && !pcAllowed) {
       ElMessage.warning('当前账号未授权访问电脑仓');
       return { path: monitorAllowed ? '/pc/monitors' : fallbackPath };
@@ -226,15 +224,23 @@ router.beforeEach(async (to) => {
       return { path: pcAllowed ? '/pc/assets' : fallbackPath };
     }
   }
+  return null;
+}
 
+function guardSyncWarehouse(to: any, user: any) {
+  const partsAllowed = canAccessModuleArea(user, 'parts');
+  const pcModuleAllowed = canAccessModuleArea(user, 'pc');
   const wh = useWarehouse();
-  const defaultArea = firstAccessibleArea(auth.user);
+  const defaultArea = firstAccessibleArea(user);
   if (!wh.active || (wh.active === 'parts' && !partsAllowed) || (wh.active === 'pc' && !pcModuleAllowed)) {
     setWarehouse(defaultArea);
   }
   if (isPcModuleRoute(to.path) && wh.active !== 'pc') setWarehouse('pc');
   if (isPartsModuleRoute(to.path) && wh.active !== 'parts') setWarehouse('parts');
+}
 
+function guardMetaPermissions(to: any, user: any) {
+  const fallbackPath = firstAccessibleRoute(user);
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
     ElMessage.warning("权限不足");
@@ -250,6 +256,24 @@ router.beforeEach(async (to) => {
     ElMessage.warning('当前账号缺少对应权限授权');
     return { path: fallbackPath };
   }
+  return null;
+}
+
+router.beforeEach(async (to) => {
+  startRoutePagePending();
+  if ((to.meta as any)?.public) return true;
+
+  const authRedirect = await guardEnsureAuth(to);
+  if (authRedirect) return authRedirect;
+
+  const auth = useAuth();
+  const moduleBlock = guardModuleAccess(to, auth.user);
+  if (moduleBlock) return moduleBlock;
+
+  guardSyncWarehouse(to, auth.user);
+
+  const permBlock = guardMetaPermissions(to, auth.user);
+  if (permBlock) return permBlock;
 
   if (to.path === '/pc' || to.path === '/pc/') {
     return { path: preferredPcRoute(auth.user) };
