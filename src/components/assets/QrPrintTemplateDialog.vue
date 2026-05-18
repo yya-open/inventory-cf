@@ -192,6 +192,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
+import { useDebouncedFn } from '../../composables/useDebouncedFn';
 import { ElMessage, ElMessageBox } from '../../utils/el-services';
 import { getCachedSystemSettings } from '../../api/systemSettings';
 import { buildSystemDefaultQrTemplate } from '../../utils/systemQrConfig';
@@ -252,27 +253,17 @@ const labelPresets = listQrLabelPresets();
 const printerProfiles = listQrPrinterProfiles();
 const importInputRef = ref<HTMLInputElement | null>(null);
 const previewForm = ref<QrPrintTemplate>(normalizeQrPrintTemplate(props.kind, form.value));
-let previewTimer: ReturnType<typeof setTimeout> | null = null;
+const debouncedSyncPreview = useDebouncedFn(() => {
+  previewForm.value = normalizeQrPrintTemplate(props.kind, form.value);
+}, 120);
 
 function syncPreviewForm(immediate = false) {
-  const next = normalizeQrPrintTemplate(props.kind, form.value);
-  if (previewTimer) {
-    clearTimeout(previewTimer);
-    previewTimer = null;
-  }
   if (immediate) {
-    previewForm.value = next;
+    debouncedSyncPreview.flush();
     return;
   }
-  previewTimer = setTimeout(() => {
-    previewForm.value = next;
-    previewTimer = null;
-  }, 120);
+  debouncedSyncPreview();
 }
-
-onBeforeUnmount(() => {
-  if (previewTimer) clearTimeout(previewTimer);
-});
 
 function downloadJsonFile(data: unknown, filename: string) {
   const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json;charset=utf-8' });

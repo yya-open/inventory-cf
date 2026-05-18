@@ -417,6 +417,7 @@
 import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue";
+import { useDebouncedFn } from "../composables/useDebouncedFn";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
@@ -698,16 +699,13 @@ watch(warehouseId, async ()=>{
   await loadList();
 });
 
-let _kwTimer: any = null;
 let listAbortController: AbortController | null = null;
 let listRequestSeq = 0;
-watch(listKeyword, () => {
-  if (_kwTimer) clearTimeout(_kwTimer);
-  _kwTimer = setTimeout(() => {
-    listPage.value = 1;
-    loadList();
-  }, 300);
-});
+const debouncedLoadList = useDebouncedFn(() => {
+  listPage.value = 1;
+  loadList();
+}, 300);
+watch(listKeyword, () => debouncedLoadList());
 
 function onListPageChange(){
   loadList();
@@ -1082,10 +1080,6 @@ onMounted(async ()=>{
 });
 
 onBeforeUnmount(() => {
-  if (_kwTimer) {
-    clearTimeout(_kwTimer);
-    _kwTimer = null;
-  }
   if (listAbortController) {
     try { listAbortController.abort(); } catch {}
     listAbortController = null;

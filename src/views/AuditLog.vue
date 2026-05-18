@@ -436,6 +436,7 @@ import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElPopconfirm } from 'element-plus/es/components/popconfirm/index';
 import { ElScrollbar } from 'element-plus/es/components/scrollbar/index';
 import { ref, onMounted, computed, watch } from "vue";
+import { useDebouncedFn } from "../composables/useDebouncedFn";
 import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";
 import { can, canCapability, canPerm } from "../store/auth";
@@ -1076,26 +1077,12 @@ function persistState() {
 }
 
 let suppressAutoSearch = false;
-let inputTimer: ReturnType<typeof setTimeout> | null = null;
+const scheduleSearch = useDebouncedFn(() => onSearch(), 320);
 let loadSeq = 0;
 let loadController: AbortController | null = null;
 
 function isAbortError(error: unknown) {
   return error instanceof DOMException && error.name === 'AbortError';
-}
-
-function clearInputTimer() {
-  if (inputTimer) {
-    clearTimeout(inputTimer);
-    inputTimer = null;
-  }
-}
-
-function scheduleSearch() {
-  clearInputTimer();
-  inputTimer = setTimeout(() => {
-    onSearch();
-  }, 320);
 }
 
 watch([keyword, action, entity, entityId, user, moduleFilter, highRiskOnly, sortBy, sortDir, pageSize], persistState);
@@ -1114,7 +1101,7 @@ watch(entityId, (_value, oldValue) => {
 });
 watch(range, (_value, oldValue) => {
   if (suppressAutoSearch || oldValue === undefined) return;
-  clearInputTimer();
+  scheduleSearch.cancel();
   onSearch();
 }, { deep: true });
 
@@ -1138,7 +1125,7 @@ function applyRouteQuery(loadAfter = true) {
 }
 
 function onSearch(){
-  clearInputTimer();
+  scheduleSearch.cancel();
   page.value = 1;
   load();
 }
@@ -1159,7 +1146,7 @@ function reset(){
   sortDir.value = "desc";
   page.value = 1;
   suppressAutoSearch = false;
-  clearInputTimer();
+  scheduleSearch.cancel();
   load();
 }
 

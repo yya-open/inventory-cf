@@ -194,6 +194,7 @@ import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElRadioButton, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, onMounted } from "vue";
+import { useDebouncedFn } from "../composables/useDebouncedFn";
 import { ElMessage } from "../utils/el-services";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
@@ -267,7 +268,7 @@ async function loadAssets(keyword = "", force = false) {
   }
 }
 
-let tmr: any = null;
+const debouncedLoadAssets = useDebouncedFn((keyword: string) => loadAssets(keyword), 250);
 function remoteSearch(q: string) {
   const normalizedKeyword = String(q || "").trim();
   if (
@@ -277,8 +278,7 @@ function remoteSearch(q: string) {
   ) {
     return;
   }
-  if (tmr) clearTimeout(tmr);
-  tmr = setTimeout(() => loadAssets(normalizedKeyword), 250);
+  debouncedLoadAssets(normalizedKeyword);
 }
 
 function onPickAsset(id: number) {
