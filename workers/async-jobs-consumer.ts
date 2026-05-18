@@ -23,14 +23,14 @@ type AsyncJobQueuePayload = {
   job_id?: number;
 };
 
-async function handleJobMessage(env: Env, message: QueueMessage<AsyncJobQueuePayload>) {
+async function handleJobMessage(env: Env, message: QueueMessage<AsyncJobQueuePayload>, options: { skipHousekeeping?: boolean } = {}) {
   const jobId = Math.trunc(Number(message?.body?.job_id || 0));
   if (!Number.isFinite(jobId) || jobId <= 0) {
     message?.ack?.();
     return;
   }
   try {
-    await processAsyncJob(env.DB, jobId, env.BACKUP_BUCKET);
+    await processAsyncJob(env.DB, jobId, env.BACKUP_BUCKET, { skipHousekeeping: !!options.skipHousekeeping });
     message?.ack?.();
   } catch (error) {
     console.error('async-job-consumer processAsyncJob failed', { jobId, error: String((error as any)?.message || error) });
@@ -40,8 +40,9 @@ async function handleJobMessage(env: Env, message: QueueMessage<AsyncJobQueuePay
 
 export default {
   async queue(batch: MessageBatch<AsyncJobQueuePayload>, env: Env) {
+    if ((batch.messages || []).length) await cleanupAsyncJobHousekeeping(env.DB, env.BACKUP_BUCKET);
     for (const message of batch.messages || []) {
-      await handleJobMessage(env, message);
+      await handleJobMessage(env, message, { skipHousekeeping: true });
     }
   },
   async scheduled(_controller: ScheduledController, env: Env, ctx: ExecutionContext) {

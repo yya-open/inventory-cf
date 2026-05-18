@@ -1,6 +1,6 @@
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
-import { logAudit } from './_audit';
+import { logAudit, logAuditBatch } from './_audit';
 import { ensureMonitorReadFastGuards, ensureMonitorSchemaIfAllowed } from './_monitor';
 import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
@@ -28,7 +28,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       ? await timing.measure('parse', () => request.json().catch(() => ({} as any)))
       : await request.json().catch(() => ({} as any));
     const action = String(body?.action || '').trim();
-    const ids = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
+    const ids: number[] = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
     if (!ids.length) throw Object.assign(new Error('请选择至少一条显示器台账'), { status: 400 });
 
     if (action === 'restore') {
@@ -194,35 +194,33 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         invalidateSystemDictionaryReferenceCache();
         await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
       }
-      for (const item of result.successes) {
+      await logAuditBatch(env.DB, request, user, result.successes.map((item) => {
         if (item.action === 'archive') {
-          await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', item.id, {
+          return { action: 'MONITOR_ASSET_ARCHIVE', entity: 'monitor_assets', entity_id: item.id, payload: {
             asset_code: item.row?.asset_code,
             brand: item.row?.brand,
             model: item.row?.model,
             status: item.row?.status,
             archived_reason: item.reason,
-          });
-          continue;
+          } };
         }
         if (item.action === 'purge') {
-          await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', item.id, {
+          return { action: 'MONITOR_ASSET_PURGE', entity: 'monitor_assets', entity_id: item.id, payload: {
             asset_code: item.row?.asset_code,
             brand: item.row?.brand,
             model: item.row?.model,
             status: item.row?.status,
             archived: true,
             purge_related: item.related_counts || {},
-          });
-          continue;
+          } };
         }
-        await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', item.id, {
+        return { action: 'MONITOR_ASSET_DELETE', entity: 'monitor_assets', entity_id: item.id, payload: {
           asset_code: item.row?.asset_code,
           brand: item.row?.brand,
           model: item.row?.model,
           status: item.row?.status,
-        });
-      }
+        } };
+      }));
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE_BATCH', 'monitor_assets', String(ids.length), {
         requested_ids: ids,
         processed: result.processed,

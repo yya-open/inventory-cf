@@ -34,7 +34,11 @@ export async function enqueueAsyncJobIds(queue: AsyncJobQueueBinding | null | un
     }
     return { enqueued: normalized.length, mode: 'queue' as const };
   }
-  for (const jobId of normalized) await queue.send({ job_id: jobId });
+  const chunkSize = 10;
+  for (let index = 0; index < normalized.length; index += chunkSize) {
+    const chunk = normalized.slice(index, index + chunkSize);
+    await Promise.all(chunk.map((jobId) => queue.send({ job_id: jobId })));
+  }
   return { enqueued: normalized.length, mode: 'queue' as const };
 }
 

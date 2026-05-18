@@ -472,6 +472,49 @@ function getIp(request: Request) {
   return null;
 }
 
+export type AuditLogBatchEntry = {
+  action: string;
+  entity?: string | null;
+  entity_id?: string | number | null;
+  payload?: any;
+};
+
+function buildAuditInsertStatement(
+  db: D1Database,
+  request: Request,
+  user: AuthUser | null,
+  entry: AuditLogBatchEntry,
+) {
+  const normalizedAction = normalizeAuditAction(entry.action);
+  const normalizedEntity = entry.entity ?? null;
+  const ip = getIp(request);
+  const ua = request.headers.get('user-agent');
+  const enrichedPayload = enrichAuditPayload(entry.payload);
+  const payload_json = enrichedPayload === undefined ? null : JSON.stringify(enrichedPayload);
+  const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entry.entity_id, enrichedPayload);
+  return db.prepare(
+    `INSERT INTO audit_log (
+       user_id, username, action, entity, entity_id, payload_json, ip, ua,
+       module_code, high_risk, target_name, target_code, summary_text, search_text_norm, created_at
+     ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+  ).bind(
+    user?.id ?? null,
+    user?.username ?? null,
+    normalizedAction,
+    normalizedEntity,
+    entry.entity_id === undefined || entry.entity_id === null ? null : String(entry.entity_id),
+    payload_json,
+    ip,
+    ua,
+    resolveAuditModuleCode(normalizedAction, normalizedEntity),
+    isAuditHighRisk(normalizedAction),
+    materialized.target_name,
+    materialized.target_code,
+    materialized.summary_text,
+    materialized.search_text_norm,
+  );
+}
+
 export async function logAudit(
   db: D1Database,
   request: Request,
@@ -482,35 +525,34 @@ export async function logAudit(
   payload?: any,
 ) {
   try {
-    const normalizedAction = normalizeAuditAction(action);
-    const normalizedEntity = entity ?? null;
-    const ip = getIp(request);
-    const ua = request.headers.get('user-agent');
-    const enrichedPayload = enrichAuditPayload(payload);
-    const payload_json = enrichedPayload === undefined ? null : JSON.stringify(enrichedPayload);
-    const materialized = materializeAuditFields(normalizedAction, normalizedEntity, entity_id, enrichedPayload);
-    await db.prepare(
-      `INSERT INTO audit_log (
-         user_id, username, action, entity, entity_id, payload_json, ip, ua,
-         module_code, high_risk, target_name, target_code, summary_text, search_text_norm, created_at
-       ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-    ).bind(
-      user?.id ?? null,
-      user?.username ?? null,
-      normalizedAction,
-      normalizedEntity,
-      entity_id === undefined || entity_id === null ? null : String(entity_id),
-      payload_json,
-      ip,
-      ua,
-      resolveAuditModuleCode(normalizedAction, normalizedEntity),
-      isAuditHighRisk(normalizedAction),
-      materialized.target_name,
-      materialized.target_code,
-      materialized.summary_text,
-      materialized.search_text_norm,
-    ).run();
+    await buildAuditInsertStatement(db, request, user, { action, entity, entity_id, payload }).run();
     await maybeCleanupAudit(db);
+  } catch {
+    // best-effort audit; do not block business flows
+  }
+}
+
+export async function logAuditBatch(
+  db: D1Database,
+  request: Request,
+  user: AuthUser | null,
+  entries: AuditLogBatchEntry[],
+) {
+  try {
+    const statements: D1PreparedStatement[] = [];
+    for (const entry of entries || []) {
+      try {
+        statements.push(buildAuditInsertStatement(db, request, user, entry));
+      } catch {
+        // skip malformed audit payloads; audit is best-effort
+      }
+    }
+    const batchSize = 100;
+    for (let index = 0; index < statements.length; index += batchSize) {
+      const chunk = statements.slice(index, index + batchSize);
+      if (chunk.length) await db.batch(chunk);
+    }
+    if (statements.length) await maybeCleanupAudit(db);
   } catch {
     // best-effort audit; do not block business flows
   }

@@ -70,21 +70,28 @@ export async function getRelatedRecordCounts(db: D1Database, kind: AssetArchiveK
 export async function batchGetRelatedRecordCounts(db: D1Database, kind: AssetArchiveKind, ids: number[]): Promise<Map<number, Record<string, number>>> {
   if (!ids.length) return new Map();
   const config = configOf(kind);
-  const selectSql = config.relationKeys
-    .map(({ key, table }) => `(SELECT COUNT(*) FROM ${table} WHERE asset_id=?) AS ${key}`)
-    .join(',\n        ');
-  const stmts = ids.map(id => {
-    const binds = config.relationKeys.map(() => id);
-    return db.prepare(`SELECT\n        ${selectSql}\n    `).bind(...binds);
-  });
-  const results = await db.batch(stmts);
   const map = new Map<number, Record<string, number>>();
-  for (let i = 0; i < ids.length; i++) {
-    const row = (results[i] as any)?.results?.[0];
-    map.set(ids[i], config.relationKeys.reduce((acc, item) => {
-      acc[item.key] = Number(row?.[item.key] || 0);
+  const normalized = Array.from(new Set(ids.map((id) => Number(id || 0)).filter((id) => id > 0)));
+  for (const id of normalized) {
+    map.set(id, config.relationKeys.reduce((acc, item) => {
+      acc[item.key] = 0;
       return acc;
     }, {} as Record<string, number>));
+  }
+  const chunkSize = 180;
+  for (const { key, table } of config.relationKeys) {
+    for (let index = 0; index < normalized.length; index += chunkSize) {
+      const chunk = normalized.slice(index, index + chunkSize);
+      const placeholders = chunk.map(() => '?').join(',');
+      const { results } = await db.prepare(
+        `SELECT asset_id, COUNT(*) AS c FROM ${table} WHERE asset_id IN (${placeholders}) GROUP BY asset_id`
+      ).bind(...chunk).all<any>();
+      for (const row of results || []) {
+        const id = Number(row?.asset_id || 0);
+        const target = map.get(id);
+        if (target) target[key] = Number(row?.c || 0);
+      }
+    }
   }
   return map;
 }

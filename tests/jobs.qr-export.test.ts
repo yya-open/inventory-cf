@@ -25,6 +25,14 @@ vi.mock('../functions/api/_audit', () => ({
 }));
 
 vi.mock('../functions/api/services/async-jobs', () => ({
+  createAsyncJobs: vi.fn(async (_db: any, inputs: any[]) => {
+    const ids: number[] = [];
+    for (const input of inputs) {
+      createdJobs.requests.push(input.request_json);
+      ids.push(createdJobs.requests.length);
+    }
+    return ids;
+  }),
   createAsyncJob: vi.fn(async (_db: any, input: any) => {
     createdJobs.requests.push(input.request_json);
     return createdJobs.requests.length;

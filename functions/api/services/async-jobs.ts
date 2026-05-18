@@ -998,9 +998,15 @@ export async function cleanupExpiredAsyncJobResults(db: D1Database, bucket?: Asy
        AND retain_until IS NOT NULL
        AND retain_until < ${sqlNowStored()}`
   ).all<any>();
-  for (const row of expired.results || []) {
-    if (bucket?.delete && row?.result_object_key) {
-      try { await bucket.delete(String(row.result_object_key)); } catch {}
+  const objectKeys = (expired.results || [])
+    .map((row: any) => String(row?.result_object_key || '').trim())
+    .filter(Boolean);
+  if (bucket?.delete && objectKeys.length) {
+    const deleteObject = bucket.delete.bind(bucket);
+    const chunkSize = 20;
+    for (let index = 0; index < objectKeys.length; index += chunkSize) {
+      const chunk = objectKeys.slice(index, index + chunkSize);
+      await Promise.allSettled(chunk.map((key) => deleteObject(key)));
     }
   }
   const res = await db.prepare(
@@ -1047,19 +1053,50 @@ export async function cleanupAsyncJobHousekeeping(db: D1Database, bucket?: Async
   };
 }
 
-export async function createAsyncJob(db: D1Database, input: { job_type: AsyncJobType; created_by?: number | null; created_by_name?: string | null; permission_scope?: string | null; request_json?: any; retain_days?: number | null; max_retries?: number | null }, bucket?: AsyncJobResultBucket) {
-  await cleanupAsyncJobHousekeeping(db, bucket);
+export type AsyncJobCreateInput = {
+  job_type: AsyncJobType;
+  created_by?: number | null;
+  created_by_name?: string | null;
+  permission_scope?: string | null;
+  request_json?: any;
+  retain_days?: number | null;
+  max_retries?: number | null;
+};
+
+function buildCreateAsyncJobStatement(db: D1Database, input: AsyncJobCreateInput) {
   const retainDays = Math.max(1, Math.min(30, Number(input.retain_days || 7)));
   const maxRetries = Math.max(0, Math.min(5, Number(input.max_retries ?? 1)));
-  const res = await db.prepare(
+  return db.prepare(
     `INSERT INTO async_jobs (job_type, status, created_by, created_by_name, permission_scope, request_json, retain_until, max_retries, created_at, updated_at)
      VALUES (?, 'queued', ?, ?, ?, ?, datetime('now','+8 hours', ?), ?, ${sqlNowStored()}, ${sqlNowStored()})`
-  ).bind(input.job_type, input.created_by ?? null, input.created_by_name ?? null, input.permission_scope ?? null, JSON.stringify(input.request_json || {}), `+${retainDays} day`, maxRetries).run();
+  ).bind(input.job_type, input.created_by ?? null, input.created_by_name ?? null, input.permission_scope ?? null, JSON.stringify(input.request_json || {}), `+${retainDays} day`, maxRetries);
+}
+
+export async function createAsyncJobs(db: D1Database, inputs: AsyncJobCreateInput[], bucket?: AsyncJobResultBucket) {
+  const normalized = (Array.isArray(inputs) ? inputs : []).filter((input) => input?.job_type);
+  if (!normalized.length) return [] as number[];
+  await cleanupAsyncJobHousekeeping(db, bucket);
+  const ids: number[] = [];
+  const chunkSize = 100;
+  for (let index = 0; index < normalized.length; index += chunkSize) {
+    const chunk = normalized.slice(index, index + chunkSize);
+    const results = await db.batch(chunk.map((input) => buildCreateAsyncJobStatement(db, input)));
+    for (const result of results || []) {
+      const id = Number((result as any)?.meta?.last_row_id || 0);
+      if (id > 0) ids.push(id);
+    }
+  }
+  return ids;
+}
+
+export async function createAsyncJob(db: D1Database, input: AsyncJobCreateInput, bucket?: AsyncJobResultBucket) {
+  await cleanupAsyncJobHousekeeping(db, bucket);
+  const res = await buildCreateAsyncJobStatement(db, input).run();
   return Number((res as any)?.meta?.last_row_id || 0);
 }
 
-export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
-  await cleanupAsyncJobHousekeeping(db, bucket);
+export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket, options: { skipHousekeeping?: boolean } = {}) {
+  if (!options.skipHousekeeping) await cleanupAsyncJobHousekeeping(db, bucket);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
   if (!row) throwHttpError('任务不存在', 404);
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
@@ -1069,7 +1106,7 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
     return;
   }
   const jobType = String(row.job_type || '') as AsyncJobType;
-  const req = parseJsonSafe(row.request_json, {});
+  const req: any = parseJsonSafe(row.request_json, {});
   if ((jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' || jobType === 'AUDIT_ARCHIVE_EXPORT') && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
@@ -1120,11 +1157,12 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   }
 }
 
-export async function processAsyncJobIds(db: D1Database, ids: number[], bucket?: AsyncJobResultBucket) {
+export async function processAsyncJobIds(db: D1Database, ids: number[], bucket?: AsyncJobResultBucket, options: { skipHousekeeping?: boolean } = {}) {
   const normalized = Array.from(new Set((Array.isArray(ids) ? ids : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
+  if (normalized.length && !options.skipHousekeeping) await cleanupAsyncJobHousekeeping(db, bucket);
   for (const id of normalized) {
     try {
-      await processAsyncJob(db, id, bucket);
+      await processAsyncJob(db, id, bucket, { skipHousekeeping: true });
     } catch {
       // 单个任务失败时由 processAsyncJob 自行落库状态，这里继续处理后续任务
     }

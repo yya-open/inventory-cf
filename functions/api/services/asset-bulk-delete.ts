@@ -1,9 +1,8 @@
 import {
   archiveAsset,
   deleteAssetRow,
-  getRelatedRecordCounts,
+  batchGetRelatedRecordCounts,
   hasRelatedHistory,
-  purgeArchivedAsset,
   type AssetArchiveKind,
 } from './asset-archive';
 import { loadAssetRows } from './asset-bulk';
@@ -54,6 +53,7 @@ export async function bulkDeleteAssets(
   const validIds = Array.from(new Set((ids || []).map((id) => Number(id || 0)).filter((id) => id > 0)));
   const rows = await loadAssetRows(db, kind, validIds);
   const rowsById = new Map<number, Record<string, any>>(rows.map((row) => [Number(row.id || 0), row]));
+  const refsById = await batchGetRelatedRecordCounts(db, kind, rows.map((row) => Number(row.id || 0)));
 
   const successes: BulkDeleteSuccess[] = [];
   const failures: BulkDeleteFailure[] = [];
@@ -66,14 +66,16 @@ export async function bulkDeleteAssets(
     }
 
     try {
+      const refs = refsById.get(id) || {};
       if (Number(row.archived || 0) === 1) {
-        const purgeSummary = await purgeArchivedAsset(db, kind, id);
+        await deleteAssetRow(db, kind, id);
+        const relatedTotal = Object.values(refs || {}).reduce((sum, value) => sum + Number(value || 0), 0);
         successes.push({
           id,
           row,
           action: 'purge',
-          related_total: Number(purgeSummary.related_total || 0),
-          related_counts: purgeSummary,
+          related_total: relatedTotal,
+          related_counts: { ...refs, related_total: relatedTotal },
         });
         continue;
       }
@@ -83,7 +85,6 @@ export async function bulkDeleteAssets(
         continue;
       }
 
-      const refs = await getRelatedRecordCounts(db, kind, id);
       const relatedTotal = Object.values(refs || {}).reduce((sum, value) => sum + Number(value || 0), 0);
       const hasRefs = hasRelatedHistory(kind, refs);
       if (hasRefs || !options.allowPhysicalDelete) {

@@ -1,7 +1,7 @@
 import { json } from '../_auth';
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
-import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
+import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, createAsyncJobs, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
 import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getUserDataScope } from './services/data-scope';
@@ -98,12 +98,15 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (ids.length > chunkSize) {
       const batchKey = `qr_export_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
       const chunks = chunkIds(ids, chunkSize);
-      const createdIds: number[] = [];
-      for (let index = 0; index < chunks.length; index += 1) {
-        const chunkRequest = { ...(request_json || {}), ids: chunks[index], export_batch_key: batchKey, export_batch_index: index + 1, export_batch_total: chunks.length, export_total_ids: ids.length };
-        const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: chunkRequest, retain_days, max_retries }, env.BACKUP_BUCKET);
-        createdIds.push(id);
-      }
+      const createdIds = await createAsyncJobs(env.DB, chunks.map((chunk, index) => ({
+        job_type,
+        created_by: actor.id,
+        created_by_name: actor.username,
+        permission_scope: permission_scope || null,
+        request_json: { ...(request_json || {}), ids: chunk, export_batch_key: batchKey, export_batch_index: index + 1, export_batch_total: chunks.length, export_total_ids: ids.length },
+        retain_days,
+        max_retries,
+      })), env.BACKUP_BUCKET);
       if (createdIds.length) {
         await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
       }

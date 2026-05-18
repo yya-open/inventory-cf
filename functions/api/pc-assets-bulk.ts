@@ -1,6 +1,6 @@
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
-import { logAudit } from './_audit';
+import { logAudit, logAuditBatch } from './_audit';
 import { ensurePcReadFastGuards, ensurePcSchemaIfAllowed } from './_pc';
 import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
@@ -22,7 +22,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       ? await timing.measure('parse', () => request.json().catch(() => ({} as any)))
       : await request.json().catch(() => ({} as any));
     const action = String(body?.action || '').trim();
-    const ids = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
+    const ids: number[] = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
     if (!ids.length) throw Object.assign(new Error('请选择至少一条电脑台账'), { status: 400 });
 
     if (action === 'restore') {
@@ -183,35 +183,33 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         invalidateAssetListCache('pc-assets');
         await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand', 'asset_archive_reason']);
       }
-      for (const item of result.successes) {
+      await logAuditBatch(env.DB, request, user, result.successes.map((item) => {
         if (item.action === 'archive') {
-          await logAudit(env.DB, request, user, 'PC_ASSET_ARCHIVE', 'pc_assets', item.id, {
+          return { action: 'PC_ASSET_ARCHIVE', entity: 'pc_assets', entity_id: item.id, payload: {
             brand: item.row?.brand,
             serial_no: item.row?.serial_no,
             model: item.row?.model,
             status: item.row?.status,
             archived_reason: item.reason,
-          });
-          continue;
+          } };
         }
         if (item.action === 'purge') {
-          await logAudit(env.DB, request, user, 'PC_ASSET_PURGE', 'pc_assets', item.id, {
+          return { action: 'PC_ASSET_PURGE', entity: 'pc_assets', entity_id: item.id, payload: {
             brand: item.row?.brand,
             serial_no: item.row?.serial_no,
             model: item.row?.model,
             status: item.row?.status,
             archived: true,
             purge_related: item.related_counts || {},
-          });
-          continue;
+          } };
         }
-        await logAudit(env.DB, request, user, 'PC_ASSET_DELETE', 'pc_assets', item.id, {
+        return { action: 'PC_ASSET_DELETE', entity: 'pc_assets', entity_id: item.id, payload: {
           brand: item.row?.brand,
           serial_no: item.row?.serial_no,
           model: item.row?.model,
           status: item.row?.status,
-        });
-      }
+        } };
+      }));
       await logAudit(env.DB, request, user, 'PC_ASSET_DELETE_BATCH', 'pc_assets', String(ids.length), {
         requested_ids: ids,
         processed: result.processed,
