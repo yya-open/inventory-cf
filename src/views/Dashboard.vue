@@ -139,8 +139,16 @@ const isUsingWarmCache = ref(false);
 const isUsingWarmDetailCache = ref(false);
 const summaryCacheStamp = ref(0);
 const detailCacheStamp = ref(0);
+const CACHE_MAX_ENTRIES = 30;
 const summaryCache = new Map<string, { data: any; fetchedAt: number }>();
 const detailCache = new Map<string, { data: any; fetchedAt: number }>();
+
+function evictOldestEntries(cache: Map<string, { data: any; fetchedAt: number }>, max: number) {
+  if (cache.size <= max) return;
+  const entries = [...cache.entries()].sort((a, b) => a[1].fetchedAt - b[1].fetchedAt);
+  const toRemove = entries.slice(0, cache.size - max);
+  for (const [key] of toRemove) cache.delete(key);
+}
 const pendingSummaryRequests = new Map<string, Promise<any>>();
 const pendingDetailRequests = new Map<string, Promise<any>>();
 const prefetchedSummaryKeys = new Set<string>();
@@ -289,6 +297,7 @@ async function fetchSummary(mode = reportMode.value, dayCount = days.value, forc
   const url = `/api/reports/summary?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     summaryCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
+    evictOldestEntries(summaryCache, CACHE_MAX_ENTRIES);
     summaryCacheStamp.value += 1;
     return result;
   }).finally(() => {
@@ -307,6 +316,7 @@ async function fetchDetail(mode = reportMode.value, dayCount = days.value, force
   const url = `/api/reports/detail?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     detailCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
+    evictOldestEntries(detailCache, CACHE_MAX_ENTRIES);
     detailCacheStamp.value += 1;
     return result;
   }).finally(() => {

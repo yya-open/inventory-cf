@@ -1,4 +1,5 @@
 import { sqlNowStored } from '../_time';
+import { parseJsonSafe } from '../_json';
 import { ensurePcQrColumns } from '../_pc';
 import { ensureMonitorQrColumns } from '../_monitor';
 import { initMissingAssetQrKeys } from './asset-qr';
@@ -1060,12 +1061,12 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   if (!row) throw Object.assign(new Error('任务不存在'), { status: 404 });
   if (Number(row.cancel_requested || 0) === 1 || String(row.status) === 'canceled') {
     await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), updated_at=${sqlNowStored()} WHERE id=?`).bind(id).run();
-    const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+    const req = parseJsonSafe(row.request_json, {});
     await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
     return;
   }
   const jobType = String(row.job_type || '') as AsyncJobType;
-  const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  const req = parseJsonSafe(row.request_json, {});
   if ((jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' || jobType === 'AUDIT_ARCHIVE_EXPORT') && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
@@ -1237,7 +1238,7 @@ export async function cancelAsyncJob(db: D1Database, id: number, bucket?: AsyncJ
   const res = await db.prepare(
     `UPDATE async_jobs SET cancel_requested=1, status=CASE WHEN status='queued' THEN 'canceled' ELSE status END, canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END, updated_at=${sqlNowStored()}, message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END WHERE id=?`
   ).bind(id).run();
-  const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  const req = parseJsonSafe(row.request_json, {});
   if (String(row.status) === 'queued') await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
   return Number((res as any)?.meta?.changes || 0) > 0;
 }
@@ -1253,7 +1254,7 @@ export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJo
   await db.prepare(
     `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_object_key=NULL, result_file_size=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
-  const req = row.request_json ? JSON.parse(String(row.request_json)) : {};
+  const req = parseJsonSafe(row.request_json, {});
   await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'queued', errorMessage: null, filename: null, exportedAt: null });
 }
 

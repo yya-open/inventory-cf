@@ -281,6 +281,8 @@ const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monit
 const { runSaveAction } = useAssetFormActions();
 const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; current: number; total: number; detail: string }>({ visible: false, title: '', stage: '', current: 0, total: 1, detail: '' });
 let qrExportProgressAutoCloseTimer: number | null = null;
+let deferredRefreshTimer: number | null = null;
+let idleRunnerTimer: number | null = null;
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -795,7 +797,9 @@ async function refreshInventorySummary(filters: MonitorFilters = currentFiltersF
 function scheduleDeferredInventoryBatchRefresh(task: () => void | Promise<void>) {
   if (typeof window === 'undefined') return;
   const start = () => {
-    window.setTimeout(() => {
+    if (deferredRefreshTimer != null) window.clearTimeout(deferredRefreshTimer);
+    deferredRefreshTimer = window.setTimeout(() => {
+      deferredRefreshTimer = null;
       runWhenBrowserIdle(task, 2500);
     }, LEDGER_BATCH_REFRESH_DELAY_MS);
   };
@@ -817,7 +821,8 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
     return;
   }
   const runner = () => {
-    window.setTimeout(() => {
+    idleRunnerTimer = window.setTimeout(() => {
+      idleRunnerTimer = null;
       void task();
     }, 80);
   };
@@ -1574,7 +1579,11 @@ onMounted(() => {
 });
 
 onBeforeUnmount(() => {
-  if (typeof window !== 'undefined') window.removeEventListener('resize', handleViewportResize);
+  if (typeof window !== 'undefined') {
+    window.removeEventListener('resize', handleViewportResize);
+    if (deferredRefreshTimer != null) { window.clearTimeout(deferredRefreshTimer); deferredRefreshTimer = null; }
+    if (idleRunnerTimer != null) { window.clearTimeout(idleRunnerTimer); idleRunnerTimer = null; }
+  }
   clearQrExportProgressAutoCloseTimer();
   cleanupViewState();
 });
