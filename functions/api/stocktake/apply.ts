@@ -1,4 +1,4 @@
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { requirePermission } from '../../_permissions';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';

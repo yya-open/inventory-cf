@@ -1,5 +1,5 @@
 import { requireAuth, json } from "../../../_auth";
-import { withErrorHandling } from "../../../_error";
+import { withErrorHandling } from "../../_error";
 import { getAuditLifecycle, runAuditCleanup, setAuditLifecycle } from "../../_audit";
 import { createAuditArchiveJob, getAuditArchiveAdminSummary } from "../../services/audit-archive";
 import { dispatchAsyncJobIds } from '../../services/async-job-queue';

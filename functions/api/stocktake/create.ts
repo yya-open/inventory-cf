@@ -1,4 +1,4 @@
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { logAudit } from '../_audit';
 import { apiOk } from '../_response';
 import { createStocktake, generateStocktakeNo } from '../services/stocktake';

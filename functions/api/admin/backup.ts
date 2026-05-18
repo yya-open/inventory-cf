@@ -1,5 +1,5 @@
 import { requireAuth } from '../../_auth';
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { logAudit } from '../_audit';
 import { ensureCoreSchema } from '../_schema';
 import { ensurePcSchema } from '../_pc';

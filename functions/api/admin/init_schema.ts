@@ -1,5 +1,5 @@
 import { requireAuth, json } from "../../_auth";
-import { withErrorHandling } from "../../_error";
+import { withErrorHandling } from "../_error";
 import { ensureCoreSchema } from "../_schema";
 import { ensurePcSchema } from "../_pc";
 import { ensureMonitorSchema } from "../_monitor";

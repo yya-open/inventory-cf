@@ -1,5 +1,5 @@
 import { requireAuth } from "../../_auth";
-import { withErrorHandling } from "../../_error";
+import { withErrorHandling } from "../_error";
 
 // View recent slow requests logged by functions/_middleware.ts
 // Admin-only.

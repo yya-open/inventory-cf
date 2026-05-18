@@ -1,4 +1,4 @@
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";

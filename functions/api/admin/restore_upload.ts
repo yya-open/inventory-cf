@@ -1,5 +1,5 @@
 import { json, requireAuth } from '../../_auth';
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { ensureCoreSchema } from '../_schema';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {

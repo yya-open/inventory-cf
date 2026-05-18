@@ -1,4 +1,4 @@
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { logAudit } from '../_audit';
 import { apiFail, apiOk } from '../_response';
 import { sqlNowStored } from '../_time';

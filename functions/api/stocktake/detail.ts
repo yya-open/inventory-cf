@@ -1,4 +1,4 @@
-import { withErrorHandling } from '../../_error';
+import { withErrorHandling } from '../_error';
 import { apiFail, apiOk } from '../_response';
 import { getStocktakeById, listStocktakeLines } from '../services/stocktake';
 import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
