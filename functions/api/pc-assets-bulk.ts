@@ -6,7 +6,7 @@ import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 import { bulkArchiveAssets, bulkRestoreAssets, bulkUpdatePcOwner, bulkUpdatePcStatus, loadAssetRows } from './services/asset-bulk';
 import { bulkDeleteAssets } from './services/asset-bulk-delete';
-import { getRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
+import { batchGetRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 import { invalidateAssetListCache } from './services/asset-list-cache';
@@ -115,6 +115,11 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       const settings = await getSystemSettings(env.DB);
       const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
       if (previewOnly) {
+        const needCountIds = ids.filter(id => {
+          const row = existingRows.find((item) => Number(item.id) === Number(id));
+          return row && String(row.status || '') !== 'ASSIGNED';
+        });
+        const refsMap = await batchGetRelatedRecordCounts(env.DB, 'pc', needCountIds);
         const previewItems = [];
         for (const id of ids) {
           const row = existingRows.find((item) => Number(item.id) === Number(id));
@@ -134,7 +139,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
             });
             continue;
           }
-          const refs = await getRelatedRecordCounts(env.DB, 'pc', Number(id));
+          const refs = refsMap.get(Number(id)) || {};
           const hasRefs = hasRelatedHistory('pc', refs);
           const relatedTotal = Object.values(refs || {}).reduce((sum: number, value: any) => sum + Number(value || 0), 0);
           const operation = Number(row.archived || 0) === 1 ? 'purge' : (hasRefs || !settings.asset_allow_physical_delete ? 'archive' : 'delete');

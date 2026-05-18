@@ -67,6 +67,28 @@ export async function getRelatedRecordCounts(db: D1Database, kind: AssetArchiveK
   }, {} as Record<string, number>);
 }
 
+export async function batchGetRelatedRecordCounts(db: D1Database, kind: AssetArchiveKind, ids: number[]): Promise<Map<number, Record<string, number>>> {
+  if (!ids.length) return new Map();
+  const config = configOf(kind);
+  const selectSql = config.relationKeys
+    .map(({ key, table }) => `(SELECT COUNT(*) FROM ${table} WHERE asset_id=?) AS ${key}`)
+    .join(',\n        ');
+  const stmts = ids.map(id => {
+    const binds = config.relationKeys.map(() => id);
+    return db.prepare(`SELECT\n        ${selectSql}\n    `).bind(...binds);
+  });
+  const results = await db.batch(stmts);
+  const map = new Map<number, Record<string, number>>();
+  for (let i = 0; i < ids.length; i++) {
+    const row = (results[i] as any)?.results?.[0];
+    map.set(ids[i], config.relationKeys.reduce((acc, item) => {
+      acc[item.key] = Number(row?.[item.key] || 0);
+      return acc;
+    }, {} as Record<string, number>));
+  }
+  return map;
+}
+
 export function hasRelatedHistory(kind: AssetArchiveKind, counts: Record<string, number>) {
   const config = configOf(kind);
   return config.relationKeys.some((item) => item.countsAsHistory && Number(counts[item.key] || 0) > 0);
