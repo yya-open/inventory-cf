@@ -220,7 +220,7 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
   diskCapacity?: string | null;
   memorySize?: string | null;
   remark?: string | null;
-}) {
+}): Promise<{ assetId: number; isNew: boolean }> {
   const serialNo = normalizePcSerialNo(payload.serialNo);
   const manufactureTs = pcDateTextToUnixTs(payload.manufactureDate);
   const warrantyEndTs = pcDateTextToUnixTs(payload.warrantyEnd);
@@ -258,7 +258,8 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
       searchText,
       existing.id,
     ).run();
-    return Number(existing.id);
+    const hasNoHistory = !counts.pcIn && !counts.pcOut && !counts.pcRecycle && !counts.pcScrap;
+    return { assetId: Number(existing.id), isNew: hasNoHistory };
   }
 
   const ins = await db.prepare(
@@ -280,7 +281,7 @@ async function resolvePcAssetForInbound(db: D1Database, payload: {
   const lastId = Number((ins as any)?.meta?.last_row_id || 0) || 0;
   const assetId = Number(lastId || 0);
   if (!assetId) throw Object.assign(new Error('创建资产失败'), { status: 500 });
-  return assetId;
+  return { assetId, isNew: true };
 }
 
 export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
@@ -290,12 +291,9 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
   let createdAssetId = 0;
   try {
     try {
-      assetId = await resolvePcAssetForInbound(db, { brand, serialNo: normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark });
-      const existingNormalized = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
-      if (existingNormalized?.id && Number(existingNormalized.id) === assetId) {
-        const counts = await getPcAssetHistoryCounts(db, assetId);
-        if (!counts.pcIn && !counts.pcOut && !counts.pcRecycle && !counts.pcScrap) createdAssetId = assetId;
-      }
+      const resolved = await resolvePcAssetForInbound(db, { brand, serialNo: normalizedSerialNo, model, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark });
+      assetId = resolved.assetId;
+      if (resolved.isNew) createdAssetId = assetId;
     } catch (error: any) {
       if (!isSqliteConstraintError(error)) throw error;
       const existing = await getPcAssetByNormalizedSerial(db, normalizedSerialNo);
