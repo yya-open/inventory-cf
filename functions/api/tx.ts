@@ -7,8 +7,10 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const url = new URL(request.url);
   url.searchParams.set('warehouse_id', String(await assertPartsWarehouseAccess(env.DB, user, Number(url.searchParams.get('warehouse_id') || 1), '出入库明细')));
   const query = buildTxListQuery(url);
-  const total = query.fast ? null : await countTxRows(env.DB, query);
-  const rows = await listTxRows(env.DB, query);
+  const [total, rows] = await Promise.all([
+    query.fast ? Promise.resolve(null) : countTxRows(env.DB, query),
+    listTxRows(env.DB, query),
+  ]);
 
   return Response.json({
     ok: true,

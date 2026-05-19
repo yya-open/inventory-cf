@@ -12,14 +12,15 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   else await ensurePcSchemaIfAllowed(env.DB, env, url);
 
   const query = buildPcTxQuery(url, user);
-  const total = query.fast
-    ? null
+  const totalTask = query.fast
+    ? Promise.resolve(null)
     : t?.measure
-      ? await t.measure('count', async () => countPcTxRows(env.DB, query))
-      : await countPcTxRows(env.DB, query);
-  const data = t?.measure
-    ? await t.measure('query', async () => listPcTxRows(env.DB, query))
-    : await listPcTxRows(env.DB, query);
+      ? t.measure('count', async () => countPcTxRows(env.DB, query))
+      : countPcTxRows(env.DB, query);
+  const dataTask = t?.measure
+    ? t.measure('query', async () => listPcTxRows(env.DB, query))
+    : listPcTxRows(env.DB, query);
+  const [total, data] = await Promise.all([totalTask, dataTask]);
 
   return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });
 });

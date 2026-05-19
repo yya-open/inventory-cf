@@ -373,13 +373,13 @@ export async function updateSystemSettings(db: D1Database, patch: Partial<System
   if (Number((result as any)?.meta?.changes || 0) === 0) {
     throw Object.assign(new Error('系统配置已被其他管理员更新，请刷新后重试'), { status: 409 });
   }
-  for (const key of SETTING_KEYS) {
-    await db.prepare(
+  await db.batch(SETTING_KEYS.map((key) =>
+    db.prepare(
       `INSERT INTO system_settings (key, value_json, updated_at, updated_by)
        VALUES (?, ?, ${sqlNowStored()}, ?)
        ON CONFLICT(key) DO UPDATE SET value_json=excluded.value_json, updated_at=${sqlNowStored()}, updated_by=excluded.updated_by`
-    ).bind(key, JSON.stringify(next[key]), updatedBy || null).run();
-  }
+    ).bind(key, JSON.stringify(next[key]), updatedBy || null)
+  ));
   invalidateSystemSettingsCache();
   return getSystemSettings(db, { force: true });
 }

@@ -183,17 +183,34 @@ export async function countTableRows(DB: D1Database, table: string, opts?: Backu
   return Number(row?.c || 0);
 }
 
+async function mapWithConcurrency<T, R>(items: T[], concurrency: number, mapper: (item: T, index: number) => Promise<R>) {
+  const output = new Array<R>(items.length);
+  let cursor = 0;
+  const workerCount = Math.max(1, Math.min(Math.trunc(concurrency || 1), items.length || 1));
+  await Promise.all(Array.from({ length: workerCount }, async () => {
+    while (cursor < items.length) {
+      const index = cursor;
+      cursor += 1;
+      output[index] = await mapper(items[index] as T, index);
+    }
+  }));
+  return output;
+}
+
 export async function buildBackupStats(DB: D1Database, tables: string[], opts?: BackupBuildOptions) {
   const stats: Record<string, BackupTableStat> = {};
-  for (const table of tables) {
+  const entries = await mapWithConcurrency(tables, 4, async (table) => {
     const rows = await countTableRows(DB, table, opts);
     const def = TABLE_BY_NAME[table];
-    stats[table] = {
+    return [table, {
       group: def?.group || 'core',
       group_label: groupLabel(def?.group || 'core'),
       label: def?.label || table,
       rows,
-    };
+    } satisfies BackupTableStat] as const;
+  });
+  for (const [table, stat] of entries) {
+    stats[table] = stat;
   }
   return stats;
 }

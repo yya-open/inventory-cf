@@ -10,14 +10,15 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
 
   const query = buildWarningsQuery(new URL(request.url));
   query.warehouse_id = await assertPartsWarehouseAccess(env.DB, user, query.warehouse_id, '预警中心');
-  const rows = timing?.measure
-    ? await timing.measure('warnings_query', () => listWarningsRows(env.DB, query))
-    : await listWarningsRows(env.DB, query);
-  const total = query.fast
-    ? undefined
+  const rowsTask = timing?.measure
+    ? timing.measure('warnings_query', () => listWarningsRows(env.DB, query))
+    : listWarningsRows(env.DB, query);
+  const totalTask = query.fast
+    ? Promise.resolve(undefined)
     : timing?.measure
-      ? await timing.measure('warnings_count', () => countWarningsRows(env.DB, query))
-      : await countWarningsRows(env.DB, query);
+      ? timing.measure('warnings_count', () => countWarningsRows(env.DB, query))
+      : countWarningsRows(env.DB, query);
+  const [rows, total] = await Promise.all([rowsTask, totalTask]);
 
   return Response.json({
     ok: true,

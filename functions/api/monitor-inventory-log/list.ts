@@ -12,14 +12,15 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
   const query = buildMonitorInventoryLogQuery(url, user);
-  const total = query.fast
-    ? null
+  const totalTask = query.fast
+    ? Promise.resolve(null)
     : t?.measure
-      ? await t.measure('count', async () => countMonitorInventoryLogRows(env.DB, query))
-      : await countMonitorInventoryLogRows(env.DB, query);
-  const data = t?.measure
-    ? await t.measure('query', async () => listMonitorInventoryLogRows(env.DB, query))
-    : await listMonitorInventoryLogRows(env.DB, query);
+      ? t.measure('count', async () => countMonitorInventoryLogRows(env.DB, query))
+      : countMonitorInventoryLogRows(env.DB, query);
+  const dataTask = t?.measure
+    ? t.measure('query', async () => listMonitorInventoryLogRows(env.DB, query))
+    : listMonitorInventoryLogRows(env.DB, query);
+  const [total, data] = await Promise.all([totalTask, dataTask]);
 
   return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });
 });

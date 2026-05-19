@@ -79,7 +79,7 @@ export async function batchGetRelatedRecordCounts(db: D1Database, kind: AssetArc
     }, {} as Record<string, number>));
   }
   const chunkSize = 180;
-  for (const { key, table } of config.relationKeys) {
+  await Promise.all(config.relationKeys.map(async ({ key, table }) => {
     for (let index = 0; index < normalized.length; index += chunkSize) {
       const chunk = normalized.slice(index, index + chunkSize);
       const placeholders = chunk.map(() => '?').join(',');
@@ -92,7 +92,7 @@ export async function batchGetRelatedRecordCounts(db: D1Database, kind: AssetArc
         if (target) target[key] = Number(row?.c || 0);
       }
     }
-  }
+  }));
   return map;
 }
 

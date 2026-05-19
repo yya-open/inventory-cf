@@ -10,7 +10,9 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   await ensureMonitorSchemaIfAllowed(env.DB, env, url);
 
   const query = buildMonitorTxQuery(url, user);
-  const total = query.fast ? null : await countMonitorTxRows(env.DB, query);
-  const data = await listMonitorTxRows(env.DB, query);
+  const [total, data] = await Promise.all([
+    query.fast ? Promise.resolve(null) : countMonitorTxRows(env.DB, query),
+    listMonitorTxRows(env.DB, query),
+  ]);
   return Response.json({ ok: true, data, total, page: query.page, pageSize: query.pageSize });
 });

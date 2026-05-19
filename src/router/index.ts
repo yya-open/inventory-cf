@@ -43,8 +43,6 @@ import { ElMessage } from "../utils/el-message";
 import { scheduleOnIdle } from "../utils/idle";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
-import { countMonitorAssets, countPcAssets, listMonitorAssets, listPcAssets } from "../api/assetLedgers";
-import { primePagedListCache } from "../composables/usePagedAssetList";
 
 export const routePagePending = ref(false);
 export const routePageSkeletonVisible = ref(false);
@@ -372,6 +370,10 @@ function readMonitorFiltersForPrewarm() {
 async function prewarmPcListData() {
   const filters = readPcFiltersForPrewarm();
   const key = pcFilterKey(filters);
+  const [{ countPcAssets, listPcAssets }, { primePagedListCache }] = await Promise.all([
+    import("../api/assetLedgers"),
+    import("../composables/usePagedAssetList"),
+  ]);
   const [listResult, total] = await Promise.all([
     listPcAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
     countPcAssets(filters).catch(() => 0),
@@ -386,6 +388,10 @@ async function prewarmPcListData() {
 async function prewarmMonitorListData() {
   const filters = readMonitorFiltersForPrewarm();
   const key = monitorFilterKey(filters);
+  const [{ countMonitorAssets, listMonitorAssets }, { primePagedListCache }] = await Promise.all([
+    import("../api/assetLedgers"),
+    import("../composables/usePagedAssetList"),
+  ]);
   const [listResult, total] = await Promise.all([
     listMonitorAssets(filters, 1, filters.pageSize, true).catch(() => ({ rows: [], total: 0 })),
     countMonitorAssets(filters).catch(() => 0),
@@ -435,12 +441,10 @@ function prewarmPcLedgerData(_authUser: ReturnType<typeof useAuth>["user"], _rou
   if (!path.startsWith('/pc')) {
     if (canPcLedger) {
       prefetchChunk('pc-pc-assets', preloadPcAssets);
-      if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('pc', prewarmPcListData), 4000);
       return;
     }
     if (canMonitorLedger) {
       prefetchChunk('pc-monitor-assets', preloadMonitorAssets);
-      if (canPrewarmData) scheduleOnIdle(() => prewarmWithThrottle('monitor', prewarmMonitorListData), 4000);
     }
     return;
   }
