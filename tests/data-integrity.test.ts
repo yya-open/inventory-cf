@@ -148,4 +148,39 @@ describe('data integrity helpers', () => {
     expect(result.row_checks).toHaveLength(2);
     expect(result.row_checks.every((item) => item.ok)).toBe(true);
   });
+
+  it('uses quick integrity checks when requested', async () => {
+    const db = new FakeDB({
+      quickCheck: [{ quick_check: 'ok' }],
+      foreignKeyCheck: [],
+    }) as any;
+
+    const manifest: BackupManifest = {
+      backup_version: 'inventory-cf-backup-v3',
+      schema_version: 3,
+      exported_at: '2026-04-21T00:00:00.000Z',
+      generated_by: 'test',
+      actor: 'tester',
+      reason: 'unit',
+      filters: null,
+      table_order: ['pc_assets'],
+      table_count: 1,
+      total_rows: 1,
+      tables: {
+        pc_assets: { group: 'pc', group_label: 'pc', label: 'pc_assets', columns: ['id'], rows: 1 },
+      },
+    };
+
+    const result = await buildRestoreVerification(db, {
+      mode: 'merge',
+      manifest,
+      tableOrder: ['pc_assets'],
+      processedRows: 1,
+      totalRows: 1,
+    }, { integrityMode: 'quick' });
+
+    expect(result.ok).toBe(true);
+    expect(result.integrity_mode).toBe('quick');
+    expect(result.integrity.checks.quick_check_ok).toBe(true);
+  });
 });

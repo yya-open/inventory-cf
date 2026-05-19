@@ -368,6 +368,8 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
     let lastTable = cursorTable;
     let lastNextRow = cursorRow;
     const startTime = Date.now();
+    const restoreBatchSize = 200;
+    const cancelCheckInterval = 1000;
 
     const runObj = await env.BACKUP_BUCKET.get(job.file_key);
     if (!runObj?.body) throw new Error('R2 文件读取失败（RESTORE）');
@@ -416,7 +418,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
         sql = buildInsertSql(mode, table, cols);
         batchTable = table;
 
-        if ((processedThisRun % 200) === 0) {
+        if ((processedThisRun % cancelCheckInterval) === 0) {
           const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
           if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
             await flush();
@@ -434,7 +436,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
         processedThisRun += 1;
         lastTable = table;
         lastNextRow = rowIndexInTable + 1;
-        if (batch.length >= 50) await flush();
+        if (batch.length >= restoreBatchSize) await flush();
         if (processedThisRun >= maxRows) break outer;
         if (Date.now() - startTime >= maxMs) break outer;
       }
@@ -469,7 +471,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
           tableOrder: restorableOrder,
           processedRows: processedRowsNew,
           totalRows,
-        });
+        }, { integrityMode: 'quick' });
         integrityStatus = verification.ok ? 'OK' : 'WARN';
         const verificationSummary = summarizeRestoreVerification(verification);
         await env.DB.prepare(`UPDATE restore_job SET status='DONE', integrity_status=?, verification_json=?, completed_at=${sqlNowStored()}, current_table=NULL, cursor_json='{"table":"","row":0}', updated_at=${sqlNowStored()}, last_error=COALESCE(last_error, ?) WHERE id=?`)

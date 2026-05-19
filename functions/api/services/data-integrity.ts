@@ -22,6 +22,53 @@ export type DataIntegritySummary = {
   };
 };
 
+async function runQuickDatabaseChecks(db: D1Database, sampleLimit: number) {
+  const issues: DataIntegrityIssue[] = [];
+
+  let foreignKeyOk = true;
+  try {
+    const rows = await queryRows(db, 'PRAGMA foreign_key_check');
+    if (rows.length) {
+      foreignKeyOk = false;
+      issues.push({
+        key: 'foreign_key_check',
+        severity: 'error',
+        table: String(rows[0]?.table || ''),
+        count: rows.length,
+        message: 'foreign_key_check returned errors; foreign key inconsistency exists',
+        sample: rows.slice(0, sampleLimit),
+      });
+    }
+  } catch {
+    foreignKeyOk = false;
+    issues.push({ key: 'foreign_key_check_failed', severity: 'warn', count: 1, message: 'Unable to run foreign_key_check', sample: [] });
+  }
+
+  let quickCheckOk = true;
+  try {
+    const rows = await queryRows(db, 'PRAGMA quick_check');
+    const first = String(rows[0]?.quick_check || rows[0]?.integrity_check || rows[0]?.result || '').trim().toLowerCase();
+    if (rows.length && first && first !== 'ok') {
+      quickCheckOk = false;
+      issues.push({ key: 'quick_check', severity: 'error', count: rows.length, message: 'quick_check returned non-ok', sample: rows.slice(0, sampleLimit) });
+    }
+  } catch {
+    quickCheckOk = false;
+    issues.push({ key: 'quick_check_failed', severity: 'warn', count: 1, message: 'Unable to run quick_check', sample: [] });
+  }
+
+  return {
+    ok: issues.every((issue) => issue.severity !== 'error'),
+    checked_at: new Date().toISOString(),
+    issue_count: issues.length,
+    issues,
+    checks: {
+      foreign_key_ok: foreignKeyOk,
+      quick_check_ok: quickCheckOk,
+    },
+  } satisfies DataIntegritySummary;
+}
+
 async function queryRows(db: D1Database, sql: string, binds: any[] = []) {
   try {
     const result = await db.prepare(sql).bind(...binds).all<any>();
@@ -229,7 +276,7 @@ export async function buildRestoreVerification(db: D1Database, input: {
   tableOrder: string[];
   processedRows: number;
   totalRows: number;
-}) {
+}, options?: { integrityMode?: 'full' | 'quick' }) {
   const rowChecks: Array<{ table: string; expected_rows: number | null; actual_rows: number | null; policy: 'exact' | 'processed_only'; ok: boolean; }> = [];
 
   if (input.mode === 'replace' && input.manifest) {
@@ -254,7 +301,9 @@ export async function buildRestoreVerification(db: D1Database, input: {
     });
   }
 
-  const integrity = await runDataIntegrityChecks(db, { sampleLimit: 5 });
+  const integrity = options?.integrityMode === 'quick'
+    ? await runQuickDatabaseChecks(db, 5)
+    : await runDataIntegrityChecks(db, { sampleLimit: 5 });
   const rowChecksOk = rowChecks.every((item) => item.ok);
   return {
     ok: rowChecksOk && integrity.ok,
@@ -264,5 +313,6 @@ export async function buildRestoreVerification(db: D1Database, input: {
     total_rows: Number(input.totalRows || 0),
     row_checks: rowChecks,
     integrity,
+    integrity_mode: options?.integrityMode || 'full',
   };
 }
