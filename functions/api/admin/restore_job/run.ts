@@ -2,9 +2,10 @@ import { requireAuth, json } from '../../../_auth';
 import { withErrorHandling } from '../../_error';
 import { apiFail } from '../../_response';
 import { logAudit } from '../../_audit';
-import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, readBackupJsonFromStream, getBackupTablesObject } from './_util';
+import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, iterBackupRowsFromStream, iterBackupTableKeysFromStream, readBackupEnvelopeMetadataFromStream } from './_util';
 import { createBackupJsonStream } from '../_backup_helpers';
-import { validateBackupEnvelope } from '../_backup_integrity';
+import { chainSha256, sha256JsonHex, type BackupIntegrity, type BackupManifest, type BackupValidationIssue } from '../_backup_integrity';
+import { BACKUP_VERSION, LEGACY_BACKUP_VERSIONS } from '../_backup_schema';
 import { finalizeRestoreState } from '../_restore_finalize';
 import { buildRestoreVerification } from '../../services/data-integrity';
 import { sqlNowStored } from '../../_time';
@@ -43,6 +44,188 @@ function summarizeRestoreVerification(verification: any) {
   if (rowFailures > 0) parts.push(`行数核对失败 ${rowFailures} 项`);
   if (integrityIssues > 0) parts.push(`数据一致性检查发现 ${integrityIssues} 项`);
   return `恢复后校验未完全通过：${parts.join('，')}`;
+}
+
+function getPlannedRowCount(perTable: any, table: string) {
+  const n = Number(perTable?.[table] || 0);
+  return Number.isFinite(n) && n > 0 ? n : 0;
+}
+
+function hasRemainingRowsAfterCursor(order: string[], perTable: any, cursor: { table?: string; row?: number }) {
+  const cursorTable = String(cursor?.table || '');
+  const cursorRow = Math.max(0, Number(cursor?.row || 0));
+  const cursorIndex = cursorTable ? order.indexOf(cursorTable) : -1;
+  for (let i = 0; i < order.length; i += 1) {
+    const table = order[i];
+    const total = getPlannedRowCount(perTable, table);
+    if (total <= 0) continue;
+    if (cursorIndex >= 0) {
+      if (i < cursorIndex) continue;
+      if (i === cursorIndex) {
+        if (cursorRow < total) return true;
+        continue;
+      }
+    }
+    return true;
+  }
+  return false;
+}
+
+function bytesToHex(bytes: Uint8Array) {
+  return Array.from(bytes).map((b) => b.toString(16).padStart(2, '0')).join('');
+}
+
+function isSupportedBackupVersion(version: string | null | undefined) {
+  const value = String(version || '').trim();
+  return value === BACKUP_VERSION || LEGACY_BACKUP_VERSIONS.includes(value as any);
+}
+
+function normalizeMetadataObject<T>(value: any): T | null {
+  return value && typeof value === 'object' && !Array.isArray(value) ? value as T : null;
+}
+
+async function collectBackupTableKeysFromObject(env: Env, key: string) {
+  const obj = await env.BACKUP_BUCKET.get(key);
+  if (!obj?.body) throw new Error('R2 backup file is missing while scanning table keys');
+  const sniff = await sniffGzipFromStream(obj.body);
+  const keys: string[] = [];
+  for await (const table of iterBackupTableKeysFromStream(sniff.stream, sniff.gzip)) {
+    keys.push(String(table));
+  }
+  return keys;
+}
+
+async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint: string[]) {
+  const obj = await env.BACKUP_BUCKET.get(key);
+  if (!obj?.body) throw new Error('R2 backup file is missing while scanning rows');
+  const sniff = await sniffGzipFromStream(obj.body);
+  const seenOrder: string[] = [];
+  const seen = new Set<string>();
+  const rowCounts: Record<string, number> = {};
+  const rowChainStates: Record<string, Uint8Array | null> = {};
+
+  for await (const item of iterBackupRowsFromStream(sniff.stream, sniff.gzip)) {
+    const table = String(item?.table || '');
+    if (!table) continue;
+    if (!seen.has(table)) {
+      seen.add(table);
+      seenOrder.push(table);
+    }
+    const rowText = String(item?.rowText || '{}');
+    let canonicalRowText = '{}';
+    try {
+      canonicalRowText = JSON.stringify(JSON.parse(rowText));
+    } catch {
+      throw new Error(`Invalid backup row JSON in ${table}`);
+    }
+    rowCounts[table] = (rowCounts[table] || 0) + 1;
+    rowChainStates[table] = await chainSha256(rowChainStates[table] || null, [canonicalRowText]);
+  }
+
+  const tableOrder = tableOrderHint.length ? tableOrderHint : seenOrder;
+  const tables: BackupIntegrity['tables'] = {};
+  let tableChainState: Uint8Array | null = null;
+  let totalRows = 0;
+  for (const table of tableOrder) {
+    const rows = Number(rowCounts[table] || 0);
+    totalRows += rows;
+    const rowChainHex = bytesToHex(rowChainStates[table] || await chainSha256(null, ['']));
+    tables[table] = { rows, row_chain_sha256: rowChainHex };
+    tableChainState = await chainSha256(tableChainState, [table, ':', String(rows), ':', rowChainHex]);
+  }
+
+  return {
+    tableOrder,
+    rowCounts,
+    integrityCore: {
+      total_rows: totalRows,
+      table_count: tableOrder.length,
+      tables,
+      table_chain_sha256: bytesToHex(tableChainState || await chainSha256(null, [''])),
+    },
+  };
+}
+
+async function validateScannedBackupEnvelope(metadata: Record<string, any>, scan: Awaited<ReturnType<typeof scanBackupRowsForIntegrity>>) {
+  const issues: BackupValidationIssue[] = [];
+  const version = String(metadata?.version || metadata?.meta?.backup_version || '').trim() || null;
+  if (!version) {
+    issues.push({ severity: 'error', type: 'backup_version_missing', message: 'Backup file is missing version' });
+  } else if (!isSupportedBackupVersion(version)) {
+    issues.push({ severity: 'error', type: 'backup_version_unsupported', message: `Unsupported backup version: ${version}` });
+  }
+
+  const manifest = normalizeMetadataObject<BackupManifest>(metadata?.manifest);
+  const integrity = normalizeMetadataObject<BackupIntegrity>(metadata?.integrity);
+  const tableOrder = Array.isArray(manifest?.table_order) && manifest.table_order.length ? manifest.table_order : scan.tableOrder;
+  const actualRowCounts = Object.fromEntries(tableOrder.map((table) => [table, Number(scan.rowCounts[table] || 0)]));
+
+  if (version === BACKUP_VERSION) {
+    if (!manifest) issues.push({ severity: 'error', type: 'backup_manifest_missing', message: 'v3 backup is missing manifest' });
+    if (!integrity) issues.push({ severity: 'error', type: 'backup_integrity_missing', message: 'v3 backup is missing integrity' });
+  } else if (!manifest) {
+    issues.push({ severity: 'info', type: 'legacy_manifest_missing', message: 'Legacy backup has no manifest; row hash validation will be limited' });
+  }
+
+  if (manifest) {
+    if (!Array.isArray(manifest.table_order) || manifest.table_order.length === 0) {
+      issues.push({ severity: 'error', type: 'manifest_table_order_invalid', message: 'manifest.table_order is invalid' });
+    }
+    for (const table of tableOrder) {
+      const expected = Number(manifest.tables?.[table]?.rows || 0);
+      const actual = Number(actualRowCounts[table] || 0);
+      if (expected !== actual) {
+        issues.push({ severity: 'error', type: 'manifest_row_count_mismatch', table, message: `Table ${table} manifest rows=${expected}, actual rows=${actual}` });
+      }
+    }
+  }
+
+  let recomputedIntegrity: BackupIntegrity | null = null;
+  if (integrity) {
+    recomputedIntegrity = {
+      manifest_sha256: manifest ? await sha256JsonHex(manifest) : '',
+      ...scan.integrityCore,
+    };
+    if (manifest && integrity.manifest_sha256 !== recomputedIntegrity.manifest_sha256) {
+      issues.push({ severity: 'error', type: 'manifest_sha256_mismatch', message: 'manifest_sha256 validation failed' });
+    }
+    if (Number(integrity.total_rows || 0) !== Number(recomputedIntegrity.total_rows || 0)) {
+      issues.push({ severity: 'error', type: 'integrity_total_rows_mismatch', message: `integrity.total_rows=${Number(integrity.total_rows || 0)}, actual=${Number(recomputedIntegrity.total_rows || 0)}` });
+    }
+    if (Number(integrity.table_count || 0) !== Number(recomputedIntegrity.table_count || 0)) {
+      issues.push({ severity: 'error', type: 'integrity_table_count_mismatch', message: `integrity.table_count=${Number(integrity.table_count || 0)}, actual=${Number(recomputedIntegrity.table_count || 0)}` });
+    }
+    if (String(integrity.table_chain_sha256 || '') !== String(recomputedIntegrity.table_chain_sha256 || '')) {
+      issues.push({ severity: 'error', type: 'table_chain_sha256_mismatch', message: 'table_chain_sha256 validation failed' });
+    }
+    for (const table of tableOrder) {
+      const expected = integrity.tables?.[table];
+      const actual = recomputedIntegrity.tables?.[table];
+      if (!expected) {
+        issues.push({ severity: 'error', type: 'integrity_table_missing', table, message: `integrity.tables is missing ${table}` });
+        continue;
+      }
+      if (Number(expected.rows || 0) !== Number(actual?.rows || 0)) {
+        issues.push({ severity: 'error', type: 'integrity_table_rows_mismatch', table, message: `Table ${table} integrity rows=${Number(expected.rows || 0)}, actual=${Number(actual?.rows || 0)}` });
+      }
+      if (String(expected.row_chain_sha256 || '') !== String(actual?.row_chain_sha256 || '')) {
+        issues.push({ severity: 'error', type: 'integrity_table_sha256_mismatch', table, message: `Table ${table} row SHA-256 validation failed` });
+      }
+    }
+  } else if (version && LEGACY_BACKUP_VERSIONS.includes(version as any)) {
+    issues.push({ severity: 'info', type: 'legacy_integrity_missing', message: 'Legacy backup has no integrity block; SHA-256 validation is skipped' });
+  }
+
+  return {
+    ok: issues.every((issue) => issue.severity !== 'error'),
+    version,
+    issues,
+    manifest,
+    integrity,
+    tableOrder,
+    actualRowCounts,
+    recomputedIntegrity,
+  };
 }
 
 export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitUntil }) => {
@@ -94,8 +277,14 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       let total = 0;
 
       const sniffScan = await sniffGzipFromStream(obj.body);
-      const backup = await readBackupJsonFromStream(sniffScan.stream, sniffScan.gzip);
-      const validation = await validateBackupEnvelope(backup);
+      const metadata = await readBackupEnvelopeMetadataFromStream(sniffScan.stream, sniffScan.gzip);
+      const metadataManifest = normalizeMetadataObject<BackupManifest>(metadata?.manifest);
+      let tableOrderHint = Array.isArray(metadataManifest?.table_order) ? metadataManifest.table_order.map((t) => String(t)) : [];
+      if (!tableOrderHint.length) {
+        tableOrderHint = await collectBackupTableKeysFromObject(env, job.file_key);
+      }
+      const rowScan = await scanBackupRowsForIntegrity(env, job.file_key, tableOrderHint);
+      const validation = await validateScannedBackupEnvelope(metadata, rowScan);
       const validationJson = {
         ok: validation.ok,
         version: validation.version,
@@ -113,11 +302,14 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
           return apiFail(message, { status: 400, errorCode: 'BACKUP_VALIDATE_FAILED' });
         }
 
-      const tables = getBackupTablesObject(backup);
-      for (const [t, rows] of Object.entries(tables)) {
+      for (const t of rowScan.tableOrder) {
         if (!TABLE_COLUMNS[t]) continue;
         perTable.__present__[t] = true;
-        const n = Array.isArray(rows) ? rows.length : 0;
+      }
+      for (const [t, rowCount] of Object.entries(rowScan.rowCounts)) {
+        if (!TABLE_COLUMNS[t]) continue;
+        perTable.__present__[t] = true;
+        const n = Number(rowCount || 0);
         counts[t] = n;
         total += n;
       }
@@ -141,9 +333,10 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
     const perTable = parseJsonSafe(job.per_table_json || '{}', { __order__: [] as string[], __present__: {} as Record<string, boolean>, __processed__: {} as Record<string, number>, __inserted__: {} as Record<string, number> });
     const validationJson = parseJsonSafe(job.validation_json || '{}', {} as any);
     const order: string[] = Array.isArray(perTable.__order__) ? perTable.__order__ : [];
+    const restorableOrder = order.filter((t) => !!TABLE_COLUMNS[t] && t !== 'restore_job');
     const cursorTable = String(cursor.table || '');
     const cursorRow = Number(cursor.row || 0);
-    const cursorTableIndex = cursorTable ? order.indexOf(cursorTable) : -1;
+    const cursorTableIndex = cursorTable ? restorableOrder.indexOf(cursorTable) : -1;
 
     let processedThisRun = 0;
     const processedByTable: Record<string, number> = {};
@@ -179,40 +372,47 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       };
 
       const sniff2 = await sniffGzipFromStream(runObj.body);
-      const backup = await readBackupJsonFromStream(sniff2.stream, sniff2.gzip);
-      const tables = getBackupTablesObject(backup);
+      const seenByTable: Record<string, number> = {};
       outer:
-      for (const table of order) {
+      for await (const item of iterBackupRowsFromStream(sniff2.stream, sniff2.gzip)) {
+        const table = String(item?.table || '');
         if (!TABLE_COLUMNS[table] || table === 'restore_job') continue;
-        const rows = Array.isArray((tables as any)[table]) ? (tables as any)[table] : [];
-        curTableIndex = order.indexOf(table);
+        curTableIndex = restorableOrder.indexOf(table);
+        if (curTableIndex < 0) continue;
+
+        rowIndexInTable = seenByTable[table] || 0;
+        seenByTable[table] = rowIndexInTable + 1;
+        if (cursorTableIndex >= 0) {
+          if (curTableIndex < cursorTableIndex) continue;
+          if (curTableIndex === cursorTableIndex && rowIndexInTable < cursorRow) continue;
+        }
+
+        if (batch.length && batchTable && batchTable !== table) await flush();
         cols = TABLE_COLUMNS[table];
         sql = buildInsertSql(mode, table, cols);
         batchTable = table;
-        for (let idx = 0; idx < rows.length; idx++) {
-          rowIndexInTable = idx;
-          if (cursorTableIndex >= 0) {
-            if (curTableIndex < cursorTableIndex) continue;
-            if (curTableIndex === cursorTableIndex && rowIndexInTable < cursorRow) continue;
+
+        if ((processedThisRun % 200) === 0) {
+          const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
+          if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
+            await flush();
+            return json(true, { id: jobId, status: s.status, integrity_status: job.integrity_status || 'VALIDATED', more: false });
           }
-          if ((processedThisRun % 200) === 0) {
-            const s = await env.DB.prepare(`SELECT status FROM restore_job WHERE id=?`).bind(jobId).first<any>();
-            if (s?.status === 'PAUSED' || s?.status === 'CANCELED') {
-              await flush();
-              return json(true, { id: jobId, status: s.status, integrity_status: job.integrity_status || 'VALIDATED', more: false });
-            }
-          }
-          const objRow = rows[idx] as Record<string, any>;
-          batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
-          batchRows += 1;
-          processedThisRun += 1;
-          lastTable = table;
-          lastNextRow = rowIndexInTable + 1;
-          if (batch.length >= 50) await flush();
-          if (processedThisRun >= maxRows) break outer;
-          if (Date.now() - startTime >= maxMs) break outer;
         }
-        await flush();
+        let objRow: Record<string, any>;
+        try {
+          objRow = JSON.parse(String(item?.rowText || '{}'));
+        } catch {
+          throw new Error(`Invalid backup row JSON in ${table} at row ${rowIndexInTable + 1}`);
+        }
+        batch.push(env.DB.prepare(sql).bind(...pick(objRow, cols!)));
+        batchRows += 1;
+        processedThisRun += 1;
+        lastTable = table;
+        lastNextRow = rowIndexInTable + 1;
+        if (batch.length >= 50) await flush();
+        if (processedThisRun >= maxRows) break outer;
+        if (Date.now() - startTime >= maxMs) break outer;
       }
       await flush();
 
@@ -228,21 +428,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       perTable.__inserted__ = insertedMap;
 
       const hitBudgetLimit = processedThisRun >= maxRows || (Date.now() - startTime) >= maxMs;
-      const restorableOrder = order.filter((t) => !!TABLE_COLUMNS[t] && t !== 'restore_job');
-      let hasMoreRows = false;
-      const nextIndex = nextCursor.table ? restorableOrder.indexOf(nextCursor.table) : -1;
-      for (let i = 0; i < restorableOrder.length; i++) {
-        const table = restorableOrder[i];
-        const rows = Array.isArray((tables as any)[table]) ? (tables as any)[table] : [];
-        if (nextIndex >= 0) {
-          if (i < nextIndex) continue;
-          if (i === nextIndex) {
-            if (Number(nextCursor.row || 0) < rows.length) { hasMoreRows = true; break; }
-            continue;
-          }
-        }
-        if (rows.length > 0) { hasMoreRows = true; break; }
-      }
+      const hasMoreRows = hasRemainingRowsAfterCursor(restorableOrder, perTable, nextCursor);
       const done = !hasMoreRows && !hitBudgetLimit && Number(job.error_count || 0) === 0 && (totalRows > 0 ? processedRowsNew >= totalRows : true);
       const currentTableForSave = done ? null : (nextCursor.table || null);
       const cursorForSave = done ? { table: '', row: 0 } : nextCursor;

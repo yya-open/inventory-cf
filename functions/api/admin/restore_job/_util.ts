@@ -292,25 +292,6 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
 
 
 
-export async function readBackupJsonFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
-  let s: ReadableStream<Uint8Array> = stream;
-  if (gzip) {
-    if (typeof (globalThis as any).DecompressionStream === "undefined") {
-      throw new Error("当前环境不支持 gzip 解压，请上传 .json 备份或在支持 DecompressionStream 的环境中操作");
-    }
-    s = s.pipeThrough(gzipPipe());
-  }
-  const text = await new Response(s).text();
-  return JSON.parse(text);
-}
-
-export function getBackupTablesObject(backup: any): Record<string, any[]> {
-  if (backup && typeof backup === 'object') {
-    const tables = (backup as any).tables || (backup as any).data || {};
-    if (tables && typeof tables === 'object') return tables as Record<string, any[]>;
-  }
-  return {};
-}
 export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
   let s: ReadableStream<Uint8Array> = stream;
   if (gzip && typeof (globalThis as any).DecompressionStream !== "undefined") {
@@ -327,6 +308,163 @@ export async function* textChunksFromStream(stream: ReadableStream<Uint8Array>, 
   } finally {
     reader.releaseLock();
   }
+}
+
+export async function readBackupEnvelopeMetadataFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {
+  const wanted = new Set(['version', 'exported_at', 'meta', 'manifest', 'integrity']);
+  const output: Record<string, any> = {};
+  let state: 'seek_object' | 'seek_key' | 'read_key' | 'seek_colon' | 'seek_value' | 'read_value' = 'seek_object';
+  let keyRaw = '';
+  let currentKey = '';
+  let valueRaw = '';
+  let captureValue = false;
+  let valueMode: 'string' | 'object' | 'array' | 'primitive' = 'primitive';
+  let depth = 0;
+  let inString = false;
+  let escape = false;
+
+  const startValue = (ch: string) => {
+    captureValue = wanted.has(currentKey);
+    valueRaw = captureValue ? ch : '';
+    escape = false;
+    if (ch === '"') {
+      valueMode = 'string';
+      inString = true;
+      depth = 0;
+    } else if (ch === '{') {
+      valueMode = 'object';
+      inString = false;
+      depth = 1;
+    } else if (ch === '[') {
+      valueMode = 'array';
+      inString = false;
+      depth = 1;
+    } else {
+      valueMode = 'primitive';
+      inString = false;
+      depth = 0;
+    }
+    state = 'read_value';
+  };
+
+  const storeValue = () => {
+    if (!captureValue) return;
+    try {
+      output[currentKey] = JSON.parse(valueRaw.trim());
+    } catch {
+      throw new Error(`Invalid backup metadata JSON: ${currentKey}`);
+    }
+  };
+
+  for await (const chunk of textChunksFromStream(stream, gzip)) {
+    for (let i = 0; i < chunk.length; i += 1) {
+      const ch = chunk[i];
+
+      if (state === 'seek_object') {
+        if (ch === '{') state = 'seek_key';
+        continue;
+      }
+
+      if (state === 'seek_key') {
+        if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t' || ch === ',') continue;
+        if (ch === '}') return output;
+        if (ch === '"') {
+          keyRaw = '"';
+          escape = false;
+          state = 'read_key';
+        }
+        continue;
+      }
+
+      if (state === 'read_key') {
+        keyRaw += ch;
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (ch === '\\') {
+          escape = true;
+          continue;
+        }
+        if (ch === '"') {
+          currentKey = String(JSON.parse(keyRaw));
+          state = 'seek_colon';
+        }
+        continue;
+      }
+
+      if (state === 'seek_colon') {
+        if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') continue;
+        if (ch === ':') state = 'seek_value';
+        continue;
+      }
+
+      if (state === 'seek_value') {
+        if (ch === ' ' || ch === '\n' || ch === '\r' || ch === '\t') continue;
+        startValue(ch);
+        continue;
+      }
+
+      if (state === 'read_value') {
+        if (valueMode === 'primitive') {
+          if (ch === ',' || ch === '}') {
+            storeValue();
+            state = ch === '}' ? 'seek_object' : 'seek_key';
+            if (ch === '}') return output;
+          } else if (captureValue) {
+            valueRaw += ch;
+          }
+          continue;
+        }
+
+        if (captureValue) valueRaw += ch;
+
+        if (valueMode === 'string') {
+          if (escape) {
+            escape = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escape = true;
+            continue;
+          }
+          if (ch === '"') {
+            storeValue();
+            state = 'seek_key';
+          }
+          continue;
+        }
+
+        if (inString) {
+          if (escape) {
+            escape = false;
+            continue;
+          }
+          if (ch === '\\') {
+            escape = true;
+            continue;
+          }
+          if (ch === '"') inString = false;
+          continue;
+        }
+
+        if (ch === '"') {
+          inString = true;
+          continue;
+        }
+        if (ch === '{' || ch === '[') depth += 1;
+        if (ch === '}' || ch === ']') {
+          depth -= 1;
+          if (depth === 0) {
+            storeValue();
+            state = 'seek_key';
+          }
+        }
+      }
+    }
+  }
+
+  return output;
 }
 
 export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Array>, gzip?: boolean) {

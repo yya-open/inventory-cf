@@ -9,6 +9,8 @@ import { validateBackupEnvelope } from './_backup_integrity';
 type Severity = 'error' | 'warn' | 'info';
 type Issue = { severity: Severity; type: string; table?: string; column?: string; message: string };
 
+const INLINE_RESTORE_VALIDATE_MAX_BYTES = 20 * 1024 * 1024;
+
 function sampleRowColumns(rows: any[]) {
   const s = new Set<string>();
   for (const row of rows.slice(0, 20)) {
@@ -25,6 +27,9 @@ async function readBackup(request: Request) {
     const form = await request.formData();
     const file = form.get('file');
     if (!(file instanceof File)) throw new Error('缺少 file');
+    if (Number(file.size || 0) > INLINE_RESTORE_VALIDATE_MAX_BYTES) {
+      throw new Error(`Backup validation upload is limited to ${INLINE_RESTORE_VALIDATE_MAX_BYTES} bytes; use the staged restore job for large backups.`);
+    }
     const lower = (file.name || '').toLowerCase();
     let text = '';
     if (lower.endsWith('.gz') || lower.endsWith('.gzip')) {

@@ -13,7 +13,7 @@ import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 import * as XLSX from 'xlsx';
-import { buildBackupFilename, buildBackupPayload, createBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
+import { buildBackupFilename, buildBackupPayload, buildBackupStats, createBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
 import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
@@ -378,6 +378,9 @@ type AsyncJobResultBucket = {
   delete?: (key: string) => Promise<any>;
 } | null | undefined;
 
+const INLINE_BACKUP_EXPORT_ROW_LIMIT = 5000;
+const INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT = 20000;
+
 function toB64FilenameSafe(value: any) {
   return String(value || '').replace(/[\/:*?"<>|]/g, '_').trim() || '盘点结果';
 }
@@ -463,10 +466,28 @@ function appendWorkbookSheet(wb: XLSX.WorkBook, sheetName: string, rows: any[], 
   XLSX.utils.book_append_sheet(wb, ws, safeName);
 }
 
-async function listPcBatchAssets(db: D1Database, batchId: number, inventoryStatus?: string | null) {
-  const rows: any[] = [];
+function createWorkbookSheet(wb: XLSX.WorkBook, sheetName: string, headers: WorkbookHeader[]) {
+  const safeName = String(sheetName || 'Sheet').slice(0, 31) || 'Sheet';
+  const ws = XLSX.utils.aoa_to_sheet([headers.map((header) => header.title)]);
+  XLSX.utils.book_append_sheet(wb, ws, safeName);
+  return ws;
+}
+
+function appendWorkbookSheetRows(ws: XLSX.WorkSheet, rows: any[], headers: WorkbookHeader[]) {
+  if (!rows.length) return;
+  const data = rows.map((row) => {
+    const mapped: Record<string, any> = {};
+    headers.forEach((header) => {
+      mapped[header.title] = row?.[header.key] ?? '';
+    });
+    return mapped;
+  });
+  XLSX.utils.sheet_add_json(ws, data, { header: headers.map((header) => header.title), skipHeader: true, origin: -1 });
+}
+
+async function forEachPcBatchAssetPage(db: D1Database, batchId: number, inventoryStatus: string | null | undefined, onPage: (rows: any[]) => Promise<void> | void) {
   const pageSize = 500;
-  let offset = 0;
+  let lastId = 0;
   const normalizedStatus = String(inventoryStatus || '').trim().toUpperCase();
   while (true) {
     const binds: any[] = [Number(batchId)];
@@ -475,7 +496,7 @@ async function listPcBatchAssets(db: D1Database, batchId: number, inventoryStatu
       statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
       binds.push(normalizedStatus);
     }
-    binds.push(pageSize, offset);
+    binds.push(lastId, pageSize);
     const result = await db.prepare(
       `SELECT
          a.*,
@@ -488,21 +509,20 @@ async function listPcBatchAssets(db: D1Database, batchId: number, inventoryStatu
        LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id
       WHERE a.inventory_batch_id=?
         AND COALESCE(a.archived, 0)=0${statusSql}
+        AND a.id>?
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?`
+      LIMIT ?`
     ).bind(...binds).all<any>();
     const chunk = result.results || [];
-    rows.push(...chunk);
+    if (chunk.length) await onPage(chunk);
     if (chunk.length < pageSize) break;
-    offset += pageSize;
+    lastId = Number(chunk[chunk.length - 1]?.id || lastId);
   }
-  return rows;
 }
 
-async function listMonitorBatchAssets(db: D1Database, batchId: number, inventoryStatus?: string | null) {
-  const rows: any[] = [];
+async function forEachMonitorBatchAssetPage(db: D1Database, batchId: number, inventoryStatus: string | null | undefined, onPage: (rows: any[]) => Promise<void> | void) {
   const pageSize = 500;
-  let offset = 0;
+  let lastId = 0;
   const normalizedStatus = String(inventoryStatus || '').trim().toUpperCase();
   while (true) {
     const binds: any[] = [Number(batchId)];
@@ -511,7 +531,7 @@ async function listMonitorBatchAssets(db: D1Database, batchId: number, inventory
       statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
       binds.push(normalizedStatus);
     }
-    binds.push(pageSize, offset);
+    binds.push(lastId, pageSize);
     const result = await db.prepare(
       `SELECT
          a.*,
@@ -522,20 +542,20 @@ async function listMonitorBatchAssets(db: D1Database, batchId: number, inventory
        LEFT JOIN pc_locations p ON p.id = l.parent_id
       WHERE a.inventory_batch_id=?
         AND COALESCE(a.archived, 0)=0${statusSql}
+        AND a.id>?
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?`
+      LIMIT ?`
     ).bind(...binds).all<any>();
     const chunk = result.results || [];
-    rows.push(...chunk);
+    if (chunk.length) await onPage(chunk);
     if (chunk.length < pageSize) break;
-    offset += pageSize;
+    lastId = Number(chunk[chunk.length - 1]?.id || lastId);
   }
-  return rows;
 }
 
-function mapPcBatchWorkbookRows(rows: any[]) {
+function mapPcBatchWorkbookRows(rows: any[], startSeq = 0) {
   return rows.map((row, index) => ({
-    seq: index + 1,
+    seq: startSeq + index + 1,
     brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
     serial_no: row.serial_no || '-',
     status: assetStatusText(row.status),
@@ -551,9 +571,9 @@ function mapPcBatchWorkbookRows(rows: any[]) {
   }));
 }
 
-function mapMonitorBatchWorkbookRows(rows: any[]) {
+function mapMonitorBatchWorkbookRows(rows: any[], startSeq = 0) {
   return rows.map((row, index) => ({
-    seq: index + 1,
+    seq: startSeq + index + 1,
     asset_code: row.asset_code || '-',
     brand_model: [row.brand, row.model].filter(Boolean).join(' · ') || '-',
     sn: row.sn || '-',
@@ -569,6 +589,42 @@ function mapMonitorBatchWorkbookRows(rows: any[]) {
   }));
 }
 
+async function countInventoryBatchRows(db: D1Database, kind: AssetInventoryKind, batchId: number) {
+  const table = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
+  const result = await db.prepare(
+    `SELECT COALESCE(inventory_status, 'UNCHECKED') AS status, COUNT(*) AS c
+       FROM ${table}
+      WHERE inventory_batch_id=? AND COALESCE(archived, 0)=0
+      GROUP BY COALESCE(inventory_status, 'UNCHECKED')`
+  ).bind(batchId).all<any>();
+  const counts: Record<string, number> = { CHECKED_OK: 0, UNCHECKED: 0, CHECKED_ISSUE: 0 };
+  for (const row of result.results || []) {
+    const status = String(row?.status || 'UNCHECKED').trim().toUpperCase();
+    counts[status] = Number(row?.c || 0);
+  }
+  return {
+    checked: Number(counts.CHECKED_OK || 0),
+    unchecked: Number(counts.UNCHECKED || 0),
+    issue: Number(counts.CHECKED_ISSUE || 0),
+    total: Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0),
+  };
+}
+
+async function appendInventoryStatusSheet(wb: XLSX.WorkBook, db: D1Database, kind: AssetInventoryKind, batchId: number, status: string, sheetName: string, headers: WorkbookHeader[]) {
+  const ws = createWorkbookSheet(wb, sheetName, headers);
+  let written = 0;
+  const appendPage = async (rows: any[]) => {
+    const mapped = kind === 'pc'
+      ? mapPcBatchWorkbookRows(rows, written)
+      : mapMonitorBatchWorkbookRows(rows, written);
+    appendWorkbookSheetRows(ws, mapped, headers);
+    written += rows.length;
+  };
+  if (kind === 'pc') await forEachPcBatchAssetPage(db, batchId, status, appendPage);
+  else await forEachMonitorBatchAssetPage(db, batchId, status, appendPage);
+  return written;
+}
+
 async function buildInventoryBatchSnapshotWorkbook(db: D1Database, requestJson: any): Promise<AsyncJobBuiltResult> {
   const kind = String(requestJson?.kind || '').trim().toLowerCase() as AssetInventoryKind;
   if (kind !== 'pc' && kind !== 'monitor') throw new Error('盘点快照任务 kind 无效');
@@ -576,18 +632,19 @@ async function buildInventoryBatchSnapshotWorkbook(db: D1Database, requestJson: 
   if (!Number.isFinite(batchId) || batchId <= 0) throw new Error('盘点快照任务缺少 batch_id');
   const batch = await db.prepare(`SELECT * FROM asset_inventory_batch WHERE id=? AND kind=? LIMIT 1`).bind(batchId, kind).first<any>();
   if (!batch?.id) throw new Error('盘点批次不存在');
-  const checkedRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'CHECKED_OK') : await listMonitorBatchAssets(db, batchId, 'CHECKED_OK');
-  const uncheckedRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'UNCHECKED') : await listMonitorBatchAssets(db, batchId, 'UNCHECKED');
-  const issueRows = kind === 'pc' ? await listPcBatchAssets(db, batchId, 'CHECKED_ISSUE') : await listMonitorBatchAssets(db, batchId, 'CHECKED_ISSUE');
+  const counts = await countInventoryBatchRows(db, kind, batchId);
+  if (counts.total > INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT) {
+    throw new Error(`Inventory snapshot export is limited to ${INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT} rows per batch.`);
+  }
   const summaryRows = [
     { 项目: '盘点批次', 内容: batch.name || '-' },
     { 项目: '开始时间', 内容: batch.started_at || '-' },
     { 项目: '结束时间', 内容: batch.closed_at || '-' },
     { 项目: '导出时间', 内容: formatBeijingDateTimeText(new Date().toISOString()) },
-    { 项目: '已盘', 内容: checkedRows.length },
-    { 项目: '未盘', 内容: uncheckedRows.length },
-    { 项目: '异常', 内容: issueRows.length },
-    { 项目: '设备总数', 内容: checkedRows.length + uncheckedRows.length + issueRows.length },
+    { 项目: '已盘', 内容: counts.checked },
+    { 项目: '未盘', 内容: counts.unchecked },
+    { 项目: '异常', 内容: counts.issue },
+    { 项目: '设备总数', 内容: counts.total },
   ];
   const headers = kind === 'pc'
     ? [
@@ -620,21 +677,18 @@ async function buildInventoryBatchSnapshotWorkbook(db: D1Database, requestJson: 
         { key: 'department', title: '部门' },
         { key: 'remark', title: '备注' },
       ];
-  const mappedCheckedRows = kind === 'pc' ? mapPcBatchWorkbookRows(checkedRows) : mapMonitorBatchWorkbookRows(checkedRows);
-  const mappedUncheckedRows = kind === 'pc' ? mapPcBatchWorkbookRows(uncheckedRows) : mapMonitorBatchWorkbookRows(uncheckedRows);
-  const mappedIssueRows = kind === 'pc' ? mapPcBatchWorkbookRows(issueRows) : mapMonitorBatchWorkbookRows(issueRows);
   const wb = XLSX.utils.book_new();
   appendWorkbookSheet(wb, '汇总', summaryRows);
-  appendWorkbookSheet(wb, '已盘', mappedCheckedRows, headers);
-  appendWorkbookSheet(wb, '未盘', mappedUncheckedRows, headers);
-  appendWorkbookSheet(wb, '异常', mappedIssueRows, headers);
+  const checkedWritten = await appendInventoryStatusSheet(wb, db, kind, batchId, 'CHECKED_OK', '已盘', headers);
+  const uncheckedWritten = await appendInventoryStatusSheet(wb, db, kind, batchId, 'UNCHECKED', '未盘', headers);
+  const issueWritten = await appendInventoryStatusSheet(wb, db, kind, batchId, 'CHECKED_ISSUE', '异常', headers);
   const filename = `${toB64FilenameSafe(batch.name || (kind === 'pc' ? '电脑盘点' : '显示器盘点'))}_${buildBatchExportTimestamp()}_盘点结果.xlsx`;
   const blobBase64 = XLSX.write(wb, { bookType: 'xlsx', type: 'base64' });
   return {
     blobBase64,
     filename,
     contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-    message: `盘点结果快照已生成（已盘 ${checkedRows.length} / 未盘 ${uncheckedRows.length} / 异常 ${issueRows.length}）`,
+    message: `盘点结果快照已生成（已盘 ${checkedWritten} / 未盘 ${uncheckedWritten} / 异常 ${issueWritten}）`,
   };
 }
 
@@ -694,39 +748,12 @@ function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
   };
 }
 
-async function readReadableStreamToBytes(stream: ReadableStream<Uint8Array>) {
-  const reader = stream.getReader();
-  const chunks: Uint8Array[] = [];
-  let total = 0;
-  try {
-    while (true) {
-      const { done, value } = await reader.read();
-      if (done) break;
-      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value || []);
-      chunks.push(chunk);
-      total += chunk.byteLength;
-    }
-  } finally {
-    reader.releaseLock();
-  }
-  const out = new Uint8Array(total);
-  let offset = 0;
-  for (const chunk of chunks) {
-    out.set(chunk, offset);
-    offset += chunk.byteLength;
-  }
-  return out;
-}
-
 async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult) {
   if (!bucket) return null;
   const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
   const objectKey = buildAsyncJobResultObjectKey(row, filename);
   const contentType = String(result.contentType || 'application/octet-stream');
-  const shouldBufferStream = String(row?.job_type || '') === 'BACKUP_EXPORT' && result.stream != null;
-  const body = shouldBufferStream
-    ? await readReadableStreamToBytes(result.stream as ReadableStream<Uint8Array>)
-    : result.stream != null
+  const body = result.stream != null
       ? result.stream
       : result.blobBase64 != null
         ? decodeBase64ToBytes(result.blobBase64)
@@ -734,9 +761,7 @@ async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, re
   await bucket.put(objectKey, body, buildAsyncJobResultPutOptions(contentType, filename));
   const fileSize = result.fileSize != null
     ? Number(result.fileSize || 0)
-    : shouldBufferStream
-      ? (body as Uint8Array).byteLength
-      : result.blobBase64 != null
+    : result.blobBase64 != null
         ? estimateBase64DecodedByteLength(result.blobBase64)
         : result.stream != null
           ? null
@@ -895,6 +920,11 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
         message: `备份已生成（${payload.tables.length} 张表）`,
         meta: { table_count: payload.tables.length, stats: payload.stats, version: payload.version, filters: payload.meta?.filters || null },
       };
+    }
+    const stats = await buildBackupStats(db, backupOptions.includeTables || [], backupOptions);
+    const totalRows = Object.values(stats).reduce((sum, item: any) => sum + Number(item?.rows || 0), 0);
+    if (totalRows > INLINE_BACKUP_EXPORT_ROW_LIMIT) {
+      throw new Error(`Backup export without object storage is limited to ${INLINE_BACKUP_EXPORT_ROW_LIMIT} rows; bind an async job bucket for large backups.`);
     }
     const payload = await buildBackupPayload(db, backupOptions);
     const jsonText = JSON.stringify(payload);

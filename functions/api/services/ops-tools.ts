@@ -28,6 +28,8 @@ export type RepairScanResult = {
 
 const OPS_SCAN_KEY = 'repair_center';
 const AUTO_SCAN_INTERVAL_MINUTES = 15;
+const OPS_REPAIR_PAGE_SIZE = 500;
+const OPS_SCAN_EXAMPLE_LIMIT = 20;
 
 const REPAIR_ACTION_LABEL: Record<string, string> = {
   scan_all: '执行巡检扫描',
@@ -234,12 +236,18 @@ function collectAuditMaterializedDiff(row: any) {
 }
 
 export async function repairPcLatestState(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id FROM pc_assets ORDER BY id ASC`).all<any>();
-  const ids = (results || []).map((r: any) => Number(r?.id || 0)).filter(Boolean);
-  for (let i = 0; i < ids.length; i += 200) {
-    await rebuildPcLatestStateForAssets(db, ids.slice(i, i + 200));
+  let repaired = 0;
+  let lastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id FROM pc_assets WHERE id>? ORDER BY id ASC LIMIT ?`).bind(lastId, 200).all<any>();
+    const ids = (results || []).map((r: any) => Number(r?.id || 0)).filter(Boolean);
+    if (!ids.length) break;
+    await rebuildPcLatestStateForAssets(db, ids);
+    repaired += ids.length;
+    lastId = ids[ids.length - 1];
+    if (ids.length < 200) break;
   }
-  return { repaired: ids.length };
+  return { repaired };
 }
 
 export async function repairDictionaryCounters(db: D1Database) {
@@ -249,27 +257,34 @@ export async function repairDictionaryCounters(db: D1Database) {
 }
 
 export async function repairAuditMaterialized(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id ASC`).all<any>();
   const statements: D1PreparedStatement[] = [];
   let count = 0;
-  for (const row of results || []) {
-    const diff = collectAuditMaterializedDiff(row);
-    if (!diff.mismatch_fields.length) continue;
-    statements.push(db.prepare(
-      `UPDATE audit_log
-       SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=?
-       WHERE id=?`
-    ).bind(
-      diff.expected.module_code,
-      diff.expected.high_risk,
-      diff.expected.target_name,
-      diff.expected.target_code,
-      diff.expected.summary_text,
-      diff.expected.search_text_norm,
-      row.id,
-    ));
-    count += 1;
-    if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
+  let lastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log WHERE id>? ORDER BY id ASC LIMIT ?`).bind(lastId, OPS_REPAIR_PAGE_SIZE).all<any>();
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      const diff = collectAuditMaterializedDiff(row);
+      if (!diff.mismatch_fields.length) continue;
+      statements.push(db.prepare(
+        `UPDATE audit_log
+         SET module_code=?, high_risk=?, target_name=?, target_code=?, summary_text=?, search_text_norm=?
+         WHERE id=?`
+      ).bind(
+        diff.expected.module_code,
+        diff.expected.high_risk,
+        diff.expected.target_name,
+        diff.expected.target_code,
+        diff.expected.summary_text,
+        diff.expected.search_text_norm,
+        row.id,
+      ));
+      count += 1;
+      if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
+    }
+    lastId = Number(rows[rows.length - 1]?.id || lastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   if (statements.length) await db.batch(statements);
   return { repaired: count };
@@ -277,22 +292,38 @@ export async function repairAuditMaterialized(db: D1Database) {
 
 export async function repairSearchNormalize(db: D1Database) {
   let repaired = 0;
-  const { results: pcRows } = await db.prepare(`SELECT id, serial_no, brand, model, disk_capacity, memory_size, remark FROM pc_assets ORDER BY id ASC`).all<any>();
   const pcStatements: D1PreparedStatement[] = [];
-  for (const row of pcRows || []) {
-    pcStatements.push(db.prepare(`UPDATE pc_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.serial_no, row?.brand, row?.model, row?.remark, row?.disk_capacity, row?.memory_size), row.id
-    ));
-    repaired += 1;
+  let pcLastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, serial_no, brand, model, disk_capacity, memory_size, remark FROM pc_assets WHERE id>? ORDER BY id ASC LIMIT ?`).bind(pcLastId, OPS_REPAIR_PAGE_SIZE).all<any>();
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      pcStatements.push(db.prepare(`UPDATE pc_assets SET search_text_norm=? WHERE id=?`).bind(
+        normalizeSearchText(row?.serial_no, row?.brand, row?.model, row?.remark, row?.disk_capacity, row?.memory_size), row.id
+      ));
+      repaired += 1;
+      if (pcStatements.length >= 200) await db.batch(pcStatements.splice(0, pcStatements.length));
+    }
+    pcLastId = Number(rows[rows.length - 1]?.id || pcLastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   if (pcStatements.length) await db.batch(pcStatements);
-  const { results: monitorRows } = await db.prepare(`SELECT id, asset_code, sn, brand, model, size_inch, remark, department, employee_name FROM monitor_assets ORDER BY id ASC`).all<any>();
   const monStatements: D1PreparedStatement[] = [];
-  for (const row of monitorRows || []) {
-    monStatements.push(db.prepare(`UPDATE monitor_assets SET search_text_norm=? WHERE id=?`).bind(
-      normalizeSearchText(row?.asset_code, row?.sn, row?.brand, row?.model, row?.size_inch, row?.remark, row?.department, row?.employee_name), row.id
-    ));
-    repaired += 1;
+  let monitorLastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, asset_code, sn, brand, model, size_inch, remark, department, employee_name FROM monitor_assets WHERE id>? ORDER BY id ASC LIMIT ?`).bind(monitorLastId, OPS_REPAIR_PAGE_SIZE).all<any>();
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      monStatements.push(db.prepare(`UPDATE monitor_assets SET search_text_norm=? WHERE id=?`).bind(
+        normalizeSearchText(row?.asset_code, row?.sn, row?.brand, row?.model, row?.size_inch, row?.remark, row?.department, row?.employee_name), row.id
+      ));
+      repaired += 1;
+      if (monStatements.length >= 200) await db.batch(monStatements.splice(0, monStatements.length));
+    }
+    monitorLastId = Number(rows[rows.length - 1]?.id || monitorLastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   if (monStatements.length) await db.batch(monStatements);
   await rebuildSearchFtsTables(db);
@@ -333,25 +364,32 @@ function normalizedScopeDiff(row: any) {
 }
 
 export async function repairUserScopeFormat(db: D1Database) {
-  const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users ORDER BY id ASC`).all<any>();
   const statements: D1PreparedStatement[] = [];
   let repaired = 0;
   let skipped_invalid = 0;
-  for (const row of results || []) {
-    const diff = normalizedScopeDiff(row);
-    if (diff.invalidWarehouse || diff.invalidStructure) {
-      skipped_invalid += 1;
-      continue;
+  let lastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id>? ORDER BY id ASC LIMIT ?`).bind(lastId, OPS_REPAIR_PAGE_SIZE).all<any>();
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      const diff = normalizedScopeDiff(row);
+      if (diff.invalidWarehouse || diff.invalidStructure) {
+        skipped_invalid += 1;
+        continue;
+      }
+      if (diff.canonical) continue;
+      statements.push(db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(
+        diff.normalized.data_scope_type,
+        diff.normalized.data_scope_value,
+        diff.normalized.data_scope_value2,
+        row.id,
+      ));
+      repaired += 1;
+      if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
     }
-    if (diff.canonical) continue;
-    statements.push(db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(
-      diff.normalized.data_scope_type,
-      diff.normalized.data_scope_value,
-      diff.normalized.data_scope_value2,
-      row.id,
-    ));
-    repaired += 1;
-    if (statements.length >= 200) await db.batch(statements.splice(0, statements.length));
+    lastId = Number(rows[rows.length - 1]?.id || lastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   if (statements.length) await db.batch(statements);
   if (repaired > 0) invalidateUserDataScopeCache();
@@ -412,27 +450,38 @@ async function scanDictionaryCounters(db: D1Database): Promise<RepairScanItem> {
 }
 
 async function scanAuditMaterialized(db: D1Database): Promise<RepairScanItem> {
-  const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log ORDER BY id DESC`).all<any>().catch(() => ({ results: [] }));
   const diffs: any[] = [];
-  for (const row of results || []) {
-    const diff = collectAuditMaterializedDiff(row);
-    if (!diff.mismatch_fields.length) continue;
-    diffs.push({
-      id: row.id,
-      action: row.action,
-      entity: row.entity,
-      entity_id: row.entity_id,
-      mismatch_fields: diff.mismatch_fields,
-    });
+  let affected = 0;
+  let lastId = Number.MAX_SAFE_INTEGER;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, action, entity, entity_id, payload_json, module_code, high_risk, target_name, target_code, summary_text, search_text_norm FROM audit_log WHERE id<? ORDER BY id DESC LIMIT ?`).bind(lastId, OPS_REPAIR_PAGE_SIZE).all<any>().catch(() => ({ results: [] }));
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      const diff = collectAuditMaterializedDiff(row);
+      if (!diff.mismatch_fields.length) continue;
+      affected += 1;
+      if (diffs.length < OPS_SCAN_EXAMPLE_LIMIT) {
+        diffs.push({
+          id: row.id,
+          action: row.action,
+          entity: row.entity,
+          entity_id: row.entity_id,
+          mismatch_fields: diff.mismatch_fields,
+        });
+      }
+    }
+    lastId = Number(rows[rows.length - 1]?.id || lastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   return {
     key: 'audit_materialized',
     label: '审计物化字段',
-    affected_count: diffs.length,
-    status: diffs.length > 0 ? 'warn' : 'ok',
-    detail: diffs.length > 0 ? `发现 ${diffs.length} 条审计记录缺少或不匹配物化展示/搜索字段` : '审计物化字段完整',
-    recommendation: diffs.length > 0 ? '建议执行“回填审计物化”' : '无需处理',
-    examples: diffs.slice(0, 20),
+    affected_count: affected,
+    status: affected > 0 ? 'warn' : 'ok',
+    detail: affected > 0 ? `发现 ${affected} 条审计记录缺少或不匹配物化展示/搜索字段` : '审计物化字段完整',
+    recommendation: affected > 0 ? '建议执行“回填审计物化”' : '无需处理',
+    examples: diffs,
   };
 }
 
@@ -462,21 +511,32 @@ async function scanSearchNorm(db: D1Database): Promise<RepairScanItem> {
 }
 
 async function scanUserScopeFormat(db: D1Database): Promise<RepairScanItem> {
-  const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users ORDER BY id ASC`).all<any>().catch(() => ({ results: [] }));
   const diffs: any[] = [];
   let repairable = 0;
   let invalid = 0;
-  for (const row of results || []) {
-    const diff = normalizedScopeDiff(row);
-    if (diff.invalidWarehouse || diff.invalidStructure) {
-      invalid += 1;
-      diffs.push({ id: row.id, username: row.username, issue: diff.invalidStructure ? 'invalid_structure' : 'invalid_warehouse', invalid_warehouse: diff.invalidWarehouse || undefined, invalid_structure: diff.invalidStructure || undefined, data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2 });
-      continue;
+  let lastId = 0;
+  while (true) {
+    const { results } = await db.prepare(`SELECT id, username, data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id>? ORDER BY id ASC LIMIT ?`).bind(lastId, OPS_REPAIR_PAGE_SIZE).all<any>().catch(() => ({ results: [] }));
+    const rows = results || [];
+    if (!rows.length) break;
+    for (const row of rows) {
+      const diff = normalizedScopeDiff(row);
+      if (diff.invalidWarehouse || diff.invalidStructure) {
+        invalid += 1;
+        if (diffs.length < OPS_SCAN_EXAMPLE_LIMIT) {
+          diffs.push({ id: row.id, username: row.username, issue: diff.invalidStructure ? 'invalid_structure' : 'invalid_warehouse', invalid_warehouse: diff.invalidWarehouse || undefined, invalid_structure: diff.invalidStructure || undefined, data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2 });
+        }
+        continue;
+      }
+      if (!diff.canonical) {
+        repairable += 1;
+        if (diffs.length < OPS_SCAN_EXAMPLE_LIMIT) {
+          diffs.push({ id: row.id, username: row.username, issue: 'legacy_format', data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2, normalized: diff.normalized });
+        }
+      }
     }
-    if (!diff.canonical) {
-      repairable += 1;
-      diffs.push({ id: row.id, username: row.username, issue: 'legacy_format', data_scope_type: row.data_scope_type, data_scope_value: row.data_scope_value, data_scope_value2: row.data_scope_value2, normalized: diff.normalized });
-    }
+    lastId = Number(rows[rows.length - 1]?.id || lastId);
+    if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   const affected = repairable + invalid;
   return {
@@ -486,7 +546,7 @@ async function scanUserScopeFormat(db: D1Database): Promise<RepairScanItem> {
     status: affected > 0 ? 'warn' : 'ok',
     detail: affected > 0 ? `发现 ${repairable} 个旧格式账号范围 / ${invalid} 个非法仓域范围` : '用户权限范围格式正常',
     recommendation: invalid > 0 ? '请先人工处理非法仓域；旧格式可执行“迁移权限范围格式”' : (repairable > 0 ? '建议执行“迁移权限范围格式”' : '无需处理'),
-    examples: diffs.slice(0, 20),
+    examples: diffs,
   };
 }
 

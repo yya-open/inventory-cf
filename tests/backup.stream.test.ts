@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { createBackupJsonStream } from '../functions/api/admin/_backup_helpers';
 import { validateBackupEnvelope } from '../functions/api/admin/_backup_integrity';
+import { iterBackupRowsFromStream, readBackupEnvelopeMetadataFromStream } from '../functions/api/admin/restore_job/_util';
 
 type TableMap = Record<string, any[]>;
 
@@ -68,6 +69,12 @@ describe('backup stream helper', () => {
 
     const result = await createBackupJsonStream(db, { includeTables: ['warehouses', 'public_api_throttle'], pageSize: 1, actor: 'tester', reason: 'unit' });
     const text = await new Response(result.stream).text();
+    const metadata = await readBackupEnvelopeMetadataFromStream(new Response(text).body as ReadableStream<Uint8Array>);
+    let streamedRows = 0;
+    for await (const row of iterBackupRowsFromStream(new Response(text).body as ReadableStream<Uint8Array>)) {
+      expect(row.table === 'warehouses' || row.table === 'public_api_throttle').toBe(true);
+      streamedRows += 1;
+    }
     const parsed = JSON.parse(text);
     const validation = await validateBackupEnvelope(parsed);
 
@@ -83,6 +90,10 @@ describe('backup stream helper', () => {
     expect(parsed.integrity.table_count).toBe(2);
     expect(typeof parsed.integrity.manifest_sha256).toBe('string');
     expect(parsed.integrity.manifest_sha256).toHaveLength(64);
+    expect(metadata.version).toBe(parsed.version);
+    expect(metadata.manifest.total_rows).toBe(4);
+    expect(metadata.integrity.table_chain_sha256).toBe(parsed.integrity.table_chain_sha256);
+    expect(streamedRows).toBe(4);
     expect(validation.ok).toBe(true);
     expect(validation.issues.filter((item) => item.severity === 'error')).toHaveLength(0);
   });
