@@ -493,6 +493,8 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
         processed_rows: processedRowsNew,
         total_rows: totalRows,
         current_table: currentTableForSave,
+        per_table: perTable,
+        cursor: cursorForSave,
         snapshot_status: job.snapshot_status || null,
         integrity_status: integrityStatus,
         more: !done,

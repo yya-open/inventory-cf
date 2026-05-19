@@ -1125,18 +1125,22 @@ async function refreshStatus() {
   if (!jobId.value) return;
   try {
     const r = await apiGet<any>(`/api/admin/restore_job/status?id=${encodeURIComponent(jobId.value)}`);
-    const d = r.data;
-    jobStatus.value = d.status || "";
-    jobStage.value = d.stage || "";
-    jobMode.value = d.mode || "";
-    jobPerTable.value = d.per_table || {};
-    jobTotal.value = Number(d.total_rows || 0);
-    jobProcessed.value = Number(d.processed_rows || 0);
-    jobCurrentTable.value = d.current_table || "";
-    jobLastError.value = d.last_error || "";
+    applyJobSnapshot(r.data);
   } catch (e:any) {
     msgError(e?.message || "刷新失败");
   }
+}
+
+function applyJobSnapshot(d: any) {
+  if (!d) return;
+  jobStatus.value = d.status || jobStatus.value || "";
+  jobStage.value = d.stage || jobStage.value || "";
+  jobMode.value = d.mode || jobMode.value || "";
+  if (d.per_table) jobPerTable.value = d.per_table;
+  if (d.total_rows != null) jobTotal.value = Number(d.total_rows || 0);
+  if (d.processed_rows != null) jobProcessed.value = Number(d.processed_rows || 0);
+  if ("current_table" in d) jobCurrentTable.value = d.current_table || "";
+  if ("last_error" in d) jobLastError.value = d.last_error || "";
 }
 
 function stopLoop() {
@@ -1159,16 +1163,16 @@ async function startOrResume() {
     while (running.value) {
       const r = await apiPost<any>("/api/admin/restore_job/run", {
         id: jobId.value,
-        max_rows: 2000,
-        max_ms: 8000,
+        max_rows: 4000,
+        max_ms: 12000,
       });
 
-      await refreshStatus();
-
+      applyJobSnapshot(r.data);
       const st = jobStatus.value;
-      const more = Boolean(r.data.more);
+      const more = Boolean(r.data?.more);
 
       if (st === "DONE" || st === "FAILED" || st === "PAUSED" || st === "CANCELED") {
+        await refreshStatus();
         stopLoop();
         return;
       }
