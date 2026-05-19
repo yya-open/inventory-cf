@@ -38,6 +38,7 @@ export type BackupJsonStreamResult = {
   meta: Record<string, any>;
   stats: Record<string, BackupTableStat>;
   tables: string[];
+  fileSize: number;
 };
 
 function clampInt(value: any, fallback: number, min: number, max: number) {
@@ -60,6 +61,10 @@ function getInputValue(input: any, key: string) {
   if (input instanceof URLSearchParams) return input.get(key);
   const value = input[key];
   return value == null ? null : value;
+}
+
+function utf8ByteLength(text: string) {
+  return new TextEncoder().encode(text).byteLength;
 }
 
 function normalizeTableList(values: any[]) {
@@ -237,10 +242,71 @@ export async function createBackupJsonStream(DB: D1Database, opts?: BackupBuildO
   const stats = await buildBackupStats(DB, tables, opts);
   const envelope = buildBackupMetaEnvelope(tables, exportedAt, opts);
   const meta = (envelope.meta || {}) as Record<string, any>;
-  const encoder = new TextEncoder();
-  const { readable, writable } = new TransformStream<Uint8Array, Uint8Array>();
-  const writer = writable.getWriter();
+  const rowCounts: Record<string, number> = {};
+  const integrityTables: Record<string, { rows: number; row_chain_sha256: string }> = {};
+  let tableChainState: Uint8Array | null = null;
+  let fileSize = 0;
+  const countChunk = (value: string) => {
+    fileSize += utf8ByteLength(value);
+  };
 
+  countChunk('{');
+  countChunk(`"version":${JSON.stringify(envelope.version)},`);
+  countChunk(`"exported_at":${JSON.stringify(envelope.exported_at)},`);
+  countChunk(`"meta":${JSON.stringify(envelope.meta)},`);
+  countChunk(`"stats":${JSON.stringify(stats)},`);
+  countChunk('"tables":{');
+  let firstTable = true;
+  for (const table of tables) {
+    if (!firstTable) countChunk(',');
+    firstTable = false;
+    countChunk(`${JSON.stringify(table)}:[`);
+    let firstRow = true;
+    let rowCount = 0;
+    let rowChainState: Uint8Array | null = null;
+    for await (const row of iterateTableRows(DB, table, opts)) {
+      const rowText = JSON.stringify(row);
+      if (!firstRow) countChunk(',');
+      firstRow = false;
+      countChunk(rowText);
+      rowCount += 1;
+      rowChainState = await chainSha256(rowChainState, [rowText]);
+    }
+    countChunk(']');
+    const rowChainHex = Array.from(rowChainState || await chainSha256(null, [''])).map((b) => b.toString(16).padStart(2, '0')).join('');
+    rowCounts[table] = rowCount;
+    integrityTables[table] = { rows: rowCount, row_chain_sha256: rowChainHex };
+    tableChainState = await chainSha256(tableChainState, [table, ':', String(rowCount), ':', rowChainHex]);
+  }
+  const manifest = buildBackupManifest({
+    exportedAt,
+    tableOrder: tables,
+    rowCounts,
+    actor: opts?.actor || null,
+    reason: opts?.reason || null,
+    filters: meta.filters || null,
+    generatedBy: String(meta.generated_by || 'manual'),
+  });
+  const manifestSha = await sha256JsonHex(manifest);
+  const totalRows = Object.values(rowCounts).reduce((sum, value) => sum + Number(value || 0), 0);
+  const tableChainHex = Array.from(tableChainState || await chainSha256(null, [''])).map((b) => b.toString(16).padStart(2, '0')).join('');
+  const integrity = {
+    manifest_sha256: manifestSha,
+    total_rows: totalRows,
+    table_count: tables.length,
+    tables: integrityTables,
+    table_chain_sha256: tableChainHex,
+  };
+  countChunk('},');
+  countChunk(`"manifest":${JSON.stringify(manifest)},`);
+  countChunk(`"integrity":${JSON.stringify(integrity)}`);
+  countChunk('}');
+
+  const streamFactory = (globalThis as any).FixedLengthStream;
+  const useFixedLength = typeof streamFactory !== 'undefined';
+  const { readable, writable } = useFixedLength ? new streamFactory(fileSize) : new TransformStream<Uint8Array, Uint8Array>();
+  const writer = writable.getWriter();
+  const encoder = new TextEncoder();
   const writeChunk = async (value: string) => {
     await writer.write(encoder.encode(value));
   };
@@ -253,50 +319,20 @@ export async function createBackupJsonStream(DB: D1Database, opts?: BackupBuildO
       await writeChunk(`"meta":${JSON.stringify(envelope.meta)},`);
       await writeChunk(`"stats":${JSON.stringify(stats)},`);
       await writeChunk('"tables":{');
-      let firstTable = true;
-      const rowCounts: Record<string, number> = {};
-      const integrityTables: Record<string, { rows: number; row_chain_sha256: string }> = {};
-      let tableChainState: Uint8Array | null = null;
+      let firstTableWrite = true;
       for (const table of tables) {
-        if (!firstTable) await writeChunk(',');
-        firstTable = false;
+        if (!firstTableWrite) await writeChunk(',');
+        firstTableWrite = false;
         await writeChunk(`${JSON.stringify(table)}:[`);
         let firstRow = true;
-        let rowCount = 0;
-        let rowChainState: Uint8Array | null = null;
         for await (const row of iterateTableRows(DB, table, opts)) {
           const rowText = JSON.stringify(row);
           if (!firstRow) await writeChunk(',');
           firstRow = false;
           await writeChunk(rowText);
-          rowCount += 1;
-          rowChainState = await chainSha256(rowChainState, [rowText]);
         }
         await writeChunk(']');
-        const rowChainHex = Array.from(rowChainState || await chainSha256(null, [''])).map((b) => b.toString(16).padStart(2, '0')).join('');
-        rowCounts[table] = rowCount;
-        integrityTables[table] = { rows: rowCount, row_chain_sha256: rowChainHex };
-        tableChainState = await chainSha256(tableChainState, [table, ':', String(rowCount), ':', rowChainHex]);
       }
-      const manifest = buildBackupManifest({
-        exportedAt,
-        tableOrder: tables,
-        rowCounts,
-        actor: opts?.actor || null,
-        reason: opts?.reason || null,
-        filters: meta.filters || null,
-        generatedBy: String(meta.generated_by || 'manual'),
-      });
-      const manifestSha = await sha256JsonHex(manifest);
-      const totalRows = Object.values(rowCounts).reduce((sum, value) => sum + Number(value || 0), 0);
-      const tableChainHex = Array.from(tableChainState || await chainSha256(null, [''])).map((b) => b.toString(16).padStart(2, '0')).join('');
-      const integrity = {
-        manifest_sha256: manifestSha,
-        total_rows: totalRows,
-        table_count: tables.length,
-        tables: integrityTables,
-        table_chain_sha256: tableChainHex,
-      };
       await writeChunk('},');
       await writeChunk(`"manifest":${JSON.stringify(manifest)},`);
       await writeChunk(`"integrity":${JSON.stringify(integrity)}`);
@@ -316,6 +352,7 @@ export async function createBackupJsonStream(DB: D1Database, opts?: BackupBuildO
     meta: envelope.meta,
     stats,
     tables,
+    fileSize,
   };
 }
 

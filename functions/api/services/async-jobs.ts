@@ -907,20 +907,22 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     });
     const gzip = requestJson?.gzip === true || requestJson?.gzip === 1 || requestJson?.gzip === '1';
     const table = String(requestJson?.table || '').trim() || null;
-    const filename = buildBackupFilename({ table, gzip });
     if (bucket) {
+      const filename = buildBackupFilename({ table, gzip: false });
       const payload = await createBackupJsonStream(db, backupOptions);
-      if (gzip && typeof (globalThis as any).CompressionStream === 'undefined') {
-        throw new Error('当前环境不支持 gzip 压缩');
+      if (gzip) {
+        throw new Error('异步备份导出到对象存储时暂不支持 gzip，请先导出未压缩 JSON');
       }
       return {
-        stream: gzip ? payload.stream.pipeThrough(new CompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>) as any : payload.stream,
+        stream: payload.stream,
+        fileSize: payload.fileSize,
         filename,
-        contentType: gzip ? 'application/gzip' : 'application/json; charset=utf-8',
+        contentType: 'application/json; charset=utf-8',
         message: `备份已生成（${payload.tables.length} 张表）`,
         meta: { table_count: payload.tables.length, stats: payload.stats, version: payload.version, filters: payload.meta?.filters || null },
       };
     }
+    const filename = buildBackupFilename({ table, gzip });
     const stats = await buildBackupStats(db, backupOptions.includeTables || [], backupOptions);
     const totalRows = Object.values(stats).reduce((sum, item: any) => sum + Number(item?.rows || 0), 0);
     if (totalRows > INLINE_BACKUP_EXPORT_ROW_LIMIT) {
