@@ -1071,10 +1071,7 @@ async function createJob() {
   if (!pickedFile.value) return;
   detailDlgAutoOpened.value = false;
 
-  let v = restoreValidate.value;
-  if (!v) {
-    v = await validateRestoreFile({ silent: true }).catch(() => null);
-  }
+  const v = restoreValidate.value;
   if (v && v.valid === false) {
     validateDlg.value = true;
     msgWarn("恢复前校验未通过，请先处理错误项");

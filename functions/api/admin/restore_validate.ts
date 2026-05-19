@@ -5,12 +5,14 @@ import { ensurePcSchema } from '../_pc';
 import { ensureMonitorSchema } from '../_monitor';
 import { ALL_TABLE_NAMES, BACKUP_VERSION, RESTORABLE_TABLE_NAMES, TABLE_BY_NAME, TABLE_COLUMNS } from './_backup_schema';
 import { validateBackupEnvelope } from './_backup_integrity';
-import { readBackupEnvelopeMetadataFromStream } from './restore_job/_util';
 
 type Severity = 'error' | 'warn' | 'info';
 type Issue = { severity: Severity; type: string; table?: string; column?: string; message: string };
+type ByteStreamPipe = ReadableWritablePair<Uint8Array, Uint8Array>;
+type TextDecodePipe = ReadableWritablePair<string, Uint8Array>;
 
 const INLINE_RESTORE_VALIDATE_MAX_BYTES = 20 * 1024 * 1024;
+const RESTORE_VALIDATE_PREFIX_CHARS = 256 * 1024;
 
 function sampleRowColumns(rows: any[]) {
   const s = new Set<string>();
@@ -43,6 +45,94 @@ function buildPreviewTables(manifest: any) {
   return { tableOrder, includedInBackup, rowsByTable };
 }
 
+async function readTextPrefixFromStream(stream: ReadableStream<Uint8Array>, gzip: boolean) {
+  let source = stream;
+  if (gzip) source = source.pipeThrough(new DecompressionStream('gzip') as unknown as ByteStreamPipe);
+  const reader = source.pipeThrough(new TextDecoderStream() as unknown as TextDecodePipe).getReader();
+  let text = '';
+  try {
+    while (text.length < RESTORE_VALIDATE_PREFIX_CHARS) {
+      const { value, done } = await reader.read();
+      if (done) break;
+      if (value) text += value;
+    }
+  } finally {
+    try {
+      await reader.cancel();
+    } catch {}
+    reader.releaseLock();
+  }
+  return text.slice(0, RESTORE_VALIDATE_PREFIX_CHARS);
+}
+
+function extractJsonValueFromPrefix(text: string, key: string) {
+  const keyIndex = text.indexOf(JSON.stringify(key));
+  if (keyIndex < 0) return null;
+  let i = keyIndex + JSON.stringify(key).length;
+  while (i < text.length && /\s/.test(text[i])) i += 1;
+  if (text[i] !== ':') return null;
+  i += 1;
+  while (i < text.length && /\s/.test(text[i])) i += 1;
+  if (i >= text.length) return null;
+
+  const start = i;
+  const first = text[i];
+  if (first === '"') {
+    let escape = false;
+    i += 1;
+    while (i < text.length) {
+      const ch = text[i];
+      if (escape) {
+        escape = false;
+      } else if (ch === '\\') {
+        escape = true;
+      } else if (ch === '"') {
+        return text.slice(start, i + 1);
+      }
+      i += 1;
+    }
+    return null;
+  }
+
+  if (first === '{' || first === '[') {
+    const close = first === '{' ? '}' : ']';
+    let depth = 1;
+    let inString = false;
+    let escape = false;
+    i += 1;
+    while (i < text.length) {
+      const ch = text[i];
+      if (inString) {
+        if (escape) escape = false;
+        else if (ch === '\\') escape = true;
+        else if (ch === '"') inString = false;
+      } else if (ch === '"') {
+        inString = true;
+      } else if (ch === first) {
+        depth += 1;
+      } else if (ch === close) {
+        depth -= 1;
+        if (depth === 0) return text.slice(start, i + 1);
+      }
+      i += 1;
+    }
+    return null;
+  }
+
+  while (i < text.length && text[i] !== ',' && text[i] !== '}' && text[i] !== ']') i += 1;
+  return text.slice(start, i).trim() || null;
+}
+
+function parsePrefixValue(text: string, key: string) {
+  const raw = extractJsonValueFromPrefix(text, key);
+  if (!raw) return null;
+  try {
+    return JSON.parse(raw);
+  } catch {
+    return null;
+  }
+}
+
 async function readBackup(request: Request) {
   const ct = request.headers.get('content-type') || '';
   if (ct.includes('multipart/form-data')) {
@@ -57,11 +147,14 @@ async function readBackup(request: Request) {
     if (gzip && typeof (globalThis as any).DecompressionStream === 'undefined') {
       throw new Error('当前环境不支持 gzip 解压，请上传 .json 备份');
     }
-    const preview = await readBackupEnvelopeMetadataFromStream(file.stream(), gzip);
+    const prefix = await readTextPrefixFromStream(file.stream(), gzip);
     return {
-      ...preview,
+      version: parsePrefixValue(prefix, 'version'),
+      exported_at: parsePrefixValue(prefix, 'exported_at'),
+      meta: parsePrefixValue(prefix, 'meta'),
       __file_name: file.name || null,
       __file_size: Number(file.size || 0),
+      __prefix_checked: true,
     };
   }
   const body: any = await request.json();
@@ -92,7 +185,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   if (isPreview) {
     if (!manifest) {
       if (version === BACKUP_VERSION) {
-        issues.push({ severity: 'error', type: 'backup_manifest_missing', message: 'v3 备份缺少 manifest' });
+        issues.push({ severity: 'info', type: 'restore_validate_prefix_only', message: '已完成文件头预检，完整 manifest 与 SHA-256 校验将在恢复任务扫描阶段执行' });
       } else {
         issues.push({ severity: 'info', type: 'legacy_manifest_missing', message: '旧版备份未包含 manifest，将按兼容模式校验' });
       }
