@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { createBackupJsonStream } from '../functions/api/admin/_backup_helpers';
+import { createBackupJsonStream, gzipBackupJsonStream } from '../functions/api/admin/_backup_helpers';
 import { validateBackupEnvelope } from '../functions/api/admin/_backup_integrity';
 import { iterBackupRowsFromStream, readBackupEnvelopeMetadataFromStream } from '../functions/api/admin/restore_job/_util';
 
@@ -133,5 +133,23 @@ describe('backup stream helper', () => {
     }
 
     expect(counts).toEqual({ warehouses: 2, public_api_throttle: 2 });
+  });
+
+  it('creates restorable gzip backup streams', async () => {
+    const db = new FakeDB({
+      warehouses: [{ id: 1, name: 'A', created_at: '2026-04-01 00:00:00' }],
+      public_api_throttle: [{ k: 'pc:1', count: 3, updated_at: '2026-04-03 00:00:00' }],
+    }) as any;
+
+    const result = await createBackupJsonStream(db, { includeTables: ['warehouses', 'public_api_throttle'], pageSize: 1, actor: 'tester', reason: 'gzip-unit' });
+    const gzBytes = new Uint8Array(await new Response(gzipBackupJsonStream(result.stream)).arrayBuffer());
+    const text = await new Response(new Blob([gzBytes]).stream().pipeThrough(new DecompressionStream('gzip'))).text();
+    const parsed = JSON.parse(text);
+    const validation = await validateBackupEnvelope(parsed);
+
+    expect(gzBytes[0]).toBe(0x1f);
+    expect(gzBytes[1]).toBe(0x8b);
+    expect(parsed.meta.reason).toBe('gzip-unit');
+    expect(validation.ok).toBe(true);
   });
 });

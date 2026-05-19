@@ -2,7 +2,7 @@ import { requireAuth, json } from '../../../_auth';
 import { withErrorHandling } from '../../_error';
 import { apiFail } from '../../_response';
 import { logAudit } from '../../_audit';
-import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, iterBackupRowsFromStream, iterBackupTableKeysFromStream, readBackupEnvelopeMetadataFromStream } from './_util';
+import { DELETE_ORDER, TABLE_COLUMNS, parseJsonSafe, pick, sniffGzipFromStream, iterBackupRowsFromStream, readBackupEnvelopeMetadataFromStream } from './_util';
 import { createBackupJsonStream } from '../_backup_helpers';
 import { chainSha256, sha256JsonHex, type BackupIntegrity, type BackupManifest, type BackupValidationIssue } from '../_backup_integrity';
 import { BACKUP_VERSION, LEGACY_BACKUP_VERSIONS } from '../_backup_schema';
@@ -84,27 +84,14 @@ function normalizeMetadataObject<T>(value: any): T | null {
   return value && typeof value === 'object' && !Array.isArray(value) ? value as T : null;
 }
 
-async function collectBackupTableKeysFromObject(env: Env, key: string) {
-  const obj = await env.BACKUP_BUCKET.get(key);
-  if (!obj?.body) throw new Error('R2 backup file is missing while scanning table keys');
-  const sniff = await sniffGzipFromStream(obj.body);
-  const keys: string[] = [];
-  for await (const table of iterBackupTableKeysFromStream(sniff.stream, sniff.gzip)) {
-    keys.push(String(table));
-  }
-  return keys;
-}
-
-async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint: string[]) {
-  const obj = await env.BACKUP_BUCKET.get(key);
-  if (!obj?.body) throw new Error('R2 backup file is missing while scanning rows');
-  const sniff = await sniffGzipFromStream(obj.body);
+async function scanBackupRowsForIntegrity(stream: ReadableStream<Uint8Array>, gzip: boolean | undefined, tableOrderHint: string[]) {
   const seenOrder: string[] = [];
   const seen = new Set<string>();
   const rowCounts: Record<string, number> = {};
   const rowChainStates: Record<string, Uint8Array | null> = {};
+  const rowChainHexByTable: Record<string, string> = {};
 
-  for await (const item of iterBackupRowsFromStream(sniff.stream, sniff.gzip)) {
+  for await (const item of iterBackupRowsFromStream(stream, gzip)) {
     const table = String(item?.table || '');
     if (!table) continue;
     if (!seen.has(table)) {
@@ -122,6 +109,10 @@ async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint:
     rowChainStates[table] = await chainSha256(rowChainStates[table] || null, [canonicalRowText]);
   }
 
+  for (const table of Object.keys(rowCounts)) {
+    rowChainHexByTable[table] = bytesToHex(rowChainStates[table] || await chainSha256(null, ['']));
+  }
+
   const tableOrder = tableOrderHint.length ? tableOrderHint : seenOrder;
   const tables: BackupIntegrity['tables'] = {};
   let tableChainState: Uint8Array | null = null;
@@ -129,7 +120,7 @@ async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint:
   for (const table of tableOrder) {
     const rows = Number(rowCounts[table] || 0);
     totalRows += rows;
-    const rowChainHex = bytesToHex(rowChainStates[table] || await chainSha256(null, ['']));
+    const rowChainHex = rowChainHexByTable[table] || bytesToHex(await chainSha256(null, ['']));
     tables[table] = { rows, row_chain_sha256: rowChainHex };
     tableChainState = await chainSha256(tableChainState, [table, ':', String(rows), ':', rowChainHex]);
   }
@@ -137,6 +128,7 @@ async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint:
   return {
     tableOrder,
     rowCounts,
+    rowChainHexByTable,
     integrityCore: {
       total_rows: totalRows,
       table_count: tableOrder.length,
@@ -144,6 +136,45 @@ async function scanBackupRowsForIntegrity(env: Env, key: string, tableOrderHint:
       table_chain_sha256: bytesToHex(tableChainState || await chainSha256(null, [''])),
     },
   };
+}
+
+async function buildIntegrityCoreForOrder(scan: Awaited<ReturnType<typeof scanBackupRowsForIntegrity>>, tableOrder: string[]) {
+  const tables: BackupIntegrity['tables'] = {};
+  let tableChainState: Uint8Array | null = null;
+  let totalRows = 0;
+  const emptyRowChain = bytesToHex(await chainSha256(null, ['']));
+
+  for (const table of tableOrder) {
+    const rows = Number(scan.rowCounts[table] || 0);
+    totalRows += rows;
+    const rowChainHex = scan.rowChainHexByTable[table] || emptyRowChain;
+    tables[table] = { rows, row_chain_sha256: rowChainHex };
+    tableChainState = await chainSha256(tableChainState, [table, ':', String(rows), ':', rowChainHex]);
+  }
+
+  return {
+    total_rows: totalRows,
+    table_count: tableOrder.length,
+    tables,
+    table_chain_sha256: bytesToHex(tableChainState || await chainSha256(null, [''])),
+  };
+}
+
+async function scanBackupForValidationFromObject(obj: { body: ReadableStream<Uint8Array> }) {
+  const [metadataBody, rowBody] = obj.body.tee();
+
+  const metadataPromise = (async () => {
+    const sniff = await sniffGzipFromStream(metadataBody);
+    return readBackupEnvelopeMetadataFromStream(sniff.stream, sniff.gzip);
+  })();
+
+  const rowScanPromise = (async () => {
+    const sniff = await sniffGzipFromStream(rowBody);
+    return scanBackupRowsForIntegrity(sniff.stream, sniff.gzip, []);
+  })();
+
+  const [metadata, rowScan] = await Promise.all([metadataPromise, rowScanPromise]);
+  return { metadata, rowScan };
 }
 
 async function validateScannedBackupEnvelope(metadata: Record<string, any>, scan: Awaited<ReturnType<typeof scanBackupRowsForIntegrity>>) {
@@ -184,7 +215,7 @@ async function validateScannedBackupEnvelope(metadata: Record<string, any>, scan
   if (integrity) {
     recomputedIntegrity = {
       manifest_sha256: manifest ? await sha256JsonHex(manifest) : '',
-      ...scan.integrityCore,
+      ...(await buildIntegrityCoreForOrder(scan, tableOrder)),
     };
     if (manifest && integrity.manifest_sha256 !== recomputedIntegrity.manifest_sha256) {
       issues.push({ severity: 'error', type: 'manifest_sha256_mismatch', message: 'manifest_sha256 validation failed' });
@@ -276,14 +307,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       const counts: Record<string, number> = Object.fromEntries(Object.keys(TABLE_COLUMNS).map((t) => [t, 0]));
       let total = 0;
 
-      const sniffScan = await sniffGzipFromStream(obj.body);
-      const metadata = await readBackupEnvelopeMetadataFromStream(sniffScan.stream, sniffScan.gzip);
-      const metadataManifest = normalizeMetadataObject<BackupManifest>(metadata?.manifest);
-      let tableOrderHint = Array.isArray(metadataManifest?.table_order) ? metadataManifest.table_order.map((t) => String(t)) : [];
-      if (!tableOrderHint.length) {
-        tableOrderHint = await collectBackupTableKeysFromObject(env, job.file_key);
-      }
-      const rowScan = await scanBackupRowsForIntegrity(env, job.file_key, tableOrderHint);
+      const { metadata, rowScan } = await scanBackupForValidationFromObject(obj);
       const validation = await validateScannedBackupEnvelope(metadata, rowScan);
       const validationJson = {
         ok: validation.ok,

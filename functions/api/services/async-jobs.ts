@@ -13,7 +13,7 @@ import QRCode from 'qrcode';
 import { normalizeQrPrintTemplate, resolveQrPaperDimensions, type QrPrintTemplate, type QrPrintTemplateKind } from './qr-print-template';
 import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr-export-records';
 import * as XLSX from 'xlsx';
-import { buildBackupFilename, buildBackupPayload, buildBackupStats, createBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
+import { buildBackupFilename, buildBackupPayload, buildBackupStats, createBackupJsonStream, gzipBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
 import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
@@ -746,7 +746,7 @@ function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
     httpMetadata: {
       contentType: String(contentType || 'application/octet-stream'),
       contentDisposition: `attachment; filename="${String(filename || 'download.dat').replace(/"/g, '')}"`,
-      cacheControl: 'private, no-store',
+      cacheControl: 'private, no-store, no-transform',
     },
   };
 }
@@ -885,7 +885,7 @@ export async function buildAsyncJobDownloadResponse(row: any, bucket: AsyncJobRe
   const headers: Record<string, string> = {
     'content-type': contentType,
     'content-disposition': `${options.inline ? 'inline' : 'attachment'}; filename="${filename}"`,
-    'cache-control': 'no-store',
+    'cache-control': 'no-store, no-transform',
   };
   if (hasObject) {
     const obj = await loadAsyncJobStoredObject(bucket, row);
@@ -1005,17 +1005,15 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const gzip = requestJson?.gzip === true || requestJson?.gzip === 1 || requestJson?.gzip === '1';
     const table = String(requestJson?.table || '').trim() || null;
     if (bucket) {
-      if (gzip) {
-        throw new Error('异步备份导出到对象存储时暂不支持 gzip，请先导出未压缩 JSON');
-      }
-      const filename = buildBackupFilename({ table, gzip: false });
+      const filename = buildBackupFilename({ table, gzip });
       const payload = await createBackupJsonStream(db, backupOptions);
+      const stream = gzip ? gzipBackupJsonStream(payload.stream) : payload.stream;
       return {
-        stream: payload.stream,
+        stream,
         filename,
-        contentType: 'application/json; charset=utf-8',
+        contentType: gzip ? 'application/gzip' : 'application/json; charset=utf-8',
         message: `备份已生成（${payload.tables.length} 张表）`,
-        meta: { table_count: payload.tables.length, stats: payload.stats, version: payload.version, filters: payload.meta?.filters || null },
+        meta: { table_count: payload.tables.length, stats: payload.stats, version: payload.version, gzip, filters: payload.meta?.filters || null },
       };
     }
     const filename = buildBackupFilename({ table, gzip });

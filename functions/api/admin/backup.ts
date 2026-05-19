@@ -4,7 +4,7 @@ import { logAudit } from '../_audit';
 import { ensureCoreSchema } from '../_schema';
 import { ensurePcSchema } from '../_pc';
 import { ensureMonitorSchema } from '../_monitor';
-import { buildBackupFilename, createBackupJsonStream, parseBackupOptions } from './_backup_helpers';
+import { buildBackupFilename, createBackupJsonStream, gzipBackupJsonStream, parseBackupOptions } from './_backup_helpers';
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const actor = await requireAuth(env, request, 'admin');
@@ -19,14 +19,10 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const payload = await createBackupJsonStream(env.DB, backupOptions);
 
   let body: BodyInit = payload.stream as any;
-  const headers = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store' });
+  const headers = new Headers({ 'content-type': 'application/json; charset=utf-8', 'cache-control': 'no-store, no-transform' });
   if (gzip) {
-    if (typeof (globalThis as any).CompressionStream === 'undefined') {
-      throw new Error('当前环境不支持 gzip 压缩');
-    }
-    body = payload.stream.pipeThrough(new CompressionStream('gzip') as unknown as ReadableWritablePair<Uint8Array, Uint8Array>) as any;
+    body = gzipBackupJsonStream(payload.stream) as any;
     headers.set('content-type', 'application/gzip');
-    headers.set('content-encoding', 'gzip');
   }
 
   const table = String(url.searchParams.get('table') || '').trim() || null;

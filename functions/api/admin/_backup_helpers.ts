@@ -40,6 +40,8 @@ export type BackupJsonStreamResult = {
   tables: string[];
 };
 
+type ByteStreamPipe = ReadableWritablePair<Uint8Array, Uint8Array>;
+
 function clampInt(value: any, fallback: number, min: number, max: number) {
   const n = Number(value);
   if (!Number.isFinite(n)) return fallback;
@@ -109,6 +111,13 @@ export function buildBackupFilename(options?: { table?: string | null; gzip?: bo
   const table = String(options?.table || '').trim();
   const prefix = table ? `inventory_${table}` : 'inventory_backup';
   return `${prefix}_${y}${m}${day}.json${options?.gzip ? '.gz' : ''}`;
+}
+
+export function gzipBackupJsonStream(stream: ReadableStream<Uint8Array>) {
+  if (typeof (globalThis as any).CompressionStream === 'undefined') {
+    throw new Error('当前环境不支持 gzip 压缩');
+  }
+  return stream.pipeThrough(new CompressionStream('gzip') as unknown as ByteStreamPipe);
 }
 
 export function pick(obj: any, cols: string[]) {
