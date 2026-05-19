@@ -1,5 +1,5 @@
 import { buildKeywordWhere, buildNormalizedKeywordWhere, normalizeSearchText } from '../_search';
-import { buildFtsKeywordWhere, ensureSearchFtsTables } from './search-fts';
+import { buildFtsKeywordWhere, ensureSearchFtsTables, type FtsTableKey } from './search-fts';
 import { must, optional } from '../_pc';
 import { sqlNowStored } from '../_time';
 import { applyDepartmentDataScopeClause, getRequiredDepartment, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
@@ -8,7 +8,7 @@ import { parseMonitorAssetInput as parseMonitorAssetInputFromSchema, type Monito
 export { parseMonitorAssetInputFromSchema as parseMonitorAssetInput };
 export type { MonitorAssetInput };
 
-export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean };
+export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean; ftsKeys?: FtsTableKey[] };
 
 export type PcAssetInput = {
   brand: string;
@@ -145,6 +145,7 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: needsDepartmentJoin ? 'LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id' : '',
     usesFts: Boolean(keyword),
+    ftsKeys: keyword ? ['pc'] : undefined,
   } satisfies QueryParts;
 }
 
@@ -211,17 +212,18 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     fast: (url.searchParams.get('fast') || '').trim() === '1',
     joins: '',
     usesFts: Boolean(keyword),
+    ftsKeys: keyword ? ['monitor'] : undefined,
   } satisfies QueryParts;
 }
 
-export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins' | 'usesFts'>) {
-  if (query.usesFts) await ensureSearchFtsTables(db);
+export async function countByWhere(db: D1Database, tableWithAlias: string, query: Pick<QueryParts, 'where' | 'binds' | 'joins' | 'usesFts' | 'ftsKeys'>) {
+  if (query.usesFts) await ensureSearchFtsTables(db, query.ftsKeys || ['pc', 'monitor', 'audit']);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM ${tableWithAlias} ${query.joins || ''} ${query.where}`).bind(...query.binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
-  if (query.usesFts) await ensureSearchFtsTables(db);
+  if (query.usesFts) await ensureSearchFtsTables(db, query.ftsKeys || ['pc', 'monitor', 'audit']);
   if (query.fast) {
     const joins = /\bpc_asset_latest_state\b/i.test(String(query.joins || ''))
       ? String(query.joins || '')
@@ -310,7 +312,7 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
 }
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
-  if (query.usesFts) await ensureSearchFtsTables(db);
+  if (query.usesFts) await ensureSearchFtsTables(db, query.ftsKeys || ['pc', 'monitor', 'audit']);
   if (query.fast) {
     const sql = `
       SELECT

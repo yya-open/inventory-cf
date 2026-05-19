@@ -13,14 +13,15 @@ function withPrefix(prefix: string | undefined, name: string) {
 }
 
 export async function listAssetPage<T>(db: D1Database, env: TimedEnv, tableName: string, query: QueryParts, listFn: (db: D1Database, query: QueryParts) => Promise<T[]>, labelPrefix?: string) {
-  const total = query.fast
-    ? null
+  const countTask = query.fast
+    ? Promise.resolve(null)
     : env?.__timing?.measure
-      ? await env.__timing.measure(withPrefix(labelPrefix, 'count'), () => countByWhere(db, tableName, query))
-      : await countByWhere(db, tableName, query);
-  const data = env?.__timing?.measure
-    ? await env.__timing.measure(withPrefix(labelPrefix, 'query'), () => listFn(db, query))
-    : await listFn(db, query);
+      ? env.__timing.measure(withPrefix(labelPrefix, 'count'), () => countByWhere(db, tableName, query))
+      : countByWhere(db, tableName, query);
+  const dataTask = env?.__timing?.measure
+    ? env.__timing.measure(withPrefix(labelPrefix, 'query'), () => listFn(db, query))
+    : listFn(db, query);
+  const [total, data] = await Promise.all([countTask, dataTask]);
   return { data, total, page: query.page, pageSize: query.pageSize };
 }
 

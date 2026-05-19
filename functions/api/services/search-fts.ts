@@ -1,6 +1,6 @@
 import { normalizeSearchText } from '../_search';
 
-type FtsTableKey = 'pc' | 'monitor' | 'audit';
+export type FtsTableKey = 'pc' | 'monitor' | 'audit';
 
 type FtsMatchOptions = {
   table: 'pc_assets_fts' | 'monitor_assets_fts' | 'audit_log_fts';
@@ -86,8 +86,8 @@ export async function ensureSearchFtsTables(db: D1Database, keys: FtsTableKey[] 
 }
 
 export async function rebuildSearchFtsTables(db: D1Database, keys: FtsTableKey[] = ['pc', 'monitor', 'audit']) {
-  await ensureSearchFtsTables(db);
   const wanted = Array.from(new Set(keys));
+  await ensureSearchFtsTables(db, wanted);
   for (const key of wanted) {
     await refillFtsTable(db, key);
   }
