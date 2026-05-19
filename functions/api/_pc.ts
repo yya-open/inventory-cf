@@ -18,6 +18,8 @@ let __pcSchemaProbeAt = 0;
 let __pcReadFastGuardsReady = false;
 let __pcReadFastGuardsInit: Promise<void> | null = null;
 let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
+let __pcQrColumnsReady = false;
+let __pcQrColumnsInit: Promise<void> | null = null;
 const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const PC_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
 const PC_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
@@ -534,19 +536,27 @@ export function toAssetStatusAfterOut(_recycle_date: any) {
 
 
 export async function ensurePcQrColumns(db: D1Database) {
-  for (const ddl of [
-    "ALTER TABLE pc_assets ADD COLUMN qr_key TEXT",
-    "ALTER TABLE pc_assets ADD COLUMN qr_updated_at TEXT",
-  ]) {
+  if (__pcQrColumnsReady) return;
+  if (__pcQrColumnsInit) return __pcQrColumnsInit;
+  __pcQrColumnsInit = (async () => {
+    for (const ddl of [
+      "ALTER TABLE pc_assets ADD COLUMN qr_key TEXT",
+      "ALTER TABLE pc_assets ADD COLUMN qr_updated_at TEXT",
+    ]) {
+      try {
+        await db.prepare(ddl).run();
+      } catch {
+        // ignore
+      }
+    }
     try {
-      await db.prepare(ddl).run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_qr_key ON pc_assets(qr_key)").run();
     } catch {
       // ignore
     }
-  }
-  try {
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_qr_key ON pc_assets(qr_key)").run();
-  } catch {
-    // ignore
-  }
+    __pcQrColumnsReady = true;
+  })().finally(() => {
+    __pcQrColumnsInit = null;
+  });
+  return __pcQrColumnsInit;
 }

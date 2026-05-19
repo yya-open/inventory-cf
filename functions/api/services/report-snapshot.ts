@@ -6,6 +6,9 @@ export type DailySnapshotRow = { day: string; metrics: Record<string, number> };
 
 type MetricsByDay = Record<string, Record<string, number>>;
 
+let reportSnapshotTableReady = false;
+let reportSnapshotTablePending: Promise<void> | null = null;
+
 function addDays(day: string, offset: number) {
   const [y, m, d] = String(day || '').split('-').map((v) => Number(v || 0));
   const dt = new Date(Date.UTC(y || 1970, Math.max((m || 1) - 1, 0), d || 1));
@@ -70,20 +73,28 @@ async function ensureStatementBatch(db: D1Database, statements: D1PreparedStatem
 }
 
 export async function ensureReportSnapshotTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS report_daily_snapshots (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      snapshot_date TEXT NOT NULL,
-      mode TEXT NOT NULL,
-      warehouse_id INTEGER NOT NULL DEFAULT 0,
-      scope_key TEXT NOT NULL,
-      metrics_json TEXT NOT NULL DEFAULT '{}',
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      UNIQUE(snapshot_date, mode, warehouse_id, scope_key)
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_report_daily_snapshots_lookup ON report_daily_snapshots(mode, warehouse_id, snapshot_date, scope_key)`).run();
+  if (reportSnapshotTableReady) return;
+  if (reportSnapshotTablePending) return reportSnapshotTablePending;
+  reportSnapshotTablePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS report_daily_snapshots (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        snapshot_date TEXT NOT NULL,
+        mode TEXT NOT NULL,
+        warehouse_id INTEGER NOT NULL DEFAULT 0,
+        scope_key TEXT NOT NULL,
+        metrics_json TEXT NOT NULL DEFAULT '{}',
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        UNIQUE(snapshot_date, mode, warehouse_id, scope_key)
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_report_daily_snapshots_lookup ON report_daily_snapshots(mode, warehouse_id, snapshot_date, scope_key)`).run();
+    reportSnapshotTableReady = true;
+  })().finally(() => {
+    reportSnapshotTablePending = null;
+  });
+  return reportSnapshotTablePending;
 }
 
 async function computePcRange(db: D1Database, from: string, to: string, scope?: UserDataScope | null) {

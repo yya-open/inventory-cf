@@ -18,6 +18,8 @@ let __monitorSchemaProbeAt = 0;
 let __monitorReadFastGuardsReady = false;
 let __monitorReadFastGuardsInit: Promise<void> | null = null;
 let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
+let __monitorQrColumnsReady = false;
+let __monitorQrColumnsInit: Promise<void> | null = null;
 const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
 const MONITOR_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
 const MONITOR_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
@@ -339,19 +341,27 @@ export function monitorTxNo(prefix = "MONTX") {
 // Only ensure qr_key columns exist (safe no-op if already present).
 // Used by QR-related endpoints so they can work even when migrations were not applied.
 export async function ensureMonitorQrColumns(db: D1Database) {
-  for (const ddl of [
-    "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
-    "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
-  ]) {
+  if (__monitorQrColumnsReady) return;
+  if (__monitorQrColumnsInit) return __monitorQrColumnsInit;
+  __monitorQrColumnsInit = (async () => {
+    for (const ddl of [
+      "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
+      "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
+    ]) {
+      try {
+        await db.prepare(ddl).run();
+      } catch {
+        // ignore
+      }
+    }
     try {
-      await db.prepare(ddl).run();
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
     } catch {
       // ignore
     }
-  }
-  try {
-    await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
-  } catch {
-    // ignore
-  }
+    __monitorQrColumnsReady = true;
+  })().finally(() => {
+    __monitorQrColumnsInit = null;
+  });
+  return __monitorQrColumnsInit;
 }

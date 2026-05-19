@@ -22,22 +22,35 @@ export function datetimeTextToMsBj(dt: string | null) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+let authLoginThrottleReady = false;
+let authLoginThrottlePending: Promise<void> | null = null;
+
 export async function ensureAuthLoginThrottleTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS auth_login_throttle (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      ip TEXT NOT NULL,
-      username TEXT NOT NULL,
-      fail_count INTEGER NOT NULL DEFAULT 0,
-      first_fail_at TEXT,
-      last_fail_at TEXT,
-      locked_until TEXT,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      UNIQUE(ip, username)
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_ip_username_locked ON auth_login_throttle(ip, username, locked_until)`).run();
+  if (authLoginThrottleReady) return;
+  if (authLoginThrottlePending) return authLoginThrottlePending;
+  authLoginThrottlePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS auth_login_throttle (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        ip TEXT NOT NULL,
+        username TEXT NOT NULL,
+        fail_count INTEGER NOT NULL DEFAULT 0,
+        first_fail_at TEXT,
+        last_fail_at TEXT,
+        locked_until TEXT,
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        UNIQUE(ip, username)
+      )`
+    ).run();
+    await db.batch([
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_locked ON auth_login_throttle(locked_until)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_auth_login_throttle_ip_username_locked ON auth_login_throttle(ip, username, locked_until)`),
+    ]);
+    authLoginThrottleReady = true;
+  })().finally(() => {
+    authLoginThrottlePending = null;
+  });
+  return authLoginThrottlePending;
 }
 
 export async function ensurePublicThrottleTable(db: D1Database) {

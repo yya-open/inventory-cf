@@ -55,77 +55,103 @@ export function summarizeRouteDurations(rows: Array<{ duration_ms?: number | nul
   };
 }
 
-export async function ensureBrowserObservabilityTables(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS browser_perf_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      kind TEXT NOT NULL DEFAULT 'route',
-      path TEXT NOT NULL,
-      full_path TEXT,
-      duration_ms INTEGER NOT NULL,
-      username TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_created_at ON browser_perf_log(created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_created_at ON browser_perf_log(path, created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_duration_created_at ON browser_perf_log(duration_ms DESC, created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_duration_created ON browser_perf_log(path, duration_ms DESC, created_at DESC)`).run();
+let browserObservabilityReady = false;
+let browserObservabilityPending: Promise<void> | null = null;
+let observabilityRetentionReady = false;
+let observabilityRetentionPending: Promise<void> | null = null;
 
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS browser_event_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      event_name TEXT NOT NULL,
-      path TEXT NOT NULL,
-      full_path TEXT,
-      metadata_json TEXT,
-      username TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_created_at ON browser_event_log(created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_event_created_at ON browser_event_log(event_name, created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_created_at ON browser_event_log(path, created_at DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_event_created ON browser_event_log(path, event_name, created_at DESC)`).run();
+export async function ensureBrowserObservabilityTables(db: D1Database) {
+  if (browserObservabilityReady) return;
+  if (browserObservabilityPending) return browserObservabilityPending;
+  browserObservabilityPending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS browser_perf_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT 'route',
+        path TEXT NOT NULL,
+        full_path TEXT,
+        duration_ms INTEGER NOT NULL,
+        username TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS browser_event_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        full_path TEXT,
+        metadata_json TEXT,
+        username TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.batch([
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_created_at ON browser_perf_log(created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_created_at ON browser_perf_log(path, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_duration_created_at ON browser_perf_log(duration_ms DESC, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_duration_created ON browser_perf_log(path, duration_ms DESC, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_created_at ON browser_event_log(created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_event_created_at ON browser_event_log(event_name, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_created_at ON browser_event_log(path, created_at DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_event_created ON browser_event_log(path, event_name, created_at DESC)`),
+    ]);
+    browserObservabilityReady = true;
+  })().finally(() => {
+    browserObservabilityPending = null;
+  });
+  return browserObservabilityPending;
 }
 
 export async function ensureObservabilityRetentionTables(db: D1Database) {
-  await ensureSlowRequestLogTable(db);
-  await ensureRequestErrorLogTable(db);
-  await ensureBrowserObservabilityTables(db);
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS observability_retention_policy (
-      id INTEGER PRIMARY KEY CHECK (id = 1),
-      slow_request_days INTEGER NOT NULL DEFAULT 30,
-      request_error_days INTEGER NOT NULL DEFAULT 30,
-      browser_perf_days INTEGER NOT NULL DEFAULT 14,
-      browser_event_days INTEGER NOT NULL DEFAULT 14,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(
-    `INSERT INTO observability_retention_policy (id, slow_request_days, request_error_days, browser_perf_days, browser_event_days, updated_at)
-     VALUES (1, ?, ?, ?, ?, ${sqlNowStored()})
-     ON CONFLICT(id) DO NOTHING`
-  ).bind(
-    DEFAULT_OBSERVABILITY_RETENTION_POLICY.slow_request_days,
-    DEFAULT_OBSERVABILITY_RETENTION_POLICY.request_error_days,
-    DEFAULT_OBSERVABILITY_RETENTION_POLICY.browser_perf_days,
-    DEFAULT_OBSERVABILITY_RETENTION_POLICY.browser_event_days,
-  ).run();
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS observability_cleanup_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      run_reason TEXT NOT NULL DEFAULT 'manual',
-      deleted_slow_request_rows INTEGER NOT NULL DEFAULT 0,
-      deleted_request_error_rows INTEGER NOT NULL DEFAULT 0,
-      deleted_browser_perf_rows INTEGER NOT NULL DEFAULT 0,
-      deleted_browser_event_rows INTEGER NOT NULL DEFAULT 0,
-      policy_json TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_observability_cleanup_runs_created_at ON observability_cleanup_runs(created_at DESC, id DESC)`).run();
+  if (observabilityRetentionReady) return;
+  if (observabilityRetentionPending) return observabilityRetentionPending;
+  observabilityRetentionPending = (async () => {
+    await Promise.all([
+      ensureSlowRequestLogTable(db),
+      ensureRequestErrorLogTable(db),
+      ensureBrowserObservabilityTables(db),
+    ]);
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS observability_retention_policy (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        slow_request_days INTEGER NOT NULL DEFAULT 30,
+        request_error_days INTEGER NOT NULL DEFAULT 30,
+        browser_perf_days INTEGER NOT NULL DEFAULT 14,
+        browser_event_days INTEGER NOT NULL DEFAULT 14,
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS observability_cleanup_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        run_reason TEXT NOT NULL DEFAULT 'manual',
+        deleted_slow_request_rows INTEGER NOT NULL DEFAULT 0,
+        deleted_request_error_rows INTEGER NOT NULL DEFAULT 0,
+        deleted_browser_perf_rows INTEGER NOT NULL DEFAULT 0,
+        deleted_browser_event_rows INTEGER NOT NULL DEFAULT 0,
+        policy_json TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.batch([
+      db.prepare(
+        `INSERT INTO observability_retention_policy (id, slow_request_days, request_error_days, browser_perf_days, browser_event_days, updated_at)
+         VALUES (1, ?, ?, ?, ?, ${sqlNowStored()})
+         ON CONFLICT(id) DO NOTHING`
+      ).bind(
+        DEFAULT_OBSERVABILITY_RETENTION_POLICY.slow_request_days,
+        DEFAULT_OBSERVABILITY_RETENTION_POLICY.request_error_days,
+        DEFAULT_OBSERVABILITY_RETENTION_POLICY.browser_perf_days,
+        DEFAULT_OBSERVABILITY_RETENTION_POLICY.browser_event_days,
+      ),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_observability_cleanup_runs_created_at ON observability_cleanup_runs(created_at DESC, id DESC)`),
+    ]);
+    observabilityRetentionReady = true;
+  })().finally(() => {
+    observabilityRetentionPending = null;
+  });
+  return observabilityRetentionPending;
 }
 
 export async function getObservabilityRetentionPolicy(db: D1Database): Promise<ObservabilityRetentionPolicy> {

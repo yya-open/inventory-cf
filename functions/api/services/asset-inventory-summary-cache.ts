@@ -13,6 +13,9 @@ const SUMMARY_CACHE_MAX_AGE_SECONDS = 30;
 
 type InventoryKind = 'pc' | 'monitor';
 
+let inventorySummaryCacheTableReady = false;
+let inventorySummaryCacheTablePending: Promise<void> | null = null;
+
 function scopeKey(scope?: UserDataScope | null) {
   return JSON.stringify({
     data_scope_type: scope?.data_scope_type || 'all',
@@ -70,18 +73,26 @@ function parseCachedSummary(value: any): CachedInventorySummary | null {
 }
 
 export async function ensureInventorySummaryCacheTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS asset_inventory_summary_cache (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      kind TEXT NOT NULL,
-      scope_key TEXT NOT NULL,
-      cache_key TEXT NOT NULL,
-      summary_json TEXT NOT NULL DEFAULT '{}',
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      UNIQUE(kind, scope_key, cache_key)
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_asset_inventory_summary_cache_lookup ON asset_inventory_summary_cache(kind, scope_key, cache_key, updated_at)`).run();
+  if (inventorySummaryCacheTableReady) return;
+  if (inventorySummaryCacheTablePending) return inventorySummaryCacheTablePending;
+  inventorySummaryCacheTablePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS asset_inventory_summary_cache (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL,
+        scope_key TEXT NOT NULL,
+        cache_key TEXT NOT NULL,
+        summary_json TEXT NOT NULL DEFAULT '{}',
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        UNIQUE(kind, scope_key, cache_key)
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_asset_inventory_summary_cache_lookup ON asset_inventory_summary_cache(kind, scope_key, cache_key, updated_at)`).run();
+    inventorySummaryCacheTableReady = true;
+  })().finally(() => {
+    inventorySummaryCacheTablePending = null;
+  });
+  return inventorySummaryCacheTablePending;
 }
 
 export async function invalidateInventorySummaryCache(db: D1Database, kind?: InventoryKind) {

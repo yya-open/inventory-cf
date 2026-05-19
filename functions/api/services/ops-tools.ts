@@ -30,6 +30,8 @@ const OPS_SCAN_KEY = 'repair_center';
 const AUTO_SCAN_INTERVAL_MINUTES = 15;
 const OPS_REPAIR_PAGE_SIZE = 500;
 const OPS_SCAN_EXAMPLE_LIMIT = 20;
+const ensureOnceReady = new Set<string>();
+const ensureOncePending = new Map<string, Promise<void>>();
 
 const REPAIR_ACTION_LABEL: Record<string, string> = {
   scan_all: '执行巡检扫描',
@@ -41,74 +43,97 @@ const REPAIR_ACTION_LABEL: Record<string, string> = {
   repair_user_scope_format: '迁移权限范围格式',
 };
 
+async function ensureOnce(key: string, task: () => Promise<void>) {
+  if (ensureOnceReady.has(key)) return;
+  const pending = ensureOncePending.get(key);
+  if (pending) return pending;
+  const next = task().then(() => {
+    ensureOnceReady.add(key);
+  }).finally(() => {
+    ensureOncePending.delete(key);
+  });
+  ensureOncePending.set(key, next);
+  return next;
+}
+
 export async function ensureSlowRequestLogTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS slow_request_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      method TEXT,
-      path TEXT,
-      status INTEGER,
-      total_ms INTEGER,
-      sql_ms INTEGER,
-      auth_ms INTEGER,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status)`).run();
+  return ensureOnce('slow_request_log', async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS slow_request_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        method TEXT,
+        path TEXT,
+        status INTEGER,
+        total_ms INTEGER,
+        sql_ms INTEGER,
+        auth_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_slow_request_log_created_path ON slow_request_log(created_at DESC, path, status)`).run();
+  });
 }
 
 export async function ensureRequestErrorLogTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS request_error_log (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      method TEXT,
-      path TEXT,
-      status INTEGER,
-      total_ms INTEGER,
-      sql_ms INTEGER,
-      auth_ms INTEGER,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)`).run();
+  return ensureOnce('request_error_log', async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS request_error_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        method TEXT,
+        path TEXT,
+        status INTEGER,
+        total_ms INTEGER,
+        sql_ms INTEGER,
+        auth_ms INTEGER,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path)`).run();
+  });
 }
 
 export async function ensureOpsScanStateTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS ops_scan_state (
-      scan_key TEXT PRIMARY KEY,
-      total_problem_count INTEGER NOT NULL DEFAULT 0,
-      affected_rows INTEGER NOT NULL DEFAULT 0,
-      scan_json TEXT,
-      last_scan_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_ops_scan_state_updated_at ON ops_scan_state(updated_at DESC)`).run();
+  return ensureOnce('ops_scan_state', async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS ops_scan_state (
+        scan_key TEXT PRIMARY KEY,
+        total_problem_count INTEGER NOT NULL DEFAULT 0,
+        affected_rows INTEGER NOT NULL DEFAULT 0,
+        scan_json TEXT,
+        last_scan_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_ops_scan_state_updated_at ON ops_scan_state(updated_at DESC)`).run();
+  });
 }
 
 export async function ensureAdminRepairHistoryTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS admin_repair_history (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      action_key TEXT NOT NULL,
-      action_label TEXT NOT NULL,
-      actor_id INTEGER,
-      actor_name TEXT,
-      before_problem_count INTEGER NOT NULL DEFAULT 0,
-      before_affected_rows INTEGER NOT NULL DEFAULT 0,
-      repaired_count INTEGER NOT NULL DEFAULT 0,
-      after_problem_count INTEGER NOT NULL DEFAULT 0,
-      after_affected_rows INTEGER NOT NULL DEFAULT 0,
-      success INTEGER NOT NULL DEFAULT 1,
-      result_summary TEXT,
-      detail_json TEXT,
-      error_text TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_created_at ON admin_repair_history(created_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_action_key ON admin_repair_history(action_key, id DESC)`).run();
+  return ensureOnce('admin_repair_history', async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS admin_repair_history (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        action_key TEXT NOT NULL,
+        action_label TEXT NOT NULL,
+        actor_id INTEGER,
+        actor_name TEXT,
+        before_problem_count INTEGER NOT NULL DEFAULT 0,
+        before_affected_rows INTEGER NOT NULL DEFAULT 0,
+        repaired_count INTEGER NOT NULL DEFAULT 0,
+        after_problem_count INTEGER NOT NULL DEFAULT 0,
+        after_affected_rows INTEGER NOT NULL DEFAULT 0,
+        success INTEGER NOT NULL DEFAULT 1,
+        result_summary TEXT,
+        detail_json TEXT,
+        error_text TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    await db.batch([
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_created_at ON admin_repair_history(created_at DESC, id DESC)`),
+      db.prepare(`CREATE INDEX IF NOT EXISTS idx_admin_repair_history_action_key ON admin_repair_history(action_key, id DESC)`),
+    ]);
+  });
 }
 
 async function isRepairScanStale(db: D1Database) {

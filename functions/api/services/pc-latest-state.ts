@@ -1,27 +1,38 @@
 import { sqlNowStored } from '../_time';
 
+let pcLatestStateTableReady = false;
+let pcLatestStateTablePending: Promise<void> | null = null;
+
 export async function ensurePcLatestStateTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS pc_asset_latest_state (
-      asset_id INTEGER PRIMARY KEY,
-      last_out_id INTEGER,
-      last_in_id INTEGER,
-      last_recycle_id INTEGER,
-      current_employee_no TEXT,
-      current_employee_name TEXT,
-      current_department TEXT,
-      last_config_date TEXT,
-      last_out_at TEXT,
-      last_in_at TEXT,
-      last_recycle_date TEXT,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE,
-      FOREIGN KEY(last_out_id) REFERENCES pc_out(id) ON DELETE SET NULL,
-      FOREIGN KEY(last_in_id) REFERENCES pc_in(id) ON DELETE SET NULL,
-      FOREIGN KEY(last_recycle_id) REFERENCES pc_recycle(id) ON DELETE SET NULL
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_department ON pc_asset_latest_state(current_department, asset_id)`).run();
+  if (pcLatestStateTableReady) return;
+  if (pcLatestStateTablePending) return pcLatestStateTablePending;
+  pcLatestStateTablePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS pc_asset_latest_state (
+        asset_id INTEGER PRIMARY KEY,
+        last_out_id INTEGER,
+        last_in_id INTEGER,
+        last_recycle_id INTEGER,
+        current_employee_no TEXT,
+        current_employee_name TEXT,
+        current_department TEXT,
+        last_config_date TEXT,
+        last_out_at TEXT,
+        last_in_at TEXT,
+        last_recycle_date TEXT,
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE,
+        FOREIGN KEY(last_out_id) REFERENCES pc_out(id) ON DELETE SET NULL,
+        FOREIGN KEY(last_in_id) REFERENCES pc_in(id) ON DELETE SET NULL,
+        FOREIGN KEY(last_recycle_id) REFERENCES pc_recycle(id) ON DELETE SET NULL
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_department ON pc_asset_latest_state(current_department, asset_id)`).run();
+    pcLatestStateTableReady = true;
+  })().finally(() => {
+    pcLatestStateTablePending = null;
+  });
+  return pcLatestStateTablePending;
 }
 
 export async function upsertPcLatestState(db: D1Database, assetId: number, patch: {

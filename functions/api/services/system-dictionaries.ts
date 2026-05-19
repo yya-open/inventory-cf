@@ -44,8 +44,14 @@ const dictionaryVersionCache = new Map<string, { expiresAt: number; version: str
 const dictionaryVersionPending = new Map<string, Promise<string>>();
 let bootstrapAllPromise: Promise<void> | null = null;
 const bootstrapKeyPromises = new Map<SystemDictionaryKey, Promise<void>>();
+let legacySettingsTableReady = false;
+let legacySettingsTablePending: Promise<void> | null = null;
 let dictionarySchemaReady = false;
 let dictionarySchemaPending: Promise<void> | null = null;
+let dictionaryUsageCountersReady = false;
+let dictionaryUsageCountersPending: Promise<void> | null = null;
+let dictionaryUsageDirtyReady = false;
+let dictionaryUsageDirtyPending: Promise<void> | null = null;
 
 function readEnabledLabelsCache(key: SystemDictionaryKey) {
   const cached = enabledLabelsCache.get(key);
@@ -166,14 +172,22 @@ function toStringArray(value: any, fallback: string[] = []) {
 }
 
 async function ensureLegacySystemSettingsTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS system_settings (
-      key TEXT PRIMARY KEY,
-      value_json TEXT NOT NULL,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_by TEXT
-    )`
-  ).run();
+  if (legacySettingsTableReady) return;
+  if (legacySettingsTablePending) return legacySettingsTablePending;
+  legacySettingsTablePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS system_settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_by TEXT
+      )`
+    ).run();
+    legacySettingsTableReady = true;
+  })().finally(() => {
+    legacySettingsTablePending = null;
+  });
+  return legacySettingsTablePending;
 }
 
 export async function ensureSystemDictionaryTable(db: D1Database) {
@@ -205,31 +219,47 @@ export async function ensureSystemDictionaryTable(db: D1Database) {
 
 
 export async function ensureDictionaryUsageCountersTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS dictionary_usage_counters (
-      dictionary_key TEXT NOT NULL,
-      normalized_label TEXT NOT NULL,
-      label TEXT NOT NULL,
-      reference_count INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      PRIMARY KEY (dictionary_key, normalized_label)
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dictionary_usage_counters_key_count ON dictionary_usage_counters(dictionary_key, reference_count DESC, normalized_label ASC)`).run();
+  if (dictionaryUsageCountersReady) return;
+  if (dictionaryUsageCountersPending) return dictionaryUsageCountersPending;
+  dictionaryUsageCountersPending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS dictionary_usage_counters (
+        dictionary_key TEXT NOT NULL,
+        normalized_label TEXT NOT NULL,
+        label TEXT NOT NULL,
+        reference_count INTEGER NOT NULL DEFAULT 0,
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        PRIMARY KEY (dictionary_key, normalized_label)
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dictionary_usage_counters_key_count ON dictionary_usage_counters(dictionary_key, reference_count DESC, normalized_label ASC)`).run();
+    dictionaryUsageCountersReady = true;
+  })().finally(() => {
+    dictionaryUsageCountersPending = null;
+  });
+  return dictionaryUsageCountersPending;
 }
 
 export async function ensureDictionaryUsageDirtyTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS dictionary_usage_dirty_keys (
-      dictionary_key TEXT PRIMARY KEY,
-      dirty_since TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      refresh_after TEXT,
-      attempt_count INTEGER NOT NULL DEFAULT 0,
-      last_error TEXT
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dictionary_usage_dirty_refresh_after ON dictionary_usage_dirty_keys(refresh_after, dirty_since)`).run();
+  if (dictionaryUsageDirtyReady) return;
+  if (dictionaryUsageDirtyPending) return dictionaryUsageDirtyPending;
+  dictionaryUsageDirtyPending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS dictionary_usage_dirty_keys (
+        dictionary_key TEXT PRIMARY KEY,
+        dirty_since TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        refresh_after TEXT,
+        attempt_count INTEGER NOT NULL DEFAULT 0,
+        last_error TEXT
+      )`
+    ).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_dictionary_usage_dirty_refresh_after ON dictionary_usage_dirty_keys(refresh_after, dirty_since)`).run();
+    dictionaryUsageDirtyReady = true;
+  })().finally(() => {
+    dictionaryUsageDirtyPending = null;
+  });
+  return dictionaryUsageDirtyPending;
 }
 
 export async function markSystemDictionaryUsageCountersDirty(db: D1Database, keys?: SystemDictionaryKey[], refreshAfterSeconds = 30) {

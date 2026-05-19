@@ -3,40 +3,51 @@ import { withErrorHandling } from './_error';
 import { sqlNowStored } from './_time';
 import { logAudit } from './_audit';
 
+let backupDrillTableReady = false;
+let backupDrillTablePending: Promise<void> | null = null;
+
 async function ensureBackupDrillTable(db: D1Database) {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS backup_drill_runs (
-      id INTEGER PRIMARY KEY AUTOINCREMENT,
-      drill_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      outcome TEXT NOT NULL DEFAULT 'success',
-      scenario TEXT,
-      operator_id INTEGER,
-      operator_name TEXT,
-      note TEXT,
-      issue_count INTEGER NOT NULL DEFAULT 0,
-      follow_up_status TEXT NOT NULL DEFAULT 'not_required',
-      rect_owner TEXT,
-      rect_due_at TEXT,
-      rect_closed_at TEXT,
-      review_note TEXT,
-      created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  for (const sql of [
-    `ALTER TABLE backup_drill_runs ADD COLUMN issue_count INTEGER NOT NULL DEFAULT 0`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN follow_up_status TEXT NOT NULL DEFAULT 'not_required'`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN rect_owner TEXT`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN rect_due_at TEXT`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN rect_closed_at TEXT`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN review_note TEXT`,
-    `ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT`,
-  ]) {
-    try { await db.prepare(sql).run(); } catch {}
-  }
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_backup_drill_runs_drill_at ON backup_drill_runs(drill_at DESC, id DESC)`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_backup_drill_runs_follow_up_status ON backup_drill_runs(follow_up_status, rect_due_at, id DESC)`).run();
-  await db.prepare(`UPDATE backup_drill_runs SET updated_at=COALESCE(updated_at, created_at, drill_at, ${sqlNowStored()})`).run().catch(() => {});
+  if (backupDrillTableReady) return;
+  if (backupDrillTablePending) return backupDrillTablePending;
+  backupDrillTablePending = (async () => {
+    await db.prepare(
+      `CREATE TABLE IF NOT EXISTS backup_drill_runs (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        drill_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        outcome TEXT NOT NULL DEFAULT 'success',
+        scenario TEXT,
+        operator_id INTEGER,
+        operator_name TEXT,
+        note TEXT,
+        issue_count INTEGER NOT NULL DEFAULT 0,
+        follow_up_status TEXT NOT NULL DEFAULT 'not_required',
+        rect_owner TEXT,
+        rect_due_at TEXT,
+        rect_closed_at TEXT,
+        review_note TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
+        updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+    ).run();
+    for (const sql of [
+      `ALTER TABLE backup_drill_runs ADD COLUMN issue_count INTEGER NOT NULL DEFAULT 0`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN follow_up_status TEXT NOT NULL DEFAULT 'not_required'`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN rect_owner TEXT`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN rect_due_at TEXT`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN rect_closed_at TEXT`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN review_note TEXT`,
+      `ALTER TABLE backup_drill_runs ADD COLUMN updated_at TEXT`,
+    ]) {
+      try { await db.prepare(sql).run(); } catch {}
+    }
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_backup_drill_runs_drill_at ON backup_drill_runs(drill_at DESC, id DESC)`).run();
+    await db.prepare(`CREATE INDEX IF NOT EXISTS idx_backup_drill_runs_follow_up_status ON backup_drill_runs(follow_up_status, rect_due_at, id DESC)`).run();
+    await db.prepare(`UPDATE backup_drill_runs SET updated_at=COALESCE(updated_at, created_at, drill_at, ${sqlNowStored()})`).run().catch(() => {});
+    backupDrillTableReady = true;
+  })().finally(() => {
+    backupDrillTablePending = null;
+  });
+  return backupDrillTablePending;
 }
 
 function normalizeFollowStatus(input: any, outcome: string, issueCount: number) {
