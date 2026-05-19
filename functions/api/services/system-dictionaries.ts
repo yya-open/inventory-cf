@@ -432,7 +432,7 @@ export async function syncSystemDictionaryUsageCounters(db: D1Database, keys?: S
   return markSystemDictionaryUsageCountersDirty(db, keys);
 }
 
-async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]): Promise<ReferenceCountMap> {
+async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[], options?: { refresh?: boolean }): Promise<ReferenceCountMap> {
   await ensureDictionaryUsageCountersTable(db);
   const wanted = Array.from(new Set((keys || []).filter((key): key is SystemDictionaryKey => ALL_DICTIONARY_KEYS.includes(key))));
   if (!wanted.length) return {};
@@ -443,12 +443,13 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[]):
      WHERE dictionary_key IN (${placeholders})`
   ).bind(...wanted).all<any>();
   const existingKeys = new Set((results || []).map((row: any) => String(row?.dictionary_key || '')).filter(Boolean));
-  const refreshedDirty = await refreshDirtySystemDictionaryUsageCounters(db, wanted);
+  const shouldRefresh = options?.refresh !== false;
+  const refreshedDirty = shouldRefresh ? await refreshDirtySystemDictionaryUsageCounters(db, wanted) : 0;
   const missingKeys = wanted.filter((key) => !existingKeys.has(key));
-  if (missingKeys.length) {
+  if (shouldRefresh && missingKeys.length) {
     await refreshSystemDictionaryUsageCounters(db, missingKeys);
   }
-  if (refreshedDirty > 0 || missingKeys.length) {
+  if (refreshedDirty > 0 || (shouldRefresh && missingKeys.length)) {
     ({ results } = await db.prepare(
       `SELECT dictionary_key, label, reference_count
        FROM dictionary_usage_counters
@@ -507,7 +508,7 @@ export async function listSystemDictionaryItems(db: D1Database, key?: SystemDict
     ).bind(...binds).all<any>();
     const rows = results || [];
     const keys = Array.from(new Set(rows.map((row: any) => String(row?.dictionary_key || '') as SystemDictionaryKey)));
-    const referenceCounts = await loadReferenceCounts(db, keys);
+    const referenceCounts = await loadReferenceCounts(db, keys, { refresh: false });
     const items = rows.map((row: any) => {
       const dictionaryKey = String(row?.dictionary_key || '') as SystemDictionaryKey;
       const label = normalizeLabel(row?.label);
