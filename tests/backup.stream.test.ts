@@ -54,6 +54,19 @@ class FakeDB {
   }
 }
 
+function chunkedTextStream(text: string, chunkSize: number) {
+  const encoder = new TextEncoder();
+  const bytes = encoder.encode(text);
+  return new ReadableStream<Uint8Array>({
+    start(controller) {
+      for (let offset = 0; offset < bytes.length; offset += chunkSize) {
+        controller.enqueue(bytes.slice(offset, offset + chunkSize));
+      }
+      controller.close();
+    },
+  });
+}
+
 describe('backup stream helper', () => {
   it('streams valid backup json with manifest and integrity hashes', async () => {
     const db = new FakeDB({
@@ -96,5 +109,29 @@ describe('backup stream helper', () => {
     expect(streamedRows).toBe(4);
     expect(validation.ok).toBe(true);
     expect(validation.issues.filter((item) => item.severity === 'error')).toHaveLength(0);
+  });
+
+  it('iterates rows when JSON row objects span stream chunks', async () => {
+    const text = JSON.stringify({
+      version: 'inventory-cf-backup-v3',
+      tables: {
+        warehouses: [
+          { id: 1, name: 'A'.repeat(200), created_at: '2026-04-01 00:00:00' },
+          { id: 2, name: 'B'.repeat(200), created_at: '2026-04-02 00:00:00' },
+        ],
+        public_api_throttle: [
+          { k: 'pc:1', count: 3, updated_at: '2026-04-03 00:00:00' },
+          { k: 'pc:2', count: 4, updated_at: '2026-04-03 01:00:00' },
+        ],
+      },
+    });
+    const counts: Record<string, number> = {};
+
+    for await (const row of iterBackupRowsFromStream(chunkedTextStream(text, 17))) {
+      counts[row.table] = (counts[row.table] || 0) + 1;
+      expect(JSON.parse(row.rowText)).toBeTruthy();
+    }
+
+    expect(counts).toEqual({ warehouses: 2, public_api_throttle: 2 });
   });
 });

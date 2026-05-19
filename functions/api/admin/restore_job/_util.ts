@@ -175,6 +175,8 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
         if (buf[i] !== "{") { i++; continue; }
         i++;
         state = "seek_table_key";
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -190,6 +192,8 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
         curTable = r.value;
         i = r.next;
         state = "seek_array_start";
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -207,6 +211,8 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
         depth = 0;
         objInString = false;
         objEscape = false;
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -220,6 +226,8 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
           if (c === "]") {
             i++;
             state = "seek_table_key";
+            buf = buf.slice(i);
+            i = 0;
             continue;
           }
           if (c === ",") { i++; continue; }
@@ -273,11 +281,14 @@ export async function* iterBackupRows(file: File): AsyncGenerator<{ table: strin
         if (objStart !== -1) {
           buf = buf.slice(objStart);
           i = 0;
-          objStart = 0;
+          objStart = -1;
+          depth = 0;
+          objInString = false;
+          objEscape = false;
           break;
         }
 
-        if (i > 4096) {
+        if (i > 0) {
           buf = buf.slice(i);
           i = 0;
         }
@@ -530,6 +541,8 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
         if (buf[i] !== "{") { i++; continue; }
         i++;
         state = "seek_table_key";
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -545,6 +558,8 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
         curTable = r.value;
         i = r.next;
         state = "seek_array_start";
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -562,6 +577,8 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
         depth = 0;
         objInString = false;
         objEscape = false;
+        buf = buf.slice(i);
+        i = 0;
         continue;
       }
 
@@ -575,6 +592,8 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
           if (c === "]") {
             i++;
             state = "seek_table_key";
+            buf = buf.slice(i);
+            i = 0;
             continue;
           }
           if (c === ",") { i++; continue; }
@@ -628,11 +647,14 @@ export async function* iterBackupRowsFromStream(stream: ReadableStream<Uint8Arra
         if (objStart !== -1) {
           buf = buf.slice(objStart);
           i = 0;
-          objStart = 0;
+          objStart = -1;
+          depth = 0;
+          objInString = false;
+          objEscape = false;
           break;
         }
 
-        if (i > 4096) {
+        if (i > 0) {
           buf = buf.slice(i);
           i = 0;
         }
