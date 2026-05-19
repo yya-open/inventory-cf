@@ -55,7 +55,10 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const issues: Issue[] = [];
   const backupTableNames = Object.keys(tables || {});
 
-  const validation = await validateBackupEnvelope(backup);
+  const validationInput = backup && typeof backup === 'object'
+    ? { ...backup, integrity: undefined }
+    : backup;
+  const validation = await validateBackupEnvelope(validationInput);
   for (const item of validation.issues) {
     issues.push({
       severity: item.severity,
@@ -122,7 +125,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       meta: backup?.meta || null,
       manifest: backup?.manifest || null,
       integrity: backup?.integrity || null,
-      integrity_verified: validation.ok,
+      integrity_verified: validation.recomputedIntegrity ? validation.ok : null,
       current_supported_version: BACKUP_VERSION,
       included_tables: backupTableNames,
       included_in_backup: includedInBackup,
