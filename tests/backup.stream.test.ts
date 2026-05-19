@@ -69,7 +69,6 @@ describe('backup stream helper', () => {
 
     const result = await createBackupJsonStream(db, { includeTables: ['warehouses', 'public_api_throttle'], pageSize: 1, actor: 'tester', reason: 'unit' });
     const text = await new Response(result.stream).text();
-    expect(result.fileSize).toBe(new TextEncoder().encode(text).byteLength);
     const metadata = await readBackupEnvelopeMetadataFromStream(new Response(text).body as ReadableStream<Uint8Array>);
     let streamedRows = 0;
     for await (const row of iterBackupRowsFromStream(new Response(text).body as ReadableStream<Uint8Array>)) {

@@ -376,10 +376,13 @@ type AsyncJobResultBucket = {
   put: (key: string, value: any, options?: any) => Promise<any>;
   get: (key: string, options?: any) => Promise<any>;
   delete?: (key: string) => Promise<any>;
+  createMultipartUpload?: (key: string, options?: any) => Promise<any>;
 } | null | undefined;
 
 const INLINE_BACKUP_EXPORT_ROW_LIMIT = 5000;
 const INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT = 20000;
+const STREAM_UPLOAD_PART_BYTES = 5 * 1024 * 1024;
+const STREAM_UPLOAD_FALLBACK_MAX_BYTES = 50 * 1024 * 1024;
 
 function toB64FilenameSafe(value: any) {
   return String(value || '').replace(/[\/:*?"<>|]/g, '_').trim() || '盘点结果';
@@ -748,17 +751,111 @@ function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
   };
 }
 
+function copyBytes(value: Uint8Array<ArrayBufferLike>): Uint8Array {
+  const out = new Uint8Array(value.byteLength);
+  out.set(value);
+  return out;
+}
+
+function appendBytes(left: Uint8Array<ArrayBufferLike>, right: Uint8Array<ArrayBufferLike>): Uint8Array {
+  if (!left.byteLength) return copyBytes(right);
+  if (!right.byteLength) return copyBytes(left);
+  const out = new Uint8Array(left.byteLength + right.byteLength);
+  out.set(left, 0);
+  out.set(right, left.byteLength);
+  return out;
+}
+
+async function readReadableStreamToBytesWithLimit(stream: ReadableStream<Uint8Array>, limitBytes: number) {
+  const reader = stream.getReader();
+  const chunks: Uint8Array[] = [];
+  let total = 0;
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = value instanceof Uint8Array ? value : new Uint8Array(value || []);
+      total += chunk.byteLength;
+      if (total > limitBytes) throw new Error(`Stream result is too large to buffer (${limitBytes} bytes limit)`);
+      chunks.push(chunk);
+    }
+  } finally {
+    reader.releaseLock();
+  }
+  const out = new Uint8Array(total);
+  let offset = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, offset);
+    offset += chunk.byteLength;
+  }
+  return out;
+}
+
+async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKey: string, stream: ReadableStream<Uint8Array>, options: any) {
+  if (!bucket) return null;
+  if (typeof bucket.createMultipartUpload === 'function') {
+    const upload = await bucket.createMultipartUpload(objectKey, options);
+    const parts: any[] = [];
+    let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    let partNumber = 1;
+    let fileSize = 0;
+    const reader = stream.getReader();
+    const flushParts = async (force = false) => {
+      while (pending.byteLength >= STREAM_UPLOAD_PART_BYTES || (force && pending.byteLength > 0)) {
+        const size = force ? pending.byteLength : STREAM_UPLOAD_PART_BYTES;
+        const body = pending.slice(0, size);
+        pending = pending.slice(size);
+        const part = await upload.uploadPart(partNumber, body);
+        parts.push(part);
+        partNumber += 1;
+        fileSize += body.byteLength;
+      }
+    };
+    try {
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        const chunk = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value || []);
+        pending = appendBytes(pending, chunk);
+        await flushParts(false);
+      }
+      await flushParts(true);
+      reader.releaseLock();
+      if (!parts.length) {
+        await upload.abort().catch(() => {});
+        await bucket.put(objectKey, new Uint8Array(), options);
+        return { fileSize: 0 };
+      }
+      await upload.complete(parts);
+      return { fileSize };
+    } catch (error) {
+      try { reader.releaseLock(); } catch {}
+      try { await upload.abort(); } catch {}
+      throw error;
+    }
+  }
+
+  const body = await readReadableStreamToBytesWithLimit(stream, STREAM_UPLOAD_FALLBACK_MAX_BYTES);
+  await bucket.put(objectKey, body, options);
+  return { fileSize: body.byteLength };
+}
+
 async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult) {
   if (!bucket) return null;
   const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
   const objectKey = buildAsyncJobResultObjectKey(row, filename);
   const contentType = String(result.contentType || 'application/octet-stream');
+  const putOptions = buildAsyncJobResultPutOptions(contentType, filename);
+  if (result.stream != null) {
+    const uploaded = await uploadReadableStreamObject(bucket, objectKey, result.stream as ReadableStream<Uint8Array>, putOptions);
+    return { objectKey, fileSize: result.fileSize != null ? Number(result.fileSize || 0) : uploaded?.fileSize ?? null };
+  }
   const body = result.stream != null
       ? result.stream
       : result.blobBase64 != null
         ? decodeBase64ToBytes(result.blobBase64)
         : String(result.text ?? '');
-  await bucket.put(objectKey, body, buildAsyncJobResultPutOptions(contentType, filename));
+  await bucket.put(objectKey, body, putOptions);
   const fileSize = result.fileSize != null
     ? Number(result.fileSize || 0)
     : result.blobBase64 != null
@@ -908,14 +1005,13 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
     const gzip = requestJson?.gzip === true || requestJson?.gzip === 1 || requestJson?.gzip === '1';
     const table = String(requestJson?.table || '').trim() || null;
     if (bucket) {
-      const filename = buildBackupFilename({ table, gzip: false });
-      const payload = await createBackupJsonStream(db, backupOptions);
       if (gzip) {
         throw new Error('异步备份导出到对象存储时暂不支持 gzip，请先导出未压缩 JSON');
       }
+      const filename = buildBackupFilename({ table, gzip: false });
+      const payload = await createBackupJsonStream(db, backupOptions);
       return {
         stream: payload.stream,
-        fileSize: payload.fileSize,
         filename,
         contentType: 'application/json; charset=utf-8',
         message: `备份已生成（${payload.tables.length} 张表）`,
