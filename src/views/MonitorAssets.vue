@@ -283,6 +283,8 @@ const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; c
 let qrExportProgressAutoCloseTimer: number | null = null;
 let deferredRefreshTimer: number | null = null;
 let idleRunnerTimer: number | null = null;
+let idleCallbackId: number | null = null;
+let idleRafId: number | null = null;
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -821,17 +823,31 @@ function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
     void Promise.resolve().then(task);
     return;
   }
+  if (idleRunnerTimer != null) {
+    window.clearTimeout(idleRunnerTimer);
+    idleRunnerTimer = null;
+  }
+  if (idleCallbackId != null && typeof window.cancelIdleCallback === 'function') {
+    window.cancelIdleCallback(idleCallbackId);
+    idleCallbackId = null;
+  }
+  if (idleRafId != null) {
+    window.cancelAnimationFrame(idleRafId);
+    idleRafId = null;
+  }
   const runner = () => {
+    idleCallbackId = null;
+    idleRafId = null;
     idleRunnerTimer = window.setTimeout(() => {
       idleRunnerTimer = null;
       void task();
     }, 80);
   };
   if (typeof window.requestIdleCallback === 'function') {
-    window.requestIdleCallback(() => runner(), { timeout });
+    idleCallbackId = window.requestIdleCallback(() => runner(), { timeout });
     return;
   }
-  window.requestAnimationFrame(() => {
+  idleRafId = window.requestAnimationFrame(() => {
     runner();
   });
 }
@@ -1585,6 +1601,8 @@ onBeforeUnmount(() => {
     window.removeEventListener('resize', handleViewportResize);
     if (deferredRefreshTimer != null) { window.clearTimeout(deferredRefreshTimer); deferredRefreshTimer = null; }
     if (idleRunnerTimer != null) { window.clearTimeout(idleRunnerTimer); idleRunnerTimer = null; }
+    if (idleCallbackId != null && typeof window.cancelIdleCallback === 'function') { window.cancelIdleCallback(idleCallbackId); idleCallbackId = null; }
+    if (idleRafId != null) { window.cancelAnimationFrame(idleRafId); idleRafId = null; }
   }
   clearQrExportProgressAutoCloseTimer();
   cleanupViewState();

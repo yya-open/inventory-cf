@@ -23,6 +23,7 @@ type PersistentTotalEntry = { total: number; timestamp: number };
 const PAGE_CACHE_MAX_SIZE = 100;
 const pageCache = new Map<string, PageCacheEntry>();
 const pageRequests = new Map<string, InflightPageRequest>();
+const scheduledPrefetchKeys = new Set<string>();
 const primedNamespaces = new Set<string>();
 
 function evictStaleCacheEntries(ttlMs = 60_000) {
@@ -212,6 +213,9 @@ export function invalidatePagedListNamespace(namespace: string) {
     request.controller.abort();
     pageRequests.delete(key);
   }
+  for (const key of [...scheduledPrefetchKeys]) {
+    if (key.startsWith(memoryPrefix)) scheduledPrefetchKeys.delete(key);
+  }
   removeSessionStorageByPrefix(`inventory:paged-cache:${memoryPrefix}`);
   removeSessionStorageByPrefix(`inventory:paged-total:${memoryPrefix}`);
   primedNamespaces.delete(normalizedNamespace);
@@ -250,8 +254,7 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
   function hydrateWarmCache(filterKey: string, nextPage: number, effectivePageSize: number, ttlMs: number) {
     const pageKey = getPageCacheKey(options, filterKey, nextPage, effectivePageSize);
     const memoryCached = pageCache.get(pageKey) || null;
-    const persistentCached = readPersistentPageCache(options, filterKey, nextPage, effectivePageSize, ttlMs);
-    const cached = memoryCached || persistentCached;
+    const cached = memoryCached || readPersistentPageCache(options, filterKey, nextPage, effectivePageSize, ttlMs);
     if (!cached) return null;
     rows.value = [...(cached.rows || [])] as TItem[];
     if (Number.isFinite(cached.total)) {
@@ -276,8 +279,11 @@ export function usePagedAssetList<TFilters, TItem>(options: UsePagedAssetListOpt
     if (!Array.isArray(currentRows) || currentRows.length < currentPageSize) return;
     const nextPage = currentPage + 1;
     const nextKey = getPageCacheKey(options, filterKey, nextPage, currentPageSize);
-    if (pageCache.has(nextKey) || pageRequests.has(nextKey)) return;
+    if (pageCache.has(nextKey) || pageRequests.has(nextKey) || scheduledPrefetchKeys.has(nextKey)) return;
+    scheduledPrefetchKeys.add(nextKey);
     const run = () => {
+      scheduledPrefetchKeys.delete(nextKey);
+      if (pageCache.has(nextKey) || pageRequests.has(nextKey)) return;
       const controller = new AbortController();
       const request = options.fetchPage({ filters, page: nextPage, pageSize: currentPageSize, fast: true, signal: controller.signal })
         .then((nextResult) => {
