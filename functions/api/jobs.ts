@@ -63,8 +63,6 @@ async function assertQrExportDataScope(db: D1Database, actor: { id: number }, jo
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }>(async ({ env, request }) => {
   const timing = (env as any).__timing;
   const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-  const status = await getCachedJobsSchemaStatus(env.DB, timing);
-  if (!status.ok) return json(false, status, status.message, 409);
   const url = new URL(request.url);
   const limit = Math.max(1, Math.min(200, Number(url.searchParams.get('limit') || 100)));
   const jobStatus = (url.searchParams.get('status') || '').trim() || null;
@@ -79,8 +77,8 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     .filter((value, index, arr) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index)
     .slice(0, 200);
   const data = timing?.measure
-    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail }, env.BACKUP_BUCKET))
-    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail }, env.BACKUP_BUCKET);
+    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true }, env.BACKUP_BUCKET))
+    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true }, env.BACKUP_BUCKET);
   return json(true, data);
 });
 

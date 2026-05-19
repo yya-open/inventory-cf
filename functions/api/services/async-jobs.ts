@@ -1352,8 +1352,8 @@ function mapAsyncJobRow(row: any) {
   };
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null } = {}, bucket?: AsyncJobResultBucket) {
-  await ensureAsyncJobsTable(db);
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null } = {}, bucket?: AsyncJobResultBucket) {
+  if (!options.skipEnsure) await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
   const binds: any[] = [];
@@ -1393,8 +1393,14 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
       LENGTH(result_text) AS result_text_len
       FROM async_jobs`;
   const sql = `${selectSql} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
-  const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
-  return (results || []).map(mapAsyncJobRow);
+  try {
+    const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
+    return (results || []).map(mapAsyncJobRow);
+  } catch (error: any) {
+    const message = String(error?.message || error || '').toLowerCase();
+    if (message.includes('no such table') || message.includes('async_jobs')) return [];
+    throw error;
+  }
 }
 
 export async function getAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket) {
