@@ -242,6 +242,7 @@ const batchClosingIssueBreakdown = ref<InventoryIssueBreakdown>(emptyInventoryIs
 const hasPendingSnapshotJob = computed(() => [inventoryBatch.value.active, inventoryBatch.value.latest, ...(inventoryBatch.value.recent || [])].some((item) => ['queued', 'running'].includes(String(item?.snapshot_job_status || '').toLowerCase())));
 const logsSectionRef = ref<any>(null);
 let routeFiltersInitialized = false;
+let initialHydrationDone = false;
 
 function currentSnapshotBatch() {
   return (inventoryBatch.value.active || inventoryBatch.value.latest || null) as InventoryBatchRow | null;
@@ -554,13 +555,7 @@ function scrollToLogs() {
 
 async function loadPcBatchClosingSummary() {
   const base = buildPcBatchExportBaseFilters();
-  const [totalCount, checkedOk, checkedIssue, unchecked] = await Promise.all([
-    countPcAssets(base),
-    countPcAssets({ ...base, inventoryStatus: 'CHECKED_OK' }),
-    countPcAssets({ ...base, inventoryStatus: 'CHECKED_ISSUE' }),
-    countPcAssets({ ...base, inventoryStatus: 'UNCHECKED' }),
-  ]);
-  return { total: totalCount, checked_ok: checkedOk, checked_issue: checkedIssue, unchecked };
+  return await getPcAssetInventorySummary(base, undefined, { force: true });
 }
 
 async function closeActiveBatch() {
@@ -645,7 +640,9 @@ watch(() => route.query, () => {
 
 onBeforeMount(() => {
   applyRouteFilters();
-  void load({ keepPage: true });
+  void load({ keepPage: true }).finally(() => {
+    initialHydrationDone = true;
+  });
   schedulePanelRefresh(120);
 });
 
@@ -660,6 +657,7 @@ onMounted(() => {
 });
 
 onActivated(() => {
+  if (!initialHydrationDone) return;
   inventoryPageActive = true;
   if (Date.now() - lastRefreshAt >= SOFT_REFRESH_TTL_MS) {
     void load({ keepPage: true, silent: true });
@@ -687,4 +685,3 @@ onUnmounted(() => {
   }
 });
 </script>
-

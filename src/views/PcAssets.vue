@@ -353,6 +353,7 @@ const { rows, loading, refreshing, initialLoading, initialized, page, pageSize, 
 pageSize.value = initialPageSize;
 const SOFT_REFRESH_TTL_MS = 30_000;
 let lastRefreshAt = 0;
+let initialHydrationDone = false;
 
 const {
   refreshCurrent,
@@ -1250,6 +1251,7 @@ onBeforeMount(() => {
   handleViewportResize();
   if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
   void hydrateViewData({ skipAuxiliary: true, keepPage: !hasExternalMutation, forceRefresh: hasExternalMutation }).finally(() => {
+    initialHydrationDone = true;
     const filters = currentFiltersForList();
     scheduleAuxiliaryRefresh(filters);
   });
@@ -1262,6 +1264,7 @@ onBeforeUnmount(() => {
 });
 
 onActivated(() => {
+  if (!initialHydrationDone) return;
   if (consumeExternalPcAssetsMutation()) {
     void hydrateViewData({ keepPage: false, silent: false, forceRefresh: true });
     return;
