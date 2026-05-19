@@ -751,21 +751,6 @@ function buildAsyncJobResultPutOptions(contentType: string, filename: string) {
   };
 }
 
-function copyBytes(value: Uint8Array<ArrayBufferLike>): Uint8Array {
-  const out = new Uint8Array(value.byteLength);
-  out.set(value);
-  return out;
-}
-
-function appendBytes(left: Uint8Array<ArrayBufferLike>, right: Uint8Array<ArrayBufferLike>): Uint8Array {
-  if (!left.byteLength) return copyBytes(right);
-  if (!right.byteLength) return copyBytes(left);
-  const out = new Uint8Array(left.byteLength + right.byteLength);
-  out.set(left, 0);
-  out.set(right, left.byteLength);
-  return out;
-}
-
 async function readReadableStreamToBytesWithLimit(stream: ReadableStream<Uint8Array>, limitBytes: number) {
   const reader = stream.getReader();
   const chunks: Uint8Array[] = [];
@@ -796,15 +781,34 @@ async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKe
   if (typeof bucket.createMultipartUpload === 'function') {
     const upload = await bucket.createMultipartUpload(objectKey, options);
     const parts: any[] = [];
-    let pending: Uint8Array<ArrayBufferLike> = new Uint8Array(0);
+    const pendingChunks: Uint8Array[] = [];
+    let pendingBytes = 0;
     let partNumber = 1;
     let fileSize = 0;
     const reader = stream.getReader();
+    const takePendingBytes = (size: number) => {
+      const body = new Uint8Array(size);
+      let offset = 0;
+      while (offset < size) {
+        const head = pendingChunks[0];
+        const need = size - offset;
+        if (head.byteLength <= need) {
+          body.set(head, offset);
+          offset += head.byteLength;
+          pendingChunks.shift();
+        } else {
+          body.set(head.subarray(0, need), offset);
+          pendingChunks[0] = head.subarray(need);
+          offset += need;
+        }
+      }
+      pendingBytes -= size;
+      return body;
+    };
     const flushParts = async (force = false) => {
-      while (pending.byteLength >= STREAM_UPLOAD_PART_BYTES || (force && pending.byteLength > 0)) {
-        const size = force ? pending.byteLength : STREAM_UPLOAD_PART_BYTES;
-        const body = pending.slice(0, size);
-        pending = pending.slice(size);
+      while (pendingBytes >= STREAM_UPLOAD_PART_BYTES || (force && pendingBytes > 0)) {
+        const size = force ? pendingBytes : STREAM_UPLOAD_PART_BYTES;
+        const body = takePendingBytes(size);
         const part = await upload.uploadPart(partNumber, body);
         parts.push(part);
         partNumber += 1;
@@ -816,7 +820,9 @@ async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKe
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value || []);
-        pending = appendBytes(pending, chunk);
+        if (!chunk.byteLength) continue;
+        pendingChunks.push(chunk);
+        pendingBytes += chunk.byteLength;
         await flushParts(false);
       }
       await flushParts(true);
