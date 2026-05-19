@@ -384,6 +384,17 @@ const INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT = 20000;
 const STREAM_UPLOAD_PART_BYTES = 5 * 1024 * 1024;
 const STREAM_UPLOAD_FALLBACK_MAX_BYTES = 50 * 1024 * 1024;
 
+class AsyncJobCanceledError extends Error {
+  constructor() {
+    super('任务已取消');
+    this.name = 'AsyncJobCanceledError';
+  }
+}
+
+function isAsyncJobCanceledError(error: any) {
+  return error?.name === 'AsyncJobCanceledError';
+}
+
 function toB64FilenameSafe(value: any) {
   return String(value || '').replace(/[\/:*?"<>|]/g, '_').trim() || '盘点结果';
 }
@@ -776,7 +787,7 @@ async function readReadableStreamToBytesWithLimit(stream: ReadableStream<Uint8Ar
   return out;
 }
 
-async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKey: string, stream: ReadableStream<Uint8Array>, options: any) {
+async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKey: string, stream: ReadableStream<Uint8Array>, options: any, shouldCancel?: () => Promise<boolean>) {
   if (!bucket) return null;
   if (typeof bucket.createMultipartUpload === 'function') {
     const upload = await bucket.createMultipartUpload(objectKey, options);
@@ -807,6 +818,7 @@ async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKe
     };
     const flushParts = async (force = false) => {
       while (pendingBytes >= STREAM_UPLOAD_PART_BYTES || (force && pendingBytes > 0)) {
+        if (shouldCancel && await shouldCancel()) throw new AsyncJobCanceledError();
         const size = force ? pendingBytes : STREAM_UPLOAD_PART_BYTES;
         const body = takePendingBytes(size);
         const part = await upload.uploadPart(partNumber, body);
@@ -817,6 +829,7 @@ async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKe
     };
     try {
       while (true) {
+        if (shouldCancel && await shouldCancel()) throw new AsyncJobCanceledError();
         const { done, value } = await reader.read();
         if (done) break;
         const chunk = value instanceof Uint8Array ? new Uint8Array(value) : new Uint8Array(value || []);
@@ -841,27 +854,34 @@ async function uploadReadableStreamObject(bucket: AsyncJobResultBucket, objectKe
     }
   }
 
+  if (shouldCancel && await shouldCancel()) throw new AsyncJobCanceledError();
   const body = await readReadableStreamToBytesWithLimit(stream, STREAM_UPLOAD_FALLBACK_MAX_BYTES);
+  if (shouldCancel && await shouldCancel()) throw new AsyncJobCanceledError();
   await bucket.put(objectKey, body, options);
   return { fileSize: body.byteLength };
 }
 
-async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult) {
+async function saveAsyncJobResultFile(bucket: AsyncJobResultBucket, row: any, result: AsyncJobBuiltResult, shouldCancel?: () => Promise<boolean>) {
   if (!bucket) return null;
   const filename = String(result.filename || `job_${Number(row?.id || 0)}.dat`);
   const objectKey = buildAsyncJobResultObjectKey(row, filename);
   const contentType = String(result.contentType || 'application/octet-stream');
   const putOptions = buildAsyncJobResultPutOptions(contentType, filename);
   if (result.stream != null) {
-    const uploaded = await uploadReadableStreamObject(bucket, objectKey, result.stream as ReadableStream<Uint8Array>, putOptions);
+    const uploaded = await uploadReadableStreamObject(bucket, objectKey, result.stream as ReadableStream<Uint8Array>, putOptions, shouldCancel);
     return { objectKey, fileSize: result.fileSize != null ? Number(result.fileSize || 0) : uploaded?.fileSize ?? null };
   }
+  if (shouldCancel && await shouldCancel()) throw new AsyncJobCanceledError();
   const body = result.stream != null
       ? result.stream
       : result.blobBase64 != null
         ? decodeBase64ToBytes(result.blobBase64)
         : String(result.text ?? '');
   await bucket.put(objectKey, body, putOptions);
+  if (shouldCancel && await shouldCancel()) {
+    if (typeof bucket.delete === 'function') await bucket.delete(objectKey).catch(() => {});
+    throw new AsyncJobCanceledError();
+  }
   const fileSize = result.fileSize != null
     ? Number(result.fileSize || 0)
     : result.blobBase64 != null
@@ -1227,6 +1247,25 @@ export async function createAsyncJob(db: D1Database, input: AsyncJobCreateInput,
   return Number((res as any)?.meta?.last_row_id || 0);
 }
 
+function createAsyncJobCancelChecker(db: D1Database, id: number) {
+  let lastCheckedAt = 0;
+  let canceled = false;
+  return async (force = false) => {
+    if (canceled) return true;
+    const now = Date.now();
+    if (!force && now - lastCheckedAt < 1000) return false;
+    lastCheckedAt = now;
+    const latest = await db.prepare(`SELECT status, cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
+    canceled = Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled';
+    return canceled;
+  };
+}
+
+async function markAsyncJobCanceled(db: D1Database, id: number, message = '任务已取消') {
+  await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), updated_at=${sqlNowStored()}, message=? WHERE id=?`)
+    .bind(message, id).run();
+}
+
 export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket, options: { skipHousekeeping?: boolean } = {}) {
   if (!options.skipHousekeeping) await cleanupAsyncJobHousekeeping(db, bucket);
   const row = await db.prepare(`SELECT * FROM async_jobs WHERE id=?`).bind(id).first<any>();
@@ -1243,14 +1282,20 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
+    const shouldCancel = createAsyncJobCancelChecker(db, id);
     const result = await buildJobResult(db, jobType, req, bucket);
-    const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
-    if (Number(latest?.cancel_requested || 0) === 1) {
-      await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
+    if (await shouldCancel(true)) {
+      await markAsyncJobCanceled(db, id);
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
-    const storedFile = await saveAsyncJobResultFile(bucket, row, result);
+    const storedFile = await saveAsyncJobResultFile(bucket, row, result, shouldCancel);
+    if (await shouldCancel(true)) {
+      if (storedFile?.objectKey && bucket && typeof bucket.delete === 'function') await bucket.delete(storedFile.objectKey).catch(() => {});
+      await markAsyncJobCanceled(db, id);
+      await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
+      return;
+    }
     await db.prepare(
       `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_object_key=?, result_file_size=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
     ).bind(storedFile ? null : (result.text ?? null), storedFile ? null : (result.blobBase64 ?? null), storedFile?.objectKey ?? null, storedFile?.fileSize ?? null, result.contentType, result.filename, result.message, id).run();
@@ -1278,8 +1323,8 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
     await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'success', errorMessage: null, filename: result.filename, objectKey: storedFile?.objectKey ?? null, fileSize: storedFile?.fileSize ?? null, exportedAt: formatBeijingDateTimeText(new Date().toISOString()) });
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
-    if (Number(latest?.cancel_requested || 0) === 1) {
-      await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, message='任务已取消' WHERE id=?`).bind(id).run();
+    if (isAsyncJobCanceledError(error) || Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled') {
+      await markAsyncJobCanceled(db, id);
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
@@ -1415,10 +1460,16 @@ export async function cancelAsyncJob(db: D1Database, id: number, bucket?: AsyncJ
   if (String(row.status) === 'success') throwHttpError('任务已完成，不能取消', 409);
   if (String(row.status) === 'failed') throwHttpError('任务已失败，请直接重试', 409);
   const res = await db.prepare(
-    `UPDATE async_jobs SET cancel_requested=1, status=CASE WHEN status='queued' THEN 'canceled' ELSE status END, canceled_at=CASE WHEN status='queued' THEN ${sqlNowStored()} ELSE canceled_at END, updated_at=${sqlNowStored()}, message=CASE WHEN status='queued' THEN '任务已取消' ELSE '任务取消中' END WHERE id=?`
+    `UPDATE async_jobs
+        SET cancel_requested=1,
+            status=CASE WHEN status IN ('queued','running') THEN 'canceled' ELSE status END,
+            canceled_at=CASE WHEN status IN ('queued','running') THEN COALESCE(canceled_at, ${sqlNowStored()}) ELSE canceled_at END,
+            updated_at=${sqlNowStored()},
+            message=CASE WHEN status IN ('queued','running') THEN '任务已取消' ELSE '任务取消中' END
+      WHERE id=?`
   ).bind(id).run();
   const req = parseJsonSafe(row.request_json, {});
-  if (String(row.status) === 'queued') await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
+  if (['queued', 'running'].includes(String(row.status))) await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'canceled', errorMessage: '任务已取消' });
   return Number((res as any)?.meta?.changes || 0) > 0;
 }
 
