@@ -113,8 +113,10 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
   if (typeof window === 'undefined' || typeof document === 'undefined') return () => {};
 
   const enhanced = new Map<HTMLElement, EnhancedTable>();
+  let refreshFrame: number | null = null;
 
   const refreshAll = () => {
+    refreshFrame = null;
     const current = new Set(Array.from(document.querySelectorAll<HTMLElement>(TABLE_SELECTOR)));
 
     current.forEach((root) => {
@@ -130,14 +132,20 @@ export function installGlobalTableScrollEnhancer(): Cleanup {
     });
   };
 
-  const observer = new MutationObserver(() => refreshAll());
+  const scheduleRefreshAll = () => {
+    if (refreshFrame != null) return;
+    refreshFrame = window.requestAnimationFrame(refreshAll);
+  };
+
+  const observer = new MutationObserver(scheduleRefreshAll);
   observer.observe(document.body, { subtree: true, childList: true });
   refreshAll();
-  window.addEventListener('resize', refreshAll, { passive: true });
+  window.addEventListener('resize', scheduleRefreshAll, { passive: true });
 
   return () => {
+    if (refreshFrame != null) window.cancelAnimationFrame(refreshFrame);
     observer.disconnect();
-    window.removeEventListener('resize', refreshAll);
+    window.removeEventListener('resize', scheduleRefreshAll);
     enhanced.forEach((item) => item.cleanup());
     enhanced.clear();
   };

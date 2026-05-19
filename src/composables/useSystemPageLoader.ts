@@ -45,10 +45,6 @@ export function useSystemPageLoader<T>(cacheKey: string, options: LoaderOptions<
     const force = !!args.force;
     const silent = !!args.silent;
     const seq = ++requestSeq;
-    if (controller) {
-      try { controller.abort(); } catch {}
-    }
-    controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
     if (!silent) loading.value = true;
     error.value = '';
 
@@ -71,6 +67,10 @@ export function useSystemPageLoader<T>(cacheKey: string, options: LoaderOptions<
         return pendingValue;
       }
 
+      if (controller) {
+        try { controller.abort(); } catch {}
+      }
+      controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
       const pending = options.load({ force, signal: controller?.signal });
       cacheMap.set(cacheKey, { expiresAt: hit?.expiresAt || 0, value: hit?.value, pending });
       const value = await pending;

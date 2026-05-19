@@ -1,6 +1,7 @@
 export const APP_BUILD_ID = typeof __APP_BUILD_ID__ !== "undefined" ? __APP_BUILD_ID__ : "dev";
 const CHECK_KEY = "inventory:app-build-check";
 const RELOAD_KEY = "inventory:app-build-reload";
+const WATCHER_FLAG = "__inventoryBuildVersionWatcherStarted";
 
 async function fetchRemoteBuildId() {
   const r = await fetch(`/?__build_check=${Date.now()}`, { cache: 'no-store', credentials: 'same-origin' });
@@ -21,6 +22,10 @@ function scheduleBuildVersionCheck(task: () => void, delayMs = 10_000) {
 
 export function startBuildVersionWatcher() {
   if (typeof window === 'undefined') return;
+  const win = window as Window & { [WATCHER_FLAG]?: boolean };
+  if (win[WATCHER_FLAG]) return;
+  win[WATCHER_FLAG] = true;
+
   let running = false;
   let lastCheckAt = 0;
   const run = async () => {
@@ -40,7 +45,9 @@ export function startBuildVersionWatcher() {
     } catch {}
     finally { running = false; }
   };
-  window.addEventListener('visibilitychange', () => { if (document.visibilityState === 'visible') void run(); });
-  window.addEventListener('focus', () => { void run(); });
+  const runWhenVisible = () => { if (document.visibilityState === 'visible') void run(); };
+  const runOnFocus = () => { void run(); };
+  window.addEventListener('visibilitychange', runWhenVisible);
+  window.addEventListener('focus', runOnFocus);
   scheduleBuildVersionCheck(() => { void run(); });
 }
