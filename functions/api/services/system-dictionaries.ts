@@ -467,11 +467,69 @@ async function loadReferenceCounts(db: D1Database, keys: SystemDictionaryKey[], 
   return counts;
 }
 
-async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {
-  const normalizedLabel = normalizeLabel(label);
+async function getLiveReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string) {
+  const normalizedLabel = normalizeComparable(label);
   if (!normalizedLabel) return 0;
-  const counts = await loadReferenceCounts(db, [key]);
-  return Number(counts[key]?.[normalizedLabel] || 0);
+  if (key === 'pc_brand') {
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS c
+         FROM pc_assets
+        WHERE LOWER(TRIM(COALESCE(brand, ''))) = ?`
+    ).bind(normalizedLabel).first<any>();
+    return Number(row?.c || 0);
+  }
+  if (key === 'monitor_brand') {
+    const row = await db.prepare(
+      `SELECT COUNT(*) AS c
+         FROM monitor_assets
+        WHERE LOWER(TRIM(COALESCE(brand, ''))) = ?`
+    ).bind(normalizedLabel).first<any>();
+    return Number(row?.c || 0);
+  }
+  if (key === 'asset_archive_reason') {
+    const row = await db.prepare(
+      `SELECT SUM(c) AS c
+         FROM (
+           SELECT COUNT(*) AS c
+             FROM pc_assets
+            WHERE archived=1 AND LOWER(TRIM(COALESCE(archived_reason, ''))) = ?
+           UNION ALL
+           SELECT COUNT(*) AS c
+             FROM monitor_assets
+            WHERE archived=1 AND LOWER(TRIM(COALESCE(archived_reason, ''))) = ?
+         )`
+    ).bind(normalizedLabel, normalizedLabel).first<any>();
+    return Number(row?.c || 0);
+  }
+  if (key === 'asset_warehouse') {
+    const labelText = normalizeLabel(label);
+    const row = await db.prepare(
+      `SELECT SUM(c) AS c
+         FROM (
+           SELECT COUNT(*) AS c FROM pc_assets WHERE ? = '电脑仓'
+           UNION ALL
+           SELECT COUNT(*) AS c FROM monitor_assets WHERE ? = '显示器仓'
+           UNION ALL
+           SELECT COUNT(*) AS c FROM warehouses WHERE ? = '配件仓'
+         )`
+    ).bind(labelText, labelText, labelText).first<any>();
+    return Number(row?.c || 0);
+  }
+  return 0;
+}
+
+async function getReferenceCount(db: D1Database, key: SystemDictionaryKey, label: string, options?: { liveFallback?: boolean }) {
+  const normalizedLabel = normalizeComparable(label);
+  if (!normalizedLabel) return 0;
+  await ensureDictionaryUsageCountersTable(db);
+  const row = await db.prepare(
+    `SELECT reference_count
+       FROM dictionary_usage_counters
+      WHERE dictionary_key=? AND normalized_label=?`
+  ).bind(key, normalizedLabel).first<any>();
+  if (row) return Number(row.reference_count || 0);
+  if (options?.liveFallback === false) return 0;
+  return getLiveReferenceCount(db, key, label);
 }
 
 function normalizeRow(row: any, reference_count = 0): SystemDictionaryItem {
@@ -598,23 +656,25 @@ export async function createSystemDictionaryItem(db: D1Database, input: Partial<
   ).bind(key, label, normalized, sortOrder, enabled, updatedBy || null).run();
   const id = Number(result?.meta?.last_row_id || 0);
   clearSystemDictionaryCaches(key);
-  return getSystemDictionaryItemById(db, id);
+  return getSystemDictionaryItemById(db, id, { referenceCountMode: 'none' });
 }
 
-export async function getSystemDictionaryItemById(db: D1Database, id: number) {
+export async function getSystemDictionaryItemById(db: D1Database, id: number, options?: { referenceCountMode?: 'none' | 'cached' | 'live' }) {
   await ensureSystemDictionaryTable(db);
   const row = await db.prepare(
     `SELECT id, dictionary_key, label, normalized_label, sort_order, enabled, created_at, updated_at, updated_by
      FROM system_dictionary_items WHERE id=?`
   ).bind(id).first<any>();
   if (!row) throwHttpError('字典项不存在', 404);
-  return normalizeRow(row, await getReferenceCount(db, String(row.dictionary_key) as SystemDictionaryKey, row.label));
+  const mode = options?.referenceCountMode || 'cached';
+  if (mode === 'none') return normalizeRow(row, 0);
+  return normalizeRow(row, await getReferenceCount(db, String(row.dictionary_key) as SystemDictionaryKey, row.label, { liveFallback: mode === 'live' }));
 }
 
 export async function updateSystemDictionaryItem(db: D1Database, input: Partial<SystemDictionaryItem>, updatedBy: string | null) {
   const id = Number(input?.id || 0);
   if (!id) throwHttpError('缺少字典项ID', 400);
-  const old = await getSystemDictionaryItemById(db, id);
+  const old = await getSystemDictionaryItemById(db, id, { referenceCountMode: 'none' });
   const expectedUpdatedAt = normalizeVersion(input?.updated_at);
   if (expectedUpdatedAt && normalizeVersion(old.updated_at) && expectedUpdatedAt !== normalizeVersion(old.updated_at)) {
     throwHttpError('字典项已被其他管理员修改，请刷新后重试', 409);
@@ -639,7 +699,7 @@ export async function updateSystemDictionaryItem(db: D1Database, input: Partial<
   }
   clearSystemDictionaryCaches(key);
   if (old.dictionary_key !== key) clearSystemDictionaryCaches(old.dictionary_key);
-  return getSystemDictionaryItemById(db, id);
+  return getSystemDictionaryItemById(db, id, { referenceCountMode: 'none' });
 }
 
 
@@ -691,11 +751,11 @@ export async function reorderSystemDictionaryItems(
 }
 
 export async function deleteSystemDictionaryItem(db: D1Database, id: number, expectedUpdatedAt?: string | null) {
-  const row = await getSystemDictionaryItemById(db, id);
+  const row = await getSystemDictionaryItemById(db, id, { referenceCountMode: 'none' });
   if (expectedUpdatedAt && normalizeVersion(row.updated_at) && normalizeVersion(expectedUpdatedAt) !== normalizeVersion(row.updated_at)) {
     throwHttpError('字典项已被其他管理员修改，请刷新后重试', 409);
   }
-  if (Number(row.reference_count || 0) > 0) {
+  if (Number(await getReferenceCount(db, row.dictionary_key, row.label, { liveFallback: true }) || 0) > 0) {
     throwHttpError('该字典项已被引用，无法删除，可先停用', 400);
   }
   const result = await db.prepare(`DELETE FROM system_dictionary_items WHERE id=? AND updated_at=?`).bind(id, normalizeVersion(row.updated_at)).run();
