@@ -154,8 +154,6 @@ const pendingDetailRequests = new Map<string, Promise<any>>();
 const prefetchedSummaryKeys = new Set<string>();
 let activeSummaryRequestId = 0;
 let activeDetailRequestId = 0;
-let activeSummaryController: AbortController | null = null;
-let activeDetailController: AbortController | null = null;
 const prefsReady = ref(false);
 
 const reportModeOptions = computed(() => {
@@ -356,18 +354,14 @@ async function loadDetail(mode = reportMode.value, dayCount = days.value, force 
   }
 
   let requestId = 0;
-  let controller: AbortController | undefined;
   if (currentSelection) {
     activeDetailRequestId += 1;
     requestId = activeDetailRequestId;
-    if (activeDetailController) activeDetailController.abort();
-    activeDetailController = typeof AbortController !== 'undefined' ? new AbortController() : null;
-    controller = activeDetailController || undefined;
     detailRefreshing.value = true;
   }
 
   try {
-    const detail = await fetchDetail(mode, dayCount, force, controller?.signal);
+    const detail = await fetchDetail(mode, dayCount, force);
     if (!currentSelection) return detail;
     if (requestId !== activeDetailRequestId) return detail;
     if (mode !== reportMode.value || dayCount !== days.value) return detail;
@@ -406,11 +400,9 @@ async function refresh(force = false) {
 
   activeSummaryRequestId += 1;
   const requestId = activeSummaryRequestId;
-  if (activeSummaryController) activeSummaryController.abort();
-  activeSummaryController = typeof AbortController !== 'undefined' ? new AbortController() : null;
   summaryRefreshing.value = true;
   try {
-    const summary = await fetchSummary(mode, dayCount, force, activeSummaryController?.signal || undefined);
+    const summary = await fetchSummary(mode, dayCount, force);
     if (requestId !== activeSummaryRequestId) return;
     if (mode !== reportMode.value || dayCount !== days.value) return;
     data.value = mergeDashboardPayload(summary, cachedDetail?.data);
