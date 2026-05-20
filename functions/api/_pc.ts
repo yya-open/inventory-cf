@@ -2,6 +2,7 @@ import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
 import { invalidateSchemaStatusCache } from './services/schema-status';
 import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
+import { ensureSearchFtsTables } from './services/search-fts';
 
 /**
  * PC warehouse (仓库2：电脑仓) - self-healing schema helper
@@ -283,6 +284,7 @@ export async function ensurePcSchema(db: D1Database) {
     FOREIGN KEY(asset_id) REFERENCES pc_assets(id) ON DELETE CASCADE
   )`).run();
   await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_current_department ON pc_asset_latest_state(current_department, asset_id)").run();
+  await ensureSearchFtsTables(db, ['pc']).catch(() => {});
 
 
 // If pc_assets already exists, its CHECK constraint might be old (without SCRAPPED).

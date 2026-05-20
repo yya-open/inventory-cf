@@ -1,4 +1,4 @@
-import { withErrorHandling } from './_error';
+import { throwHttpError, withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, pcInNo } from './_pc';
 import { createPcAssetAndInRecord, normalizePcSerialNo } from './services/asset-write';
@@ -38,19 +38,32 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const remark = trimRemarkByRule(optional(body?.remark, 2000), quality.remarkMaxLength);
 
 
-    const assetId = await createPcAssetAndInRecord({
-      db: env.DB,
-      inNo: no,
-      brand,
-      serialNo: serial_no,
-      model,
-      manufactureDate: manufacture_date,
-      warrantyEnd: warranty_end,
-      diskCapacity: disk_capacity,
-      memorySize: memory_size,
-      remark,
-      createdBy: user.username,
-    });
+    let assetId = 0;
+    try {
+      assetId = await createPcAssetAndInRecord({
+        db: env.DB,
+        inNo: no,
+        brand,
+        serialNo: serial_no,
+        model,
+        manufactureDate: manufacture_date,
+        warrantyEnd: warranty_end,
+        diskCapacity: disk_capacity,
+        memorySize: memory_size,
+        remark,
+        createdBy: user.username,
+      });
+    } catch (error: any) {
+      const message = String(error?.message || error || '');
+      if (message.includes('SQLITE_CONSTRAINT') || message.includes('constraint failed')) {
+        const existing = await env.DB.prepare(`SELECT id FROM pc_assets WHERE UPPER(TRIM(serial_no))=? LIMIT 1`).bind(serial_no).first<any>().catch(() => null);
+        if (existing?.id) {
+          throwHttpError('该序列号已存在，请勿重复入库（如需入库/归还请使用“电脑回收/归还”功能）', 400);
+        }
+        throwHttpError('电脑入库失败：数据库约束冲突，请刷新后重试', 400);
+      }
+      throw error;
+    }
     invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, 'PC_IN', 'pc_in', no, {

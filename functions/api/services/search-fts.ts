@@ -24,14 +24,17 @@ function buildFtsCreateSql(cfg: FtsTableConfig): string[] {
   const valuesNew = columns.map((c) => `COALESCE(new.${c},'')`).join(', ');
   return [
     `CREATE VIRTUAL TABLE IF NOT EXISTS ${fts} USING fts5(${colList}, tokenize='unicode61 remove_diacritics 2', prefix='2 3 4 5 6')`,
-    `CREATE TRIGGER IF NOT EXISTS ${fts}_ai AFTER INSERT ON ${source} BEGIN
-      INSERT INTO ${fts}(rowid, ${colList}) VALUES (new.id, ${valuesNew});
+    `DROP TRIGGER IF EXISTS ${fts}_ai`,
+    `DROP TRIGGER IF EXISTS ${fts}_au`,
+    `DROP TRIGGER IF EXISTS ${fts}_ad`,
+    `CREATE TRIGGER ${fts}_ai AFTER INSERT ON ${source} BEGIN
+      INSERT OR REPLACE INTO ${fts}(rowid, ${colList}) VALUES (new.id, ${valuesNew});
     END`,
-    `CREATE TRIGGER IF NOT EXISTS ${fts}_au AFTER UPDATE ON ${source} BEGIN
+    `CREATE TRIGGER ${fts}_au AFTER UPDATE ON ${source} BEGIN
       DELETE FROM ${fts} WHERE rowid = old.id;
-      INSERT INTO ${fts}(rowid, ${colList}) VALUES (new.id, ${valuesNew});
+      INSERT OR REPLACE INTO ${fts}(rowid, ${colList}) VALUES (new.id, ${valuesNew});
     END`,
-    `CREATE TRIGGER IF NOT EXISTS ${fts}_ad AFTER DELETE ON ${source} BEGIN
+    `CREATE TRIGGER ${fts}_ad AFTER DELETE ON ${source} BEGIN
       DELETE FROM ${fts} WHERE rowid = old.id;
     END`,
   ];
@@ -53,7 +56,7 @@ async function refillFtsTable(db: D1Database, key: FtsTableKey) {
   const selectCols = cfg.columns.map((c) => `COALESCE(${c},'')`).join(', ');
   await db.prepare(`DELETE FROM ${cfg.fts}`).run().catch(() => {});
   await db.prepare(
-    `INSERT INTO ${cfg.fts}(rowid, ${colList}) SELECT id, ${selectCols} FROM ${cfg.source}`
+    `INSERT OR REPLACE INTO ${cfg.fts}(rowid, ${colList}) SELECT id, ${selectCols} FROM ${cfg.source}`
   ).run();
 }
 
