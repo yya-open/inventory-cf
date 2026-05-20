@@ -101,8 +101,9 @@ const currentOwnerMeta = computed(() => {
   const parts = [props.row?.employee_no, props.row?.department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const historyState = reactive<{ loading: boolean; loadedId: number; previous_employee_no?: string | null; previous_employee_name?: string | null; previous_department?: string | null; previous_assigned_at?: string | null }>({
+const historyState = reactive<{ loading: boolean; requestedId: number; loadedId: number; previous_employee_no?: string | null; previous_employee_name?: string | null; previous_department?: string | null; previous_assigned_at?: string | null }>({
   loading: false,
+  requestedId: 0,
   loadedId: 0,
   previous_employee_no: null,
   previous_employee_name: null,
@@ -110,31 +111,47 @@ const historyState = reactive<{ loading: boolean; loadedId: number; previous_emp
   previous_assigned_at: null,
 });
 
+function seedHistoryFromRow(assetId: number) {
+  historyState.requestedId = assetId;
+  historyState.loadedId = 0;
+  historyState.previous_employee_no = props.row?.previous_employee_no || null;
+  historyState.previous_employee_name = props.row?.previous_employee_name || null;
+  historyState.previous_department = props.row?.previous_department || null;
+  historyState.previous_assigned_at = props.row?.previous_assigned_at || null;
+}
+
 async function loadHistoryIfNeeded() {
   const assetId = Number(props.row?.id || 0);
-  if (!props.visible || !assetId || historyState.loadedId === assetId || historyState.loading) return;
+  if (!props.visible || !assetId || historyState.loadedId === assetId || (historyState.loading && historyState.requestedId === assetId)) return;
+  if (historyState.requestedId !== assetId) seedHistoryFromRow(assetId);
   historyState.loading = true;
   try {
     const payload = await getMonitorAssetHistory(assetId);
+    if (historyState.requestedId !== assetId) return;
     historyState.loadedId = assetId;
     historyState.previous_employee_no = payload?.previous_employee_no || null;
     historyState.previous_employee_name = payload?.previous_employee_name || null;
     historyState.previous_department = payload?.previous_department || null;
     historyState.previous_assigned_at = payload?.previous_assigned_at || null;
   } finally {
-    historyState.loading = false;
+    if (historyState.requestedId === assetId) historyState.loading = false;
   }
 }
 
-watch(() => [props.visible, props.row?.id], () => { void loadHistoryIfNeeded(); }, { immediate: true });
+watch(() => [props.visible, props.row?.id], () => {
+  const assetId = Number(props.row?.id || 0);
+  if (props.visible && assetId && historyState.requestedId !== assetId) seedHistoryFromRow(assetId);
+  void loadHistoryIfNeeded();
+}, { immediate: true });
 
-const previousOwnerName = computed(() => historyState.loading && !historyState.loadedId ? '正在加载…' : textOrDash(historyState.previous_employee_name, '暂无历史领用人'));
+const historyLoadingCurrent = computed(() => historyState.loading && historyState.loadedId !== Number(props.row?.id || 0));
+const previousOwnerName = computed(() => historyLoadingCurrent.value ? '正在加载…' : textOrDash(historyState.previous_employee_name, '暂无历史领用人'));
 const previousOwnerMeta = computed(() => {
-  if (historyState.loading && !historyState.loadedId) return '正在加载…';
+  if (historyLoadingCurrent.value) return '正在加载…';
   const parts = [historyState.previous_employee_no, historyState.previous_department].map((item) => String(item || '').trim()).filter(Boolean);
   return parts.length ? parts.join(' · ') : '-';
 });
-const previousOwnerAt = computed(() => historyState.loading && !historyState.loadedId ? '正在加载…' : textOrDash(historyState.previous_assigned_at, '暂无记录'));
+const previousOwnerAt = computed(() => historyLoadingCurrent.value ? '正在加载…' : textOrDash(historyState.previous_assigned_at, '暂无记录'));
 
 function textOrDash(value: unknown, fallback = '-') {
   const text = String(value ?? '').trim();
