@@ -8,6 +8,7 @@ import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
+import { ensureSearchFtsTables } from './services/search-fts';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
   const t = env.__timing || createTiming();
@@ -37,6 +38,8 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const memory_size = optional(body?.memory_size, 40);
     const remark = trimRemarkByRule(optional(body?.remark, 2000), quality.remarkMaxLength);
 
+
+    await t.measure('search_fts', () => ensureSearchFtsTables(env.DB, ['pc']));
 
     let assetId = 0;
     try {

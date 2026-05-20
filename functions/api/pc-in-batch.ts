@@ -8,6 +8,7 @@ import { assertPcBrandDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
+import { ensureSearchFtsTables } from './services/search-fts';
 
 type Item = {
   brand: string;
@@ -32,6 +33,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const body = await t.measure('parse', () => request.json().catch(() => ({} as any)));
     const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
     const items: Item[] = Array.isArray(body?.items) ? body.items : [];
+    await t.measure('search_fts', () => ensureSearchFtsTables(env.DB, ['pc']));
     if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
 
     let success = 0;

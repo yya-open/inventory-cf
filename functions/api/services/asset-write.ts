@@ -367,19 +367,15 @@ export async function createPcAssetAndInRecord(args: CreatePcAssetArgs) {
     }
 
     await db.batch([
+      db.prepare(`DELETE FROM pc_asset_latest_state WHERE asset_id=?`).bind(assetId),
       db.prepare(
         `INSERT INTO pc_asset_latest_state (
           asset_id, last_out_id, last_in_id, last_recycle_id,
           current_employee_no, current_employee_name, current_department,
           last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
         ) VALUES (?, NULL, (SELECT id FROM pc_in WHERE in_no=? LIMIT 1), NULL, NULL, NULL, NULL, NULL, NULL, ${sqlNowStored()}, NULL, ${sqlNowStored()})
-        ON CONFLICT(asset_id) DO UPDATE SET
-          last_in_id=(SELECT id FROM pc_in WHERE in_no=? LIMIT 1),
-          current_employee_no=NULL,
-          current_employee_name=NULL,
-          current_department=NULL,
-          updated_at=${sqlNowStored()}`
-      ).bind(assetId, inNo, inNo),
+        `
+      ).bind(assetId, inNo),
     ]);
     await syncSystemDictionaryUsageCounters(db, ['pc_brand']);
     return assetId;
