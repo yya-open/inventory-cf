@@ -130,14 +130,14 @@ function getAuditOrderBy(filters: AuditListFilters) {
 }
 
 export async function countAuditRows(db: D1Database, filters: AuditListFilters) {
-  await ensureSearchFtsTables(db, ['audit']);
+  if (filters.keyword) await ensureSearchFtsTables(db, ['audit']);
   const { where, binds } = buildAuditWhere(filters);
   const row = await db.prepare(`SELECT COUNT(*) as c FROM audit_log a ${where}`).bind(...binds).first<any>();
   return Number(row?.c || 0);
 }
 
 export async function listAuditRows(db: D1Database, filters: AuditListFilters, options?: { limit?: number; offset?: number }) {
-  await ensureSearchFtsTables(db, ['audit']);
+  if (filters.keyword) await ensureSearchFtsTables(db, ['audit']);
   const { where, binds } = buildAuditWhere(filters);
   const orderBy = getAuditOrderBy(filters);
   const limit = Number(options?.limit ?? filters.pageSize);
