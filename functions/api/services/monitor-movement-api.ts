@@ -13,6 +13,7 @@ import {
   type MonitorMovementType,
 } from './asset-write';
 import { assertAssetWarehouseAccess, assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from './data-scope';
+import { invalidateAssetListCache } from './asset-list-cache';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
 
@@ -80,6 +81,7 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
         isEmployed: prepared.isEmployed ?? null,
         remark: prepared.remark ?? null,
       });
+      invalidateAssetListCache('monitor-assets');
 
       const afterSnapshot = {
         status: options.type === 'OUT' ? 'ASSIGNED' : options.type === 'SCRAP' ? 'SCRAPPED' : 'IN_STOCK',

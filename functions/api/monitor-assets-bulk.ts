@@ -16,6 +16,7 @@ import { bulkDeleteAssets } from './services/asset-bulk-delete';
 import { batchGetRelatedRecordCounts, hasRelatedHistory } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
+import { invalidateAssetListCache } from './services/asset-list-cache';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -45,6 +46,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       await assertArchiveReasonDictionaryValue(env.DB, meta.reason, '归档原因');
       const result = await bulkArchiveAssets(env.DB, 'monitor', ids, meta.reason, meta.note || null, user.username || null);
       invalidateSystemDictionaryReferenceCache();
+      if (result.changed) invalidateAssetListCache('monitor-assets');
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
@@ -69,6 +71,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       const result = timing?.measure
         ? await timing.measure('monitor_assets_restore', () => bulkRestoreAssets(env.DB, 'monitor', ids))
         : await bulkRestoreAssets(env.DB, 'monitor', ids);
+      if (result.changed) invalidateAssetListCache('monitor-assets');
       waitUntil((async () => {
         invalidateSystemDictionaryReferenceCache();
         await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
@@ -94,6 +97,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       const status = String(body?.status || '').trim();
       if (!ALLOWED_STATUS.has(status)) throw Object.assign(new Error('不支持的目标状态'), { status: 400 });
       const result = await bulkUpdateMonitorStatus(env.DB, ids, status);
+      if (result.changed) invalidateAssetListCache('monitor-assets');
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_STATUS_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -115,6 +119,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (action === 'location') {
       const locationId = Number(body?.location_id || 0) || null;
       const result = await bulkUpdateMonitorLocation(env.DB, ids, locationId);
+      if (result.changed) invalidateAssetListCache('monitor-assets');
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_LOCATION_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,
         requested_ids: ids,
@@ -192,6 +197,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       });
       if (result.processed) {
         invalidateSystemDictionaryReferenceCache();
+        invalidateAssetListCache('monitor-assets');
         await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
       }
       await logAuditBatch(env.DB, request, user, result.successes.map((item) => {
@@ -266,6 +272,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         ua: request.headers.get('user-agent') || '',
       });
       invalidateSystemDictionaryReferenceCache();
+      if (result.changed) invalidateAssetListCache('monitor-assets');
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
       await logAudit(env.DB, request, user, 'MONITOR_ASSET_OWNER_BATCH', 'monitor_assets', String(ids.length), {
         ids: result.ids,

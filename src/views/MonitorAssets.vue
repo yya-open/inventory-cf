@@ -642,13 +642,13 @@ function applyMonitorLocationPatch(ids: number[], nextLocationId: number | '') {
   patchCurrentRows(ids, (row) => ({ ...row, location_id: normalizedId, ...parts }));
 }
 
-function applyMonitorOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string }) {
+function applyMonitorOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string; clearOwner?: boolean }) {
   const nextDepartment = String(payload.department || '').trim();
   patchCurrentRows(ids, (row) => ({
     ...row,
     employee_name: payload.employee_name || '',
     employee_no: payload.employee_no || '',
-    department: nextDepartment || row.department || '',
+    department: payload.clearOwner ? '' : (nextDepartment || row.department || ''),
   }));
 }
 
@@ -1361,7 +1361,7 @@ async function submitOp() {
         if (kind === 'in') {
           applyMonitorStatusPatch([assetId], 'IN_STOCK');
           applyMonitorLocationPatch([assetId], form.location_id || '');
-          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '', clearOwner: true });
         } else if (kind === 'out') {
           applyMonitorStatusPatch([assetId], 'ASSIGNED');
           applyMonitorLocationPatch([assetId], form.location_id || '');
@@ -1369,7 +1369,7 @@ async function submitOp() {
         } else if (kind === 'return') {
           applyMonitorStatusPatch([assetId], 'IN_STOCK');
           applyMonitorLocationPatch([assetId], form.location_id || '');
-          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '' });
+          applyMonitorOwnerPatch([assetId], { employee_name: '', employee_no: '', department: '', clearOwner: true });
         } else if (kind === 'transfer') {
           applyMonitorLocationPatch([assetId], form.location_id || '');
         }

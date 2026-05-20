@@ -25,34 +25,18 @@ import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCoun
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { assertMonitorBrandDictionaryValue } from './services/master-data';
 import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
+import {
+  buildAssetListCacheKey,
+  clearPendingAssetListRequest,
+  getAssetListCacheVersion,
+  getPendingAssetListRequest,
+  invalidateAssetListCache,
+  readAssetListCache,
+  setPendingAssetListRequest,
+  writeAssetListCache,
+} from './services/asset-list-cache';
 
-const ASSET_LIST_CACHE_TTL_MS = 30_000;
-const assetListCache = new Map<string, { expiresAt: number; payload: any }>();
-const assetListPending = new Map<string, Promise<any>>();
-
-function buildAssetListCacheKey(user: any, url: URL) {
-  return [String(user?.id || 0), String(user?.role || ''), String(user?.data_scope_type || ''), String(user?.data_scope_value || ''), String(user?.data_scope_value2 || ''), url.searchParams.toString()].join('::');
-}
-
-function readAssetListCache(key: string) {
-  const hit = assetListCache.get(key);
-  if (!hit) return null;
-  if (hit.expiresAt <= Date.now()) {
-    assetListCache.delete(key);
-    return null;
-  }
-  return hit.payload;
-}
-
-function writeAssetListCache(key: string, payload: any) {
-  assetListCache.set(key, { expiresAt: Date.now() + ASSET_LIST_CACHE_TTL_MS, payload });
-  return payload;
-}
-
-function invalidateAssetListCache() {
-  assetListCache.clear();
-  assetListPending.clear();
-}
+const MONITOR_ASSET_LIST_CACHE_NAMESPACE = 'monitor-assets';
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const user = await requireAuthWithDataScope(env, request, 'viewer');
@@ -61,12 +45,14 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const url = new URL(request.url);
   await ensureSchemaTimed(env as any, 'schema', () => ensureMonitorReadFastGuards(env.DB));
   const query = buildMonitorAssetQuery(url, user);
-  const cacheable = query.fast && !query.usesFts;
-  const cacheKey = cacheable ? buildAssetListCacheKey(user, url) : '';
+  const noCache = url.searchParams.has('no_cache');
+  const cacheable = query.fast && !query.usesFts && !noCache;
+  const cacheKey = cacheable ? buildAssetListCacheKey(MONITOR_ASSET_LIST_CACHE_NAMESPACE, user, url) : '';
+  const cacheVersion = cacheable ? getAssetListCacheVersion(MONITOR_ASSET_LIST_CACHE_NAMESPACE) : 0;
   if (cacheable) {
     const cached = readAssetListCache(cacheKey);
     if (cached) return Response.json({ ok: true, ...cached });
-    const pending = assetListPending.get(cacheKey);
+    const pending = getPendingAssetListRequest(cacheKey);
     if (pending) {
       const payload = await pending;
       return Response.json({ ok: true, ...payload });
@@ -74,11 +60,11 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   }
   const task = listAssetPage(env.DB, env as any, 'monitor_assets a', query, listMonitorAssets, 'monitor_assets')
     .finally(() => {
-      if (cacheable && assetListPending.get(cacheKey) === task) assetListPending.delete(cacheKey);
+      if (cacheable) clearPendingAssetListRequest(cacheKey, task);
     });
-  if (cacheable) assetListPending.set(cacheKey, task);
+  if (cacheable) setPendingAssetListRequest(cacheKey, task);
   const payload = await task;
-  if (cacheable) writeAssetListCache(cacheKey, payload);
+  if (cacheable) writeAssetListCache(cacheKey, payload, MONITOR_ASSET_LIST_CACHE_NAMESPACE, cacheVersion);
   return Response.json({ ok: true, ...payload });
 });
 
@@ -101,7 +87,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     .run();
 
   invalidateSystemDictionaryReferenceCache();
-  invalidateAssetListCache();
+  invalidateAssetListCache(MONITOR_ASSET_LIST_CACHE_NAMESPACE);
   await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
   const id = Number(result.meta?.last_row_id || 0);
   await logAudit(env.DB, request, user, 'MONITOR_ASSET_CREATE', 'monitor_assets', id, payload);
@@ -133,6 +119,7 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     .run();
 
   invalidateSystemDictionaryReferenceCache();
+  invalidateAssetListCache(MONITOR_ASSET_LIST_CACHE_NAMESPACE);
   await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand']);
   await logAudit(env.DB, request, user, 'MONITOR_ASSET_UPDATE', 'monitor_assets', id, {
     before: {
@@ -185,6 +172,7 @@ export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: s
     await requirePermission(env, request, 'asset_purge', 'viewer');
     const purgeSummary = await purgeArchivedAsset(env.DB, 'monitor', id);
     invalidateSystemDictionaryReferenceCache();
+    invalidateAssetListCache(MONITOR_ASSET_LIST_CACHE_NAMESPACE);
     await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_PURGE', 'monitor_assets', id, {
       asset_code: asset.asset_code,
@@ -214,6 +202,7 @@ export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: s
     const archiveReason = hasRefs ? '有历史记录，删除改为归档' : '系统策略：优先归档';
     await archiveAsset(env.DB, 'monitor', id, user.username || null, archiveReason, null);
     invalidateSystemDictionaryReferenceCache();
+    invalidateAssetListCache(MONITOR_ASSET_LIST_CACHE_NAMESPACE);
     await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);
     await logAudit(env.DB, request, user, 'MONITOR_ASSET_ARCHIVE', 'monitor_assets', id, { asset_code: asset.asset_code, status: asset.status, archived_reason: archiveReason });
     return Response.json({ ok: true, archived: true, message: hasRefs ? '该资产已有历史记录，已自动归档' : '当前系统已禁用物理删除，已自动归档' });
@@ -221,6 +210,7 @@ export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: s
 
   await deleteAssetRow(env.DB, 'monitor', id);
   invalidateSystemDictionaryReferenceCache();
+  invalidateAssetListCache(MONITOR_ASSET_LIST_CACHE_NAMESPACE);
   await syncSystemDictionaryUsageCounters(env.DB, ['monitor_brand', 'asset_archive_reason']);
   await logAudit(env.DB, request, user, 'MONITOR_ASSET_DELETE', 'monitor_assets', id, { asset_code: asset.asset_code });
   return Response.json({ ok: true, message: '删除成功' });
