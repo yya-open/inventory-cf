@@ -232,6 +232,7 @@ import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache, listMonitorAssets } from '../api/assetLedgers';
+import { invalidateAssetHistoryCache } from '../api/assetHistory';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import type { InventoryBatchPayload } from '../api/inventoryBatches';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
@@ -633,6 +634,7 @@ const {
 });
 
 function applyMonitorStatusPatch(ids: number[], nextStatus: string) {
+  ids.forEach((id) => invalidateAssetHistoryCache('monitor', id));
   patchCurrentRows(ids, (row) => ({ ...row, status: nextStatus }));
 }
 
@@ -644,6 +646,7 @@ function applyMonitorLocationPatch(ids: number[], nextLocationId: number | '') {
 
 function applyMonitorOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string; clearOwner?: boolean }) {
   const nextDepartment = String(payload.department || '').trim();
+  ids.forEach((id) => invalidateAssetHistoryCache('monitor', id));
   patchCurrentRows(ids, (row) => ({
     ...row,
     employee_name: payload.employee_name || '',

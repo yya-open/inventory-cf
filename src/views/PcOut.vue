@@ -200,6 +200,7 @@ import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { invalidateAssetHistoryCache } from "../api/assetHistory";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText, validateEmployeeNo } from "../utils/dataQuality";
@@ -312,6 +313,7 @@ function removeAssetOption(id?: number) {
 function notifyPcAssetsChanged() {
   invalidatePagedListNamespace('pc-assets');
   invalidateAssetInventorySummaryCache('pc');
+  invalidateAssetHistoryCache('pc');
   try {
     window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
   } catch {}

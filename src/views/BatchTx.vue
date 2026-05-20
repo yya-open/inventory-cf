@@ -197,7 +197,7 @@
       </div>
 
       <div class="batch-tx-tip">
-        Excel 模板列：<b>sku</b>, <b>qty</b>；入库可选：unit_price/source/remark；出库必填：<b>target</b>（可在表头填默认领用人）
+        Excel 模板列：<b>配件编码</b>、<b>数量</b>；入库可选：单价 / 来源 / 备注；出库必填：<b>领用人</b>（可在表头填默认领用人）
       </div>
     </el-card>
   </div>
@@ -264,8 +264,8 @@ function clearRows() {
 async function downloadTemplate() {
   const header =
     mode.value === "IN"
-      ? ["sku", "qty", "unit_price", "source", "remark"]
-      : ["sku", "qty", "target", "remark"];
+      ? ["配件编码", "数量", "单价", "来源", "备注"]
+      : ["配件编码", "数量", "领用人", "备注"];
 
   const exampleRows =
     mode.value === "IN"
@@ -313,17 +313,17 @@ function beforeUpload(file: File) {
       };
 
       // Required columns
-      const colSku = findCol(["sku", "SKU", "Sku", "配件", "物料", "物料编码"]);
-      const colQty = findCol(["qty", "QTY", "数量"]);
-      const colTarget = findCol(["target", "领用人", "去向", "领用"]);
-      const colUnitPrice = findCol(["unit_price", "price", "单价"]);
-      const colSource = findCol(["source", "来源"]);
-      const colRemark = findCol(["remark", "备注"]);
+      const colSku = findCol(["sku", "SKU", "Sku", "配件编码", "配件", "物料", "物料编码", "物料编号", "商品编码"]);
+      const colQty = findCol(["qty", "QTY", "数量", "数目"]);
+      const colTarget = findCol(["target", "领用人", "去向", "领用", "使用人", "领取人"]);
+      const colUnitPrice = findCol(["unit_price", "price", "单价", "价格"]);
+      const colSource = findCol(["source", "来源", "供应商"]);
+      const colRemark = findCol(["remark", "备注", "说明"]);
 
       const missing: string[] = [];
-      if (colSku === null) missing.push("sku");
-      if (colQty === null) missing.push("qty");
-      if (mode.value === "OUT" && colTarget === null) missing.push("target");
+      if (colSku === null) missing.push("配件编码");
+      if (colQty === null) missing.push("数量");
+      if (mode.value === "OUT" && colTarget === null) missing.push("领用人");
 
       if (missing.length) {
         ElMessageBox.alert(
@@ -332,11 +332,11 @@ function beforeUpload(file: File) {
 请使用模板第一行表头：
 ` +
             (mode.value === "IN"
-              ? "sku, qty, unit_price(可选), source(可选), remark(可选)"
-              : "sku, qty, target(必填), remark(可选)") +
+              ? "配件编码, 数量, 单价(可选), 来源(可选), 备注(可选)"
+              : "配件编码, 数量, 领用人(必填), 备注(可选)") +
             `
 
-（大小写不敏感，也支持中文列名：数量/单价/来源/备注/领用人）`,
+（兼容旧英文列名：sku / qty / unit_price / source / target / remark）`,
           "导入失败",
           { type: "error" }
         );
@@ -377,7 +377,7 @@ function beforeUpload(file: File) {
         const rowObj: Row = { sku, qty: 0 };
 
         // sku
-        if (!sku) errors.push({ row: i + 1, col: "SKU", msg: "必填" });
+        if (!sku) errors.push({ row: i + 1, col: "配件编码", msg: "必填" });
 
         // qty
         if (qtyN === null) {
@@ -445,7 +445,7 @@ async function submit() {
   rows.value.forEach((r, i) => {
     const sku = String(r.sku || "").trim();
     const qty = Number(r.qty);
-    if (!sku) invalid.push({ idx: i + 1, reason: "配件(SKU)必填" });
+    if (!sku) invalid.push({ idx: i + 1, reason: "配件编码必填" });
     if (!qty || qty <= 0) invalid.push({ idx: i + 1, reason: "数量必填且>0" });
     if (mode.value === "OUT") {
       const t = String((r.target ?? "") || headerT).trim();

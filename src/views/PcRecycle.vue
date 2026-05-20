@@ -203,6 +203,7 @@ import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { invalidateAssetHistoryCache } from "../api/assetHistory";
 import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { validateWithFriendlyMessage } from "../utils/formValidation";
 
@@ -290,6 +291,7 @@ const canSubmit = computed(() => {
 function notifyPcAssetsChanged() {
   invalidatePagedListNamespace('pc-assets');
   invalidateAssetInventorySummaryCache('pc');
+  invalidateAssetHistoryCache('pc');
   try {
     window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
   } catch {}

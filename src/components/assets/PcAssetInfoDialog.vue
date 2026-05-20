@@ -106,6 +106,7 @@ const historyState = reactive<{ loading: boolean; requestedId: number; loadedId:
   previous_department: null,
   previous_assigned_at: null,
 });
+let historyRequestSeq = 0;
 
 function seedHistoryFromRow(assetId: number) {
   historyState.requestedId = assetId;
@@ -116,14 +117,15 @@ function seedHistoryFromRow(assetId: number) {
   historyState.previous_assigned_at = props.row?.previous_assigned_at || null;
 }
 
-async function loadHistoryIfNeeded() {
+async function loadHistoryIfNeeded(options: { force?: boolean } = {}) {
   const assetId = Number(props.row?.id || 0);
-  if (!props.visible || !assetId || historyState.loadedId === assetId || (historyState.loading && historyState.requestedId === assetId)) return;
+  if (!props.visible || !assetId || (!options.force && historyState.loadedId === assetId) || (!options.force && historyState.loading && historyState.requestedId === assetId)) return;
   if (historyState.requestedId !== assetId) seedHistoryFromRow(assetId);
   historyState.loading = true;
+  const requestSeq = ++historyRequestSeq;
   try {
-    const payload = await getPcAssetHistory(assetId);
-    if (historyState.requestedId !== assetId) return;
+    const payload = await getPcAssetHistory(assetId, { force: options.force });
+    if (historyState.requestedId !== assetId || requestSeq !== historyRequestSeq) return;
     historyState.loadedId = assetId;
     historyState.previous_employee_no = payload?.previous_employee_no || null;
     historyState.previous_employee_name = payload?.previous_employee_name || null;
@@ -134,10 +136,12 @@ async function loadHistoryIfNeeded() {
   }
 }
 
-watch(() => [props.visible, props.row?.id], () => {
+watch(() => [props.visible, props.row?.id, props.row?.updated_at], (next, previous) => {
   const assetId = Number(props.row?.id || 0);
-  if (props.visible && assetId && historyState.requestedId !== assetId) seedHistoryFromRow(assetId);
-  void loadHistoryIfNeeded();
+  const opened = Boolean(next[0]) && !Boolean(previous?.[0]);
+  const changed = next[1] !== previous?.[1] || next[2] !== previous?.[2];
+  if (props.visible && assetId && (opened || changed || historyState.requestedId !== assetId)) seedHistoryFromRow(assetId);
+  void loadHistoryIfNeeded({ force: opened || changed });
 }, { immediate: true });
 
 const historyLoadingCurrent = computed(() => historyState.loading && historyState.loadedId !== Number(props.row?.id || 0));

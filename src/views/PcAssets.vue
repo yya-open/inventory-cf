@@ -174,6 +174,7 @@ import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
+import { invalidateAssetHistoryCache } from '../api/assetHistory';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
@@ -374,11 +375,13 @@ const {
 });
 
 function applyPcStatusPatch(ids: number[], nextStatus: string) {
+  ids.forEach((id) => invalidateAssetHistoryCache('pc', id));
   patchCurrentRows(ids, (row) => ({ ...row, status: nextStatus }));
 }
 
 function applyPcOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string }) {
   const nextDepartment = String(payload.department || '').trim();
+  ids.forEach((id) => invalidateAssetHistoryCache('pc', id));
   patchCurrentRows(ids, (row) => ({
     ...row,
     last_employee_name: payload.employee_name || '',

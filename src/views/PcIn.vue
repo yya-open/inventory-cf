@@ -139,6 +139,7 @@ import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
 import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { invalidateAssetHistoryCache } from "../api/assetHistory";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
 import { normalizeRemark, normalizeSerialNo, summarizeValidationErrors, validateDateText } from "../utils/dataQuality";
@@ -216,6 +217,7 @@ function normalizeForm() {
 function notifyPcAssetsChanged() {
   invalidatePagedListNamespace('pc-assets');
   invalidateAssetInventorySummaryCache('pc');
+  invalidateAssetHistoryCache('pc');
   try {
     window.sessionStorage.setItem(PC_ASSETS_MUTATION_KEY, String(Date.now()));
   } catch {}
