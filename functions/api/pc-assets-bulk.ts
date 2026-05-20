@@ -249,7 +249,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
       await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
-      const result = await bulkUpdatePcOwner(env.DB, ids, owner);
+      const result = await bulkUpdatePcOwner(env.DB, ids, owner, { createdBy: user.username || null });
       invalidateSystemDictionaryReferenceCache();
       if (result.changed) invalidateAssetListCache('pc-assets');
       await syncSystemDictionaryUsageCounters(env.DB, ['asset_archive_reason']);

@@ -23,15 +23,18 @@ class FakeStatement {
 
 class FakeDB {
   pcAssets = [
-    { id: 1, status: 'ASSIGNED', archived: 0 },
+    { id: 1, status: 'ASSIGNED', archived: 0, brand: '联想', serial_no: 'SN-1', model: 'P16', manufacture_date: '2025-01-01', warranty_end: null, disk_capacity: '512G', memory_size: '32G' },
   ];
   pcOut = [
-    { id: 10, asset_id: 1, employee_no: '1001', employee_name: 'Old Name', department: 'IT' },
+    { id: 10, asset_id: 1, employee_no: '1001', employee_name: 'Old Name', department: 'IT', is_employed: 'Y', brand: '联想', serial_no: 'SN-1', model: 'P16', manufacture_date: '2025-01-01', warranty_end: null, disk_capacity: '512G', memory_size: '32G', config_date: null, remark: null, created_by: 'seed' },
   ];
   monitorAssets = [
-    { id: 2, status: 'ASSIGNED', archived: 0, employee_no: '3003', employee_name: 'Old Monitor Name', department: 'Ops' },
+    { id: 2, status: 'ASSIGNED', archived: 0, employee_no: '3003', employee_name: 'Old Monitor Name', department: 'Ops', asset_code: 'M-1', sn: 'MSN-1', brand: 'Dell', model: 'U2720', size_inch: '27', location_id: 7 },
   ];
-  latestState = new Map<number, { employee_no: string | null; employee_name: string; department: string | null }>();
+  monitorTx = [
+    { id: 20, asset_id: 2, tx_type: 'OUT', employee_no: '3003', employee_name: 'Old Monitor Name', department: 'Ops', from_location_id: 7, to_location_id: 7 },
+  ];
+  latestState = new Map<number, { employee_no: string | null; employee_name: string; department: string | null; last_out_id?: number | null }>();
 
   prepare(sql: string) {
     return new FakeStatement(this, sql);
@@ -54,9 +57,27 @@ class FakeDB {
     }
     if (normalized.startsWith('select x.asset_id, x.max_id as out_id')) {
       const ids = new Set(params.map((value) => Number(value)));
-      return this.pcOut
-        .filter((row) => ids.has(row.asset_id))
-        .map((row) => ({ asset_id: row.asset_id, out_id: row.id, department: row.department }));
+      const outByAsset = new Map<number, any>();
+      for (const row of this.pcOut) {
+        if (!ids.has(row.asset_id)) continue;
+        const prev = outByAsset.get(row.asset_id);
+        if (!prev || row.id > prev.id) outByAsset.set(row.asset_id, row);
+      }
+      return Array.from(outByAsset.values()).map((row) => ({
+        asset_id: row.asset_id,
+        out_id: row.id,
+        employee_no: row.employee_no,
+        employee_name: row.employee_name,
+        department: row.department,
+        is_employed: row.is_employed,
+        brand: row.brand,
+        serial_no: row.serial_no,
+        model: row.model,
+        manufacture_date: row.manufacture_date,
+        warranty_end: row.warranty_end,
+        disk_capacity: row.disk_capacity,
+        memory_size: row.memory_size,
+      }));
     }
     throw new Error(`Unhandled SQL: ${sql}`);
   }
@@ -64,13 +85,59 @@ class FakeDB {
   run(sql: string, params: any[]) {
     const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
     if (normalized.startsWith('create table') || normalized.startsWith('create index')) return;
-    if (normalized.startsWith('update pc_out set')) {
-      const [employeeNo, department, employeeName, id] = params;
-      const row = this.pcOut.find((item) => item.id === Number(id));
-      if (!row) return;
-      row.employee_no = employeeNo;
-      row.employee_name = employeeName;
-      row.department = department ?? row.department;
+    if (normalized.startsWith('insert into pc_out')) {
+      const [outNo, assetId, employeeNo, department, employeeName, isEmployed, brand, serialNo, model, configDate, manufactureDate, warrantyEnd, diskCapacity, memorySize, remark, createdBy] = params;
+      this.pcOut.push({
+        id: this.pcOut.length ? Math.max(...this.pcOut.map((row) => row.id)) + 1 : 1,
+        out_no: outNo,
+        asset_id: Number(assetId),
+        employee_no: employeeNo,
+        department,
+        employee_name: employeeName,
+        is_employed: isEmployed,
+        brand,
+        serial_no: serialNo,
+        model,
+        config_date: configDate,
+        manufacture_date: manufactureDate,
+        warranty_end: warrantyEnd,
+        disk_capacity: diskCapacity,
+        memory_size: memorySize,
+        remark,
+        created_by: createdBy,
+      });
+      return;
+    }
+    if (normalized.startsWith('update pc_assets set status=')) {
+      const [assetId] = params;
+      const row = this.pcAssets.find((item) => item.id === Number(assetId));
+      if (row) row.status = 'ASSIGNED';
+      return;
+    }
+    if (normalized.startsWith('insert into pc_asset_latest_state')) {
+      const [assetId, outNo, employeeNo, employeeName, department] = params;
+      const latestOut = this.pcOut.find((row) => row.out_no === outNo);
+      this.latestState.set(Number(assetId), { employee_no: employeeNo, employee_name: employeeName, department, last_out_id: latestOut?.id ?? null });
+      return;
+    }
+    if (normalized.startsWith('insert into monitor_tx')) {
+      const [txNo, txType, assetId, assetCode, sn, brand, model, sizeInch, fromLocationId, toLocationId, employeeNo, department, employeeName] = params;
+      this.monitorTx.push({
+        id: this.monitorTx.length ? Math.max(...this.monitorTx.map((row) => row.id)) + 1 : 1,
+        tx_no: txNo,
+        tx_type: txType,
+        asset_id: Number(assetId),
+        asset_code: assetCode,
+        sn,
+        brand,
+        model,
+        size_inch: sizeInch,
+        from_location_id: fromLocationId,
+        to_location_id: toLocationId,
+        employee_no: employeeNo,
+        department,
+        employee_name: employeeName,
+      });
       return;
     }
     if (normalized.startsWith('update monitor_assets set')) {
@@ -83,48 +150,63 @@ class FakeDB {
       row.department = department ?? row.department;
       return;
     }
-    if (normalized.startsWith('insert into pc_asset_latest_state')) {
-      const [assetId, employeeNo, employeeName, department] = params;
-      this.latestState.set(Number(assetId), { employee_no: employeeNo, employee_name: employeeName, department });
-      return;
-    }
     throw new Error(`Unhandled SQL: ${sql}`);
   }
 }
 
-describe('PC bulk owner update', () => {
-  it('keeps the existing department when the batch owner form omits department', async () => {
+describe('bulk owner update history', () => {
+  it('appends a pc history row so the previous owner stays visible', async () => {
     const db = new FakeDB();
 
     const result = await bulkUpdatePcOwner(db as any, [1], {
       employee_no: '2002',
       employee_name: 'New Name',
       department: null,
-    });
+    }, { createdBy: 'tester' });
 
     expect(result.changed).toBe(1);
+    expect(db.pcOut).toHaveLength(2);
     expect(db.pcOut[0]).toMatchObject({
+      employee_no: '1001',
+      employee_name: 'Old Name',
+      department: 'IT',
+    });
+    expect(db.pcOut[1]).toMatchObject({
       employee_no: '2002',
       employee_name: 'New Name',
       department: 'IT',
+      created_by: 'tester',
     });
     expect(db.latestState.get(1)).toEqual({
       employee_no: '2002',
       employee_name: 'New Name',
       department: 'IT',
+      last_out_id: db.pcOut[1].id,
     });
   });
 
-  it('keeps the existing monitor department when the batch owner form omits department', async () => {
+  it('appends a monitor history row so the previous owner stays visible', async () => {
     const db = new FakeDB();
 
     const result = await bulkUpdateMonitorOwner(db as any, [2], {
       employee_no: '4004',
       employee_name: 'New Monitor Name',
       department: null,
-    });
+    }, { createdBy: 'tester', ip: '127.0.0.1', ua: 'vitest' });
 
     expect(result.changed).toBe(1);
+    expect(db.monitorTx).toHaveLength(2);
+    expect(db.monitorTx[0]).toMatchObject({
+      employee_no: '3003',
+      employee_name: 'Old Monitor Name',
+      department: 'Ops',
+    });
+    expect(db.monitorTx[1]).toMatchObject({
+      tx_type: 'TRANSFER',
+      employee_no: '4004',
+      employee_name: 'New Monitor Name',
+      department: 'Ops',
+    });
     expect(db.monitorAssets[0]).toMatchObject({
       employee_no: '4004',
       employee_name: 'New Monitor Name',
