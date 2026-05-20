@@ -36,8 +36,30 @@ export async function getMonitorAssetByIdOrCode(db: D1Database, assetId?: number
   return null;
 }
 
+export async function resolveMonitorAssetForMovement(db: D1Database, asset: any, type: MonitorMovementType) {
+  if (!asset || type !== 'RETURN' || String(asset?.status || '').trim().toUpperCase() === 'ASSIGNED') return asset;
+  const latest = await db.prepare(
+    `SELECT tx_type, employee_no, department, employee_name, is_employed
+     FROM monitor_tx
+     WHERE asset_id=?
+     ORDER BY created_at DESC, id DESC
+     LIMIT 1`
+  ).bind(asset.id).first<any>().catch(() => null);
+  const txType = String(latest?.tx_type || '').trim().toUpperCase();
+  const hasOwner = Boolean(String(latest?.employee_no || latest?.employee_name || latest?.department || '').trim());
+  if (!hasOwner || !['OUT', 'TRANSFER'].includes(txType)) return asset;
+  return {
+    ...asset,
+    status: 'ASSIGNED',
+    employee_no: latest.employee_no ?? asset.employee_no ?? null,
+    department: latest.department ?? asset.department ?? null,
+    employee_name: latest.employee_name ?? asset.employee_name ?? null,
+    is_employed: latest.is_employed ?? asset.is_employed ?? null,
+  };
+}
+
 export function assertMonitorMovementAllowed(asset: any, type: MonitorMovementType) {
-  const status = String(asset?.status || '');
+  const status = String(asset?.status || '').trim().toUpperCase();
   if (!asset) throwHttpError('显示器台账不存在', 404);
   if (Number(asset?.archived || 0) === 1) throwHttpError('该显示器已归档，请先恢复归档后再执行操作', 400);
   if (type === 'IN') {

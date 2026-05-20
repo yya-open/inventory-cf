@@ -1,5 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { bulkUpdateMonitorOwner, bulkUpdatePcOwner } from '../functions/api/services/asset-bulk';
+import { assertMonitorMovementAllowed, resolveMonitorAssetForMovement } from '../functions/api/services/asset-write';
 
 class FakeStatement {
   private params: any[] = [];
@@ -18,6 +19,10 @@ class FakeStatement {
   async run() {
     this.db.run(this.sql, this.params);
     return { success: true } as any;
+  }
+
+  async first<T = any>() {
+    return (this.db.first(this.sql, this.params) ?? null) as T;
   }
 }
 
@@ -78,6 +83,17 @@ class FakeDB {
         disk_capacity: row.disk_capacity,
         memory_size: row.memory_size,
       }));
+    }
+    throw new Error(`Unhandled SQL: ${sql}`);
+  }
+
+  first(sql: string, params: any[]) {
+    const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (normalized.startsWith('select tx_type, employee_no, department, employee_name, is_employed from monitor_tx where asset_id=')) {
+      const assetId = Number(params[0]);
+      return this.monitorTx
+        .filter((row) => row.asset_id === assetId)
+        .sort((a, b) => b.id - a.id)[0] || null;
     }
     throw new Error(`Unhandled SQL: ${sql}`);
   }
@@ -202,7 +218,7 @@ describe('bulk owner update history', () => {
       department: 'Ops',
     });
     expect(db.monitorTx[1]).toMatchObject({
-      tx_type: 'TRANSFER',
+      tx_type: 'OUT',
       employee_no: '4004',
       employee_name: 'New Monitor Name',
       department: 'Ops',
@@ -212,5 +228,26 @@ describe('bulk owner update history', () => {
       employee_name: 'New Monitor Name',
       department: 'Ops',
     });
+  });
+
+  it('allows monitor return when owner history exists but the asset status is stale', async () => {
+    const db = new FakeDB();
+    db.monitorAssets[0].status = 'IN_STOCK';
+    await bulkUpdateMonitorOwner(db as any, [2], {
+      employee_no: '4004',
+      employee_name: 'New Monitor Name',
+      department: null,
+    }, { createdBy: 'tester' });
+    db.monitorAssets[0].status = 'IN_STOCK';
+
+    const resolved = await resolveMonitorAssetForMovement(db as any, db.monitorAssets[0], 'RETURN');
+
+    expect(resolved).toMatchObject({
+      status: 'ASSIGNED',
+      employee_no: '4004',
+      employee_name: 'New Monitor Name',
+      department: 'Ops',
+    });
+    expect(() => assertMonitorMovementAllowed(resolved, 'RETURN')).not.toThrow();
   });
 });

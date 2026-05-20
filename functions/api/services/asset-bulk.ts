@@ -207,7 +207,6 @@ export async function bulkUpdateMonitorOwner(
   const statements = targetIds.flatMap((id) => {
     const row: any = rowsById.get(id) || {};
     const department = owner.department ?? row.department ?? null;
-    const txType = String(row.status || '') === 'ASSIGNED' ? 'TRANSFER' : 'OUT';
     return [
       db.prepare(
         `INSERT INTO monitor_tx
@@ -216,7 +215,7 @@ export async function bulkUpdateMonitorOwner(
          VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`
       ).bind(
         monitorTxNo('MONOW'),
-        txType,
+        'OUT',
         id,
         row.asset_code ?? null,
         row.sn ?? null,

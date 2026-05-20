@@ -9,6 +9,7 @@ import {
   getMonitorAssetByIdOrCode,
   getRequestClientMeta,
   monitorMovementAuditAction,
+  resolveMonitorAssetForMovement,
   type MonitorMovementType,
 } from './asset-write';
 import { assertAssetWarehouseAccess, assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from './data-scope';
@@ -59,7 +60,8 @@ export function createMonitorMovementHandler(options: MonitorMovementHandlerOpti
       if (!assetId && !assetCode) throw Object.assign(new Error('缺少资产ID/资产编号'), { status: 400 });
 
       assertAssetWarehouseAccess(user, '显示器仓', '显示器流转');
-      const asset = await getMonitorAssetByIdOrCode(env.DB, assetId, assetCode);
+      const rawAsset = await getMonitorAssetByIdOrCode(env.DB, assetId, assetCode);
+      const asset = await resolveMonitorAssetForMovement(env.DB, rawAsset, options.type);
       assertMonitorMovementAllowed(asset, options.type);
       assertMonitorAssetDataScopeAccess(user, asset?.department, '显示器流转');
 
