@@ -643,11 +643,12 @@ function applyMonitorLocationPatch(ids: number[], nextLocationId: number | '') {
 }
 
 function applyMonitorOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string }) {
+  const nextDepartment = String(payload.department || '').trim();
   patchCurrentRows(ids, (row) => ({
     ...row,
     employee_name: payload.employee_name || '',
     employee_no: payload.employee_no || '',
-    department: payload.department || '',
+    department: nextDepartment || row.department || '',
   }));
 }
 
@@ -729,9 +730,10 @@ const batchOwnerPreview = computed(() => {
     const name = String(row.employee_name || '').trim();
     const no = String(row.employee_no || '').trim();
     const dept = String(row.department || '').trim();
+    const nextDept = String(batchOwnerForm.value.department || '').trim();
     return name === String(batchOwnerForm.value.employee_name || '').trim()
       && no === String(batchOwnerForm.value.employee_no || '').trim()
-      && dept === String(batchOwnerForm.value.department || '').trim();
+      && (!nextDept || dept === nextDept);
   }).length;
   return { total, archived, sameOwner, eligible: Math.max(0, total - archived - sameOwner) };
 });

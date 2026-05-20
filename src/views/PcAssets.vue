@@ -378,11 +378,12 @@ function applyPcStatusPatch(ids: number[], nextStatus: string) {
 }
 
 function applyPcOwnerPatch(ids: number[], payload: { employee_name?: string; employee_no?: string; department?: string }) {
+  const nextDepartment = String(payload.department || '').trim();
   patchCurrentRows(ids, (row) => ({
     ...row,
     last_employee_name: payload.employee_name || '',
     last_employee_no: payload.employee_no || '',
-    last_department: payload.department || '',
+    last_department: nextDepartment || row.last_department || '',
     status: row.status === 'ASSIGNED' ? row.status : 'ASSIGNED',
   }));
 }
@@ -461,9 +462,10 @@ const batchOwnerPreview = computed(() => {
     const name = String(row.last_employee_name || '').trim();
     const no = String(row.last_employee_no || '').trim();
     const dept = String(row.last_department || '').trim();
+    const nextDept = String(batchOwnerForm.value.department || '').trim();
     if (name === String(batchOwnerForm.value.employee_name || '').trim()
       && no === String(batchOwnerForm.value.employee_no || '').trim()
-      && dept === String(batchOwnerForm.value.department || '').trim()) {
+      && (!nextDept || dept === nextDept)) {
       sameOwner += 1;
     }
   }

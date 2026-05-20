@@ -497,7 +497,7 @@ export function monitorAssetBulkLocationSql() {
 export function monitorAssetBulkOwnerSql() {
   return `
     UPDATE monitor_assets
-    SET status='ASSIGNED', employee_no=?, department=?, employee_name=?, is_employed='Y', updated_at=${sqlNowStored()}
+    SET status='ASSIGNED', employee_no=?, department=COALESCE(?, department), employee_name=?, is_employed='Y', updated_at=${sqlNowStored()}
     WHERE id=?
   `;
 }
@@ -507,7 +507,7 @@ export function latestPcOutRowSql() {
 }
 
 export function pcAssetBulkOwnerSql() {
-  return `UPDATE pc_out SET employee_no=?, department=?, employee_name=? WHERE id=?`;
+  return `UPDATE pc_out SET employee_no=?, department=COALESCE(?, department), employee_name=? WHERE id=?`;
 }
 
 export function pcAssetUpdateSql() {

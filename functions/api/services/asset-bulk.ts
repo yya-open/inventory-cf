@@ -187,7 +187,11 @@ export async function bulkUpdateMonitorOwner(
   const targetIds = rows.map((row) => row.id);
   const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
   const rowsById = new Map(rows.map((row: any) => [row.id, row]));
-  const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET status='ASSIGNED', employee_no=?, department=?, employee_name=?, is_employed='Y', search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(owner.employee_no, owner.department, owner.employee_name, buildMonitorAssetSearchText(row, { employee_no: owner.employee_no, employee_name: owner.employee_name, department: owner.department }), id); });
+  const statements = targetIds.map((id) => {
+    const row: any = rowsById.get(id) || {};
+    const department = owner.department ?? row.department ?? null;
+    return db.prepare(`UPDATE monitor_assets SET status='ASSIGNED', employee_no=?, department=COALESCE(?, department), employee_name=?, is_employed='Y', search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(owner.employee_no, owner.department, owner.employee_name, buildMonitorAssetSearchText(row, { employee_no: owner.employee_no, employee_name: owner.employee_name, department }), id);
+  });
   await runBatchStatements(db, statements);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
@@ -203,16 +207,18 @@ export async function bulkUpdatePcOwner(
   if (!targetIds.length) return { changed: 0, skipped: skippedIds.length, ids: [], skippedIds, latestOutIds: [] };
 
   const { results } = await db.prepare(
-    `SELECT x.asset_id, x.max_id AS out_id
+    `SELECT x.asset_id, x.max_id AS out_id, o.department
      FROM (
        SELECT asset_id, MAX(id) AS max_id
        FROM pc_out
        WHERE asset_id IN (${targetIds.map(() => '?').join(',')})
        GROUP BY asset_id
-     ) x`
+     ) x
+     JOIN pc_out o ON o.id = x.max_id`
   ).bind(...targetIds).all<any>();
   const latestOutIds = (results || []).map((row: any) => Number(row?.out_id || 0)).filter((id: number) => id > 0);
   const latestOutByAsset = new Map<number, number>((results || []).map((row: any) => [Number(row?.asset_id || 0), Number(row?.out_id || 0)]));
+  const latestDepartmentByAsset = new Map<number, string | null>((results || []).map((row: any) => [Number(row?.asset_id || 0), row?.department == null ? null : String(row.department)]));
   const effectiveIds = targetIds.filter((id) => Number(latestOutByAsset.get(id) || 0) > 0);
   const extraSkippedIds = targetIds.filter((id) => !effectiveIds.includes(id));
   const statements = effectiveIds.map((assetId) => db.prepare(pcAssetBulkOwnerSql()).bind(owner.employee_no, owner.department, owner.employee_name, Number(latestOutByAsset.get(assetId) || 0)));
@@ -230,7 +236,7 @@ export async function bulkUpdatePcOwner(
         current_employee_name=excluded.current_employee_name,
         current_department=excluded.current_department,
         updated_at=${sqlNowStored()}`
-    ).bind(assetId, owner.employee_no, owner.employee_name, owner.department)
+    ).bind(assetId, owner.employee_no, owner.employee_name, owner.department ?? latestDepartmentByAsset.get(assetId) ?? null)
   );
   await runBatchStatements(db, latestStateStmts);
   return {
