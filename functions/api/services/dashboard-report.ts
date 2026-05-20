@@ -29,7 +29,8 @@ export function parseDashboardParams(request: Request) {
   const mode = (url.searchParams.get('mode') || 'parts').toLowerCase() as DashboardMode;
   const to = url.searchParams.get('to') ?? ymdInShanghai(0);
   const from = url.searchParams.get('from') ?? ymdInShanghai(-(days - 1));
-  return { url, requestedWarehouseId, days, mode, from, to };
+  const force = ['1', 'true', 'yes', 'on'].includes(String(url.searchParams.get('force') || '').trim().toLowerCase());
+  return { url, requestedWarehouseId, days, mode, from, to, force };
 }
 
 async function firstNumber(db: D1Database, sql: string, binds: any[] = []) {
@@ -114,13 +115,14 @@ export async function buildGovernance(db: D1Database, scope?: UserDataScope | nu
   };
 }
 
-export async function getDashboardSummary(db: D1Database, user: UserDataScope, params: { requestedWarehouseId: number; days: number; mode: DashboardMode; from: string; to: string }) {
-  const { requestedWarehouseId, days, mode, from, to } = params;
+export async function getDashboardSummary(db: D1Database, user: UserDataScope, params: { requestedWarehouseId: number; days: number; mode: DashboardMode; from: string; to: string; force?: boolean }) {
+  const { requestedWarehouseId, days, mode, from, to, force } = params;
   const stability = await buildStability(db);
   const governance = await buildGovernance(db, user, from, to);
 
   if (mode === 'pc') {
     if (!scopeAllowsAssetWarehouse(user, '电脑仓')) throwHttpError('当前账号的数据范围未包含电脑仓，看板不可访问', 403);
+    if (force) await refreshDashboardSnapshots(db, { mode: 'pc', from, to, scope: user }, { force: true });
     const snapshots = await readDashboardSnapshots(db, { mode: 'pc', from, to, scope: user });
     const summary = {
       in_qty: snapshotSum(snapshots, 'in_qty'),
@@ -149,6 +151,7 @@ export async function getDashboardSummary(db: D1Database, user: UserDataScope, p
 
   if (mode === 'monitor') {
     if (!scopeAllowsAssetWarehouse(user, '显示器仓')) throwHttpError('当前账号的数据范围未包含显示器仓，看板不可访问', 403);
+    if (force) await refreshDashboardSnapshots(db, { mode: 'monitor', from, to, scope: user }, { force: true });
     const snapshots = await readDashboardSnapshots(db, { mode: 'monitor', from, to, scope: user });
     const summary = {
       in_qty: snapshotSum(snapshots, 'in_qty'),
@@ -181,6 +184,7 @@ export async function getDashboardSummary(db: D1Database, user: UserDataScope, p
   if (!scopeAllowsAssetWarehouse(user, '配件仓')) throwHttpError('当前账号的数据范围未包含配件仓，看板不可访问', 403);
   const warehouse_id = await resolvePartsWarehouseId(db, user, requestedWarehouseId);
   if (warehouse_id <= 0) throwHttpError('当前账号未授权访问该配件仓', 403);
+  if (force) await refreshDashboardSnapshots(db, { mode: 'parts', from, to, warehouseId: warehouse_id, scope: user }, { force: true });
   const snapshots = await readDashboardSnapshots(db, { mode: 'parts', from, to, warehouseId: warehouse_id, scope: user });
   const summary = {
     in_qty: snapshotSum(snapshots, 'in_qty'),

@@ -294,7 +294,7 @@ async function fetchSummary(mode = reportMode.value, dayCount = days.value, forc
     const pending = pendingSummaryRequests.get(cacheKey);
     if (pending) return pending;
   }
-  const url = `/api/reports/summary?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
+  const url = `/api/reports/summary?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     summaryCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
     evictOldestEntries(summaryCache, CACHE_MAX_ENTRIES);
@@ -313,7 +313,7 @@ async function fetchDetail(mode = reportMode.value, dayCount = days.value, force
     const pending = pendingDetailRequests.get(cacheKey);
     if (pending) return pending;
   }
-  const url = `/api/reports/detail?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}`;
+  const url = `/api/reports/detail?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     detailCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
     evictOldestEntries(detailCache, CACHE_MAX_ENTRIES);
@@ -477,7 +477,7 @@ onMounted(async () => {
   const allowed = reportModeOptions.value.map((x: any) => x.value);
   if (allowed.length === 1) reportMode.value = allowed[0];
   prefsReady.value = true;
-  await refresh(false);
+  await refresh(true);
 });
 </script>
 
