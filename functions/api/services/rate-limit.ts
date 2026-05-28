@@ -1,4 +1,7 @@
 import { sqlNowStored, sqlStoredHoursAgo, sqlStoredMinutesAgo, sqlStoredMinutesFromNow } from '../_time';
+import { clampInt } from '../../utils/numeric';
+
+export { clampInt };
 
 export function getClientIp(request: Request) {
   const ip =
@@ -7,12 +10,6 @@ export function getClientIp(request: Request) {
     request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
     '';
   return ip || '0.0.0.0';
-}
-
-export function clampInt(v: any, def: number, min: number, max: number) {
-  const n = Number(v);
-  if (!Number.isFinite(n)) return def;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
 }
 
 export function datetimeTextToMsBj(dt: string | null) {

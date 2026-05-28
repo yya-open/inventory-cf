@@ -1,6 +1,7 @@
 import type { AuthUser } from '../_auth';
 import { sqlNowStored } from './_time';
 import { normalizeSearchText } from './_search';
+import { clampInt } from '../utils/numeric';
 
 const DEFAULT_RETENTION_DAYS = 180;
 const DEFAULT_ARCHIVE_AFTER_DAYS = 90;
@@ -69,12 +70,6 @@ export type AuditLifecycleInfo = {
   stats: AuditStorageStats;
   warnings: Array<{ code: string; message: string }>;
 };
-
-function clampInt(value: any, fallback: number, min: number, max: number) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 function boolToNumber(value: any, fallback = 0) {
   if (value === undefined || value === null || value === '') return fallback ? 1 : 0;

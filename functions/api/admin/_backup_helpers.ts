@@ -1,5 +1,6 @@
 import { BACKUP_VERSION, EXPORTABLE_TABLE_NAMES, TABLE_COLUMNS, TABLE_BY_NAME, buildBackupMeta, groupLabel } from './_backup_schema';
 import { buildBackupManifest, chainSha256, computeBackupIntegrity, sha256JsonHex } from './_backup_integrity';
+import { clampInt } from '../../utils/numeric';
 
 const OPTIONAL_TABLE_GROUPS = {
   include_tx: ['stock_tx'],
@@ -41,12 +42,6 @@ export type BackupJsonStreamResult = {
 };
 
 type ByteStreamPipe = ReadableWritablePair<Uint8Array, Uint8Array>;
-
-function clampInt(value: any, fallback: number, min: number, max: number) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 function normalizeDate(value: any) {
   const s = String(value || '').trim();

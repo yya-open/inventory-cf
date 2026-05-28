@@ -1,6 +1,7 @@
 import { sqlNowStored } from "./api/_time";
 import { createTiming } from "./api/_timing";
 import { buildAuthCookie, buildClearAuthCookie, getJwtTtlSeconds } from "./_auth";
+import { clampFloat } from "./utils/numeric";
 
 type Timing = ReturnType<typeof createTiming>;
 type WrappedStmt = D1PreparedStatement;
@@ -24,9 +25,7 @@ function isDebugSqlEnabled(env: MiddlewareEnv) {
 }
 
 function clampRate(value: unknown, fallback = 1) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(0, Math.min(1, n));
+  return clampFloat(value, fallback, 0, 1);
 }
 
 function shouldSample(value: unknown, fallback = 1) {

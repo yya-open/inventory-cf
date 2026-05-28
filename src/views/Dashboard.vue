@@ -434,9 +434,17 @@ const seriesFilled = computed(() => {
   return out;
 });
 
+const seriesMaxValue = computed(() => {
+  if (!seriesFilled.value.length) return 1;
+  let max = 0;
+  for (const item of seriesFilled.value) {
+    if (item.qty > max) max = item.qty;
+  }
+  return max || 1;
+});
+
 function barWidth(qty: number) {
-  const max = Math.max(...seriesFilled.value.map((x: any) => x.qty), 1);
-  const pct = Math.round((qty / max) * 100);
+  const pct = Math.round((qty / seriesMaxValue.value) * 100);
   return `${pct}%`;
 }
 

@@ -255,6 +255,11 @@ import { useMonitorAssetViewState } from './assets/monitorAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { extractAffectedIds } from './assets/assetBulkActions';
 import { isLedgerMobileViewport } from '../utils/responsive';
+import { useBrowserIdleTask } from '../composables/useBrowserIdleTask';
+import { useAssetLedgerBatchRefresh } from '../composables/useAssetLedgerBatchRefresh';
+import { useAssetBulkDialogs } from '../composables/useAssetBulkDialogs';
+import { useAssetImportExport } from '../composables/useAssetImportExport';
+import { useQrExportProgress } from '../composables/useQrExportProgress';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
 const MonitorAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetInfoDialog.vue'));
@@ -280,12 +285,8 @@ const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
 const monitorBrandOptions = computed(() => systemSettings.value.dictionary_monitor_brand_options || []);
 const { runSaveAction } = useAssetFormActions();
-const qrExportProgress = ref<{ visible: boolean; title: string; stage: string; current: number; total: number; detail: string }>({ visible: false, title: '', stage: '', current: 0, total: 1, detail: '' });
-let qrExportProgressAutoCloseTimer: number | null = null;
-let deferredRefreshTimer: number | null = null;
-let idleRunnerTimer: number | null = null;
-let idleCallbackId: number | null = null;
-let idleRafId: number | null = null;
+const { runWhenBrowserIdle, scheduleDeferredTask } = useBrowserIdleTask();
+const { qrExportProgress, startQrExportProgress, updateQrExportProgress, finishQrExportProgress } = useQrExportProgress();
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('monitor');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -337,41 +338,6 @@ onMounted(() => {
   void initMonitorBrandOptions();
 });
 
-
-function clearQrExportProgressAutoCloseTimer() {
-  if (qrExportProgressAutoCloseTimer != null) {
-    window.clearTimeout(qrExportProgressAutoCloseTimer);
-    qrExportProgressAutoCloseTimer = null;
-  }
-}
-
-function startQrExportProgress(title: string) {
-  clearQrExportProgressAutoCloseTimer();
-  qrExportProgress.value = { visible: true, title, stage: '准备中', current: 0, total: 1, detail: '正在准备导出…' };
-}
-
-function updateQrExportProgress(progress: AssetQrExportProgress) {
-  clearQrExportProgressAutoCloseTimer();
-  qrExportProgress.value = {
-    ...qrExportProgress.value,
-    visible: true,
-    stage: progress.stage,
-    current: progress.current,
-    total: Math.max(1, progress.total),
-    detail: progress.detail || '',
-  };
-  if (progress.stage === '下载文件' && progress.current >= Math.max(1, progress.total)) {
-    qrExportProgressAutoCloseTimer = window.setTimeout(() => {
-      qrExportProgress.value = { ...qrExportProgress.value, visible: false };
-      qrExportProgressAutoCloseTimer = null;
-    }, 600);
-  }
-}
-
-function finishQrExportProgress() {
-  clearQrExportProgressAutoCloseTimer();
-  qrExportProgress.value = { ...qrExportProgress.value, visible: false };
-}
 
 function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
   ElNotification({ title, message, type, duration: 2600, offset: 72 });
@@ -769,101 +735,31 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
   return { ...filters, inventoryStatus: '' };
 }
 
-const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
-const LEDGER_BATCH_REFRESH_DELAY_MS = 4500;
-
-async function refreshInventoryBatch(options: { force?: boolean } = {}) {
-  try {
-    await refreshInventoryBatchStore({ silent: true, force: options.force, ttlMs: INVENTORY_BATCH_SOFT_TTL_MS });
-    if (!inventoryBatch.value.active && inventoryStatus.value) {
-      runWithoutAutoSearch(() => {
-        inventoryStatus.value = '';
-      });
-    }
-  } catch {
-    inventoryBatch.value = { active: null, latest: inventoryBatch.value.latest || null, recent: inventoryBatch.value.recent || [] };
-  }
-}
-
-function shouldLoadInventorySummary(filters: MonitorFilters = currentFiltersForList()) {
-  return Boolean(hasActiveInventoryBatch.value || String(filters.inventoryStatus || '').trim());
-}
-
-async function refreshInventorySummary(filters: MonitorFilters = currentFiltersForList()) {
-  if (!shouldLoadInventorySummary(filters)) {
-    inventorySummary.value = { total: 0, normal: 0, profit: 0, loss: 0, pending: 0 } as any;
-    return;
-  }
-  try {
+const {
+  shouldLoadInventorySummary,
+  refreshInventoryBatch,
+  refreshInventorySummary,
+  scheduleDeferredInventoryBatchRefresh,
+  scheduleAuxiliaryRefresh,
+} = useAssetLedgerBatchRefresh({
+  assetType: 'monitor',
+  batchRefreshDelayMs: 4500,
+  idleTimeout: 2500,
+  hasActiveInventoryBatch,
+  inventoryStatus,
+  inventoryBatch,
+  inventorySummary,
+  refreshInventoryBatchStore,
+  refreshInventorySummary: async (filters?: any) => {
+    const f = filters || currentFiltersForList();
+    if (!shouldLoadInventorySummary(f)) return;
     if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('monitor');
-    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(filters), undefined, { force: hasActiveInventoryBatch.value });
-  } catch (error) {
-    console.warn('monitor inventory summary failed', error);
-  }
-}
-
-function scheduleDeferredInventoryBatchRefresh(task: () => void | Promise<void>) {
-  if (typeof window === 'undefined') return;
-  const start = () => {
-    if (deferredRefreshTimer != null) window.clearTimeout(deferredRefreshTimer);
-    deferredRefreshTimer = window.setTimeout(() => {
-      deferredRefreshTimer = null;
-      runWhenBrowserIdle(task, 2500);
-    }, LEDGER_BATCH_REFRESH_DELAY_MS);
-  };
-  if (document.visibilityState === 'visible') {
-    start();
-    return;
-  }
-  const onVisible = () => {
-    if (document.visibilityState !== 'visible') return;
-    document.removeEventListener('visibilitychange', onVisible);
-    start();
-  };
-  document.addEventListener('visibilitychange', onVisible, { passive: true, once: true });
-}
-
-function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
-  if (typeof window === 'undefined') {
-    void Promise.resolve().then(task);
-    return;
-  }
-  if (idleRunnerTimer != null) {
-    window.clearTimeout(idleRunnerTimer);
-    idleRunnerTimer = null;
-  }
-  if (idleCallbackId != null && typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(idleCallbackId);
-    idleCallbackId = null;
-  }
-  if (idleRafId != null) {
-    window.cancelAnimationFrame(idleRafId);
-    idleRafId = null;
-  }
-  const runner = () => {
-    idleCallbackId = null;
-    idleRafId = null;
-    idleRunnerTimer = window.setTimeout(() => {
-      idleRunnerTimer = null;
-      void task();
-    }, 80);
-  };
-  if (typeof window.requestIdleCallback === 'function') {
-    idleCallbackId = window.requestIdleCallback(() => runner(), { timeout });
-    return;
-  }
-  idleRafId = window.requestAnimationFrame(() => {
-    runner();
-  });
-}
-
-function scheduleAuxiliaryRefresh(initialFilters: MonitorFilters) {
-  const snapshot = { ...initialFilters };
-  const needSummary = shouldLoadInventorySummary(snapshot);
-  runWhenBrowserIdle(async () => {
-    if (needSummary) void refreshInventorySummary(snapshot);
-  });
-}
+    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
+  },
+  currentFiltersForList,
+  runWithoutAutoSearch,
+  invalidateAssetInventorySummaryCache,
+});
 
 async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
   clearKeywordTimer();
@@ -1563,7 +1459,7 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
-  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
+  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= 15 * 60_000;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
   scheduleDeferredInventoryBatchRefresh(async () => {
@@ -1604,12 +1500,7 @@ onMounted(() => {
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') {
     window.removeEventListener('resize', handleViewportResize);
-    if (deferredRefreshTimer != null) { window.clearTimeout(deferredRefreshTimer); deferredRefreshTimer = null; }
-    if (idleRunnerTimer != null) { window.clearTimeout(idleRunnerTimer); idleRunnerTimer = null; }
-    if (idleCallbackId != null && typeof window.cancelIdleCallback === 'function') { window.cancelIdleCallback(idleCallbackId); idleCallbackId = null; }
-    if (idleRafId != null) { window.cancelAnimationFrame(idleRafId); idleRafId = null; }
   }
-  clearQrExportProgressAutoCloseTimer();
   cleanupViewState();
 });
 

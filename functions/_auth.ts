@@ -1,13 +1,9 @@
+import { clampSeconds } from './utils/numeric';
+
 type Role = "admin" | "operator" | "viewer";
 
 export const JWT_TTL_SECONDS = 24 * 3600;
 export const REFRESH_THRESHOLD_SECONDS = 12 * 3600;
-
-function clampSeconds(value: unknown, fallback: number, min: number, max: number) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 export function getJwtTtlSeconds(env?: { JWT_TTL_SECONDS?: string | number | null }) {
   return clampSeconds(env?.JWT_TTL_SECONDS, JWT_TTL_SECONDS, 15 * 60, 30 * 24 * 3600);

@@ -1,13 +1,8 @@
 import { getAuditLifecycle, listAuditArchiveRuns } from '../_audit';
 import { createAsyncJob, processAsyncJob } from './async-jobs';
+import { clampInt } from '../../utils/numeric';
 
 const ARCHIVE_JOB_COOLDOWN_MS = 6 * 60 * 60 * 1000;
-
-function clampInt(value: any, fallback: number, min: number, max: number) {
-  const n = Number(value);
-  if (!Number.isFinite(n)) return fallback;
-  return Math.max(min, Math.min(max, Math.trunc(n)));
-}
 
 function boolLike(value: any) {
   return value === true || value === 1 || value === '1' || value === 'true';

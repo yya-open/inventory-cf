@@ -197,6 +197,10 @@ import type { QrPrintTemplate } from '../utils/qrPrintTemplate';
 import { usePcAssetViewState } from './assets/pcAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { extractAffectedIds } from './assets/assetBulkActions';
+import { useBrowserIdleTask } from '../composables/useBrowserIdleTask';
+import { useAssetLedgerBatchRefresh } from '../composables/useAssetLedgerBatchRefresh';
+import { useAssetBulkDialogs } from '../composables/useAssetBulkDialogs';
+import { useAssetImportExport } from '../composables/useAssetImportExport';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -261,6 +265,8 @@ const hasActiveFilters = computed(() => {
   const filters = currentFiltersForList();
   return Boolean(filters.status || filters.keyword || filters.inventoryStatus || filters.archiveMode !== 'active' || filters.archiveReason);
 });
+
+const { runWhenBrowserIdle, scheduleDeferredTask } = useBrowserIdleTask();
 
 const {
   status,
@@ -592,8 +598,6 @@ function buildInventorySummaryFilters(filters: PcFilters = currentFiltersForList
   return { ...filters, inventoryStatus: '' };
 }
 
-const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
-const LEDGER_BATCH_REFRESH_DELAY_MS = 12000;
 const PC_ASSETS_MUTATION_KEY = 'inventory:pc-assets:mutation';
 let lastSeenExternalMutation = 0;
 
@@ -622,122 +626,31 @@ function consumeExternalPcAssetsMutation() {
   return true;
 }
 
-async function refreshInventoryBatch(options: { force?: boolean } = {}) {
-  try {
-    await refreshInventoryBatchStore({ silent: true, force: options.force, ttlMs: INVENTORY_BATCH_SOFT_TTL_MS });
-    if (!inventoryBatch.value.active && inventoryStatus.value) {
-      runWithoutAutoSearch(() => {
-        inventoryStatus.value = '';
-      });
-    }
-  } catch {
-    inventoryBatch.value = { active: null, latest: inventoryBatch.value.latest || null, recent: inventoryBatch.value.recent || [] };
-  }
-}
-
-function shouldLoadInventorySummary(filters: PcFilters = currentFiltersForList()) {
-  return Boolean(hasActiveInventoryBatch.value || String(filters.inventoryStatus || '').trim());
-}
-
-async function refreshInventorySummary(filters: PcFilters = currentFiltersForList()) {
-  if (!shouldLoadInventorySummary(filters)) {
-    inventorySummary.value = { total: 0, normal: 0, profit: 0, loss: 0, pending: 0 } as any;
-    return;
-  }
-  try {
+const {
+  shouldLoadInventorySummary,
+  refreshInventoryBatch,
+  refreshInventorySummary,
+  scheduleDeferredInventoryBatchRefresh,
+  scheduleAuxiliaryRefresh,
+} = useAssetLedgerBatchRefresh({
+  assetType: 'pc',
+  batchRefreshDelayMs: 12000,
+  idleTimeout: 6000,
+  hasActiveInventoryBatch,
+  inventoryStatus,
+  inventoryBatch,
+  inventorySummary,
+  refreshInventoryBatchStore,
+  refreshInventorySummary: async (filters?: any) => {
+    const f = filters || currentFiltersForList();
+    if (!shouldLoadInventorySummary(f)) return;
     if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('pc');
-    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(filters), undefined, { force: hasActiveInventoryBatch.value });
-  } catch (error) {
-    console.warn('pc inventory summary failed', error);
-  }
-}
-
-let deferredInventoryBatchTimer: number | null = null;
-let idleRunnerTimer: number | null = null;
-let idleCallbackId: number | null = null;
-let idleRafId: number | null = null;
-
-function clearDeferredInventoryBatchTimer() {
-  if (deferredInventoryBatchTimer != null && typeof window !== 'undefined') {
-    window.clearTimeout(deferredInventoryBatchTimer);
-    deferredInventoryBatchTimer = null;
-  }
-  if (idleRunnerTimer != null && typeof window !== 'undefined') {
-    window.clearTimeout(idleRunnerTimer);
-    idleRunnerTimer = null;
-  }
-  if (idleCallbackId != null && typeof window !== 'undefined' && typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(idleCallbackId);
-    idleCallbackId = null;
-  }
-  if (idleRafId != null && typeof window !== 'undefined') {
-    window.cancelAnimationFrame(idleRafId);
-    idleRafId = null;
-  }
-}
-
-function scheduleDeferredInventoryBatchRefresh(task: () => void | Promise<void>) {
-  if (typeof window === 'undefined') return;
-  clearDeferredInventoryBatchTimer();
-  const start = () => {
-    deferredInventoryBatchTimer = window.setTimeout(() => {
-      deferredInventoryBatchTimer = null;
-      runWhenBrowserIdle(task, 6000);
-    }, LEDGER_BATCH_REFRESH_DELAY_MS);
-  };
-  if (document.visibilityState === 'visible') {
-    start();
-    return;
-  }
-  const onVisible = () => {
-    if (document.visibilityState !== 'visible') return;
-    document.removeEventListener('visibilitychange', onVisible);
-    start();
-  };
-  document.addEventListener('visibilitychange', onVisible, { passive: true, once: true });
-}
-
-function runWhenBrowserIdle(task: () => void | Promise<void>, timeout = 1200) {
-  if (typeof window === 'undefined') {
-    void Promise.resolve().then(task);
-    return;
-  }
-  if (idleRunnerTimer != null) {
-    window.clearTimeout(idleRunnerTimer);
-    idleRunnerTimer = null;
-  }
-  if (idleCallbackId != null && typeof window.cancelIdleCallback === 'function') {
-    window.cancelIdleCallback(idleCallbackId);
-    idleCallbackId = null;
-  }
-  if (idleRafId != null) {
-    window.cancelAnimationFrame(idleRafId);
-    idleRafId = null;
-  }
-  const runner = () => {
-    idleCallbackId = null;
-    idleRafId = null;
-    idleRunnerTimer = window.setTimeout(() => {
-      idleRunnerTimer = null;
-      void task();
-    }, 80);
-  };
-  if (typeof window.requestIdleCallback === 'function') {
-    idleCallbackId = window.requestIdleCallback(() => runner(), { timeout });
-    return;
-  }
-  idleRafId = window.requestAnimationFrame(() => {
-    runner();
-  });
-}
-
-function scheduleAuxiliaryRefresh(initialFilters: PcFilters) {
-  const snapshot = { ...initialFilters };
-  const needSummary = shouldLoadInventorySummary(snapshot);
-  runWhenBrowserIdle(async () => {
-    if (needSummary) void refreshInventorySummary(snapshot);
-  });
-}
+    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
+  },
+  currentFiltersForList,
+  runWithoutAutoSearch,
+  invalidateAssetInventorySummaryCache,
+});
 
 async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
   clearKeywordTimer();
@@ -1259,7 +1172,7 @@ function openRecommendedAction(command: string, row: PcAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
-  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= INVENTORY_BATCH_SOFT_TTL_MS;
+  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= 15 * 60_000;
   await refreshLedgerData(options);
   if (!shouldRefreshBatch) return;
   scheduleDeferredInventoryBatchRefresh(async () => {
@@ -1294,7 +1207,6 @@ onBeforeMount(() => {
 
 onBeforeUnmount(() => {
   if (typeof window !== 'undefined') window.removeEventListener('resize', handleViewportResize);
-  clearDeferredInventoryBatchTimer();
   cleanupViewState();
 });
 
