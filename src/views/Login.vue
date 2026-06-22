@@ -1,51 +1,16 @@
 <template>
   <div class="login-page">
     <div class="login-shell">
-      <section class="login-panel" aria-hidden="true">
-        <div class="login-panel__brand">
-          <div class="login-panel__mark">IC</div>
-          <div>
-            <div class="login-panel__name">配件仓管理系统</div>
-            <div class="login-panel__desc">库存、资产、盘点与审计统一工作台</div>
-          </div>
-        </div>
-        <div class="login-panel__summary">
-          <div class="login-panel__summary-title">运营概览</div>
-          <div class="login-panel__metrics">
-            <div class="login-panel__metric">
-              <span>库存流转</span>
-              <strong>实时</strong>
-            </div>
-            <div class="login-panel__metric">
-              <span>盘点任务</span>
-              <strong>可追溯</strong>
-            </div>
-            <div class="login-panel__metric">
-              <span>权限审计</span>
-              <strong>已启用</strong>
-            </div>
-          </div>
-        </div>
-        <div class="login-panel__list">
-          <div class="login-panel__list-row">
-            <span>配件仓</span>
-            <b>入库、出库、预警</b>
-          </div>
-          <div class="login-panel__list-row">
-            <span>电脑/显示器仓</span>
-            <b>台账、二维码、归还</b>
-          </div>
-          <div class="login-panel__list-row">
-            <span>系统运维</span>
-            <b>备份、报表、发布检查</b>
-          </div>
-        </div>
-      </section>
-
       <section class="login-card" aria-label="登录表单">
-        <div class="login-card__eyebrow">系统登录</div>
-        <div class="login-card__title">欢迎回来</div>
-        <div class="login-card__subtitle">使用授权账号进入配件仓工作台</div>
+        <div class="login-card__header">
+          <div class="login-card__mark">IC</div>
+          <div>
+            <div class="login-card__eyebrow">配件仓管理系统</div>
+            <div class="login-card__title">登录</div>
+          </div>
+        </div>
+        <div class="login-card__subtitle">请输入授权账号继续。</div>
+
         <el-form label-position="top" @submit.prevent>
           <el-form-item label="账号">
             <el-input
@@ -265,11 +230,8 @@ async function changePassword() {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background:
-    linear-gradient(#dce3ec 1px, transparent 1px),
-    linear-gradient(90deg, #dce3ec 1px, transparent 1px);
-  background-size: 48px 48px;
-  opacity: 0.42;
+  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.72), transparent 50%);
+  opacity: 0.9;
 }
 
 .login-page::after {
@@ -279,159 +241,60 @@ async function changePassword() {
 .login-shell {
   position: relative;
   z-index: 1;
-  width: min(980px, 100%);
-  min-height: 540px;
-  display: grid;
-  grid-template-columns: minmax(0, 1fr) minmax(360px, 0.76fr);
+  width: min(440px, 100%);
   overflow: hidden;
-  border: 1px solid #d5dde8;
+  border: 1px solid #d8e0ea;
   border-radius: 8px;
   background: #ffffff;
-  box-shadow: 0 18px 44px rgba(31, 45, 61, 0.14);
-}
-
-.login-panel {
-  position: relative;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  justify-content: space-between;
-  gap: 28px;
-  padding: 44px;
-  border-right: 1px solid #d8e0ea;
-  background: #182235;
-  color: #ffffff;
-}
-
-.login-panel__brand {
-  display: flex;
-  align-items: center;
-  gap: 14px;
-}
-
-.login-panel__mark {
-  width: 44px;
-  height: 44px;
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  border: 1px solid rgba(255, 255, 255, 0.22);
-  border-radius: 8px;
-  background: #22324a;
-  color: #dbeafe;
-  font-weight: 800;
-  letter-spacing: 0;
-}
-
-.login-panel__name {
-  font-size: 20px;
-  font-weight: 700;
-  line-height: 1.25;
-}
-
-.login-panel__desc {
-  margin-top: 6px;
-  color: #aeb9c8;
-  font-size: 13px;
-}
-
-.login-panel__summary {
-  padding: 22px;
-  border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 8px;
-  background: #202d40;
-}
-
-.login-panel__summary-title {
-  margin-bottom: 16px;
-  color: #d7dfeb;
-  font-size: 13px;
-  font-weight: 700;
-}
-
-.login-panel__metrics {
-  display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
-  gap: 12px;
-}
-
-.login-panel__metric {
-  min-width: 0;
-  padding: 12px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
-  border-radius: 6px;
-  background: #172132;
-}
-
-.login-panel__metric span,
-.login-panel__metric strong {
-  display: block;
-}
-
-.login-panel__metric span {
-  color: #91a0b4;
-  font-size: 12px;
-}
-
-.login-panel__metric strong {
-  margin-top: 8px;
-  color: #ffffff;
-  font-size: 15px;
-}
-
-.login-panel__list {
-  display: grid;
-  gap: 10px;
-}
-
-.login-panel__list-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 16px;
-  padding: 13px 0;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.12);
-}
-
-.login-panel__list-row span {
-  color: #cbd5e1;
-  font-size: 13px;
-}
-
-.login-panel__list-row b {
-  color: #ffffff;
-  font-size: 13px;
-  font-weight: 600;
-  text-align: right;
+  box-shadow: 0 12px 32px rgba(31, 45, 61, 0.12);
 }
 
 .login-card {
   display: flex;
   flex-direction: column;
-  justify-content: center;
+  gap: 20px;
   min-width: 0;
-  padding: 52px 44px;
+  padding: 32px 28px;
   background: #ffffff;
 }
 
-.login-card__eyebrow {
-  color: #315b8c;
-  font-size: 13px;
+.login-card__header {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.login-card__mark {
+  width: 40px;
+  height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid #d8e0ea;
+  border-radius: 8px;
+  background: #f6f8fb;
+  color: #334155;
   font-weight: 700;
+}
+
+.login-card__eyebrow {
+  color: #64748b;
+  font-size: 13px;
+  font-weight: 600;
 }
 
 .login-card__title {
-  margin: 10px 0 6px;
-  color: #182235;
-  font-size: 26px;
+  margin-top: 4px;
+  color: #111827;
+  font-size: 24px;
   font-weight: 700;
-  line-height: 1.3;
+  line-height: 1.2;
 }
 
 .login-card__subtitle {
-  margin-bottom: 28px;
-  color: #667085;
+  color: #64748b;
   font-size: 14px;
+  line-height: 1.6;
 }
 
 .login-submit {
@@ -472,7 +335,7 @@ async function changePassword() {
 
 :deep(.login-card .el-form-item__label) {
   padding-bottom: 7px;
-  color: #465267;
+  color: #475569;
   font-weight: 600;
 }
 
@@ -492,17 +355,9 @@ async function changePassword() {
   box-shadow: 0 0 0 1px #409eff inset;
 }
 
-@media (max-width: 980px) {
-  .login-shell {
-    grid-template-columns: 1fr;
-    min-height: 0;
-  }
-
-  .login-panel {
-    border-right: 0;
-    border-bottom: 1px solid #e1e6ef;
-    padding: 30px;
-  }
+:deep(.login-card .el-form) {
+  display: grid;
+  gap: 6px;
 }
 
 @media (max-width: 640px) {
@@ -516,12 +371,8 @@ async function changePassword() {
     border-radius: 6px;
   }
 
-  .login-panel {
-    display: none;
-  }
-
   .login-card {
-    padding: 32px 22px;
+    padding: 26px 18px;
   }
 
   .login-card__title {
