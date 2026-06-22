@@ -4,12 +4,12 @@
       <section class="dashboard-hero">
         <div>
           <div class="dashboard-kicker">首页</div>
-          <div class="dashboard-title">业务概览</div>
-          <div class="dashboard-subtitle">查看当前仓域的入库、出库、盘点和异常情况。</div>
+          <div class="dashboard-title">工作台</div>
+          <div class="dashboard-subtitle">查看待办、常用入口和当前仓域的基本情况。</div>
         </div>
         <div class="dashboard-toolbar">
           <el-segmented v-if="reportModeOptions.length" v-model="reportMode" :options="reportModeOptions" size="small" />
-          <el-tag v-else type="warning">当前数据范围暂无可用看板</el-tag>
+          <el-tag v-else type="warning">当前数据范围不可用</el-tag>
           <el-select v-model="days" class="dashboard-days" :disabled="!reportModeOptions.length">
             <el-option :value="7" label="近 7 天" />
             <el-option :value="14" label="近 14 天" />
@@ -28,6 +28,59 @@
           <span v-if="lastUpdatedLabel">{{ lastUpdatedLabel }}</span>
         </section>
 
+        <div class="dashboard-grid dashboard-grid--main">
+          <el-card shadow="never">
+            <template #header>
+              <div class="section-header"><b>待办</b></div>
+            </template>
+            <div class="message-list">
+              <div class="message-item">
+                <div>
+                  <div class="message-item__title">待确认异常</div>
+                  <div class="message-item__hint">需要先处理</div>
+                </div>
+                <strong>{{ data.stability?.active_alert_count ?? 0 }}</strong>
+              </div>
+              <div class="message-item">
+                <div>
+                  <div class="message-item__title">未闭环问题</div>
+                  <div class="message-item__hint">盘点或演练</div>
+                </div>
+                <strong>{{ data.stability?.open_drill_issue_count ?? 0 }}</strong>
+              </div>
+              <div class="message-item">
+                <div>
+                  <div class="message-item__title">逾期问题</div>
+                  <div class="message-item__hint">优先跟进</div>
+                </div>
+                <strong>{{ data.stability?.overdue_drill_issue_count ?? 0 }}</strong>
+              </div>
+            </div>
+          </el-card>
+
+          <el-card shadow="never">
+            <template #header>
+              <div class="section-header"><b>常用入口</b></div>
+            </template>
+            <div class="shortcut-grid">
+              <router-link v-for="item in shortcutCards" :key="item.label" :to="item.to" class="shortcut-item">
+                <el-icon class="shortcut-item__icon"><component :is="item.icon" /></el-icon>
+                <span>{{ item.label }}</span>
+              </router-link>
+            </div>
+          </el-card>
+        </div>
+
+        <div class="dashboard-messages">
+          <el-card v-for="item in businessMessages" :key="item.label" shadow="never">
+            <div class="message-card__top">
+              <div class="metric-card__label">{{ item.label }}</div>
+              <div class="message-card__badge">{{ item.hint }}</div>
+            </div>
+            <div class="metric-card__value metric-card__value--mid">{{ item.value }}</div>
+          </el-card>
+        </div>
+
         <div class="dashboard-metrics">
           <el-card v-for="item in summaryCards" :key="item.label" shadow="never">
             <div class="metric-card__label">{{ item.label }}</div>
@@ -39,12 +92,12 @@
           <el-card shadow="never">
             <template #header>
               <div class="section-header">
-                <b>趋势</b>
+                <b>最近记录</b>
                 <el-segmented v-model="activeType" :options="typeOptions" size="small" />
               </div>
             </template>
-            <div class="chart-list">
-              <div v-for="r in seriesFilled" :key="r.day" class="chart-row">
+            <div class="chart-list chart-list--compact">
+              <div v-for="r in seriesFilled.slice(0, 7)" :key="r.day" class="chart-row">
                 <div class="chart-row__day">{{ r.day }}</div>
                 <div class="chart-row__bar-bg"><div :style="{ width: barWidth(r.qty) }" class="chart-row__bar-fill" /></div>
                 <div class="chart-row__qty">{{ r.qty }}</div>
@@ -56,47 +109,30 @@
             <template #header>
               <div class="section-header"><b>{{ activeTypeLabel }} Top 10</b></div>
             </template>
-            <el-table :data="topTable" size="small" border height="320">
+            <el-table :data="topTable.slice(0, 5)" size="small" border height="240">
               <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
               <el-table-column prop="name" label="名称" min-width="140" />
               <el-table-column prop="qty" label="数量" width="80" />
             </el-table>
-            <div class="dashboard-subtable">
-              <b>{{ categoryTitle }}</b>
-              <el-table :data="categoryTable" size="small" border height="220" style="margin-top:8px;">
-                <el-table-column prop="category" label="分类" min-width="140" />
-                <el-table-column prop="qty" label="数量" width="90" />
-              </el-table>
-            </div>
           </el-card>
         </div>
 
         <div class="dashboard-grid dashboard-grid--secondary">
           <el-card shadow="never">
-            <div class="metric-card__label">生命周期治理</div>
+            <div class="metric-card__label">归档信息</div>
             <div class="metric-card__value metric-card__value--mid">{{ governanceArchiveCount }}</div>
             <div class="metric-card__desc">当前归档资产</div>
           </el-card>
           <el-card shadow="never">
-            <div class="metric-card__label">生命周期动作</div>
-            <div class="metric-card__value metric-card__value--mid">{{ (data.governance?.archive_events_30d ?? 0) + (data.governance?.restore_events_30d ?? 0) + (data.governance?.purge_events_30d ?? 0) }}</div>
-            <div class="metric-card__desc">近 {{ days }} 天归档、恢复、清理</div>
-          </el-card>
-          <el-card shadow="never">
-            <div class="metric-card__label">演练闭环</div>
-            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.open_drill_issue_count ?? 0 }}</div>
-            <div class="metric-card__desc">未闭环问题 {{ data.stability?.overdue_drill_issue_count ?? 0 }}</div>
-          </el-card>
-          <el-card shadow="never">
-            <div class="metric-card__label">稳定性告警</div>
+            <div class="metric-card__label">异常</div>
             <div class="metric-card__value metric-card__value--mid">{{ data.stability?.active_alert_count ?? 0 }}</div>
-            <div class="metric-card__desc">失败任务 {{ data.stability?.failed_async_jobs ?? 0 }}，24h 5xx {{ data.stability?.error_5xx_last_24h ?? 0 }}</div>
+            <div class="metric-card__desc">失败任务 {{ data.stability?.failed_async_jobs ?? 0 }}</div>
           </el-card>
         </div>
       </div>
 
       <div v-else-if="!reportModeOptions.length" class="dashboard-empty">
-        <el-empty description="当前账号的数据范围未包含可用首页口径。请联系管理员调整仓域权限。" />
+        <el-empty description="当前账号的数据范围不可用。请联系管理员调整仓域权限。" />
       </div>
       <div v-else class="dashboard-loading">加载中…</div>
     </div>
@@ -112,6 +148,7 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
 import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
+import { Document, Upload, RefreshLeft, Files, Stamp, SetUp } from '@element-plus/icons-vue';
 
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
@@ -166,23 +203,27 @@ const typeOptions = computed(() => {
 });
 const activeTypeLabel = computed(() => ({ OUT: '出库', IN: '入库', RETURN: '归还', RECYCLE: '回收', SCRAP: '报废', TRANSFER: '调拨' } as Record<string, string>)[activeType.value] || activeType.value);
 const governanceArchiveCount = computed(() => Number(data.value?.governance?.archived_pc_count || 0) + Number(data.value?.governance?.archived_monitor_count || 0));
-const summaryCards = computed(() => {
-  const cards = [
-    { label: '入库数量', value: data.value?.summary?.in_qty ?? 0 },
-    { label: '出库数量', value: data.value?.summary?.out_qty ?? 0 },
-    { label: '明细笔数', value: data.value?.summary?.tx_count ?? 0 },
-  ];
-  if (reportMode.value === 'parts') cards.splice(2, 0, { label: '调整数量', value: data.value?.summary?.adjust_qty ?? 0 });
-  if (reportMode.value === 'pc') cards.splice(2, 0, { label: '回收数量', value: data.value?.summary?.recycle_qty ?? 0 });
-  if (reportMode.value === 'monitor') {
-    cards.splice(2, 0, { label: '归还数量', value: data.value?.summary?.return_qty ?? 0 });
-    cards.splice(3, 0, { label: '调拨数量', value: data.value?.summary?.transfer_qty ?? 0 });
-    cards.splice(4, 0, { label: '报废数量', value: data.value?.summary?.scrap_qty ?? 0 });
-  } else if (reportMode.value === 'pc') {
-    cards.splice(3, 0, { label: '报废数量', value: data.value?.summary?.scrap_qty ?? 0 });
-  }
-  return cards;
-});
+const summaryCards = computed(() => [
+  { label: '入库数量', value: data.value?.summary?.in_qty ?? 0 },
+  { label: '出库数量', value: data.value?.summary?.out_qty ?? 0 },
+  { label: '异常告警', value: data.value?.stability?.active_alert_count ?? 0 },
+]);
+
+const shortcutCards = computed(() => ([
+  { label: '入库', to: '/in', icon: Upload },
+  { label: '出库', to: '/out', icon: Document },
+  { label: '盘点', to: '/stocktake', icon: RefreshLeft },
+  { label: '台账', to: '/stock', icon: Files },
+  { label: '审计', to: '/system/audit', icon: Stamp },
+  { label: '备份', to: '/system/backup', icon: SetUp },
+]));
+
+const businessMessages = computed(() => ([
+  { label: '待确认异常', value: data.value?.stability?.active_alert_count ?? 0, hint: '需要先处理' },
+  { label: '未闭环问题', value: data.value?.stability?.open_drill_issue_count ?? 0, hint: '盘点或演练' },
+  { label: '逾期问题', value: data.value?.stability?.overdue_drill_issue_count ?? 0, hint: '优先跟进' },
+  { label: '归档资产', value: governanceArchiveCount.value, hint: '当前归档数量' },
+]));
 
 function readDashboardPrefs() {
   if (typeof window === 'undefined') return;
@@ -529,6 +570,81 @@ onMounted(async () => {
   font-size: 13px;
 }
 
+.message-list {
+  display: grid;
+  gap: 10px;
+}
+
+.message-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 0;
+  border-bottom: 1px solid #e2e8f0;
+  color: #334155;
+}
+
+.message-item__title {
+  color: #111827;
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.message-item__hint {
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.message-item strong {
+  color: #111827;
+}
+
+.shortcut-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shortcut-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 12px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  background: #f8fafc;
+  color: #334155;
+  font-size: 13px;
+  text-decoration: none;
+}
+
+.shortcut-item:hover {
+  background: #eef2ff;
+  border-color: #c7d2fe;
+}
+
+.shortcut-item__icon {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.message-card__top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.message-card__badge {
+  color: #64748b;
+  font-size: 12px;
+}
+
 .dashboard-toolbar {
   display: flex;
   gap: 10px;
@@ -554,6 +670,12 @@ onMounted(async () => {
   font-size: 12px;
 }
 
+.dashboard-messages {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .dashboard-metrics {
   display: grid;
   gap: 12px;
@@ -566,11 +688,11 @@ onMounted(async () => {
 }
 
 .dashboard-grid--main {
-  grid-template-columns: 1.1fr 0.9fr;
+  grid-template-columns: 1fr 1fr;
 }
 
 .dashboard-grid--secondary {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
 
 .metric-card__label {
@@ -606,6 +728,10 @@ onMounted(async () => {
   display: flex;
   flex-direction: column;
   gap: 6px;
+}
+
+.chart-list--compact {
+  gap: 4px;
 }
 
 .chart-row {
@@ -654,9 +780,11 @@ onMounted(async () => {
 }
 
 @media (max-width: 1200px) {
+  .dashboard-messages,
   .dashboard-metrics,
   .dashboard-grid--main,
-  .dashboard-grid--secondary {
+  .dashboard-grid--secondary,
+  .shortcut-grid {
     grid-template-columns: 1fr;
   }
 }
@@ -674,4 +802,23 @@ onMounted(async () => {
     width: 132px;
   }
 }
+
+@media (max-width: 768px) {
+  .dashboard-page {
+    padding: 12px;
+  }
+
+  .dashboard-title {
+    font-size: 22px;
+  }
+
+  .dashboard-days {
+    width: 132px;
+  }
+
+  .shortcut-item {
+    padding: 10px 12px;
+  }
+}
+
 </style>
