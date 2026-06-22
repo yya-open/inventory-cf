@@ -1,73 +1,45 @@
 <template>
   <div class="dashboard-page">
-    <el-card class="dashboard-card">
-      <template #header>
-        <div class="dashboard-header">
-          <div class="dashboard-header__left">
-            <div class="dashboard-header__title">报表与看板</div>
-            <div class="dashboard-header__subline">
-              <span>经营 + 治理 + 稳定性统一口径</span>
-              <el-tag size="small" :type="scopeTagType">{{ scopeLabel }}</el-tag>
-              <el-tag v-if="data?.snapshot?.source" size="small" type="info">日汇总快照 {{ data?.snapshot?.day_count || 0 }} 天</el-tag>
-              <el-tag v-if="detailRefreshing" size="small" type="warning">明细补载中</el-tag>
-              <span v-if="lastUpdatedLabel" class="dashboard-header__hint">{{ lastUpdatedLabel }}</span>
-            </div>
-          </div>
-          <div class="dashboard-toolbar">
-            <el-segmented v-if="reportModeOptions.length" v-model="reportMode" :options="reportModeOptions" size="small" />
-            <el-tag v-else type="warning">当前数据范围暂无可用看板</el-tag>
-            <el-select v-model="days" class="dashboard-days" :disabled="!reportModeOptions.length">
-              <el-option :value="7" label="近 7 天" />
-              <el-option :value="14" label="近 14 天" />
-              <el-option :value="30" label="近 30 天" />
-              <el-option :value="90" label="近 90 天" />
-            </el-select>
-            <el-button :loading="refreshing" @click="refresh(true)">{{ refreshing ? '刷新中' : '刷新' }}</el-button>
-          </div>
+    <div class="dashboard-shell">
+      <section class="dashboard-hero">
+        <div>
+          <div class="dashboard-kicker">首页</div>
+          <div class="dashboard-title">业务概览</div>
+          <div class="dashboard-subtitle">查看当前仓域的入库、出库、盘点和异常情况。</div>
         </div>
-      </template>
+        <div class="dashboard-toolbar">
+          <el-segmented v-if="reportModeOptions.length" v-model="reportMode" :options="reportModeOptions" size="small" />
+          <el-tag v-else type="warning">当前数据范围暂无可用看板</el-tag>
+          <el-select v-model="days" class="dashboard-days" :disabled="!reportModeOptions.length">
+            <el-option :value="7" label="近 7 天" />
+            <el-option :value="14" label="近 14 天" />
+            <el-option :value="30" label="近 30 天" />
+            <el-option :value="90" label="近 90 天" />
+          </el-select>
+          <el-button :loading="refreshing" @click="refresh(true)">{{ refreshing ? '刷新中' : '刷新' }}</el-button>
+        </div>
+      </section>
 
       <div v-if="data" class="dashboard-content" v-loading="summaryRefreshing && !isUsingWarmCache" element-loading-text="正在刷新摘要…">
-        <div :style="{ display: 'grid', gridTemplateColumns: summaryColumns, gap: '12px', marginBottom: '12px' }">
-          <el-card shadow="never"><div class="metric-card__label">入库数量</div><div class="metric-card__value">{{ data.summary.in_qty ?? 0 }}</div></el-card>
-          <el-card shadow="never"><div class="metric-card__label">出库数量</div><div class="metric-card__value">{{ data.summary.out_qty ?? 0 }}</div></el-card>
-          <el-card v-if="reportMode==='parts'" shadow="never"><div class="metric-card__label">调整数量</div><div class="metric-card__value">{{ data.summary.adjust_qty ?? 0 }}</div></el-card>
-          <el-card v-if="reportMode==='pc'" shadow="never"><div class="metric-card__label">回收/归还数量</div><div class="metric-card__value">{{ data.summary.recycle_qty ?? 0 }}</div></el-card>
-          <el-card v-if="reportMode==='monitor'" shadow="never"><div class="metric-card__label">归还数量</div><div class="metric-card__value">{{ data.summary.return_qty ?? 0 }}</div></el-card>
-          <el-card v-if="reportMode==='monitor'" shadow="never"><div class="metric-card__label">调拨数量</div><div class="metric-card__value">{{ data.summary.transfer_qty ?? 0 }}</div></el-card>
-          <el-card v-if="reportMode==='pc' || reportMode==='monitor'" shadow="never"><div class="metric-card__label">报废数量</div><div class="metric-card__value">{{ data.summary.scrap_qty ?? 0 }}</div></el-card>
-          <el-card shadow="never"><div class="metric-card__label">明细笔数</div><div class="metric-card__value">{{ data.summary.tx_count ?? 0 }}</div></el-card>
-        </div>
+        <section class="dashboard-meta">
+          <span>{{ scopeLabel }}</span>
+          <span v-if="data?.snapshot?.source">快照 {{ data?.snapshot?.day_count || 0 }} 天</span>
+          <span v-if="detailRefreshing">明细加载中</span>
+          <span v-if="lastUpdatedLabel">{{ lastUpdatedLabel }}</span>
+        </section>
 
-        <div class="dashboard-grid dashboard-grid--governance">
-          <el-card shadow="never">
-            <div class="metric-card__label">生命周期治理</div>
-            <div class="metric-card__value metric-card__value--mid">{{ governanceArchiveCount }}</div>
-            <div class="metric-card__desc">当前归档资产</div>
-          </el-card>
-          <el-card shadow="never">
-            <div class="metric-card__label">生命周期动作</div>
-            <div class="metric-card__value metric-card__value--mid">{{ (data.governance?.archive_events_30d ?? 0) + (data.governance?.restore_events_30d ?? 0) + (data.governance?.purge_events_30d ?? 0) }}</div>
-            <div class="metric-card__desc">近 {{ days }} 天归档/恢复/清理</div>
-          </el-card>
-          <el-card shadow="never">
-            <div class="metric-card__label">演练闭环</div>
-            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.open_drill_issue_count ?? 0 }}</div>
-            <div class="metric-card__desc">未闭环演练问题，逾期 {{ data.stability?.overdue_drill_issue_count ?? 0 }}</div>
-          </el-card>
-          <el-card shadow="never">
-            <div class="metric-card__label">稳定性告警</div>
-            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.active_alert_count ?? 0 }}</div>
-            <div class="metric-card__desc">失败任务 {{ data.stability?.failed_async_jobs ?? 0 }} / 24h 5xx {{ data.stability?.error_5xx_last_24h ?? 0 }}</div>
+        <div class="dashboard-metrics">
+          <el-card v-for="item in summaryCards" :key="item.label" shadow="never">
+            <div class="metric-card__label">{{ item.label }}</div>
+            <div class="metric-card__value">{{ item.value }}</div>
           </el-card>
         </div>
 
-        <LazyMountBlock title="正在补载看板明细…" min-height="420px">
-          <div class="dashboard-grid dashboard-grid--detail">
+        <div class="dashboard-grid dashboard-grid--main">
           <el-card shadow="never">
             <template #header>
-              <div class="chart-header">
-                <div><b>近 {{ days }} 天{{ activeTypeLabel }}趋势</b><span class="chart-header__range">（{{ data.range.from }} ~ {{ data.range.to }}）</span></div>
+              <div class="section-header">
+                <b>趋势</b>
                 <el-segmented v-model="activeType" :options="typeOptions" size="small" />
               </div>
             </template>
@@ -81,29 +53,53 @@
           </el-card>
 
           <el-card shadow="never" v-loading="detailRefreshing && !isUsingWarmDetailCache" element-loading-text="正在补载明细…">
-            <template #header><b>{{ activeTypeLabel }} Top 10</b></template>
-            <el-table :data="topTable" size="small" border height="360">
+            <template #header>
+              <div class="section-header"><b>{{ activeTypeLabel }} Top 10</b></div>
+            </template>
+            <el-table :data="topTable" size="small" border height="320">
               <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
               <el-table-column prop="name" label="名称" min-width="140" />
               <el-table-column prop="qty" label="数量" width="80" />
             </el-table>
             <div class="dashboard-subtable">
               <b>{{ categoryTitle }}</b>
-              <el-table :data="categoryTable" size="small" border height="240" style="margin-top:8px;">
+              <el-table :data="categoryTable" size="small" border height="220" style="margin-top:8px;">
                 <el-table-column prop="category" label="分类" min-width="140" />
                 <el-table-column prop="qty" label="数量" width="90" />
               </el-table>
             </div>
           </el-card>
-          </div>
-        </LazyMountBlock>
+        </div>
+
+        <div class="dashboard-grid dashboard-grid--secondary">
+          <el-card shadow="never">
+            <div class="metric-card__label">生命周期治理</div>
+            <div class="metric-card__value metric-card__value--mid">{{ governanceArchiveCount }}</div>
+            <div class="metric-card__desc">当前归档资产</div>
+          </el-card>
+          <el-card shadow="never">
+            <div class="metric-card__label">生命周期动作</div>
+            <div class="metric-card__value metric-card__value--mid">{{ (data.governance?.archive_events_30d ?? 0) + (data.governance?.restore_events_30d ?? 0) + (data.governance?.purge_events_30d ?? 0) }}</div>
+            <div class="metric-card__desc">近 {{ days }} 天归档、恢复、清理</div>
+          </el-card>
+          <el-card shadow="never">
+            <div class="metric-card__label">演练闭环</div>
+            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.open_drill_issue_count ?? 0 }}</div>
+            <div class="metric-card__desc">未闭环问题 {{ data.stability?.overdue_drill_issue_count ?? 0 }}</div>
+          </el-card>
+          <el-card shadow="never">
+            <div class="metric-card__label">稳定性告警</div>
+            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.active_alert_count ?? 0 }}</div>
+            <div class="metric-card__desc">失败任务 {{ data.stability?.failed_async_jobs ?? 0 }}，24h 5xx {{ data.stability?.error_5xx_last_24h ?? 0 }}</div>
+          </el-card>
+        </div>
       </div>
 
       <div v-else-if="!reportModeOptions.length" class="dashboard-empty">
-        <el-empty description="当前账号的数据范围已限制到未接入看板口径的仓域，请联系管理员调整为电脑仓、显示器仓或配件仓，或保留当前账号仅用于台账访问。" />
+        <el-empty description="当前账号的数据范围未包含可用首页口径。请联系管理员调整仓域权限。" />
       </div>
       <div v-else class="dashboard-loading">加载中…</div>
-    </el-card>
+    </div>
   </div>
 </template>
 
@@ -116,7 +112,6 @@ import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
 import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
-import LazyMountBlock from "../components/LazyMountBlock.vue";
 
 const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
@@ -171,7 +166,23 @@ const typeOptions = computed(() => {
 });
 const activeTypeLabel = computed(() => ({ OUT: '出库', IN: '入库', RETURN: '归还', RECYCLE: '回收', SCRAP: '报废', TRANSFER: '调拨' } as Record<string, string>)[activeType.value] || activeType.value);
 const governanceArchiveCount = computed(() => Number(data.value?.governance?.archived_pc_count || 0) + Number(data.value?.governance?.archived_monitor_count || 0));
-const summaryColumns = computed(() => reportMode.value === 'parts' ? 'repeat(4, minmax(0,1fr))' : reportMode.value === 'monitor' ? 'repeat(6, minmax(0,1fr))' : 'repeat(5, minmax(0,1fr))');
+const summaryCards = computed(() => {
+  const cards = [
+    { label: '入库数量', value: data.value?.summary?.in_qty ?? 0 },
+    { label: '出库数量', value: data.value?.summary?.out_qty ?? 0 },
+    { label: '明细笔数', value: data.value?.summary?.tx_count ?? 0 },
+  ];
+  if (reportMode.value === 'parts') cards.splice(2, 0, { label: '调整数量', value: data.value?.summary?.adjust_qty ?? 0 });
+  if (reportMode.value === 'pc') cards.splice(2, 0, { label: '回收数量', value: data.value?.summary?.recycle_qty ?? 0 });
+  if (reportMode.value === 'monitor') {
+    cards.splice(2, 0, { label: '归还数量', value: data.value?.summary?.return_qty ?? 0 });
+    cards.splice(3, 0, { label: '调拨数量', value: data.value?.summary?.transfer_qty ?? 0 });
+    cards.splice(4, 0, { label: '报废数量', value: data.value?.summary?.scrap_qty ?? 0 });
+  } else if (reportMode.value === 'pc') {
+    cards.splice(3, 0, { label: '报废数量', value: data.value?.summary?.scrap_qty ?? 0 });
+  }
+  return cards;
+});
 
 function readDashboardPrefs() {
   if (typeof window === 'undefined') return;
@@ -486,41 +497,36 @@ onMounted(async () => {
   padding: 16px;
 }
 
-.dashboard-card {
-  border-radius: 18px;
+.dashboard-shell {
+  display: grid;
+  gap: 12px;
 }
 
-.dashboard-header {
+.dashboard-hero {
   display: flex;
   justify-content: space-between;
-  align-items: center;
+  align-items: end;
   gap: 12px;
   flex-wrap: wrap;
 }
 
-.dashboard-header__left {
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
-
-.dashboard-header__title {
-  font-size: 26px;
-  font-weight: 700;
-  color: #1f2329;
-}
-
-.dashboard-header__subline {
-  display: flex;
-  gap: 8px;
-  align-items: center;
-  flex-wrap: wrap;
-  color: #8c8f97;
+.dashboard-kicker {
+  color: #64748b;
   font-size: 12px;
+  font-weight: 600;
 }
 
-.dashboard-header__hint {
-  color: #5b6472;
+.dashboard-title {
+  margin-top: 4px;
+  font-size: 24px;
+  font-weight: 700;
+  color: #111827;
+}
+
+.dashboard-subtitle {
+  margin-top: 6px;
+  color: #64748b;
+  font-size: 13px;
 }
 
 .dashboard-toolbar {
@@ -535,7 +541,23 @@ onMounted(async () => {
 }
 
 .dashboard-content {
+  display: grid;
+  gap: 12px;
   min-height: 560px;
+}
+
+.dashboard-meta {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+  color: #64748b;
+  font-size: 12px;
+}
+
+.dashboard-metrics {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .dashboard-grid {
@@ -543,24 +565,23 @@ onMounted(async () => {
   gap: 12px;
 }
 
-.dashboard-grid--governance {
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-  margin-bottom: 12px;
-}
-
-.dashboard-grid--detail {
+.dashboard-grid--main {
   grid-template-columns: 1.1fr 0.9fr;
 }
 
+.dashboard-grid--secondary {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+}
+
 .metric-card__label {
-  color: #999;
+  color: #64748b;
   font-size: 12px;
 }
 
 .metric-card__value {
   font-size: 26px;
   font-weight: 700;
-  color: #1f2329;
+  color: #111827;
 }
 
 .metric-card__value--mid {
@@ -569,21 +590,16 @@ onMounted(async () => {
 
 .metric-card__desc {
   font-size: 12px;
-  color: #888;
+  color: #64748b;
   margin-top: 6px;
 }
 
-.chart-header {
+.section-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
   flex-wrap: wrap;
-}
-
-.chart-header__range {
-  color: #999;
-  font-size: 12px;
 }
 
 .chart-list {
@@ -600,27 +616,27 @@ onMounted(async () => {
 
 .chart-row__day {
   width: 96px;
-  color: #666;
+  color: #64748b;
   font-size: 12px;
 }
 
 .chart-row__bar-bg {
   flex: 1;
-  background: #f2f3f5;
+  background: #f1f5f9;
   height: 10px;
-  border-radius: 6px;
+  border-radius: 999px;
   overflow: hidden;
 }
 
 .chart-row__bar-fill {
   height: 10px;
-  background: #409eff;
+  background: #2563eb;
 }
 
 .chart-row__qty {
   width: 60px;
   text-align: right;
-  color: #333;
+  color: #334155;
   font-size: 12px;
 }
 
@@ -630,16 +646,17 @@ onMounted(async () => {
 
 .dashboard-empty,
 .dashboard-loading {
-  padding: 16px;
+  padding: 16px 0;
 }
 
 .dashboard-loading {
-  color: #999;
+  color: #64748b;
 }
 
 @media (max-width: 1200px) {
-  .dashboard-grid--governance,
-  .dashboard-grid--detail {
+  .dashboard-metrics,
+  .dashboard-grid--main,
+  .dashboard-grid--secondary {
     grid-template-columns: 1fr;
   }
 }
@@ -649,7 +666,7 @@ onMounted(async () => {
     padding: 12px;
   }
 
-  .dashboard-header__title {
+  .dashboard-title {
     font-size: 22px;
   }
 
