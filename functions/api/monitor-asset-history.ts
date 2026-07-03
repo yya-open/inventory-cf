@@ -10,23 +10,34 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const asset = await env.DB.prepare('SELECT id, department FROM monitor_assets WHERE id=?').bind(assetId).first<any>().catch(() => null);
   if (asset) assertMonitorAssetDataScopeAccess(user, asset.department, '显示器资产历史');
   const row = await env.DB.prepare(`
+    WITH ordered_monitor_tx AS (
+      SELECT
+        a.status AS asset_status,
+        t.employee_no,
+        t.employee_name,
+        t.department,
+        t.created_at AS assigned_at,
+        ROW_NUMBER() OVER (
+          ORDER BY t.created_at DESC, t.id DESC
+        ) AS rn
+      FROM monitor_tx t
+      JOIN monitor_assets a ON a.id = t.asset_id
+      WHERE t.asset_id = ?
+        AND t.tx_type IN ('OUT', 'TRANSFER')
+        AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
+    )
     SELECT
-      t.employee_no AS previous_employee_no,
-      t.employee_name AS previous_employee_name,
-      t.department AS previous_department,
-      t.created_at AS previous_assigned_at
-    FROM monitor_tx t
-    JOIN monitor_assets a ON a.id = t.asset_id
-    WHERE t.asset_id = ?
-      AND t.tx_type IN ('OUT', 'TRANSFER')
-      AND (COALESCE(t.employee_no, '') <> '' OR COALESCE(t.employee_name, '') <> '' OR COALESCE(t.department, '') <> '')
-      AND (
-        a.status <> 'ASSIGNED'
-        OR COALESCE(t.employee_no, '') <> COALESCE(a.employee_no, '')
-        OR COALESCE(t.employee_name, '') <> COALESCE(a.employee_name, '')
-        OR COALESCE(t.department, '') <> COALESCE(a.department, '')
-      )
-    ORDER BY t.created_at DESC, t.id DESC
+      employee_no AS previous_employee_no,
+      employee_name AS previous_employee_name,
+      department AS previous_department,
+      assigned_at AS previous_assigned_at
+    FROM ordered_monitor_tx
+    WHERE rn = (
+      CASE
+        WHEN asset_status = 'ASSIGNED' THEN 2
+        ELSE 1
+      END
+    )
     LIMIT 1
   `).bind(assetId).first<any>().catch(() => null);
   return json(true, row || { previous_employee_no: null, previous_employee_name: null, previous_department: null, previous_assigned_at: null });

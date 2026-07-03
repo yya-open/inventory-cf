@@ -108,6 +108,11 @@ const historyState = reactive<{ loading: boolean; requestedId: number; loadedId:
 });
 let historyRequestSeq = 0;
 
+function hasHistoryValue(payload: Record<string, any> | null | undefined) {
+  return ['previous_employee_no', 'previous_employee_name', 'previous_department', 'previous_assigned_at']
+    .some((key) => String(payload?.[key] || '').trim());
+}
+
 function seedHistoryFromRow(assetId: number) {
   historyState.requestedId = assetId;
   historyState.loadedId = 0;
@@ -127,6 +132,7 @@ async function loadHistoryIfNeeded(options: { force?: boolean } = {}) {
     const payload = await getPcAssetHistory(assetId, { force: options.force });
     if (historyState.requestedId !== assetId || requestSeq !== historyRequestSeq) return;
     historyState.loadedId = assetId;
+    if (!hasHistoryValue(payload) && hasHistoryValue(historyState)) return;
     historyState.previous_employee_no = payload?.previous_employee_no || null;
     historyState.previous_employee_name = payload?.previous_employee_name || null;
     historyState.previous_department = payload?.previous_department || null;
