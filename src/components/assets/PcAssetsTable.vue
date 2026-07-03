@@ -36,7 +36,14 @@
           :fixed="tableFixedLeft"
         >
           <template #default="{ row }">
-            <div class="table-cell asset-cell" @click="emit('open-info', row)">
+            <div
+              class="table-cell asset-cell"
+              role="button"
+              tabindex="0"
+              @click.stop="emit('open-info', row)"
+              @keydown.enter.prevent="emit('open-info', row)"
+              @keydown.space.prevent="emit('open-info', row)"
+            >
               <div class="asset-main ellipsis">{{ [row.brand, row.model].filter(Boolean).join(' · ') || '-' }}</div>
               <div class="asset-meta ellipsis">SN：{{ row.serial_no || '-' }}</div>
               <div v-if="!isLightweightStage && Number(row.archived || 0) === 1" class="asset-tags">
