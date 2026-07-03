@@ -1,6 +1,6 @@
 <template>
-  <div class="sys-page docs-grid">
-    <el-card shadow="never" class="sys-rounded-card">
+  <div class="ui-page-shell sys-page docs-grid">
+    <el-card shadow="never" class="sys-rounded-card ui-panel">
       <template #header>
         <div class="sys-header-row">
           <div>
@@ -38,7 +38,7 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
       </el-row>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card">
+    <el-card shadow="never" class="sys-rounded-card ui-panel">
       <template #header><div class="sys-title-strong">修复中心按钮说明</div></template>
       <el-table :data="repairDocs" border size="small">
         <el-table-column prop="name" label="按钮" width="180" />
@@ -48,7 +48,7 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
       </el-table>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card">
+    <el-card shadow="never" class="sys-rounded-card ui-panel">
       <template #header><div class="sys-title-strong">高风险操作统一规范</div></template>
       <el-steps :active="4" finish-status="success" simple>
         <el-step title="先预检" description="先看影响条数和差异" />
@@ -61,7 +61,7 @@ npm run migrate:apply -- --db inventory_db --remote</pre>
       </div>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card">
+    <el-card shadow="never" class="sys-rounded-card ui-panel">
       <template #header><div class="sys-title-strong">常见异常处理</div></template>
       <el-collapse>
         <el-collapse-item title="页面提示 Schema 未就绪 / no such column" name="schema">
@@ -117,7 +117,7 @@ const repairDocs = [
 }
 
 .doc-card {
-  border-radius: 12px;
+  border-radius: 8px;
   height: 100%;
 }
 .doc-title {
@@ -134,7 +134,7 @@ const repairDocs = [
   margin: 0;
   padding: 12px 14px;
   background: #f7f8fa;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: auto;
   font-size: 12px;
   line-height: 1.7;

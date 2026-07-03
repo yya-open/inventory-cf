@@ -1,17 +1,20 @@
 <template>
-  <el-card>
-    <div class="sys-header-row ops-gap-bottom">
-      <div>
-        <div class="sys-title-strong">运维工具</div>
-        <div class="sys-muted">数据库版本校验、自动巡检、修复中心、异步任务中心、性能与错误观测、健康检查</div>
+  <div class="ui-page-shell ops-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <div class="ui-page-heading__title">运维工具</div>
+        <div class="ui-page-heading__desc">数据库版本校验、自动巡检、修复中心、异步任务中心、性能与错误观测、健康检查。</div>
       </div>
-      <div class="sys-actions-row">
+      <div class="ops-heading-actions">
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>
         <el-button :loading="snapshotPrecomputing" @click="runSnapshotPrecompute">{{ snapshotPrecomputing ? '提交中' : '提交快照预计算任务' }}</el-button>
         <el-button @click="reloadCurrent">刷新</el-button>
       </div>
     </div>
+
+  <el-card class="ops-card">
 
     <el-alert v-if="!schema.ok" type="error" :closable="false" show-icon :title="schema.message || '数据库版本不匹配'" class="ops-gap-bottom" />
     <el-alert
@@ -246,7 +249,8 @@
       </template>
     </el-dialog>
 
-</el-card>
+  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -861,6 +865,18 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
+.ops-heading-actions {
+  display: flex;
+  justify-content: flex-end;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.ops-card :deep(.el-card__body) {
+  padding: 16px;
+}
+
 .ops-gap-bottom {
   margin-bottom: 12px;
 }
@@ -924,7 +940,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
   background: #f8fafc;
   border: 1px solid #e5e7eb;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 12px;
 }
 
@@ -957,6 +973,10 @@ onBeforeUnmount(() => {
 }
 
 @media (max-width: 768px) {
+  .ops-heading-actions {
+    justify-content: flex-start;
+  }
+
   .sys-header-row,
   .sys-actions-row,
   .ops-action-row,

@@ -1,6 +1,18 @@
 <template>
-  <div>
-    <el-card shadow="never" class="ui-page-card" style="margin-bottom: 12px">
+  <div class="ui-page-shell inventory-log-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">电脑仓</div>
+        <div class="ui-page-heading__title">电脑盘点记录</div>
+        <div class="ui-page-heading__desc">查看本轮和历史电脑盘点记录，定位异常并跳转台账处理。</div>
+      </div>
+      <div class="inventory-log-meta">
+        <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
+        <el-tag v-if="selectedRows.length" type="primary" effect="plain">已选 {{ selectedRows.length }} 条</el-tag>
+      </div>
+    </div>
+
+    <el-card shadow="never" class="ui-page-card">
       <div class="ui-toolbar ui-toolbar--ledger">
         <div class="ui-toolbar-main">
           <div class="ui-toolbar-block">
@@ -53,7 +65,7 @@
       </div>
     </el-card>
 
-    <div style="margin-bottom: 12px">
+    <div class="inventory-batch-panel">
       <AssetInventoryBatchPageSection
         kind-label="电脑"
         :inventory-batch="inventoryBatch"
@@ -71,10 +83,10 @@
       />
     </div>
 
-    <el-card ref="logsSectionRef" shadow="never">
+    <el-card ref="logsSectionRef" shadow="never" class="inventory-log-table-card">
       <LazyMountBlock title="正在装载电脑盘点记录…" min-height="360px" :delay="0" :idle="false" :viewport="false">
         <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
-        <el-table v-else v-loading="refreshing || loading" :data="rows" border style="width: 100%" @selection-change="onSelectionChange">
+        <el-table v-else v-loading="refreshing || loading" :data="rows" border @selection-change="onSelectionChange">
           <el-table-column type="selection" width="45" />
           <el-table-column prop="created_at" label="时间" width="170" />
 
@@ -124,8 +136,8 @@
           </el-table-column>
         </el-table>
 
-        <div style="display:flex; justify-content: space-between; align-items:center; margin-top: 12px">
-          <div style="color:#666">共 {{ total }} 条</div>
+        <div class="ui-table-panel__footer inventory-log-footer">
+          <div class="inventory-log-footer__total">共 {{ total }} 条</div>
           <el-pagination
             v-model:current-page="page"
             v-model:page-size="pageSize"
@@ -685,3 +697,50 @@ onUnmounted(() => {
   }
 });
 </script>
+
+<style scoped>
+.inventory-log-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.inventory-batch-panel {
+  min-width: 0;
+}
+
+.inventory-log-table-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.inventory-log-table-card :deep(.el-table) {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0 !important;
+}
+
+.inventory-log-footer {
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.inventory-log-footer__total {
+  color: var(--ui-muted, #64748b);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.log-action-row {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+@media (max-width: 768px) {
+  .inventory-log-meta,
+  .inventory-log-footer {
+    justify-content: flex-start;
+  }
+}
+</style>

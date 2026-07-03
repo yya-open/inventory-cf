@@ -1,5 +1,6 @@
 <template>
-  <el-card shadow="never">
+  <div class="ui-page-shell system-performance-page">
+  <el-card shadow="never" class="ui-panel system-performance-card">
     <template #header>
       <div class="sys-header-row">
         <div>
@@ -199,6 +200,7 @@
       <el-empty v-if="showEmpty" description="暂无性能数据" class="perf-row-gap-top" />
     </template>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -321,6 +323,10 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.system-performance-page{max-width:1680px;margin:0 auto}
+.system-performance-card{border-radius:8px}
+.system-performance-card :deep(.el-card){border-radius:8px}
+
 .perf-loading-wrap {
   padding: 24px 0;
 }

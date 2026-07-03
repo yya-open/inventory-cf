@@ -230,7 +230,7 @@ async function changePassword() {
   position: absolute;
   inset: 0;
   pointer-events: none;
-  background: radial-gradient(circle at top, rgba(255, 255, 255, 0.72), transparent 50%);
+  background: none;
   opacity: 0.9;
 }
 

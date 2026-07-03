@@ -1,5 +1,18 @@
 <template>
-  <div class="ledger-page ledger-page--pc">
+  <div class="ui-page-shell ledger-page ledger-page--pc">
+    <section class="ui-page-heading ledger-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">电脑仓</div>
+        <div class="ui-page-heading__title">电脑台账</div>
+        <div class="ui-page-heading__desc">集中管理电脑资产、二维码、盘点状态与批量归档操作。</div>
+      </div>
+      <div class="ledger-page-heading__meta">
+        <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
+        <el-tag v-if="selectedCount" type="primary" effect="plain">已选 {{ selectedCount }} 台</el-tag>
+        <el-tag v-if="hasActiveInventoryBatch" type="warning" effect="plain">盘点中</el-tag>
+      </div>
+    </section>
+
     <section class="ledger-section ledger-section--toolbar">
       <PcAssetsToolbar
       :mobile-mode="isMobile"
@@ -1229,6 +1242,19 @@ onActivated(() => {
   gap: 14px;
 }
 
+.ledger-page-heading {
+  position: relative;
+  z-index: 1;
+}
+
+.ledger-page-heading__meta {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .ledger-section {
   position: relative;
   z-index: 1;
@@ -1265,6 +1291,10 @@ onActivated(() => {
 @media (max-width: 768px) {
   .ledger-page {
     gap: 12px;
+  }
+
+  .ledger-page-heading__meta {
+    justify-content: flex-start;
   }
 
   :deep(.ledger-toolbar-card > .el-card__body),

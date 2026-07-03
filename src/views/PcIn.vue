@@ -1,5 +1,15 @@
 <template>
-  <el-card>
+  <div class="ui-page-shell pc-operation-page">
+    <div class="ui-page-heading">
+      <div>
+        <div class="ui-page-heading__kicker">电脑资产</div>
+        <h1>电脑入库</h1>
+        <p>录入电脑基础信息，支持单台登记和 Excel 批量入库。</p>
+      </div>
+      <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
+    </div>
+
+  <el-card class="pc-operation-card ui-panel" shadow="never">
     <el-form
       ref="formRef"
       :model="form"
@@ -123,12 +133,10 @@
         >
           入库
         </el-button>
-        <el-button @click="$router.push('/pc/assets')">
-          返回台账
-        </el-button>
       </el-form-item>
     </el-form>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -324,3 +332,32 @@ onMounted(async () => {
   try { settings.value = await fetchSystemSettings(); } catch {}
 });
 </script>
+
+<style scoped>
+.pc-operation-page{max-width:1040px;margin:0 auto}
+.pc-operation-card{border-radius:8px}
+.pc-operation-card :deep(.el-card__body){padding:24px}
+.pc-operation-card :deep(.el-form){max-width:720px}
+.pc-operation-card :deep(.el-alert){border-radius:8px}
+
+@media (max-width:768px){
+  .pc-operation-card :deep(.el-card__body){padding:16px}
+  .pc-operation-card :deep(.el-form-item){
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .pc-operation-card :deep(.el-form-item__label){
+    width:100% !important;
+    justify-content:flex-start;
+    margin-bottom:6px;
+  }
+  .pc-operation-card :deep(.el-form-item__content){
+    width:100%;
+  }
+  .pc-operation-card :deep(.el-button),
+  .pc-operation-card :deep(.el-upload){
+    max-width:100%;
+  }
+}
+</style>

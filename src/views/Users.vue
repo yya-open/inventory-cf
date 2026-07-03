@@ -1,30 +1,32 @@
 <template>
-  <el-card>
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px">
-      <div>
-        <span style="font-weight:700">用户管理</span>
-        <span style="margin-left:10px; color:#999; font-size:12px">管理员可创建账号、分配权限、禁用账号、重置密码，并配置数据可见范围</span>
+  <div class="ui-page-shell users-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <div class="ui-page-heading__title">用户管理</div>
+        <div class="ui-page-heading__desc">创建账号、分配权限、禁用账号、重置密码，并配置数据可见范围。</div>
       </div>
       <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
 
-    <div style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:12px">
-      <el-input v-model="keyword" clearable style="width:240px" placeholder="搜索：账号" @keyup.enter="reload" />
-      <el-select v-model="sortBy" style="width:170px" @change="reload">
+    <div class="ui-panel users-filter-panel">
+      <el-input v-model="keyword" clearable class="users-filter-input" placeholder="搜索：账号" @keyup.enter="reload" />
+      <el-select v-model="sortBy" class="users-filter-sort" @change="reload">
         <el-option label="账号" value="username" />
         <el-option label="角色" value="role" />
         <el-option label="状态" value="is_active" />
         <el-option label="创建时间" value="created_at" />
       </el-select>
-      <el-select v-model="sortDir" style="width:120px" @change="reload">
+      <el-select v-model="sortDir" class="users-filter-dir" @change="reload">
         <el-option label="升序" value="asc" />
         <el-option label="降序" value="desc" />
       </el-select>
       <el-button type="primary" plain @click="reload">查询</el-button>
       <el-button @click="resetSearch">重置</el-button>
-      <el-tag v-if="total" type="info" style="margin-left:auto">共 {{ total }} 条</el-tag>
+      <el-tag v-if="total" type="info" class="users-filter-total">共 {{ total }} 条</el-tag>
     </div>
 
+    <div class="ui-panel ui-table-panel">
     <el-table v-loading="loading" :data="rows" border>
       <el-table-column label="#" width="70">
         <template #default="{ $index }">{{ (page - 1) * pageSize + $index + 1 }}</template>
@@ -55,7 +57,7 @@
       </el-table-column>
       <el-table-column label="操作" min-width="260">
         <template #default="{ row }">
-          <div style="display:flex; gap:8px; flex-wrap:wrap">
+          <div class="ui-row-actions">
             <el-button size="small" @click="openEdit(row)">权限/状态</el-button>
             <el-button size="small" type="warning" plain @click="openReset(row)">重置密码</el-button>
             <el-button v-if="auth.user?.role==='admin'" size="small" type="danger" plain :disabled="row.id===auth.user?.id" @click="delUser(row)">删除</el-button>
@@ -64,8 +66,9 @@
       </el-table-column>
     </el-table>
 
-    <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div v-if="total" class="ui-table-panel__footer">
       <el-pagination background layout="total, sizes, prev, pager, next, jumper" :total="total" :page-size="pageSize" :current-page="page" :page-sizes="[20,50,100,200]" @current-change="(p:number)=>{ page=p; load(); }" @size-change="(s:number)=>{ pageSize=s; page=1; load(); }" />
+    </div>
     </div>
 
     <el-dialog v-model="showCreate" title="新增用户" width="520px">
@@ -279,7 +282,7 @@
         <el-button type="warning" :loading="saving" @click="doReset">确认重置</el-button>
       </template>
     </el-dialog>
-  </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -763,6 +766,30 @@ onMounted(() => {
 </script>
 
 <style scoped>
+.users-filter-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  padding: 14px;
+}
+
+.users-filter-input {
+  width: 240px;
+}
+
+.users-filter-sort {
+  width: 170px;
+}
+
+.users-filter-dir {
+  width: 120px;
+}
+
+.users-filter-total {
+  margin-left: auto;
+}
+
 .access-summary {
   width: 100%;
   padding: 10px 12px;
@@ -810,5 +837,18 @@ onMounted(() => {
 .access-summary__arrow {
   color: #909399;
   font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .users-filter-input,
+  .users-filter-sort,
+  .users-filter-dir,
+  .users-filter-panel .el-button {
+    width: 100%;
+  }
+
+  .users-filter-total {
+    margin-left: 0;
+  }
 }
 </style>

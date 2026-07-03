@@ -1,5 +1,6 @@
 <template>
-  <el-card>
+  <div class="ui-page-shell backup-restore-page">
+  <el-card class="backup-restore-card ui-panel" shadow="never">
     <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap">
       <div>
         <div style="font-weight:700; font-size:16px">
@@ -688,6 +689,7 @@
     </template>
   </el-dialog>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -1278,3 +1280,32 @@ onMounted(() => {
 });
 
 </script>
+
+<style scoped>
+.backup-restore-page{max-width:1680px;margin:0 auto}
+.backup-restore-card{border-radius:8px}
+.backup-restore-card :deep(.el-card){
+  border-radius:8px;
+}
+.backup-restore-card :deep(.el-card__header){
+  background:#fafafa;
+}
+.backup-restore-card :deep(.el-row){
+  row-gap:16px;
+}
+.backup-restore-card :deep(.el-alert){
+  border-radius:8px;
+}
+.backup-restore-card :deep(.el-table){
+  border-radius:8px;
+}
+
+@media (max-width:768px){
+  .backup-restore-card :deep(.el-button),
+  .backup-restore-card :deep(.el-select),
+  .backup-restore-card :deep(.el-date-editor),
+  .backup-restore-card :deep(.el-input-number){
+    max-width:100%;
+  }
+}
+</style>

@@ -1,5 +1,6 @@
 <template>
-  <el-card class="audit-card">
+  <div class="ui-page-shell audit-page">
+  <el-card class="audit-card ui-panel" shadow="never">
     <template #header>
       <div class="audit-header">
         <div class="title">
@@ -41,7 +42,7 @@
       </div>
 
       <el-form
-        class="audit-filters"
+        class="audit-filters ui-filter-panel"
         :inline="true"
         @submit.prevent
       >
@@ -428,6 +429,7 @@
       </template>
     </el-dialog>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -1395,14 +1397,16 @@ onMounted(() => {
 .archive-history__title{font-weight:700;margin-bottom:8px}
 .archive-history__list{display:grid;gap:6px;max-height:160px;overflow:auto}
 .archive-history__row{display:grid;grid-template-columns:1.4fr 1.2fr .8fr .8fr 1.6fr;gap:8px;font-size:12px;padding:8px 10px;border:1px solid var(--el-border-color-light);border-radius:6px}
+.audit-page{max-width:1680px;margin:0 auto}
+.audit-card{border-radius:8px}
 .audit-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .title{font-weight:800;font-size:16px}
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
-.audit-filters{margin-top:10px}
+.audit-filters{margin-top:0}
 .entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
 .entity-name{font-weight:600}
 .entity-meta{font-size:12px;color:#909399}
-.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fafcff}.payload-kv-label{font-size:12px;color:#909399;margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:12px;background:#fff}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:10px}.payload-diff-cell.before{background:#fff7ed}.payload-diff-cell.after{background:#ecfdf5}.payload-diff-caption{display:inline-block;font-size:12px;color:#606266;margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:10px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
+.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:#fafcff}.payload-kv-label{font-size:12px;color:#909399;margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:#fff}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:8px}.payload-diff-cell.before{background:#fff7ed}.payload-diff-cell.after{background:#ecfdf5}.payload-diff-caption{display:inline-block;font-size:12px;color:#606266;margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:8px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
 
 @media (max-width: 768px){
   .audit-header,

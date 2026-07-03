@@ -1,5 +1,6 @@
 <template>
-  <el-card>
+  <div class="ui-page-shell import-items-page">
+  <el-card class="import-items-card ui-panel" shadow="never">
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px">
       <div>
         <span style="font-weight:700">Excel 导入配件</span>
@@ -119,6 +120,7 @@
       </template>
     </el-dialog>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -286,3 +288,20 @@ async function submit() {
   }
 }
 </script>
+
+<style scoped>
+.import-items-page{max-width:1680px;margin:0 auto}
+.import-items-card{border-radius:8px}
+.import-items-card :deep(.el-card__body){display:grid;gap:12px}
+.import-items-card :deep(.el-alert){border-radius:8px}
+.import-items-card :deep(.el-table){border-radius:8px}
+
+@media (max-width:768px){
+  .import-items-card :deep(.el-button),
+  .import-items-card :deep(.el-select),
+  .import-items-card :deep(.el-upload){
+    width:100%;
+    max-width:100%;
+  }
+}
+</style>

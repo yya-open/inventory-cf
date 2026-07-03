@@ -1,6 +1,15 @@
 <template>
-  <el-card class="tx-card">
-    <div class="tx-toolbar">
+  <div class="ui-page-shell tx-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">配件仓</div>
+        <div class="ui-page-heading__title">出入库明细</div>
+        <div class="ui-page-heading__desc">追溯配件入库、出库、盘点调整和撤销盘点记录。</div>
+      </div>
+      <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
+    </div>
+
+    <div class="ui-panel tx-filter-panel">
       <el-select
         v-model="type"
         placeholder="类型"
@@ -100,72 +109,74 @@
       </div>
     </div>
 
-    <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
+    <div class="ui-panel ui-table-panel">
+      <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
 
-    <LazyMountBlock v-else title="正在装载配件明细…" min-height="400px" :delay="0" :idle="false" :viewport="false">
-      <el-table
-        v-loading="refreshing"
-        :data="rows"
-        border
-      >
-        <el-table-column label="时间" width="170">
-          <template #default="{row}">
-            {{ formatBeijingDateTime(row.created_at_bj || row.created_at) }}
-          </template>
-        </el-table-column>
-        <el-table-column prop="type" label="类型" width="120">
-          <template #default="{row}">
-            <el-tag
-              :type="typeTagType(row.type)"
-              effect="light"
-              :title="row.type"
-            >
-              {{ typeLabel(row.type) }}
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="配件" min-width="260">
-          <template #default="{row}">
-            <div class="tx-cell-title">
-              {{ row.name }}
-            </div>
-            <div class="tx-cell-sub">
-              {{ row.sku }}
-            </div>
-          </template>
-        </el-table-column>
-        <el-table-column prop="warehouse_name" label="仓库" width="120" />
-        <el-table-column prop="qty" label="数量" width="90" />
-        <el-table-column prop="delta_qty" label="变动" width="90">
-          <template #default="{row}">
-            <span v-if="typeof row.delta_qty === 'number'">{{ row.delta_qty > 0 ? '+' + row.delta_qty : row.delta_qty }}</span>
-            <span v-else>{{ row.type==='IN' ? '+'+row.qty : row.type==='OUT' ? -row.qty : (row.delta_qty||0) }}</span>
-          </template>
-        </el-table-column>
-        <el-table-column label="来源/去向" width="200">
-          <template #default="{row}">
-            <span v-if="row.type==='IN'">{{ row.source || '-' }}</span>
-            <span v-else-if="row.type==='OUT'">{{ row.target || '-' }}</span>
-            <span v-else>-</span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
-      </el-table>
+      <LazyMountBlock v-else title="正在装载配件明细…" min-height="400px" :delay="0" :idle="false" :viewport="false">
+        <el-table
+          v-loading="refreshing"
+          :data="rows"
+          border
+        >
+          <el-table-column label="时间" width="170">
+            <template #default="{row}">
+              {{ formatBeijingDateTime(row.created_at_bj || row.created_at) }}
+            </template>
+          </el-table-column>
+          <el-table-column prop="type" label="类型" width="120">
+            <template #default="{row}">
+              <el-tag
+                :type="typeTagType(row.type)"
+                effect="light"
+                :title="row.type"
+              >
+                {{ typeLabel(row.type) }}
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="配件" min-width="260">
+            <template #default="{row}">
+              <div class="tx-cell-title">
+                {{ row.name }}
+              </div>
+              <div class="tx-cell-sub">
+                {{ row.sku }}
+              </div>
+            </template>
+          </el-table-column>
+          <el-table-column prop="warehouse_name" label="仓库" width="120" />
+          <el-table-column prop="qty" label="数量" width="90" />
+          <el-table-column prop="delta_qty" label="变动" width="90">
+            <template #default="{row}">
+              <span v-if="typeof row.delta_qty === 'number'">{{ row.delta_qty > 0 ? '+' + row.delta_qty : row.delta_qty }}</span>
+              <span v-else>{{ row.type==='IN' ? '+'+row.qty : row.type==='OUT' ? -row.qty : (row.delta_qty||0) }}</span>
+            </template>
+          </el-table-column>
+          <el-table-column label="来源/去向" width="200">
+            <template #default="{row}">
+              <span v-if="row.type==='IN'">{{ row.source || '-' }}</span>
+              <span v-else-if="row.type==='OUT'">{{ row.target || '-' }}</span>
+              <span v-else>-</span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
+        </el-table>
 
-      <div class="tx-pagination-wrap">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          background
-          layout="total, sizes, prev, pager, next, jumper"
-          :page-sizes="[20, 50, 100, 200]"
-          @current-change="onPageChange"
-          @size-change="onPageSizeChange"
-        />
-      </div>
-    </LazyMountBlock>
-  </el-card>
+        <div class="ui-table-panel__footer">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            background
+            layout="total, sizes, prev, pager, next, jumper"
+            :page-sizes="[20, 50, 100, 200]"
+            @current-change="onPageChange"
+            @size-change="onPageSizeChange"
+          />
+        </div>
+      </LazyMountBlock>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -605,7 +616,7 @@ onActivated(() => {
 </script>
 
 <style scoped>
-.tx-toolbar { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; margin-bottom: 12px; }
+.tx-filter-panel { display: flex; gap: 12px; align-items: center; flex-wrap: wrap; padding: 14px; }
 .tx-btn-group { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
 .tx-btn-group--export { margin-left: auto; }
 .tx-select-lg { width: 320px; }
@@ -614,11 +625,6 @@ onActivated(() => {
 .tx-input { width: 220px; }
 .tx-cell-title { font-weight: 600; }
 .tx-cell-sub { color: #999; font-size: 12px; }
-.tx-pagination-wrap { display: flex; justify-content: flex-end; margin-top: 12px; }
-
-.tx-card :deep(.el-card__body) {
-  padding: 14px;
-}
 
 @media (max-width: 768px) {
   .tx-select-lg,
@@ -628,7 +634,7 @@ onActivated(() => {
     width: 100%;
   }
 
-  .tx-toolbar {
+  .tx-filter-panel {
     gap: 10px;
   }
 

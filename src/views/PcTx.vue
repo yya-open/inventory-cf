@@ -1,4 +1,17 @@
 <template>
+  <div class="ui-page-shell pc-tx-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">电脑仓</div>
+        <div class="ui-page-heading__title">电脑出入库明细</div>
+        <div class="ui-page-heading__desc">追溯电脑入库、出库、归还、回收和当前生效记录。</div>
+      </div>
+      <div class="tx-heading-meta">
+        <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
+        <el-tag v-if="selectedRows.length" type="primary" effect="plain">已选 {{ selectedRows.length }} 条</el-tag>
+      </div>
+    </div>
+
   <el-card class="ui-page-card">
     <div class="ui-toolbar ui-toolbar--ledger">
       <div class="ui-toolbar-main">
@@ -136,6 +149,7 @@
       </div>
     </div>
 
+    <div class="ui-panel ui-table-panel tx-table-panel">
     <LazyMountBlock title="正在装载电脑明细…" min-height="420px" :delay="0" :idle="false" :viewport="false">
       <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
       <el-table
@@ -244,7 +258,7 @@
       />
     </el-table>
 
-    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div class="ui-table-panel__footer">
       <el-pagination
         v-model:current-page="page"
         v-model:page-size="pageSize"
@@ -257,7 +271,9 @@
       />
     </div>
     </LazyMountBlock>
+    </div>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -531,3 +547,28 @@ onActivated(() => {
   void load({ keepPage: true, silent: true });
 });
 </script>
+
+<style scoped>
+.tx-heading-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tx-table-panel {
+  margin-top: 14px;
+}
+
+.tx-table-panel :deep(.el-table) {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .tx-heading-meta {
+    justify-content: flex-start;
+  }
+}
+</style>

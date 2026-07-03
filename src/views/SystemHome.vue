@@ -1,16 +1,18 @@
 <template>
-  <div class="sys-page">
-    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
-      <template #header>
-        <div class="sys-header-row">
-          <div class="sys-title-strong">系统</div>
-          <div class="sys-actions-row">
-            <el-button v-if="canAccessParts" size="small" @click="go('/stock')">进入配件仓</el-button>
-            <el-button v-if="canAccessPc" size="small" @click="go(preferredPcRoute(auth.user))">进入电脑/显示器仓</el-button>
-          </div>
-        </div>
-      </template>
+  <div class="ui-page-shell sys-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <div class="ui-page-heading__title">系统首页</div>
+        <div class="ui-page-heading__desc">集中进入备份、审计、用户、配置、运维、报表和交付文档。</div>
+      </div>
+      <div class="system-home-actions">
+        <el-button v-if="canAccessParts" @click="go('/stock')">进入配件仓</el-button>
+        <el-button v-if="canAccessPc" @click="go(preferredPcRoute(auth.user))">进入电脑/显示器仓</el-button>
+      </div>
+    </div>
 
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
       <el-alert
         v-if="opsLoaded && (ops.problem_count || ops.failed_jobs || !ops.schema_ok)"
         type="warning"
@@ -122,6 +124,13 @@ async function loadOpsSummary(options: { force?: boolean } = {}) {
 </script>
 
 <style scoped>
+.system-home-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
 .home-alert-gap { margin-bottom: 14px; }
 .home-help-gap { margin-bottom: 12px; }
 .home-col-gap { margin-top: 12px; }
@@ -131,4 +140,10 @@ async function loadOpsSummary(options: { force?: boolean } = {}) {
 .home-section-gap { margin-bottom: 10px; }
 .home-muted { color: #777; font-size: 12px; }
 .home-subtle-block { color: #999; font-size: 12px; line-height: 1.7; min-height: 52px; }
+
+@media (max-width: 768px) {
+  .system-home-actions {
+    justify-content: flex-start;
+  }
+}
 </style>

@@ -1,6 +1,6 @@
 <template>
-  <div class="sys-page">
-    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
+  <div class="ui-page-shell sys-page">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap ui-panel">
       <template #header>
         <div class="sys-header-row">
           <div>
@@ -22,7 +22,7 @@
       </el-row>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap ui-panel">
       <template #header>
         <div class="sys-header-row">
           <div class="sys-title-strong">检查清单</div>
@@ -41,7 +41,7 @@
       </el-table>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card sys-section-gap">
+    <el-card shadow="never" class="sys-rounded-card sys-section-gap ui-panel">
       <template #header>
         <div class="sys-title-strong">前端性能预算</div>
       </template>
@@ -55,7 +55,7 @@
       </div>
     </el-card>
 
-    <el-card shadow="never" class="sys-rounded-card">
+    <el-card shadow="never" class="sys-rounded-card ui-panel">
       <template #header>
         <div class="sys-title-strong">本地发布命令</div>
       </template>
@@ -181,7 +181,7 @@ onMounted(() => load(false));
   margin: 0;
   padding: 12px 14px;
   background: #f7f8fa;
-  border-radius: 10px;
+  border-radius: 8px;
   overflow: auto;
   font-size: 12px;
   line-height: 1.6;

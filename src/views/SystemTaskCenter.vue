@@ -1,19 +1,20 @@
 <template>
-  <div class="system-task-center">
-    <el-card shadow="never" class="page-card">
-      <div class="page-header">
-        <div>
-          <div class="page-title">批量任务中心</div>
-          <div class="page-desc">集中查看异步导出、预计算、巡检和二维码批量任务，支持下载结果、重试和取消。</div>
-        </div>
-        <div class="page-actions">
-          <el-tag :type="hasActiveJobs ? 'warning' : 'success'">{{ hasActiveJobs ? '存在运行中任务' : '当前无运行中任务' }}</el-tag>
-          <el-button v-if="canManageSystemTools" :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>
-          <el-button @click="cleanupJobs">自动清理历史</el-button>
-          <el-button @click="loadJobs({ force: true, includeBase: true, reset: true })">刷新</el-button>
-        </div>
+  <div class="ui-page-shell system-task-center">
+    <div class="ui-page-heading">
+      <div>
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <h1>批量任务中心</h1>
+        <p>集中查看异步导出、预计算、巡检和二维码批量任务，支持下载结果、重试和取消。</p>
       </div>
+      <div class="page-actions">
+        <el-tag :type="hasActiveJobs ? 'warning' : 'success'">{{ hasActiveJobs ? '存在运行中任务' : '当前无运行中任务' }}</el-tag>
+        <el-button v-if="canManageSystemTools" :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>
+        <el-button @click="cleanupJobs">自动清理历史</el-button>
+        <el-button @click="loadJobs({ force: true, includeBase: true, reset: true })">刷新</el-button>
+      </div>
+    </div>
 
+    <el-card shadow="never" class="page-card ui-panel">
       <el-row :gutter="12" class="summary-row">
         <el-col :xs="12" :md="6"><el-card shadow="never"><div class="metric-label">异步任务总数</div><div class="metric-value">{{ summary.async_job_count }}</div></el-card></el-col>
         <el-col :xs="12" :md="6"><el-card shadow="never"><div class="metric-label">排队中</div><div class="metric-value">{{ summary.queued_job_count }}</div></el-card></el-col>
@@ -21,7 +22,7 @@
         <el-col :xs="12" :md="6"><el-card shadow="never"><div class="metric-label">最近慢请求</div><div class="metric-value">{{ summary.slow_request_count }}</div></el-card></el-col>
       </el-row>
 
-      <div class="toolbar">
+      <div class="toolbar ui-filter-panel">
         <el-select v-model="filter.status" clearable placeholder="状态" class="task-w-140" @change="applyFilters">
           <el-option label="排队中" value="queued" />
           <el-option label="执行中" value="running" />
@@ -603,7 +604,7 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.system-task-center{display:flex;flex-direction:column;gap:12px}.page-card{border-radius:16px}.page-header{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:12px}.page-title{font-size:18px;font-weight:800}.page-desc{font-size:13px;color:#6b7280;margin-top:4px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary-row{margin-bottom:12px}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:12px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:12px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
+.system-task-center{max-width:1680px;margin:0 auto}.page-card{border-radius:8px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary-row{margin-bottom:12px}.summary-row :deep(.el-card){border-radius:8px;border-color:#e5e7eb}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px;color:#111827}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:8px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
 .task-w-140{width:140px}
 .task-w-260{width:260px}
 .task-mode-hint{font-size:12px;color:#909399}
@@ -623,7 +624,6 @@ onBeforeUnmount(() => {
 .task-virtual-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap}
 
 @media (max-width:768px){
-  .page-header,
   .page-actions,
   .toolbar,
   .row-actions{

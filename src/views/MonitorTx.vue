@@ -1,8 +1,20 @@
 <template>
-  <div>
+  <div class="ui-page-shell monitor-tx-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">电脑/显示器仓</div>
+        <div class="ui-page-heading__title">显示器出入库明细</div>
+        <div class="ui-page-heading__desc">追溯显示器入库、出库、归还、调拨、报废和当前生效记录。</div>
+      </div>
+      <div class="tx-heading-meta">
+        <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
+        <el-tag v-if="selected.length" type="primary" effect="plain">已选 {{ selected.length }} 条</el-tag>
+      </div>
+    </div>
+
     <el-card
       shadow="never"
-      class="ui-page-card mb12"
+      class="ui-page-card"
     >
       <div class="ui-toolbar ui-toolbar--ledger">
         <div class="ui-toolbar-main">
@@ -133,7 +145,7 @@
       </div>
     </el-card>
 
-    <el-card shadow="never">
+    <el-card shadow="never" class="tx-table-card">
       <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
       <el-table
         v-else
@@ -195,7 +207,7 @@
         />
       </el-table>
 
-      <div style="margin-top:12px; display:flex; justify-content:flex-end">
+      <div class="ui-table-panel__footer">
         <el-pagination
           background
           layout="total, sizes, prev, pager, next"
@@ -373,5 +385,26 @@ onActivated(() => {
 </script>
 
 <style scoped>
-.mb12 { margin-bottom: 12px; }
+.tx-heading-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.tx-table-card :deep(.el-card__body) {
+  padding: 0;
+}
+
+.tx-table-card :deep(.el-table) {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0 !important;
+}
+
+@media (max-width: 768px) {
+  .tx-heading-meta {
+    justify-content: flex-start;
+  }
+}
 </style>

@@ -1,17 +1,24 @@
 <template>
-  <el-card>
-    <div style="display: flex; gap: 12px; align-items: center; margin-bottom: 12px; flex-wrap:wrap">
+  <div class="ui-page-shell stock-query-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">配件仓</div>
+        <div class="ui-page-heading__title">库存查询</div>
+        <div class="ui-page-heading__desc">按名称、SKU、品牌或型号定位库存，优先处理低于预警值的物料。</div>
+      </div>
+      <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
+    </div>
+
+    <div class="ui-panel ui-filter-panel">
       <el-input
         v-model="keyword"
         placeholder="搜索：名称/SKU/品牌/型号"
-        style="max-width: 360px"
         clearable
         @keyup.enter="onSearch"
       />
 
       <el-select
         v-model="sort"
-        style="width: 160px"
         placeholder="排序"
         @change="onSearch"
       >
@@ -22,83 +29,89 @@
         <el-option label="名称 升序" value="name_asc" />
       </el-select>
 
-      <el-button type="primary" @click="onSearch">
-        查询
-      </el-button>
-      <el-button @click="onReset">
-        重置
-      </el-button>
-      <el-button :disabled="!rows.length || exportLoading" :loading="exportLoading" @click="doExport">
-        导出Excel
-      </el-button>
-      <el-button
-        type="warning"
-        plain
-        @click="$router.push('/warnings')"
-      >
-        查看预警
-      </el-button>
+      <div class="ui-filter-panel__actions">
+        <el-button type="primary" @click="onSearch">
+          查询
+        </el-button>
+        <el-button @click="onReset">
+          重置
+        </el-button>
+        <el-button :disabled="!rows.length || exportLoading" :loading="exportLoading" @click="doExport">
+          导出Excel
+        </el-button>
+        <el-button
+          type="warning"
+          plain
+          @click="$router.push('/warnings')"
+        >
+          查看预警
+        </el-button>
+      </div>
     </div>
 
-    <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
+    <div class="ui-panel ui-table-panel">
+      <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
 
-    <LazyMountBlock v-else title="正在装载库存查询…" min-height="400px" :delay="0" :idle="false" :viewport="false">
-      <el-table
-        v-loading="refreshing"
-        :data="rows"
-        border
-      >
-        <el-table-column prop="sku" label="SKU" width="200" />
-        <el-table-column prop="name" label="名称" min-width="220" />
-        <el-table-column prop="brand" label="品牌" width="140" />
-        <el-table-column prop="model" label="型号" width="160" />
-        <el-table-column prop="category" label="分类" width="120" />
-        <el-table-column prop="qty" label="库存" width="100">
-          <template #default="{ row }">
-            <span :style="{ color: row.is_warning ? '#d93026' : '', fontWeight: row.is_warning ? '700' : '' }">
-              {{ row.qty }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="warning_qty" label="预警值" width="100" />
-        <el-table-column label="状态" width="120">
-          <template #default="{ row }">
-            <el-tag v-if="row.is_warning" type="danger">
-              预警
-            </el-tag>
-            <el-tag v-else type="success">
-              正常
-            </el-tag>
-          </template>
-        </el-table-column>
-        <el-table-column label="快捷操作" width="220">
-          <template #default="{ row }">
-            <el-button size="small" @click="goIn(row.item_id)">
-              入库
-            </el-button>
-            <el-button size="small" type="primary" plain @click="goOut(row.item_id)">
-              出库
-            </el-button>
-            <el-button size="small" type="info" plain @click="goTx(row.item_id)">
-              明细
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+      <LazyMountBlock v-else title="正在装载库存查询…" min-height="400px" :delay="0" :idle="false" :viewport="false">
+        <el-table
+          v-loading="refreshing"
+          :data="rows"
+          border
+        >
+          <el-table-column prop="sku" label="SKU" width="200" />
+          <el-table-column prop="name" label="名称" min-width="220" />
+          <el-table-column prop="brand" label="品牌" width="140" />
+          <el-table-column prop="model" label="型号" width="160" />
+          <el-table-column prop="category" label="分类" width="120" />
+          <el-table-column prop="qty" label="库存" width="100">
+            <template #default="{ row }">
+              <span class="ui-status-number" :class="{ 'is-warning': row.is_warning }">
+                {{ row.qty }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="warning_qty" label="预警值" width="100" />
+          <el-table-column label="状态" width="120">
+            <template #default="{ row }">
+              <el-tag v-if="row.is_warning" type="danger">
+                预警
+              </el-tag>
+              <el-tag v-else type="success">
+                正常
+              </el-tag>
+            </template>
+          </el-table-column>
+          <el-table-column label="快捷操作" width="220">
+            <template #default="{ row }">
+              <div class="ui-row-actions">
+                <el-button size="small" @click="goIn(row.item_id)">
+                  入库
+                </el-button>
+                <el-button size="small" type="primary" plain @click="goOut(row.item_id)">
+                  出库
+                </el-button>
+                <el-button size="small" type="info" plain @click="goTx(row.item_id)">
+                  明细
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
 
-      <div style="display:flex; justify-content:flex-end; padding-top:12px">
-        <el-pagination
-          v-model:current-page="page"
-          v-model:page-size="pageSize"
-          :total="total"
-          :page-sizes="[20, 50, 100, 200]"
-          layout="total, sizes, prev, pager, next, jumper"
-          @current-change="onPageChange"
-          @size-change="onPageSizeChange"
-        />
-      </div>
-    </LazyMountBlock>
-  </el-card>
+        <div class="ui-table-panel__footer">
+          <el-pagination
+            v-model:current-page="page"
+            v-model:page-size="pageSize"
+            :total="total"
+            :page-sizes="[20, 50, 100, 200]"
+            layout="total, sizes, prev, pager, next, jumper"
+            @current-change="onPageChange"
+            @size-change="onPageSizeChange"
+          />
+        </div>
+      </LazyMountBlock>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">

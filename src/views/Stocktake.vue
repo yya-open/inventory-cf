@@ -1,23 +1,23 @@
 <template>
-  <div class="stocktake-page">
-    <el-card class="stocktake-card">
-      <template #header>
-        <div class="page-header">
-          <div class="title">
-            库存盘点
-          </div>
-          <div class="actions">
-            <el-button
-              type="primary"
-              :loading="creating"
-              @click="createStocktake"
-            >
-              新建盘点单
-            </el-button>
-          </div>
-        </div>
-      </template>
+  <div class="ui-page-shell stocktake-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">配件仓</div>
+        <div class="ui-page-heading__title">库存盘点</div>
+        <div class="ui-page-heading__desc">创建盘点单、导入盘点结果、应用差异调整并保留可撤销记录。</div>
+      </div>
+      <div class="stocktake-heading-actions">
+        <el-button
+          type="primary"
+          :loading="creating"
+          @click="createStocktake"
+        >
+          新建盘点单
+        </el-button>
+      </div>
+    </div>
 
+    <el-card class="stocktake-card">
       <div class="body">
         <!-- Left: list -->
         <div class="panel left">
@@ -173,7 +173,7 @@
             </el-table-column>
           </el-table>
 
-          <div style="display:flex; justify-content:flex-end; margin-top:10px">
+          <div class="stocktake-pagination">
             <el-pagination
               v-model:current-page="listPage"
               v-model:page-size="listPageSize"
@@ -1089,19 +1089,22 @@ onBeforeUnmount(() => {
 
 
 <style scoped>
-.stocktake-page{ padding:16px; }
-.stocktake-card{ border-radius:12px; }
+.stocktake-page{ padding:0; }
+.stocktake-card{ border-radius:8px; }
+.stocktake-card :deep(.el-card__body){padding:16px}
+.stocktake-heading-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .page-header{ display:flex; justify-content:space-between; align-items:center; }
 .title{ font-weight:800; font-size:16px; }
 .actions{ display:flex; gap:10px; align-items:center; }
 .wh-select{ width:180px; }
 .body{ display:flex; flex-direction:column; gap:16px; }
-.panel{ background: var(--el-bg-color); border:1px solid var(--el-border-color-light); border-radius:12px; overflow:hidden; }
+.panel{ background: var(--ui-surface,#fff); border:1px solid var(--ui-border,#d9e1ec); border-radius:8px; overflow:hidden; }
 .left{ width:100%; }
 .right{ width:100%; padding:12px; min-height: 520px; }
 .panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
 .panel-title{ font-weight:700; }
 .panel-tools{ display:flex; gap:8px; align-items:center; }
+.stocktake-pagination{display:flex;justify-content:flex-end;padding:12px;border-top:1px solid var(--ui-border-soft,#e7edf5);background:var(--ui-surface-soft,#f8fafc)}
 .empty{ padding:36px 0; }
 .detail-header{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
 .detail-title .main{ font-weight:800; font-size:14px; }
@@ -1112,7 +1115,7 @@ onBeforeUnmount(() => {
 .detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
 .preview-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;list-style:none;padding:0;margin:0 0 12px}
 .preview-list--dialog{margin:0}
-.preview-list-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--el-border-color-light);border-radius:12px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}
+.preview-list-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--el-border-color-light);border-radius:8px;background:#fafafa}
 .preview-list-item--changed{border-color:#f3d19e;background:#fff9f0}
 .preview-list-item--increase{border-color:#b3e19d;background:#f0fdf4}
 .preview-list-item--decrease{border-color:#f5c2c7;background:#fef2f2}
@@ -1128,6 +1131,7 @@ onBeforeUnmount(() => {
 @media (max-width: 768px){
   .stocktake-page{padding:12px}
   .page-header,.panel-header,.detail-header,.detail-tools{flex-direction:column;align-items:stretch}
+  .stocktake-heading-actions,.stocktake-pagination{justify-content:flex-start}
   .actions,.panel-tools,.detail-actions{width:100%;justify-content:stretch}
   .actions .el-button,.panel-tools .el-button,.detail-actions .el-button{width:100%}
 }

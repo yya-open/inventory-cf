@@ -1,14 +1,22 @@
 <template>
-  <div class="system-reports-center">
+  <div class="ui-page-shell system-reports-center">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <div class="ui-page-heading__title">数据报表中心</div>
+        <div class="ui-page-heading__desc">集中查看系统看板、盘点报表、预警报表和台账分析入口。</div>
+      </div>
+      <div class="hero-actions">
+        <el-button @click="go('/system/dashboard')">打开完整看板</el-button>
+        <el-button @click="go('/system/tasks')">查看任务中心</el-button>
+      </div>
+    </div>
+
     <el-card shadow="never" class="hero-card">
       <div class="hero-head">
         <div>
-          <div class="hero-title">数据报表中心</div>
-          <div class="hero-desc">把系统级看板、盘点报表、报废预警和台账分析入口集中到一起，方便日常复盘和管理查看。</div>
-        </div>
-        <div class="hero-actions">
-          <el-button @click="go('/system/dashboard')">打开完整看板</el-button>
-          <el-button @click="go('/system/tasks')">查看任务中心</el-button>
+          <div class="section-title">常用报表入口</div>
+          <div class="section-desc">按业务主题进入下钻页面，保持首屏轻量。</div>
         </div>
       </div>
       <el-row :gutter="12">
@@ -203,5 +211,5 @@ onMounted(() => {
 });
 </script>
 <style scoped>
-.system-reports-center{display:flex;flex-direction:column;gap:12px}.hero-card{border-radius:16px}.hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}.hero-title{font-size:20px;font-weight:800}.hero-desc,.section-desc{font-size:13px;color:#6b7280;margin-top:4px}.hero-actions,.section-actions{display:flex;gap:8px;flex-wrap:wrap}.quick-card{cursor:pointer;border-radius:14px;min-height:116px}.quick-title{font-size:16px;font-weight:700;margin-bottom:8px}.quick-desc{font-size:13px;color:#6b7280;line-height:1.5}.snapshot-card{border-radius:14px}.snapshot-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}.snapshot-meta{font-size:12px;color:#6b7280}.section-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.section-header.compact{align-items:flex-start}.section-title{font-size:16px;font-weight:700}.summary-row{margin:0}.summary-card,.insight-card{border-radius:14px}.summary-label{font-size:12px;color:#6b7280}.summary-value{font-size:28px;font-weight:800;margin-top:6px}.insight-row{margin:0}.insight-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.insight-item{padding:12px;border:1px solid #e5e7eb;border-radius:12px;background:#fafafa;display:flex;justify-content:space-between;gap:12px}.insight-k{font-size:12px;color:#6b7280}.entry-list{display:grid;gap:6px;justify-items:start}.dashboard-placeholder,.dashboard-skeleton{padding:8px 0}@media (max-width:768px){.insight-grid{grid-template-columns:1fr}}
+.system-reports-center{display:flex;flex-direction:column;gap:14px}.hero-card{border-radius:8px}.hero-head{display:flex;justify-content:space-between;align-items:flex-start;gap:12px;flex-wrap:wrap;margin-bottom:12px}.hero-title{font-size:20px;font-weight:800}.hero-desc,.section-desc{font-size:13px;color:#6b7280;margin-top:4px}.hero-actions,.section-actions{display:flex;gap:8px;flex-wrap:wrap;justify-content:flex-end}.quick-card{cursor:pointer;border-radius:8px;min-height:116px}.quick-title{font-size:16px;font-weight:700;margin-bottom:8px}.quick-desc{font-size:13px;color:#6b7280;line-height:1.5}.snapshot-card{border-radius:8px}.snapshot-head{display:flex;justify-content:space-between;gap:12px;align-items:flex-start;flex-wrap:wrap;margin-bottom:8px}.snapshot-meta{font-size:12px;color:#6b7280}.section-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}.section-header.compact{align-items:flex-start}.section-title{font-size:16px;font-weight:700}.summary-row{margin:0}.summary-card,.insight-card{border-radius:8px}.summary-label{font-size:12px;color:#6b7280}.summary-value{font-size:28px;font-weight:800;margin-top:6px}.insight-row{margin:0}.insight-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:10px}.insight-item{padding:12px;border:1px solid var(--ui-border-soft,#e7edf5);border-radius:8px;background:var(--ui-surface-soft,#f8fafc);display:flex;justify-content:space-between;gap:12px}.insight-k{font-size:12px;color:#6b7280}.entry-list{display:grid;gap:6px;justify-items:start}.dashboard-placeholder,.dashboard-skeleton{padding:8px 0}@media (max-width:768px){.hero-actions{justify-content:flex-start}.insight-grid{grid-template-columns:1fr}}
 </style>

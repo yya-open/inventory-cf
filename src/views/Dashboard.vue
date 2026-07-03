@@ -1,5 +1,5 @@
 <template>
-  <div class="dashboard-page">
+  <div class="ui-page-shell dashboard-page">
     <div class="dashboard-shell">
       <section class="dashboard-hero">
         <div>
@@ -535,38 +535,46 @@ onMounted(async () => {
 
 <style scoped>
 .dashboard-page {
-  padding: 16px;
+  padding: 4px;
 }
 
 .dashboard-shell {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .dashboard-hero {
   display: flex;
   justify-content: space-between;
   align-items: end;
-  gap: 12px;
+  gap: 16px;
   flex-wrap: wrap;
+  padding: 18px;
+  border: 1px solid var(--ui-border, #d9e1ec);
+  border-radius: var(--ui-radius-md, 8px);
+  background:
+    linear-gradient(90deg, rgba(31, 95, 191, 0.08), transparent 48%),
+    #ffffff;
+  box-shadow: var(--ui-shadow-card, 0 1px 2px rgba(16, 24, 40, 0.06));
 }
 
 .dashboard-kicker {
-  color: #64748b;
+  color: var(--ui-subtle, #94a3b8);
   font-size: 12px;
-  font-weight: 600;
+  font-weight: 800;
 }
 
 .dashboard-title {
   margin-top: 4px;
-  font-size: 24px;
-  font-weight: 700;
-  color: #111827;
+  font-size: 26px;
+  font-weight: 800;
+  color: var(--ui-text, #172033);
+  line-height: 1.2;
 }
 
 .dashboard-subtitle {
   margin-top: 6px;
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   font-size: 13px;
 }
 
@@ -579,25 +587,30 @@ onMounted(async () => {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 12px 0;
-  border-bottom: 1px solid #e2e8f0;
+  gap: 14px;
+  padding: 12px;
+  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border-radius: var(--ui-radius-md, 8px);
+  background: var(--ui-surface-soft, #f8fafc);
   color: #334155;
 }
 
 .message-item__title {
-  color: #111827;
+  color: var(--ui-text, #172033);
   font-size: 14px;
-  font-weight: 600;
+  font-weight: 700;
 }
 
 .message-item__hint {
   margin-top: 4px;
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   font-size: 12px;
 }
 
 .message-item strong {
-  color: #111827;
+  color: var(--ui-text, #172033);
+  font-size: 20px;
+  line-height: 1;
 }
 
 .shortcut-grid {
@@ -609,28 +622,35 @@ onMounted(async () => {
 .shortcut-item {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 10px;
   padding: 12px;
-  border: 1px solid #e2e8f0;
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border-radius: var(--ui-radius-md, 8px);
+  background: var(--ui-surface-soft, #f8fafc);
   color: #334155;
   font-size: 13px;
+  font-weight: 700;
   text-decoration: none;
+  transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 
 .shortcut-item:hover {
-  background: #eef2ff;
-  border-color: #c7d2fe;
+  background: var(--ui-surface-tint, #f2f7ff);
+  border-color: #bfd3f0;
+  color: var(--ui-primary, #1f5fbf);
 }
 
 .shortcut-item__icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 18px;
-  color: #64748b;
-  font-size: 12px;
+  width: 28px;
+  height: 28px;
+  border: 1px solid var(--ui-border, #d9e1ec);
+  border-radius: var(--ui-radius-sm, 6px);
+  background: #fff;
+  color: var(--ui-primary, #1f5fbf);
+  font-size: 14px;
 }
 
 .message-card__top {
@@ -641,8 +661,13 @@ onMounted(async () => {
 }
 
 .message-card__badge {
-  color: #64748b;
+  padding: 3px 8px;
+  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border-radius: 999px;
+  background: var(--ui-surface-soft, #f8fafc);
+  color: var(--ui-muted, #64748b);
   font-size: 12px;
+  font-weight: 700;
 }
 
 .dashboard-toolbar {
@@ -658,7 +683,7 @@ onMounted(async () => {
 
 .dashboard-content {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   min-height: 560px;
 }
 
@@ -666,25 +691,32 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   font-size: 12px;
+}
+
+.dashboard-meta span {
+  padding: 5px 9px;
+  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.72);
 }
 
 .dashboard-messages {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .dashboard-metrics {
   display: grid;
-  gap: 12px;
+  gap: 14px;
   grid-template-columns: repeat(4, minmax(0, 1fr));
 }
 
 .dashboard-grid {
   display: grid;
-  gap: 12px;
+  gap: 14px;
 }
 
 .dashboard-grid--main {
@@ -696,23 +728,26 @@ onMounted(async () => {
 }
 
 .metric-card__label {
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   font-size: 12px;
+  font-weight: 700;
 }
 
 .metric-card__value {
-  font-size: 26px;
-  font-weight: 700;
-  color: #111827;
+  margin-top: 6px;
+  font-size: 28px;
+  font-weight: 800;
+  color: var(--ui-text, #172033);
+  line-height: 1.15;
 }
 
 .metric-card__value--mid {
-  font-size: 22px;
+  font-size: 24px;
 }
 
 .metric-card__desc {
   font-size: 12px;
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   margin-top: 6px;
 }
 
@@ -727,11 +762,11 @@ onMounted(async () => {
 .chart-list {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 8px;
 }
 
 .chart-list--compact {
-  gap: 4px;
+  gap: 7px;
 }
 
 .chart-row {
@@ -742,13 +777,13 @@ onMounted(async () => {
 
 .chart-row__day {
   width: 96px;
-  color: #64748b;
+  color: var(--ui-muted, #64748b);
   font-size: 12px;
 }
 
 .chart-row__bar-bg {
   flex: 1;
-  background: #f1f5f9;
+  background: #eef2f7;
   height: 10px;
   border-radius: 999px;
   overflow: hidden;
@@ -756,7 +791,8 @@ onMounted(async () => {
 
 .chart-row__bar-fill {
   height: 10px;
-  background: #2563eb;
+  border-radius: 999px;
+  background: var(--ui-primary, #1f5fbf);
 }
 
 .chart-row__qty {
@@ -791,7 +827,12 @@ onMounted(async () => {
 
 @media (max-width: 768px) {
   .dashboard-page {
-    padding: 12px;
+    padding: 0;
+  }
+
+  .dashboard-hero {
+    align-items: stretch;
+    padding: 14px;
   }
 
   .dashboard-title {
@@ -804,18 +845,6 @@ onMounted(async () => {
 }
 
 @media (max-width: 768px) {
-  .dashboard-page {
-    padding: 12px;
-  }
-
-  .dashboard-title {
-    font-size: 22px;
-  }
-
-  .dashboard-days {
-    width: 132px;
-  }
-
   .shortcut-item {
     padding: 10px 12px;
   }

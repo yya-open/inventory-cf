@@ -1,10 +1,24 @@
 <template>
-  <el-card>
-    <div style="display:flex; flex-wrap:wrap; gap:12px; align-items:center; margin-bottom:12px">
+  <div class="ui-page-shell warnings-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">预警中心</div>
+        <div class="ui-page-heading__title">配件库存预警</div>
+        <div class="ui-page-heading__desc">识别库存低于预警值的配件，快速入库、追溯明细或批量调整预警阈值。</div>
+      </div>
+      <div class="warning-heading-meta">
+        <el-tag :type="filters.only_alert ? 'danger' : 'info'" effect="plain">
+          {{ filters.only_alert ? "预警" : "列表" }} {{ total }} 条
+        </el-tag>
+        <el-tag v-if="selectedIds.length" type="primary" effect="plain">已选 {{ selectedIds.length }} 条</el-tag>
+      </div>
+    </div>
+
+    <div class="ui-panel warning-filter-panel">
       <el-select
         v-model="filters.category"
         clearable
-        style="width:180px"
+        class="warning-select"
         placeholder="分类"
         @change="onSearch"
       >
@@ -18,7 +32,7 @@
 
       <el-input
         v-model="filters.keyword"
-        style="width:240px"
+        class="warning-input"
         clearable
         placeholder="搜索：名称/SKU/品牌/型号"
         @keyup.enter="onSearch"
@@ -33,7 +47,7 @@
 
       <el-select
         v-model="filters.sort"
-        style="width:200px"
+        class="warning-sort"
         @change="onSearch"
       >
         <el-option label="缺口从大到小" value="gap_desc" />
@@ -57,22 +71,19 @@
         导出 Excel
       </el-button>
 
-      <div style="margin-left:auto; display:flex; gap:8px; align-items:center">
-        <el-tag v-if="total" type="danger">
-          {{ filters.only_alert ? "预警" : "列表" }}：{{ total }} 条
-        </el-tag>
+      <div class="warning-filter-panel__trailing">
         <el-button size="small" type="info" plain @click="$router.push('/stock')">
           去库存查询
         </el-button>
       </div>
     </div>
 
-    <div v-if="selectedIds.length" style="display:flex; flex-wrap:wrap; gap:10px; align-items:center; margin-bottom:10px">
+    <div v-if="selectedIds.length" class="ui-panel warning-bulk-panel">
       <el-tag type="info">
         已选 {{ selectedIds.length }} 条
       </el-tag>
 
-      <el-select v-model="bulkMode" style="width:220px">
+      <el-select v-model="bulkMode" class="warning-bulk-mode">
         <el-option label="统一设置预警值" value="set" />
         <el-option label="在原预警值基础上 +X" value="add" />
         <el-option label="设置为当前库存 +X" value="qty_plus" />
@@ -105,78 +116,82 @@
       <el-button @click="clearSelection">
         清空选择
       </el-button>
-      <div style="color:#909399">
+      <div class="warning-bulk-panel__hint">
         （批量设置预警值仅管理员可用）
       </div>
     </div>
 
-    <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
+    <div class="ui-panel ui-table-panel">
+      <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
 
-    <LazyMountBlock v-else title="正在装载预警中心…" min-height="420px" :delay="0" :idle="false" :viewport="false">
-      <el-table
-        ref="tableRef"
-        v-loading="refreshing"
-        :data="rows"
-        stripe
-        row-key="item_id"
-        @selection-change="onSelectionChange"
-      >
-        <el-table-column type="selection" width="46" />
-        <el-table-column prop="sku" label="SKU" width="160" />
-        <el-table-column prop="name" label="名称" min-width="180" />
-        <el-table-column prop="brand" label="品牌" width="120" />
-        <el-table-column prop="model" label="型号" width="140" />
-        <el-table-column prop="category" label="分类" width="120" />
-        <el-table-column prop="qty" label="库存" width="90">
-          <template #default="{ row }">
-            <span :style="{ color: row.qty <= row.warning_qty ? '#d93025' : '#1f883d', fontWeight: '600' }">
-              {{ row.qty }}
-            </span>
-          </template>
-        </el-table-column>
-        <el-table-column prop="warning_qty" label="预警值" width="90" />
-        <el-table-column prop="gap" label="缺口" width="90">
-          <template #default="{ row }">
-            <span :style="{ color: row.gap >= 0 ? '#d93025' : '#606266', fontWeight: '600' }">
-              {{ row.gap }}
-            </span>
-          </template>
-        </el-table-column>
+      <LazyMountBlock v-else title="正在装载预警中心…" min-height="420px" :delay="0" :idle="false" :viewport="false">
+        <el-table
+          ref="tableRef"
+          v-loading="refreshing"
+          :data="rows"
+          stripe
+          row-key="item_id"
+          @selection-change="onSelectionChange"
+        >
+          <el-table-column type="selection" width="46" />
+          <el-table-column prop="sku" label="SKU" width="160" />
+          <el-table-column prop="name" label="名称" min-width="180" />
+          <el-table-column prop="brand" label="品牌" width="120" />
+          <el-table-column prop="model" label="型号" width="140" />
+          <el-table-column prop="category" label="分类" width="120" />
+          <el-table-column prop="qty" label="库存" width="90">
+            <template #default="{ row }">
+              <span class="warning-number" :class="{ 'is-danger': row.qty <= row.warning_qty, 'is-ok': row.qty > row.warning_qty }">
+                {{ row.qty }}
+              </span>
+            </template>
+          </el-table-column>
+          <el-table-column prop="warning_qty" label="预警值" width="90" />
+          <el-table-column prop="gap" label="缺口" width="90">
+            <template #default="{ row }">
+              <span class="warning-number" :class="{ 'is-danger': row.gap >= 0 }">
+                {{ row.gap }}
+              </span>
+            </template>
+          </el-table-column>
 
-        <el-table-column prop="last_tx_at" label="最后变动" width="170">
-          <template #default="{ row }">
-            <span style="color:#606266">{{ formatTime(row.last_tx_at) }}</span>
-          </template>
-        </el-table-column>
+          <el-table-column prop="last_tx_at" label="最后变动" width="170">
+            <template #default="{ row }">
+              <span class="warning-muted">{{ formatTime(row.last_tx_at) }}</span>
+            </template>
+          </el-table-column>
 
-        <el-table-column label="操作" width="190" fixed="right">
-          <template #default="{ row }">
-            <el-button size="small" type="primary" plain @click="goIn(row.item_id)">
-              入库
-            </el-button>
-            <el-button size="small" type="info" plain @click="goTx(row.item_id)">
-              看明细
-            </el-button>
-          </template>
-        </el-table-column>
-      </el-table>
+          <el-table-column label="操作" width="190" fixed="right">
+            <template #default="{ row }">
+              <div class="ui-row-actions">
+                <el-button size="small" type="primary" plain @click="goIn(row.item_id)">
+                  入库
+                </el-button>
+                <el-button size="small" type="info" plain @click="goTx(row.item_id)">
+                  看明细
+                </el-button>
+              </div>
+            </template>
+          </el-table-column>
+        </el-table>
 
-      <div v-if="total" style="display:flex; justify-content:flex-end; margin-top:12px">
-        <el-pagination
-          background
-          layout="total, sizes, prev, pager, next, jumper"
-          :total="total"
-          :page-size="pageSize"
-          :current-page="page"
-          :page-sizes="[20, 50, 100, 200]"
-          @current-change="onPageChange"
-          @size-change="onPageSizeChange"
-        />
-      </div>
+        <div v-if="total" class="ui-table-panel__footer">
+          <el-pagination
+            background
+            layout="total, sizes, prev, pager, next, jumper"
+            :total="total"
+            :page-size="pageSize"
+            :current-page="page"
+            :page-sizes="[20, 50, 100, 200]"
+            @current-change="onPageChange"
+            @size-change="onPageSizeChange"
+          />
+        </div>
 
-      <el-empty v-if="!refreshing && !loading && rows.length===0" description="暂无数据" />
-    </LazyMountBlock>
-  </el-card>
+        <el-empty v-if="!refreshing && !loading && rows.length===0" description="暂无数据" />
+      </LazyMountBlock>
+    </div>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -508,3 +523,77 @@ onActivated(() => {
   ]);
 });
 </script>
+
+<style scoped>
+.warning-heading-meta,
+.warning-filter-panel,
+.warning-bulk-panel {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.warning-heading-meta {
+  justify-content: flex-end;
+}
+
+.warning-filter-panel,
+.warning-bulk-panel {
+  padding: 14px;
+}
+
+.warning-filter-panel__trailing {
+  margin-left: auto;
+}
+
+.warning-select {
+  width: 180px;
+}
+
+.warning-input {
+  width: 240px;
+}
+
+.warning-sort {
+  width: 200px;
+}
+
+.warning-bulk-mode {
+  width: 220px;
+}
+
+.warning-bulk-panel__hint,
+.warning-muted {
+  color: var(--ui-muted, #64748b);
+}
+
+.warning-number {
+  font-weight: 800;
+}
+
+.warning-number.is-danger {
+  color: var(--ui-danger, #c7352b);
+}
+
+.warning-number.is-ok {
+  color: var(--ui-success, #16845f);
+}
+
+@media (max-width: 768px) {
+  .warning-heading-meta,
+  .warning-filter-panel__trailing {
+    justify-content: flex-start;
+    margin-left: 0;
+  }
+
+  .warning-select,
+  .warning-input,
+  .warning-sort,
+  .warning-bulk-mode,
+  .warning-filter-panel .el-button,
+  .warning-bulk-panel .el-button {
+    width: 100%;
+  }
+}
+</style>

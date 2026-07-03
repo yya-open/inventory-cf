@@ -1,5 +1,15 @@
 <template>
-  <el-card>
+  <div class="ui-page-shell stock-operation-page">
+    <div class="ui-page-heading">
+      <div>
+        <div class="ui-page-heading__kicker">库存操作</div>
+        <h1>配件入库</h1>
+        <p>为指定配件登记入库数量、单价、来源和备注。</p>
+      </div>
+      <el-button @click="backToStock">返回库存</el-button>
+    </div>
+
+  <el-card class="stock-operation-card ui-panel" shadow="never">
     <el-form
       ref="formRef"
       :model="form"
@@ -67,12 +77,10 @@
         >
           入库
         </el-button>
-        <el-button @click="backToStock">
-          返回库存
-        </el-button>
       </el-form-item>
     </el-form>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -184,3 +192,27 @@ onMounted(async () => {
   await loadItems();
 });
 </script>
+
+<style scoped>
+.stock-operation-page{max-width:960px;margin:0 auto}
+.stock-operation-card{border-radius:8px}
+.stock-operation-card :deep(.el-card__body){padding:24px}
+.stock-operation-card :deep(.el-form){max-width:640px}
+
+@media (max-width:768px){
+  .stock-operation-card :deep(.el-card__body){padding:16px}
+  .stock-operation-card :deep(.el-form-item){
+    display:flex;
+    flex-direction:column;
+    align-items:stretch;
+  }
+  .stock-operation-card :deep(.el-form-item__label){
+    width:100% !important;
+    justify-content:flex-start;
+    margin-bottom:6px;
+  }
+  .stock-operation-card :deep(.el-form-item__content){
+    width:100%;
+  }
+}
+</style>

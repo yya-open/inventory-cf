@@ -1,5 +1,14 @@
 <template>
-  <el-card>
+  <div class="ui-page-shell items-page">
+    <div class="ui-page-heading">
+      <div>
+        <div class="ui-page-heading__kicker">基础资料</div>
+        <h1>配件资料</h1>
+        <p>维护配件 SKU、名称、分类、单位和预警值，支持 Excel 导入。</p>
+      </div>
+    </div>
+
+  <el-card class="items-card ui-panel" shadow="never">
     <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
       <el-input
         v-model="keyword"
@@ -251,6 +260,7 @@
       </template>
     </el-dialog>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -468,3 +478,22 @@ onMounted(async () => {
   await Promise.all([load(), loadCategories(true)]);
 });
 </script>
+
+<style scoped>
+.items-page{max-width:1680px;margin:0 auto}
+.items-card{border-radius:8px}
+.items-card :deep(.el-card__body){display:grid;gap:12px}
+.items-card :deep(.el-table){border-radius:8px}
+
+@media (max-width:768px){
+  .items-card :deep(.el-card__body > div:first-child){
+    align-items:stretch !important;
+  }
+  .items-card :deep(.el-card__body > div:first-child > *),
+  .items-card :deep(.el-button),
+  .items-card :deep(.el-select){
+    width:100%;
+    max-width:100%;
+  }
+}
+</style>

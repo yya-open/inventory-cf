@@ -1,6 +1,6 @@
 <template>
-  <div class="batch-tx-page">
-    <el-card>
+  <div class="ui-page-shell batch-tx-page">
+    <el-card class="batch-tx-card ui-panel" shadow="never">
       <template #header>
         <div class="batch-tx-header">
           <div style="font-weight:700">
@@ -493,9 +493,8 @@ onMounted(async () => {
 </script>
 
 <style scoped>
-.batch-tx-page {
-  padding: 16px;
-}
+.batch-tx-page{max-width:1680px;margin:0 auto}
+.batch-tx-card{border-radius:8px}
 .batch-tx-header,
 .batch-tx-header-actions,
 .batch-tx-toolbar,
@@ -511,6 +510,10 @@ onMounted(async () => {
 .batch-tx-toolbar {
   gap: 12px;
   margin-bottom: 12px;
+  padding: 12px;
+  border: 1px solid #e5e7eb;
+  border-radius: 8px;
+  background: #fafafa;
 }
 .batch-tx-input-sm {
   width: 220px;
@@ -548,9 +551,7 @@ onMounted(async () => {
 }
 
 @media (max-width: 640px) {
-  .batch-tx-page {
-    padding: 8px;
-  }
+  .batch-tx-page { max-width: 100%; }
 
   .batch-tx-header,
   .batch-tx-header-actions,

@@ -1,4 +1,18 @@
 <template>
+  <div class="ui-page-shell pc-age-warning-page">
+    <div class="ui-page-heading">
+      <div class="ui-page-heading__main">
+        <div class="ui-page-heading__kicker">电脑仓</div>
+        <div class="ui-page-heading__title">报废预警</div>
+        <div class="ui-page-heading__desc">筛选超过使用年限的电脑，批量生成报废单或导出清单。</div>
+      </div>
+      <div class="age-warning-meta">
+        <el-tag type="warning" effect="plain">超过 {{ ageYears }} 年</el-tag>
+        <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
+        <el-tag v-if="selectedIds.length" type="primary" effect="plain">已选 {{ selectedIds.length }} 台</el-tag>
+      </div>
+    </div>
+
   <el-card class="ui-page-card">
     <div class="ui-toolbar ui-toolbar--ledger">
       <div class="ui-toolbar-main">
@@ -7,13 +21,6 @@
             筛选查询
           </div>
           <div class="ui-toolbar-row">
-            <el-tag
-              type="warning"
-              class="ui-toolbar-tag"
-            >
-              报废预警：出厂时间超过 {{ ageYears }} 年
-            </el-tag>
-
             <el-select
               v-model="status"
               placeholder="状态"
@@ -64,6 +71,7 @@
       </div>
     </div>
 
+    <div class="ui-panel ui-table-panel age-warning-table">
     <LedgerTableSkeleton v-if="initialLoading && !rows.length" :row-count="Math.min(8, Math.max(6, Number(pageSize || 8)))" />
 
     <el-table
@@ -81,13 +89,13 @@
       </el-table-column>
       <el-table-column label="电脑" min-width="260">
         <template #default="{row}">
-          <div style="font-weight:600">{{ row.brand }} · {{ row.model }}</div>
-          <div style="color:#999;font-size:12px">SN：{{ row.serial_no }}</div>
+          <div class="age-warning-title">{{ row.brand }} · {{ row.model }}</div>
+          <div class="age-warning-sub">SN：{{ row.serial_no }}</div>
         </template>
       </el-table-column>
       <el-table-column label="出厂时间" width="140">
         <template #default="{row}">
-          <span style="font-weight:600">{{ row.manufacture_date || '-' }}</span>
+          <span class="age-warning-title">{{ row.manufacture_date || '-' }}</span>
         </template>
       </el-table-column>
       <el-table-column label="机龄" width="110">
@@ -110,8 +118,8 @@
       <el-table-column label="当前领用人" width="220">
         <template #default="{row}">
           <div v-if="row.status==='ASSIGNED'">
-            <div style="font-weight:600">{{ row.last_employee_name || '-' }}</div>
-            <div style="color:#999;font-size:12px">{{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}</div>
+            <div class="age-warning-title">{{ row.last_employee_name || '-' }}</div>
+            <div class="age-warning-sub">{{ row.last_employee_no || '-' }} · {{ row.last_department || '-' }}</div>
           </div>
           <span v-else>-</span>
         </template>
@@ -119,7 +127,7 @@
       <el-table-column prop="remark" label="备注" min-width="220" show-overflow-tooltip />
     </el-table>
 
-    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div class="ui-table-panel__footer">
       <el-pagination
         v-model:current-page="page"
         v-model:page-size="pageSize"
@@ -131,7 +139,9 @@
         @size-change="handlePageSizeChange"
       />
     </div>
+    </div>
   </el-card>
+  </div>
 </template>
 
 <script setup lang="ts">
@@ -425,3 +435,38 @@ onBeforeUnmount(() => {
   cancelSettingsSync = null;
 });
 </script>
+
+<style scoped>
+.age-warning-meta {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+
+.age-warning-table {
+  margin-top: 14px;
+}
+
+.age-warning-table :deep(.el-table) {
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0 !important;
+}
+
+.age-warning-title {
+  color: var(--ui-text, #172033);
+  font-weight: 700;
+}
+
+.age-warning-sub {
+  color: var(--ui-muted, #64748b);
+  font-size: 12px;
+}
+
+@media (max-width: 768px) {
+  .age-warning-meta {
+    justify-content: flex-start;
+  }
+}
+</style>

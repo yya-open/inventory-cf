@@ -1,18 +1,18 @@
 <template>
-  <div class="settings-page">
-    <el-card class="settings-card">
-      <template #header>
-        <div class="settings-header">
-          <div>
-            <div class="settings-title">系统配置</div>
-            <div class="settings-subtitle">把默认规则、可维护字典和盘点体验统一收口，修改后即时影响台账与扫码体验。</div>
-          </div>
-          <div class="settings-actions">
-            <el-button @click="reload" :loading="loading">刷新</el-button>
-            <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
-          </div>
-        </div>
-      </template>
+  <div class="ui-page-shell settings-page">
+    <div class="ui-page-heading">
+      <div>
+        <div class="ui-page-heading__kicker">系统管理</div>
+        <h1>系统配置</h1>
+        <p>把默认规则、可维护字典和盘点体验统一收口，修改后即时影响台账与扫码体验。</p>
+      </div>
+      <div class="settings-actions">
+        <el-button @click="reload" :loading="loading">刷新</el-button>
+        <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>
+      </div>
+    </div>
+
+    <el-card class="settings-card ui-panel" shadow="never">
 
       <el-alert
         type="info"
@@ -721,13 +721,10 @@ onMounted(() => { reload(); });
 
 <style scoped>
 .settings-page{max-width:1680px;margin:0 auto}
-.settings-card,.section-card{border-radius:16px}
-.settings-header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px;flex-wrap:wrap}
-.settings-title{font-weight:800;font-size:18px}
-.settings-subtitle{color:#777;font-size:13px;margin-top:4px}
+.settings-card,.section-card{border-radius:8px}
 .settings-actions{display:flex;gap:10px;flex-wrap:wrap}
 .settings-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:14px 0 4px}
-.summary-item{padding:14px 16px;border:1px solid #ebeef5;border-radius:14px;background:linear-gradient(180deg,#fff 0%,#fafcff 100%)}
+.summary-item{padding:14px 16px;border:1px solid #ebeef5;border-radius:8px;background:#fafafa}
 .summary-label{font-size:12px;color:#909399;margin-bottom:6px}
 .summary-value{font-size:20px;font-weight:800;color:#303133}
 .settings-grid{
@@ -755,7 +752,7 @@ onMounted(() => { reload(); });
 .dictionary-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .row-actions{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
 .table-subtle{color:#909399;font-size:12px;margin-top:2px}
-.drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:10px;border:1px dashed transparent;transition:.15s ease}
+.drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:8px;border:1px dashed transparent;transition:.15s ease}
 .drag-cell:hover{background:#f5f7fa;border-color:#dcdfe6}
 .drag-cell--active{background:#ecf5ff;border-color:#409eff;color:#409eff}
 .drag-cell--busy{cursor:not-allowed;opacity:.6}
@@ -769,7 +766,6 @@ onMounted(() => { reload(); });
     max-width:100%;
   }
 
-  .settings-header,
   .settings-actions,
   .dictionary-card-header,
   .dictionary-card-actions,
@@ -777,7 +773,6 @@ onMounted(() => { reload(); });
     align-items:stretch;
   }
 
-  .settings-header > *,
   .settings-actions,
   .settings-actions :deep(.el-button),
   .dictionary-card-header > *,

@@ -1,6 +1,6 @@
 <template>
-  <div style="height:100vh; display:flex; align-items:center; justify-content:center; background:#f7f8fa">
-    <el-card style="width: 760px; max-width: calc(100vw - 32px)">
+  <div class="warehouse-select-page">
+    <el-card class="warehouse-select-card" shadow="never">
       <div style="font-size:18px; font-weight:700; margin-bottom:6px">
         选择要进入的仓库
       </div>
@@ -15,8 +15,8 @@
           :sm="12"
         >
           <el-card
+            class="warehouse-option-card"
             shadow="hover"
-            style="cursor:pointer"
             @click="choose('parts')"
           >
             <div style="display:flex; align-items:center; gap:10px">
@@ -44,8 +44,8 @@
           class="pc-col"
         >
           <el-card
+            class="warehouse-option-card"
             shadow="hover"
-            style="cursor:pointer"
             @click="choose('pc')"
           >
             <div style="display:flex; align-items:center; gap:10px">
@@ -92,7 +92,36 @@ function choose(k: WarehouseKey) {
 </script>
 
 <style scoped>
+.warehouse-select-page{
+  min-height:100vh;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  padding:24px 16px;
+  background:#f4f6f8;
+}
+.warehouse-select-card{
+  width:760px;
+  max-width:100%;
+  border-radius:8px;
+  border:1px solid #dfe5ec;
+  box-shadow:0 14px 36px rgba(31,45,61,.10);
+}
+.warehouse-option-card{
+  height:100%;
+  cursor:pointer;
+  border-radius:8px;
+}
 @media (min-width: 640px) {
   .pc-col { margin-top: 0 !important; }
+}
+
+@media (max-width: 640px) {
+  .warehouse-select-page{
+    align-items:stretch;
+  }
+  .warehouse-select-card :deep(.el-button){
+    width:100%;
+  }
 }
 </style>
