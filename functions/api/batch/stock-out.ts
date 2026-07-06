@@ -3,6 +3,7 @@ import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../service
 import { logAudit } from "../_audit";
 import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
 import { sqlNowStored } from "../_time";
+import { resolveItemsBySkuOrAlias } from "../services/item-sku-aliases";
 
 function batchNo() {
   const d = new Date();
@@ -76,16 +77,39 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const batch_no = batchNo();
 
   const skus = Array.from(agg.keys());
-  const placeholders = skus.map(() => "?").join(",");
-  const { results } = await env.DB.prepare(`SELECT id, sku FROM items WHERE enabled=1 AND sku IN (${placeholders})`).bind(...skus).all();
-  const skuToId = new Map<string, number>();
-  for (const r of results as any[]) skuToId.set(r.sku, r.id);
+  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, skus);
 
-  const missing = skus.filter((s) => !skuToId.has(s));
+  const missing = skus.filter((s) => !skuMatches.has(s));
   if (missing.length) return Response.json({ ok: false, message: "以下 SKU 不存在/被禁用", missing }, { status: 400 });
 
+  const resolvedAgg = new Map<number, {
+    item_id: number;
+    sku: string;
+    input_skus: string[];
+    matched_by: string;
+    qty: number;
+    target?: string;
+    remark?: string;
+  }>();
+  for (const [sku, l] of agg) {
+    const match = skuMatches.get(sku)!;
+    const cur = resolvedAgg.get(match.id) ?? {
+      item_id: match.id,
+      sku: match.sku,
+      input_skus: [],
+      matched_by: match.matched_by,
+      qty: 0,
+    };
+    cur.qty += l.qty;
+    cur.input_skus.push(sku);
+    cur.matched_by = cur.matched_by === match.matched_by ? cur.matched_by : "mixed";
+    cur.target = l.target ?? cur.target;
+    cur.remark = l.remark ?? cur.remark;
+    resolvedAgg.set(match.id, cur);
+  }
+
   // Fast pre-check (still guarded against concurrency below)
-  const itemIds = skus.map((s) => skuToId.get(s)!);
+  const itemIds = Array.from(resolvedAgg.keys());
   const ph2 = itemIds.map(() => "?").join(",");
   const { results: stockRows } = await env.DB.prepare(`SELECT item_id, qty FROM stock WHERE warehouse_id=? AND item_id IN (${ph2})`)
     .bind(warehouse_id, ...itemIds)
@@ -94,10 +118,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   for (const r of stockRows as any[]) curQty.set(r.item_id, Number(r.qty));
 
   const insufficient: any[] = [];
-  for (const [sku, l] of agg) {
-    const item_id = skuToId.get(sku)!;
-    const have = curQty.get(item_id) ?? 0;
-    if (have < l.qty) insufficient.push({ sku, need: l.qty, have });
+  for (const l of resolvedAgg.values()) {
+    const have = curQty.get(l.item_id) ?? 0;
+    if (have < l.qty) insufficient.push({ sku: l.sku, input_skus: l.input_skus, need: l.qty, have });
   }
   if (insufficient.length) return Response.json({ ok: false, message: "库存不足", insufficient }, { status: 400 });
 
@@ -109,15 +132,15 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const txs: any[] = [];
   const txNos: string[] = [];
 
-  for (const [sku, l] of agg) {
-    const item_id = skuToId.get(sku)!;
+  for (const l of resolvedAgg.values()) {
+    const item_id = l.item_id;
 
     const ridPart = client_request_id ? safeToken(client_request_id) : null;
-    const skuPart = safeToken(sku);
+    const skuPart = safeToken(l.sku);
     const no = client_request_id ? `OUT-${ridPart}-${skuPart}` : txNo("OUT");
     const ref_no = client_request_id ? `rid:${ridPart}:${skuPart}` : batch_no;
 
-    txs.push({ tx_no: no, sku, qty: l.qty });
+    txs.push({ tx_no: no, sku: l.sku, input_skus: l.input_skus, matched_by: l.matched_by, qty: l.qty });
     txNos.push(no);
 
     // 1) Insert tx only if stock currently has enough; IGNORE on duplicate ref_no (idempotency)

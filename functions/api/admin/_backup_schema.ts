@@ -17,6 +17,7 @@ export const TABLE_DEFS: TableDef[] = [
   { name: 'warehouses', label: '仓库', group: 'core', columns: ['id','name','created_at'] },
   { name: 'item_categories', label: '物料分类', group: 'core', columns: ['id','name','enabled','created_at','updated_at'] },
   { name: 'items', label: '物料', group: 'core', columns: ['id','sku','name','brand','model','category','category_id','unit','warning_qty','enabled','created_at'] },
+  { name: 'item_sku_aliases', label: '物料SKU别名', group: 'core', columns: ['id','item_id','alias_sku','active','created_at','created_by','note'] },
   { name: 'stock', label: '库存', group: 'core', columns: ['id','item_id','warehouse_id','qty','updated_at'] },
   { name: 'stock_tx', label: '库存流水', group: 'core', columns: ['id','tx_no','type','item_id','warehouse_id','qty','delta_qty','ref_type','ref_id','ref_no','unit_price','source','target','remark','created_at','created_by'] },
   { name: 'stocktake', label: '盘点单', group: 'core', columns: ['id','st_no','warehouse_id','status','created_at','created_by','applied_at'] },

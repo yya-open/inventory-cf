@@ -3,6 +3,7 @@ import { logAudit } from '../_audit';
 import { apiFail, apiOk } from '../_response';
 import { sqlNowStored } from '../_time';
 import { assertPartsStocktakeAccess, requireAuthWithDataScope } from '../services/data-scope';
+import { resolveItemsBySkuOrAlias } from '../services/item-sku-aliases';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const user = await requireAuthWithDataScope(env, request, 'admin');
@@ -18,25 +19,27 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   if (!st) return apiFail('盘点单不存在', { status: 404, errorCode: 'STOCKTAKE_NOT_FOUND' });
   if (String(st.status) !== 'DRAFT') return apiFail('盘点单已应用，不能再导入', { status: 400, errorCode: 'STOCKTAKE_NOT_DRAFT' });
 
-  const skus = Array.from(new Set(lines.map((l: any) => String(l?.sku ?? '').trim()).filter(Boolean)));
+  const skus: string[] = Array.from(new Set<string>(
+    lines.map((l: any) => String(l?.sku ?? '').trim()).filter((sku: string) => Boolean(sku))
+  ));
   if (!skus.length) return apiFail('SKU 为空', { status: 400, errorCode: 'EMPTY_SKU' });
 
-  const placeholders = skus.map(() => '?').join(',');
-  const itemRows = (await env.DB.prepare(`SELECT id, sku FROM items WHERE sku IN (${placeholders})`).bind(...skus).all<any>()).results || [];
-  const skuToId = new Map<string, number>();
-  for (const r of itemRows) skuToId.set(r.sku, r.id);
+  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, skus);
 
   const stmts: D1PreparedStatement[] = [];
   const unknown: string[] = [];
+  const alias_matches: Array<{ input_sku: string; sku: string }> = [];
 
   for (const l of lines) {
     const sku = String((l as any).sku ?? '').trim();
     if (!sku) continue;
-    const item_id = skuToId.get(sku);
-    if (!item_id) {
+    const match = skuMatches.get(sku);
+    if (!match?.id) {
       unknown.push(sku);
       continue;
     }
+    const item_id = match.id;
+    if (match.matched_by === 'alias') alias_matches.push({ input_sku: sku, sku: match.sku });
 
     const raw = (l as any).counted_qty;
     const isEmpty = raw === null || raw === undefined || (typeof raw === 'string' && raw.trim() === '');
@@ -71,5 +74,5 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }).catch(() => {})
   );
 
-  return apiOk({ updated, unknown });
+  return apiOk({ updated, unknown, alias_matches });
 });

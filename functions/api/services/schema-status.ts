@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202604270010_users_acl_version";
+export const REQUIRED_SCHEMA_VERSION = "202604270020_item_sku_aliases";
 
 type SchemaStatus = {
   ok: boolean;
@@ -65,6 +65,8 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'idx_browser_perf_log_path_duration_created', label: '浏览器路由性能复合索引', ok: indexes.has('idx_browser_perf_log_path_duration_created'), need: 'idx_browser_perf_log_path_duration_created' },
     { key: 'idx_browser_event_log_path_event_created', label: '浏览器事件复合索引', ok: indexes.has('idx_browser_event_log_path_event_created'), need: 'idx_browser_event_log_path_event_created' },
     { key: 'idx_asset_inventory_batch_kind_status_closed', label: '盘点历史批次索引', ok: indexes.has('idx_asset_inventory_batch_kind_status_closed'), need: 'idx_asset_inventory_batch_kind_status_closed' },
+    { key: 'item_sku_aliases', label: 'SKU 别名表', ok: tables.has('item_sku_aliases'), need: 'item_sku_aliases' },
+    { key: 'idx_item_sku_aliases_alias_active', label: 'SKU 别名唯一索引', ok: indexes.has('idx_item_sku_aliases_alias_active'), need: 'idx_item_sku_aliases_alias_active' },
   ];
 
   let currentVersion: string | null = null;

@@ -4,47 +4,44 @@
       <div>
         <div class="ui-page-heading__kicker">系统管理</div>
         <h1>SKU 治理</h1>
-        <div class="ui-page-heading__desc">扫描配件物料中不规范或旧格式 SKU，生成映射建议，确认后批量应用。</div>
+        <div class="ui-page-heading__desc">扫描配件物料中不规范或旧格式 SKU，生成映射建议，预检通过后批量应用。</div>
       </div>
       <div class="page-actions">
-        <el-select v-model="severity" style="width: 150px" @change="load">
+        <el-input v-model="keyword" clearable placeholder="搜索 SKU / 名称 / 分类" style="width: 220px" @keyup.enter="onSearch" />
+        <el-select v-model="severity" style="width: 130px" @change="onSearch">
           <el-option label="全部问题" value="all" />
           <el-option label="风险 SKU" value="risk" />
-          <el-option label="旧格式 SKU" value="legacy" />
+          <el-option label="旧格式" value="legacy" />
+        </el-select>
+        <el-select v-model="issueType" style="width: 150px" @change="onSearch">
+          <el-option label="全部类型" value="all" />
+          <el-option label="小写字母" value="lowercase" />
+          <el-option label="中文/特殊符号" value="special" />
+          <el-option label="长度过短" value="short" />
+          <el-option label="缺少短横线" value="no_dash" />
+          <el-option label="旧自动格式" value="legacy_format" />
         </el-select>
         <el-button :loading="loading" @click="load">扫描</el-button>
-        <el-button :disabled="!rows.length" @click="downloadCsv(rows)">下载映射表</el-button>
+        <el-button :disabled="!rows.length" @click="downloadCsv(rows)">下载本页</el-button>
         <el-button :disabled="!selectedRows.length" @click="downloadCsv(selectedRows)">下载已选</el-button>
-        <el-button type="primary" :loading="applying" :disabled="!selectedRows.length" @click="applySelected">
-          应用已选 {{ selectedRows.length || '' }}
+        <el-button type="primary" :loading="prechecking" :disabled="!selectedRows.length" @click="precheckSelected">
+          预检已选 {{ selectedRows.length || '' }}
         </el-button>
       </div>
     </div>
 
     <el-row :gutter="12" class="summary-row">
       <el-col :xs="12" :sm="6">
-        <div class="summary-tile">
-          <span>物料总数</span>
-          <strong>{{ summary.total }}</strong>
-        </div>
+        <div class="summary-tile"><span>当前筛选物料</span><strong>{{ summary.total }}</strong></div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="summary-tile">
-          <span>风险 SKU</span>
-          <strong>{{ summary.risk }}</strong>
-        </div>
+        <div class="summary-tile"><span>风险 SKU</span><strong>{{ summary.risk }}</strong></div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="summary-tile">
-          <span>旧格式</span>
-          <strong>{{ summary.legacy }}</strong>
-        </div>
+        <div class="summary-tile"><span>旧格式</span><strong>{{ summary.legacy }}</strong></div>
       </el-col>
       <el-col :xs="12" :sm="6">
-        <div class="summary-tile">
-          <span>建议治理</span>
-          <strong>{{ summary.suggested }}</strong>
-        </div>
+        <div class="summary-tile"><span>当前结果</span><strong>{{ total }}</strong></div>
       </el-col>
     </el-row>
 
@@ -53,7 +50,7 @@
       type="warning"
       :closable="false"
       show-icon
-      title="应用后只会更新物料主数据的 SKU；库存、历史出入库、盘点明细仍按物料 ID 关联，不会被删除。旧 Excel 模板需要同步替换成新 SKU。"
+      title="应用后会更新物料主数据 SKU，并自动把旧 SKU 保存为别名；库存、历史出入库、盘点明细仍按物料 ID 关联。"
     />
 
     <el-table
@@ -90,6 +87,59 @@
         </template>
       </el-table-column>
     </el-table>
+
+    <div class="pager-wrap">
+      <el-pagination
+        v-model:current-page="page"
+        v-model:page-size="pageSize"
+        :total="total"
+        background
+        layout="total, sizes, prev, pager, next, jumper"
+        :page-sizes="[20, 50, 100, 200]"
+        @current-change="load"
+        @size-change="onPageSizeChange"
+      />
+    </div>
+
+    <el-dialog v-model="precheckDialogVisible" title="SKU 治理预检报告" width="760px">
+      <div v-if="precheckReport" class="precheck-body">
+        <el-alert
+          :type="precheckReport.ok ? 'success' : 'error'"
+          :closable="false"
+          show-icon
+          :title="precheckReport.ok ? '预检通过，可以应用' : '预检未通过，请处理错误后重试'"
+        />
+        <el-row :gutter="10">
+          <el-col :span="6"><div class="precheck-tile"><span>提交</span><strong>{{ precheckReport.total }}</strong></div></el-col>
+          <el-col :span="6"><div class="precheck-tile"><span>有效</span><strong>{{ precheckReport.valid_count }}</strong></div></el-col>
+          <el-col :span="6"><div class="precheck-tile"><span>将建别名</span><strong>{{ precheckReport.alias_to_create_count }}</strong></div></el-col>
+          <el-col :span="6"><div class="precheck-tile"><span>人工修改</span><strong>{{ precheckReport.manually_changed_count }}</strong></div></el-col>
+        </el-row>
+
+        <div v-if="precheckReport.errors.length" class="precheck-section">
+          <div class="section-title">错误</div>
+          <el-table :data="precheckReport.errors" border size="small" max-height="220">
+            <el-table-column prop="code" label="代码" width="150" />
+            <el-table-column prop="message" label="说明" min-width="300" />
+          </el-table>
+        </div>
+        <div v-if="precheckReport.warnings.length" class="precheck-section">
+          <div class="section-title">提示</div>
+          <el-alert
+            v-for="warning in precheckReport.warnings"
+            :key="warning.code"
+            class="warning-line"
+            type="warning"
+            :closable="false"
+            :title="warning.message"
+          />
+        </div>
+      </div>
+      <template #footer>
+        <el-button @click="precheckDialogVisible=false">关闭</el-button>
+        <el-button type="primary" :loading="applying" :disabled="!precheckReport?.ok" @click="applyAfterPrecheck">确认应用</el-button>
+      </template>
+    </el-dialog>
   </div>
 </template>
 
@@ -97,9 +147,10 @@
 import { computed, onMounted, ref } from 'vue';
 import type { ElTable } from 'element-plus';
 import { apiGet, apiPost } from '../api/client';
-import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { ElMessage } from '../utils/el-services';
 
 type Severity = 'all' | 'risk' | 'legacy';
+type IssueType = 'all' | 'lowercase' | 'special' | 'short' | 'no_dash' | 'legacy_format';
 
 type GovernanceRow = {
   id: number;
@@ -120,13 +171,32 @@ type Summary = {
   suggested: number;
 };
 
+type PrecheckReport = {
+  ok: boolean;
+  total: number;
+  valid_count: number;
+  manually_changed_count: number;
+  alias_to_create_count: number;
+  errors: Array<{ code: string; message: string }>;
+  warnings: Array<{ code: string; message: string }>;
+};
+
 const tableRef = ref<InstanceType<typeof ElTable>>();
 const severity = ref<Severity>('all');
+const issueType = ref<IssueType>('all');
+const keyword = ref('');
 const loading = ref(false);
+const prechecking = ref(false);
 const applying = ref(false);
 const rows = ref<GovernanceRow[]>([]);
 const selectedRows = ref<GovernanceRow[]>([]);
 const summary = ref<Summary>({ total: 0, compliant: 0, risk: 0, legacy: 0, suggested: 0 });
+const page = ref(1);
+const pageSize = ref(50);
+const total = ref(0);
+const precheckDialogVisible = ref(false);
+const precheckReport = ref<PrecheckReport | null>(null);
+const precheckPayload = ref<any[]>([]);
 
 const selectedInvalidCount = computed(() => selectedRows.value.filter((row) => !isValidSku(row.target_sku)).length);
 
@@ -138,10 +208,26 @@ function onSelectionChange(selection: GovernanceRow[]) {
   selectedRows.value = selection;
 }
 
+function onSearch() {
+  page.value = 1;
+  load();
+}
+
+function onPageSizeChange() {
+  page.value = 1;
+  load();
+}
+
 async function load() {
   loading.value = true;
   try {
-    const params = new URLSearchParams({ severity: severity.value, limit: '1000' });
+    const params = new URLSearchParams({
+      severity: severity.value,
+      issue_type: issueType.value,
+      keyword: keyword.value.trim(),
+      page: String(page.value),
+      page_size: String(pageSize.value),
+    });
     const result: any = await apiGet(`/api/items/sku-governance?${params.toString()}`, { cache: 'no-store' });
     rows.value = (Array.isArray(result?.data) ? result.data : []).map((row: any) => ({
       ...row,
@@ -154,6 +240,9 @@ async function load() {
       legacy: Number(result?.summary?.legacy || 0),
       suggested: Number(result?.summary?.suggested || 0),
     };
+    total.value = Number(result?.total || 0);
+    page.value = Number(result?.page || page.value);
+    pageSize.value = Number(result?.pageSize || pageSize.value);
     selectedRows.value = [];
     tableRef.value?.clearSelection();
   } catch (e: any) {
@@ -189,32 +278,41 @@ function downloadCsv(list: GovernanceRow[]) {
   URL.revokeObjectURL(url);
 }
 
-async function applySelected() {
+function buildPayload() {
+  return selectedRows.value.map((row) => ({
+    id: row.id,
+    old_sku: row.sku,
+    new_sku: String(row.target_sku || '').trim(),
+    suggested_sku: row.suggested_sku,
+  }));
+}
+
+async function precheckSelected() {
   if (!selectedRows.value.length) return;
   if (selectedInvalidCount.value > 0) {
     ElMessage.warning('已选行里有新 SKU 格式不合法，请先修正');
     return;
   }
-
+  prechecking.value = true;
   try {
-    await ElMessageBox.confirm(
-      `确认更新 ${selectedRows.value.length} 个物料 SKU？旧 Excel 模板和外部对账表需要同步替换。`,
-      '应用 SKU 治理',
-      { type: 'warning', confirmButtonText: '应用', cancelButtonText: '取消' }
-    );
-  } catch {
-    return;
+    precheckPayload.value = buildPayload();
+    const result: any = await apiPost('/api/items/sku-governance', { action: 'precheck', items: precheckPayload.value });
+    precheckReport.value = result?.data || null;
+    precheckDialogVisible.value = true;
+  } catch (e: any) {
+    ElMessage.error(e?.message || 'SKU 治理预检失败');
+  } finally {
+    prechecking.value = false;
   }
+}
 
+async function applyAfterPrecheck() {
+  if (!precheckReport.value?.ok || !precheckPayload.value.length) return;
   applying.value = true;
   try {
-    const payload = selectedRows.value.map((row) => ({
-      id: row.id,
-      old_sku: row.sku,
-      new_sku: String(row.target_sku || '').trim(),
-    }));
-    const result: any = await apiPost('/api/items/sku-governance', { items: payload });
-    ElMessage.success(`已更新 ${Number(result?.updated || payload.length)} 个 SKU`);
+    const result: any = await apiPost('/api/items/sku-governance', { items: precheckPayload.value });
+    ElMessage.success(`已更新 ${Number(result?.updated || precheckPayload.value.length)} 个 SKU，创建 ${Number(result?.alias_created || 0)} 个旧 SKU 别名`);
+    precheckDialogVisible.value = false;
     await load();
   } catch (e: any) {
     ElMessage.error(e?.message || '应用 SKU 治理失败');
@@ -244,7 +342,8 @@ onMounted(load);
   margin-bottom: 12px;
 }
 
-.summary-tile {
+.summary-tile,
+.precheck-tile {
   border: 1px solid #e5e7eb;
   border-radius: 8px;
   background: #fff;
@@ -255,18 +354,22 @@ onMounted(load);
   min-height: 84px;
 }
 
-.summary-tile span {
+.summary-tile span,
+.precheck-tile span {
   color: #6b7280;
   font-size: 12px;
 }
 
-.summary-tile strong {
+.summary-tile strong,
+.precheck-tile strong {
   font-size: 28px;
   line-height: 1;
   color: #111827;
 }
 
-.notice {
+.notice,
+.precheck-section,
+.warning-line {
   margin-bottom: 12px;
 }
 
@@ -280,13 +383,29 @@ onMounted(load);
   flex-wrap: wrap;
 }
 
+.pager-wrap {
+  display: flex;
+  justify-content: flex-end;
+  padding-top: 12px;
+}
+
+.precheck-body {
+  display: grid;
+  gap: 12px;
+}
+
+.section-title {
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
 @media (max-width: 768px) {
   .page-actions {
     justify-content: stretch;
   }
 
   .page-actions > * {
-    width: 100%;
+    width: 100% !important;
   }
 }
 </style>

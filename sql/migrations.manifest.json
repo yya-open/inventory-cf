@@ -228,5 +228,10 @@
     "id": "202604270010_users_acl_version",
     "file": "sql/migrate_users_acl_version.sql",
     "description": "add users acl_version for explicit auth me cache consistency"
+  },
+  {
+    "id": "202604270020_item_sku_aliases",
+    "file": "sql/migrate_item_sku_aliases.sql",
+    "description": "item SKU aliases for governance migration and legacy import matching"
   }
 ]

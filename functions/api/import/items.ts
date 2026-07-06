@@ -2,6 +2,7 @@ import { json, requireAuth } from '../_auth';
 import { withErrorHandling } from '../_error';
 import { parseItemInput } from '../services/inventory';
 import { ensureItemCategorySchema, normalizeCategoryName } from '../services/item-categories';
+import { resolveItemsBySkuOrAlias } from '../services/item-sku-aliases';
 import { sqlNowStored } from '../_time';
 
 type ItemRow = {
@@ -84,12 +85,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
   }
 
-  // Batch-fetch existing items by SKU (one round-trip instead of N)
-  const skuResults = await env.DB.batch(
-    parsed.map(p =>
-      env.DB.prepare('SELECT id, enabled FROM items WHERE sku=? LIMIT 1').bind(p.input.sku)
-    )
-  );
+  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, parsed.map((p) => p.input.sku));
 
   // Build write batch (one round-trip instead of N)
   let inserted = 0;
@@ -98,7 +94,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
   for (let i = 0; i < parsed.length; i++) {
     const { input } = parsed[i];
-    const existingRow = (skuResults[i] as any)?.results?.[0];
+    const existingRow = skuMatches.get(input.sku);
     const catName = normalizeCategoryName(input.category);
     const cat = catName ? categoryMap.get(catName) : null;
     const categoryId = cat?.id ?? null;
