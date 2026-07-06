@@ -6,6 +6,7 @@ import {
   buildItemsListQuery,
   countItems,
   createItem,
+  generateItemSku,
   getItemById,
   listItems,
   parseItemInput,
@@ -37,7 +38,10 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const user = await requireAuth(env, request, 'admin');
   const body = await request.json();
   const id = body?.id ? Number(body.id) : null;
-  const input = parseItemInput(body);
+  const input = parseItemInput(body, { allowAutoSku: !id });
+  if (!id && !input.sku) {
+    input.sku = await generateItemSku(env.DB, input);
+  }
 
   const before = id ? await getItemById(env.DB, id) : null;
   await assertItemSkuUnique(env.DB, input.sku, id);
@@ -52,7 +56,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const after = entityId ? await getItemById(env.DB, entityId) : input;
   await logAudit(env.DB, request, user, id ? 'ITEM_UPDATE' : 'ITEM_CREATE', 'items', entityId, { before, after });
 
-  return Response.json({ ok: true, id: entityId });
+  return Response.json({ ok: true, id: entityId, sku: after?.sku || input.sku });
 });
 
 export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {

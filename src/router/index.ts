@@ -34,6 +34,7 @@ const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
 const SystemPerformance = () => import("../views/SystemPerformance.vue");
 const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
 const SystemDocs = () => import("../views/SystemDocs.vue");
+const SystemSkuGovernance = () => import("../views/SystemSkuGovernance.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
@@ -121,6 +122,7 @@ const router = createRouter({
         { path: "audit", component: AuditLog, meta: { role: "viewer", title: "审计日志", permission: 'audit_export' } },
         { path: "users", component: Users, meta: { role: "admin", title: "用户管理" } },
         { path: "settings", component: SystemSettings, meta: { role: "viewer", title: "系统配置", capability: 'system.settings.manage' } },
+        { path: "sku-governance", component: SystemSkuGovernance, meta: { role: "admin", title: "SKU 治理" } },
         { path: "tools", component: SystemOpsTools, meta: { role: "viewer", title: "运维工具", capability: 'system.tools.manage' } },
         { path: "release-check", component: SystemReleaseCheck, meta: { role: "admin", title: "发布前检查" } },
         { path: "performance", component: SystemPerformance, meta: { role: "viewer", title: "性能面板", capability: 'system.tools.manage' } },

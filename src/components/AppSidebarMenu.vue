@@ -133,6 +133,7 @@ const systemItems = computed<MenuItem[]>(() => [
   { index: '/system/audit', label: '审计日志', icon: markRaw(Document), visible: props.isAdmin || props.canAuditExport },
   { index: '/system/users', label: '用户管理', icon: markRaw(User), visible: props.isAdmin },
   { index: '/system/settings', label: '系统配置', icon: markRaw(Tools), visible: props.isAdmin || props.canManageSystemSettings },
+  { index: '/system/sku-governance', label: 'SKU 治理', icon: markRaw(Management), visible: props.isAdmin },
   { index: '/system/tools', label: '运维工具', icon: markRaw(Operation), visible: props.isAdmin || props.canManageSystemTools },
   { index: '/system/release-check', label: '发布前检查', icon: markRaw(FolderChecked), visible: props.isAdmin },
   { index: '/system/performance', label: '性能面板', icon: markRaw(TrendCharts), visible: props.isAdmin || props.canManageSystemTools },

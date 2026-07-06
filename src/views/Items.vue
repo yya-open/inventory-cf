@@ -178,11 +178,11 @@
       <el-form label-width="90px">
         <el-form-item
           label="SKU"
-          required
+          :required="!!form.id"
         >
           <el-input
             v-model="form.sku"
-            placeholder="如：SSD-1T-NVME"
+            placeholder="如：SSD-1T-NVME，留空可自动生成"
           />
         </el-form-item>
         <el-form-item
@@ -448,15 +448,19 @@ async function load() {
 }
 
 async function save() {
-  if (!form.sku?.trim() || !form.name?.trim()) {
-    ElMessage.warning("SKU 和 名称 为必填");
+  if (!form.name?.trim()) {
+    ElMessage.warning("名称 为必填");
+    return;
+  }
+  if (form.id && !form.sku?.trim()) {
+    ElMessage.warning("编辑时 SKU 不能为空");
     return;
   }
   try {
     saving.value = true;
-    await apiPost(`/api/items`, {
+    const result = await apiPost<{ sku?: string }>(`/api/items`, {
       id: form.id,
-      sku: form.sku.trim(),
+      sku: form.sku?.trim() || null,
       name: form.name.trim(),
       brand: form.brand?.trim() || null,
       model: form.model?.trim() || null,
@@ -464,7 +468,7 @@ async function save() {
       unit: form.unit?.trim() || "个",
       warning_qty: Number(form.warning_qty || 0),
     });
-    ElMessage.success("保存成功");
+    ElMessage.success(result?.sku ? `保存成功：SKU ${result.sku}` : "保存成功");
     dlgVisible.value = false;
     await Promise.all([load(), loadCategories(true)]);
   } catch (e: any) {

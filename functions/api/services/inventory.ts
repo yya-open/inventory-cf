@@ -1,7 +1,7 @@
 import { toSqlRange } from '../_date';
 import { throwHttpError } from '../_error';
 import { buildKeywordWhere } from '../_search';
-import { sqlBjDateTime, sqlNowStored } from '../_time';
+import { beijingDateStampCompact, sqlBjDateTime, sqlNowStored } from '../_time';
 import { resolveItemCategory } from './item-categories';
 
 export type PagedQuery = {
@@ -65,6 +65,21 @@ export type ItemInput = {
   warning_qty: number;
 };
 
+const AUTO_SKU_ALIASES: Array<{ code: string; words: string[] }> = [
+  { code: 'SSD', words: ['固态', 'SSD', 'NVME', 'M.2'] },
+  { code: 'HDD', words: ['机械硬盘', '硬盘', 'HDD'] },
+  { code: 'RAM', words: ['内存', 'MEMORY', 'RAM', 'DDR'] },
+  { code: 'CPU', words: ['CPU', '处理器'] },
+  { code: 'GPU', words: ['显卡', 'GPU'] },
+  { code: 'MB', words: ['主板', 'MOTHERBOARD'] },
+  { code: 'PSU', words: ['电源', 'PSU'] },
+  { code: 'FAN', words: ['风扇', '散热'] },
+  { code: 'CAB', words: ['线缆', '线材', '数据线', '电源线', '网线', 'HDMI', 'DP', 'VGA', 'USB'] },
+  { code: 'KEY', words: ['键盘', 'KEYBOARD'] },
+  { code: 'MOU', words: ['鼠标', 'MOUSE'] },
+  { code: 'BAT', words: ['电池', 'BATTERY'] },
+];
+
 function getPageParams(url: URL, defaultPageSize = 50, maxPageSize = 200): PagedQuery {
   const page = Math.max(1, Math.floor(Number(url.searchParams.get('page') || 1)) || 1);
   const pageSize = Math.min(maxPageSize, Math.max(20, Math.floor(Number(url.searchParams.get('page_size') || defaultPageSize)) || defaultPageSize));
@@ -77,6 +92,63 @@ function normalizeSortDir(input: string) {
 
 function normalizeKeyword(input: string | null | undefined) {
   return String(input || '').trim();
+}
+
+function normalizeSkuToken(input: string | null | undefined) {
+  return String(input || '')
+    .normalize('NFKD')
+    .toUpperCase()
+    .replace(/[^A-Z0-9]+/g, '-')
+    .replace(/^-+|-+$/g, '');
+}
+
+function escapeRegExp(input: string) {
+  return input.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
+export function buildAutoItemSkuPrefix(input: Pick<ItemInput, 'name' | 'brand' | 'model' | 'category'>) {
+  const asciiTokens = [input.name, input.model, input.brand, input.category]
+    .map(normalizeSkuToken)
+    .flatMap((part) => part.split('-'))
+    .filter((part) => part.length >= 2)
+    .slice(0, 3);
+
+  const asciiPrefix = asciiTokens.join('-').slice(0, 24).replace(/-+$/g, '');
+  if (asciiPrefix) return asciiPrefix;
+
+  const text = [input.category, input.name, input.model, input.brand]
+    .filter(Boolean)
+    .join(' ')
+    .toUpperCase();
+  const hit = AUTO_SKU_ALIASES.find((item) => item.words.some((word) => text.includes(word.toUpperCase())));
+  return hit?.code || 'PJ';
+}
+
+export function generateItemSkuFromUsed(input: Pick<ItemInput, 'name' | 'brand' | 'model' | 'category'>, usedSkus: Iterable<string>, now = new Date()) {
+  const prefix = buildAutoItemSkuPrefix(input);
+  const datePart = beijingDateStampCompact(now);
+  const base = `${prefix}-${datePart}`;
+  const used = new Set(Array.from(usedSkus || []).map((sku) => String(sku || '').trim()).filter(Boolean));
+  const re = new RegExp(`^${escapeRegExp(base)}-(\\d+)$`);
+  let maxSeq = 0;
+  for (const sku of used) {
+    const match = sku.match(re);
+    if (match) maxSeq = Math.max(maxSeq, Number(match[1]) || 0);
+  }
+
+  for (let seq = maxSeq + 1; seq < maxSeq + 1000; seq += 1) {
+    const candidate = `${base}-${String(seq).padStart(3, '0')}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${base}-${crypto.randomUUID().slice(0, 8).toUpperCase()}`;
+}
+
+export async function generateItemSku(db: D1Database, input: Pick<ItemInput, 'name' | 'brand' | 'model' | 'category'>, now = new Date()) {
+  const prefix = buildAutoItemSkuPrefix(input);
+  const datePart = beijingDateStampCompact(now);
+  const base = `${prefix}-${datePart}`;
+  const rows = await db.prepare('SELECT sku FROM items WHERE sku LIKE ? ORDER BY sku DESC LIMIT 200').bind(`${base}-%`).all<any>();
+  return generateItemSkuFromUsed(input, (rows.results || []).map((row: any) => row?.sku), now);
 }
 
 export function buildItemsListQuery(url: URL): ItemsListQuery {
@@ -115,10 +187,10 @@ export function buildItemsListQuery(url: URL): ItemsListQuery {
   };
 }
 
-export function parseItemInput(body: any): ItemInput {
+export function parseItemInput(body: any, options: { allowAutoSku?: boolean } = {}): ItemInput {
   const sku = String(body?.sku || '').trim();
   const name = String(body?.name || '').trim();
-  if (!sku || !name) {
+  if ((!sku && !options.allowAutoSku) || !name) {
     throwHttpError('sku/name 必填', 400);
   }
   return {

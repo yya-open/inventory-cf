@@ -121,6 +121,7 @@ export function getAccessibleRouteItems(user: ScopeLikeUser): AccessibleRouteIte
         { code: 'system_audit', label: '系统 / 审计日志', enabled: true },
         { code: 'system_users', label: '系统 / 用户管理', enabled: true },
         { code: 'system_settings', label: '系统 / 系统配置', enabled: true },
+        { code: 'system_sku_governance', label: '系统 / SKU 治理', enabled: true },
         { code: 'system_tools', label: '系统 / 运维工具', enabled: true },
         { code: 'system_release_check', label: '系统 / 发布前检查', enabled: true },
         { code: 'system_performance', label: '系统 / 性能面板', enabled: true },
