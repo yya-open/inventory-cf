@@ -5,6 +5,7 @@ export type ItemSkuMatch = {
   id: number;
   sku: string;
   matched_by: 'sku' | 'alias';
+  enabled?: number;
 };
 
 export async function ensureItemSkuAliasSchema(db: D1Database) {
@@ -26,7 +27,7 @@ export async function ensureItemSkuAliasSchema(db: D1Database) {
   ]);
 }
 
-export async function resolveItemsBySkuOrAlias(db: D1Database, skus: string[]) {
+export async function resolveItemsBySkuOrAlias(db: D1Database, skus: string[], options: { includeDisabledDirect?: boolean } = {}) {
   const normalized = Array.from(new Set((Array.isArray(skus) ? skus : [])
     .map((sku) => String(sku || '').trim())
     .filter(Boolean)));
@@ -35,9 +36,9 @@ export async function resolveItemsBySkuOrAlias(db: D1Database, skus: string[]) {
 
   const ph = normalized.map(() => '?').join(',');
   const directRows = (await db.prepare(
-    `SELECT sku AS input_sku, id, sku, 'sku' AS matched_by
+    `SELECT sku AS input_sku, id, sku, enabled, 'sku' AS matched_by
        FROM items
-      WHERE enabled=1 AND sku IN (${ph})`
+      WHERE ${options.includeDisabledDirect ? '' : 'enabled=1 AND '}sku IN (${ph})`
   ).bind(...normalized).all<any>()).results || [];
   for (const row of directRows as any[]) {
     const input = String(row.input_sku || '').trim();
@@ -47,6 +48,7 @@ export async function resolveItemsBySkuOrAlias(db: D1Database, skus: string[]) {
       id: Number(row.id),
       sku: String(row.sku || ''),
       matched_by: 'sku',
+      enabled: Number(row.enabled ?? 1),
     });
   }
 

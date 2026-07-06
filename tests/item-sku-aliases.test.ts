@@ -17,10 +17,11 @@ class FakeStatement {
 
   async all<T = any>() {
     if (this.sql.includes('FROM items') && this.sql.includes('sku IN')) {
+      const enabledOnly = this.sql.includes('enabled=1');
       return {
         results: this.items
-          .filter((item) => item.enabled !== 0 && this.params.includes(item.sku))
-          .map((item) => ({ input_sku: item.sku, id: item.id, sku: item.sku, matched_by: 'sku' })) as T[],
+          .filter((item) => (!enabledOnly || item.enabled !== 0) && this.params.includes(item.sku))
+          .map((item) => ({ input_sku: item.sku, id: item.id, sku: item.sku, enabled: item.enabled ?? 1, matched_by: 'sku' })) as T[],
       };
     }
     if (this.sql.includes('FROM item_sku_aliases')) {
@@ -88,5 +89,18 @@ describe('item SKU aliases', () => {
 
     expect(capturedSql).toContain('INSERT INTO item_sku_aliases');
     expect(capturedSql).not.toContain('OR IGNORE');
+  });
+
+  it('can include disabled direct SKU matches for import upserts', async () => {
+    const db = new FakeDB(
+      [{ id: 1, sku: 'SSD-1T-NVME', enabled: 0 }],
+      [],
+    );
+
+    const defaultResult = await resolveItemsBySkuOrAlias(db as any, ['SSD-1T-NVME']);
+    const importResult = await resolveItemsBySkuOrAlias(db as any, ['SSD-1T-NVME'], { includeDisabledDirect: true });
+
+    expect(defaultResult.has('SSD-1T-NVME')).toBe(false);
+    expect(importResult.get('SSD-1T-NVME')).toMatchObject({ id: 1, sku: 'SSD-1T-NVME', matched_by: 'sku' });
   });
 });

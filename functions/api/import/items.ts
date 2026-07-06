@@ -85,12 +85,13 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
   }
 
-  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, parsed.map((p) => p.input.sku));
+  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, parsed.map((p) => p.input.sku), { includeDisabledDirect: true });
 
   // Build write batch (one round-trip instead of N)
   let inserted = 0;
   let updated = 0;
   const writeStmts: D1PreparedStatement[] = [];
+  const plannedNewSkus = new Set<string>();
 
   for (let i = 0; i < parsed.length; i++) {
     const { input } = parsed[i];
@@ -113,12 +114,25 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       );
       updated += 1;
     } else {
+      const firstNewSkuWrite = !plannedNewSkus.has(input.sku);
+      plannedNewSkus.add(input.sku);
       writeStmts.push(
         env.DB.prepare(
-          `INSERT INTO items (sku, name, brand, model, category, category_id, unit, warning_qty, created_at) VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+          `INSERT INTO items (sku, name, brand, model, category, category_id, unit, warning_qty, created_at)
+           VALUES (?,?,?,?,?,?,?,?, ${sqlNowStored()})
+           ON CONFLICT(sku) DO UPDATE SET
+             name=excluded.name,
+             brand=excluded.brand,
+             model=excluded.model,
+             category=excluded.category,
+             category_id=excluded.category_id,
+             unit=excluded.unit,
+             warning_qty=excluded.warning_qty,
+             enabled=1`
         ).bind(input.sku, input.name, input.brand, input.model, categoryName, categoryId, input.unit, input.warning_qty)
       );
-      inserted += 1;
+      if (firstNewSkuWrite) inserted += 1;
+      else updated += 1;
     }
   }
 
