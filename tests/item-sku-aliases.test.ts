@@ -1,5 +1,5 @@
 import { describe, expect, it } from 'vitest';
-import { resolveItemsBySkuOrAlias } from '../functions/api/services/item-sku-aliases';
+import { aliasInsertStatement, resolveItemsBySkuOrAlias } from '../functions/api/services/item-sku-aliases';
 
 class FakeStatement {
   private params: any[] = [];
@@ -69,5 +69,24 @@ describe('item SKU aliases', () => {
     expect(result.get('CPU-20260706-001')).toMatchObject({ id: 1, sku: 'CPU-20260706-001', matched_by: 'sku' });
     expect(result.get('cpu001')).toMatchObject({ id: 1, sku: 'CPU-20260706-001', matched_by: 'alias' });
     expect(result.has('missing')).toBe(false);
+  });
+
+  it('uses a strict insert for alias preservation so conflicts cannot be ignored', () => {
+    let capturedSql = '';
+    const db = {
+      prepare(sql: string) {
+        capturedSql = sql;
+        return {
+          bind() {
+            return this;
+          },
+        };
+      },
+    };
+
+    aliasInsertStatement(db as any, { item_id: 1, alias_sku: 'cpu001' });
+
+    expect(capturedSql).toContain('INSERT INTO item_sku_aliases');
+    expect(capturedSql).not.toContain('OR IGNORE');
   });
 });

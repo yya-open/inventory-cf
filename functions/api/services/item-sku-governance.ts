@@ -186,7 +186,7 @@ export async function precheckSkuGovernanceUpdates(db: D1Database, rawItems: any
     alias_to_create_count: 0,
     errors: [] as Array<{ code: string; message: string; item?: any }>,
     warnings: [] as Array<{ code: string; message: string; item?: any }>,
-    items: [] as Array<SkuUpdateInput & { name?: string | null }>,
+    items: [] as Array<SkuUpdateInput & { name?: string | null; aliasAlreadyActive?: boolean }>,
   };
 
   if (!items.length) {
@@ -222,6 +222,31 @@ export async function precheckSkuGovernanceUpdates(db: D1Database, rawItems: any
     ? (await db.prepare(`SELECT id, sku, name FROM items WHERE enabled=1 AND id IN (${idPh})`).bind(...ids).all<any>()).results || []
     : [];
   const currentById = new Map(currentRows.map((row: any) => [Number(row.id), row]));
+  const aliasAlreadyActive = new Set<string>();
+  const changedItems = items.filter((item) => item.oldSku && item.oldSku !== item.newSku);
+  if (changedItems.length) {
+    const oldSkus = changedItems.map((item) => item.oldSku);
+    const oldSkuPh = oldSkus.map(() => '?').join(',');
+    const existingOldAliases = (await db.prepare(
+      `SELECT item_id, alias_sku FROM item_sku_aliases WHERE active=1 AND alias_sku IN (${oldSkuPh})`
+    ).bind(...oldSkus).all<any>()).results || [];
+    for (const row of existingOldAliases as any[]) {
+      const aliasSku = String(row.alias_sku || '').trim();
+      const aliasItemId = Number(row.item_id);
+      for (const item of changedItems) {
+        if (item.oldSku !== aliasSku) continue;
+        if (item.id === aliasItemId) {
+          aliasAlreadyActive.add(`${item.id}\0${item.oldSku}`);
+        } else {
+          report.errors.push({
+            code: 'old_sku_alias_conflict',
+            message: `Old SKU ${aliasSku} is already an active alias for item ${aliasItemId}`,
+            item: { ...item, alias_item_id: aliasItemId },
+          });
+        }
+      }
+    }
+  }
   for (const item of items) {
     const current = currentById.get(item.id);
     if (!current) {
@@ -232,7 +257,11 @@ export async function precheckSkuGovernanceUpdates(db: D1Database, rawItems: any
       report.errors.push({ code: 'sku_changed', message: `物料 ${item.id} 的 SKU 已变化，请刷新后重试`, item: { ...item, current_sku: current.sku } });
       continue;
     }
-    report.items.push({ ...item, name: current.name || null });
+    report.items.push({
+      ...item,
+      name: current.name || null,
+      aliasAlreadyActive: aliasAlreadyActive.has(`${item.id}\0${item.oldSku}`),
+    });
   }
 
   if (items.length) {

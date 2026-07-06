@@ -79,7 +79,7 @@ export async function resolveItemsBySkuOrAlias(db: D1Database, skus: string[]) {
 
 export function aliasInsertStatement(db: D1Database, input: { item_id: number; alias_sku: string; created_by?: string | null; note?: string | null }) {
   return db.prepare(
-    `INSERT OR IGNORE INTO item_sku_aliases (item_id, alias_sku, active, created_at, created_by, note)
+    `INSERT INTO item_sku_aliases (item_id, alias_sku, active, created_at, created_by, note)
      VALUES (?, ?, 1, ${sqlNowStored()}, ?, ?)`
   ).bind(input.item_id, input.alias_sku, input.created_by || null, input.note || null);
 }

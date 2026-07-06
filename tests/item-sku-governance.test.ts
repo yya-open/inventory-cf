@@ -58,6 +58,13 @@ class PrecheckStatement {
           .map((item) => ({ id: item.id, sku: item.sku })) as T[],
       };
     }
+    if (this.sql.includes('FROM item_sku_aliases') && !this.sql.includes('item_id NOT IN')) {
+      return {
+        results: this.aliases
+          .filter((alias) => alias.active !== 0 && this.params.includes(alias.alias_sku))
+          .map((alias) => ({ item_id: alias.item_id, alias_sku: alias.alias_sku })) as T[],
+      };
+    }
     if (this.sql.includes('FROM item_sku_aliases')) {
       const midpoint = Math.floor(this.params.length / 2);
       const newSkus = this.params.slice(0, midpoint);
@@ -148,5 +155,39 @@ describe('item SKU governance', () => {
 
     expect(report.ok).toBe(false);
     expect(report.errors.map((error) => error.code)).toContain('sku_conflict_alias');
+  });
+
+  it('prevents preserving an old SKU that is already another active item alias', async () => {
+    const db = new PrecheckDB(
+      [{ id: 1, sku: 'cpu001', name: 'CPU i5' }],
+      [{ item_id: 2, alias_sku: 'cpu001' }],
+    );
+
+    const report = await precheckSkuGovernanceUpdates(db as any, [{
+      id: 1,
+      old_sku: 'cpu001',
+      new_sku: 'CPU-20260706-001',
+      suggested_sku: 'CPU-20260706-001',
+    }]);
+
+    expect(report.ok).toBe(false);
+    expect(report.errors.map((error) => error.code)).toContain('old_sku_alias_conflict');
+  });
+
+  it('marks an old SKU alias that is already active for the same item as preserved', async () => {
+    const db = new PrecheckDB(
+      [{ id: 1, sku: 'cpu001', name: 'CPU i5' }],
+      [{ item_id: 1, alias_sku: 'cpu001' }],
+    );
+
+    const report = await precheckSkuGovernanceUpdates(db as any, [{
+      id: 1,
+      old_sku: 'cpu001',
+      new_sku: 'CPU-20260706-001',
+      suggested_sku: 'CPU-20260706-001',
+    }]);
+
+    expect(report.ok).toBe(true);
+    expect(report.items[0]).toMatchObject({ aliasAlreadyActive: true });
   });
 });

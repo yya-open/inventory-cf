@@ -44,13 +44,13 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   }
 
   await ensureItemSkuAliasSchema(env.DB);
-  const items = precheck.items as Array<SkuUpdateInput & { name?: string | null }>;
+  const items = precheck.items as Array<SkuUpdateInput & { name?: string | null; aliasAlreadyActive?: boolean }>;
   const stmts: D1PreparedStatement[] = [];
   for (const item of items) {
     stmts.push(env.DB.prepare(
       `UPDATE items SET sku=? WHERE id=? AND sku=? AND enabled=1`
     ).bind(item.newSku, item.id, item.oldSku));
-    if (item.oldSku && item.oldSku !== item.newSku) {
+    if (item.oldSku && item.oldSku !== item.newSku && !item.aliasAlreadyActive) {
       stmts.push(aliasInsertStatement(env.DB, {
         item_id: item.id,
         alias_sku: item.oldSku,
@@ -58,6 +58,18 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         note: 'SKU治理自动保留旧SKU',
       }));
     }
+  }
+
+  const aliasGuardItems = items.filter((item) => item.oldSku && item.oldSku !== item.newSku);
+  if (aliasGuardItems.length) {
+    const aliasGuardWhere = aliasGuardItems.map(() => '(item_id=? AND alias_sku=? AND active=1)').join(' OR ');
+    stmts.push(env.DB.prepare(
+      `SELECT CASE
+         WHEN (SELECT COUNT(*) FROM item_sku_aliases WHERE ${aliasGuardWhere}) = ?
+         THEN 1
+         ELSE json_extract('[]', '$[')
+       END AS ok`
+    ).bind(...aliasGuardItems.flatMap((item) => [item.id, item.oldSku]), aliasGuardItems.length));
   }
 
   const guardWhere = items.map(() => '(id=? AND sku=?)').join(' OR ');
