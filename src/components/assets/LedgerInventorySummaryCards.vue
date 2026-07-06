@@ -2,34 +2,42 @@
   <div class="inventory-summary-row">
     <button type="button" class="summary-card" :class="{ active: inventoryStatus === '' }" @click="emit('select', '')">
       <span class="summary-label">全部设备</span>
-      <strong>{{ summary.total }}</strong>
+      <strong>{{ safeSummary.total }}</strong>
     </button>
     <button type="button" class="summary-card checked" :class="{ active: inventoryStatus === 'CHECKED_OK' }" @click="emit('select', 'CHECKED_OK')">
       <span class="summary-label">已盘</span>
-      <strong>{{ summary.checked_ok }}</strong>
+      <strong>{{ safeSummary.checked_ok }}</strong>
     </button>
     <button type="button" class="summary-card issue" :class="{ active: inventoryStatus === 'CHECKED_ISSUE' }" @click="emit('select', 'CHECKED_ISSUE')">
       <span class="summary-label">异常</span>
-      <strong>{{ summary.checked_issue }}</strong>
+      <strong>{{ safeSummary.checked_issue }}</strong>
     </button>
     <button type="button" class="summary-card unchecked" :class="{ active: inventoryStatus === 'UNCHECKED' }" @click="emit('select', 'UNCHECKED')">
       <span class="summary-label">未盘</span>
-      <strong>{{ summary.unchecked }}</strong>
+      <strong>{{ safeSummary.unchecked }}</strong>
     </button>
   </div>
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import type { AssetInventorySummary } from '../../types/assets';
 
-defineProps<{
+const props = defineProps<{
   inventoryStatus: string;
-  summary: AssetInventorySummary;
+  summary?: Partial<AssetInventorySummary> | null;
 }>();
 
 const emit = defineEmits<{
   select: [string];
 }>();
+
+const safeSummary = computed(() => ({
+  total: Number(props.summary?.total || 0),
+  checked_ok: Number(props.summary?.checked_ok || 0),
+  checked_issue: Number(props.summary?.checked_issue || 0),
+  unchecked: Number(props.summary?.unchecked || 0),
+}));
 </script>
 
 <style scoped>

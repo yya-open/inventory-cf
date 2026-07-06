@@ -658,7 +658,7 @@ const {
     const f = filters || currentFiltersForList();
     if (!shouldLoadInventorySummary(f)) return;
     if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('pc');
-    inventorySummary.value = await getPcAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
+    return await getPcAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
   },
   currentFiltersForList,
   runWithoutAutoSearch,

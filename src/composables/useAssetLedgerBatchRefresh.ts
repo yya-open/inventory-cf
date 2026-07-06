@@ -74,14 +74,15 @@ export function useAssetLedgerBatchRefresh(options: InventoryBatchRefreshOptions
 
   async function refreshInventorySummary(filters: any = currentFiltersForList()) {
     if (!shouldLoadInventorySummary(filters)) {
-      inventorySummary.value = { total: 0, normal: 0, profit: 0, loss: 0, pending: 0 } as any;
+      inventorySummary.value = { total: 0, checked_ok: 0, checked_issue: 0, unchecked: 0 } as any;
       return;
     }
     try {
       if (hasActiveInventoryBatch.value) {
         invalidateAssetInventorySummaryCache(assetType);
       }
-      inventorySummary.value = await refreshSummaryFn(filters);
+      const next = await refreshSummaryFn(filters);
+      if (next) inventorySummary.value = next;
     } catch (error) {
       console.warn(`${assetType} inventory summary failed`, error);
     }

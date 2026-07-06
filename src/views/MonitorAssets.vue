@@ -767,7 +767,7 @@ const {
     const f = filters || currentFiltersForList();
     if (!shouldLoadInventorySummary(f)) return;
     if (hasActiveInventoryBatch.value) invalidateAssetInventorySummaryCache('monitor');
-    inventorySummary.value = await getMonitorAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
+    return await getMonitorAssetInventorySummary(buildInventorySummaryFilters(f), undefined, { force: hasActiveInventoryBatch.value });
   },
   currentFiltersForList,
   runWithoutAutoSearch,
