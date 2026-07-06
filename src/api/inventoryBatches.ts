@@ -64,6 +64,11 @@ export function normalizeInventoryBatchPayload(payload?: Partial<InventoryBatchP
 const INVENTORY_BATCH_CLIENT_CACHE_TTL_MS = 15 * 60_000;
 const inventoryBatchClientCache = new Map<InventoryBatchKind, { expiresAt: number; value: InventoryBatchPayload }>();
 const inventoryBatchClientPending = new Map<InventoryBatchKind, Promise<InventoryBatchPayload>>();
+const inventoryBatchClientCacheVersion = new Map<InventoryBatchKind, number>();
+
+function getInventoryBatchClientCacheVersion(kind: InventoryBatchKind) {
+  return Number(inventoryBatchClientCacheVersion.get(kind) || 0);
+}
 
 function readInventoryBatchClientCache(kind: InventoryBatchKind) {
   const hit = inventoryBatchClientCache.get(kind);
@@ -84,10 +89,13 @@ export function invalidateInventoryBatchClientCache(kind?: InventoryBatchKind | 
   if (kind) {
     inventoryBatchClientCache.delete(kind);
     inventoryBatchClientPending.delete(kind);
+    inventoryBatchClientCacheVersion.set(kind, getInventoryBatchClientCacheVersion(kind) + 1);
     return;
   }
   inventoryBatchClientCache.clear();
   inventoryBatchClientPending.clear();
+  inventoryBatchClientCacheVersion.set('pc', getInventoryBatchClientCacheVersion('pc') + 1);
+  inventoryBatchClientCacheVersion.set('monitor', getInventoryBatchClientCacheVersion('monitor') + 1);
 }
 
 export async function fetchInventoryBatch(kind: InventoryBatchKind, options: { force?: boolean } = {}) {
@@ -97,8 +105,13 @@ export async function fetchInventoryBatch(kind: InventoryBatchKind, options: { f
     const pending = inventoryBatchClientPending.get(kind);
     if (pending) return pending;
   }
+  const requestVersion = getInventoryBatchClientCacheVersion(kind);
   const task = apiGetData(`/api/asset-inventory-batch?kind=${encodeURIComponent(kind)}`, inventoryBatchPayloadSchema)
-    .then((result) => writeInventoryBatchClientCache(kind, normalizeInventoryBatchPayload(result)))
+    .then((result) => {
+      const payload = normalizeInventoryBatchPayload(result);
+      if (getInventoryBatchClientCacheVersion(kind) !== requestVersion) return payload;
+      return writeInventoryBatchClientCache(kind, payload);
+    })
     .finally(() => {
       if (inventoryBatchClientPending.get(kind) === task) inventoryBatchClientPending.delete(kind);
     });

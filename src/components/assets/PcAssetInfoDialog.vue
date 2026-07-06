@@ -144,7 +144,7 @@ async function loadHistoryIfNeeded(options: { force?: boolean } = {}) {
 
 watch(() => [props.visible, props.row?.id, props.row?.updated_at], (next, previous) => {
   const assetId = Number(props.row?.id || 0);
-  const opened = Boolean(next[0]) && !Boolean(previous?.[0]);
+  const opened = Boolean(next[0]) && !previous?.[0];
   const changed = next[1] !== previous?.[1] || next[2] !== previous?.[2];
   if (props.visible && assetId && (opened || changed || historyState.requestedId !== assetId)) seedHistoryFromRow(assetId);
   void loadHistoryIfNeeded({ force: opened || changed });

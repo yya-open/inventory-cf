@@ -520,9 +520,10 @@ async function confirmStartBatch(name: string) {
   try {
     batchBusy.value = true;
     const result: any = await executeInventoryBatchStart('monitor', String(name || startBatchSuggestedName.value), { clearPreviousLogs: true });
-    const cleared = Number(result?.cleanup?.deleted || 0);
-    if (result?.data) {
-      applyInventoryBatchPayload({ active: result.data, latest: result.data, recent: inventoryBatch.value.recent || [] });
+    const cleared = Number(result?.deletedLogs || result?.cleanup?.deleted || 0);
+    const batch = result?.batch || result?.data || null;
+    if (batch) {
+      applyInventoryBatchPayload({ active: batch, latest: batch, recent: inventoryBatch.value.recent || [] });
     }
     startBatchVisible.value = false;
     const successMessage = cleared > 0
@@ -586,8 +587,9 @@ async function confirmCloseActiveBatch() {
   try {
     batchBusy.value = true;
     const result: any = await executeInventoryBatchClose('monitor', active.id);
-    if (result?.data) {
-      applyInventoryBatchPayload({ active: null, latest: result.data, recent: inventoryBatch.value.active?.id ? [inventoryBatch.value.active, ...(inventoryBatch.value.recent || [])] : (inventoryBatch.value.recent || []) });
+    const batch = result?.batch || result?.data || null;
+    if (batch) {
+      applyInventoryBatchPayload({ active: null, latest: batch, recent: inventoryBatch.value.active?.id ? [inventoryBatch.value.active, ...(inventoryBatch.value.recent || [])] : (inventoryBatch.value.recent || []) });
     }
     closeBatchVisible.value = false;
     ElMessage.success(snapshotTaskMessage('显示器'));

@@ -84,7 +84,34 @@ describe('resolvePartsWarehouseId', () => {
       { id: 8, name: '主仓' },
     ]);
 
-    await expect(resolvePartsWarehouseId(db as any, partsScope, 999)).resolves.toBe(8);
+    await expect(resolvePartsWarehouseId(db as any, partsScope, null)).resolves.toBe(8);
+  });
+
+  it('rejects unknown explicit warehouse id instead of falling back', async () => {
+    const db = new FakeDB([
+      { id: 1, name: '电脑仓' },
+      { id: 8, name: '主仓' },
+    ]);
+
+    await expect(resolvePartsWarehouseId(db as any, partsScope, 999)).resolves.toBe(-1);
+  });
+
+  it('rejects non-parts warehouse id even when user scope is all', async () => {
+    const db = new FakeDB([
+      { id: 1, name: '配件仓' },
+      { id: 2, name: '电脑仓' },
+    ]);
+
+    await expect(resolvePartsWarehouseId(db as any, normalizeUserDataScope('all', null, null), 2)).resolves.toBe(-1);
+  });
+
+  it('rejects non-parts warehouse id when department scope has no warehouse restriction', async () => {
+    const db = new FakeDB([
+      { id: 1, name: '配件仓' },
+      { id: 3, name: '显示器仓' },
+    ]);
+
+    await expect(resolvePartsWarehouseId(db as any, normalizeUserDataScope('department', '研发部', null), 3)).resolves.toBe(-1);
   });
 });
 

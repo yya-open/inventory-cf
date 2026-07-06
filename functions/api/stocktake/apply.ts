@@ -24,17 +24,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     return apiFail('盘点单状态异常，无法应用', { status: 409, errorCode: 'STOCKTAKE_INVALID_STATUS' });
   }
 
-  if (status === 'DRAFT') {
-    const up = await env.DB.prepare(`UPDATE stocktake SET status='APPLYING' WHERE id=? AND status='DRAFT'`).bind(st_id).run();
-    if ((up as any)?.meta?.changes !== 1) {
-      const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
-      if (String(cur?.status) === 'APPLIED') {
-        return apiFail('盘点单已应用', { status: 409, errorCode: 'STOCKTAKE_ALREADY_APPLIED' });
-      }
-      return apiFail('盘点单状态已变化，请刷新后重试', { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
-    }
-  }
-
   const previewRow = await env.DB.prepare(
     `SELECT
        COUNT(*) AS counted_rows,
@@ -58,6 +47,17 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       status,
       ...preview,
     });
+  }
+
+  if (status === 'DRAFT') {
+    const up = await env.DB.prepare(`UPDATE stocktake SET status='APPLYING' WHERE id=? AND status='DRAFT'`).bind(st_id).run();
+    if ((up as any)?.meta?.changes !== 1) {
+      const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
+      if (String(cur?.status) === 'APPLIED') {
+        return apiFail('盘点单已应用', { status: 409, errorCode: 'STOCKTAKE_ALREADY_APPLIED' });
+      }
+      return apiFail('盘点单状态已变化，请刷新后重试', { status: 409, errorCode: 'STOCKTAKE_STATUS_CHANGED' });
+    }
   }
 
   let adjusted = 0;
@@ -119,6 +119,21 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       for (let k = 0; k < res.length; k += 3) {
         if (((res[k + 2] as any)?.meta?.changes || 0) > 0) adjusted += 1;
       }
+    }
+  }
+
+  const expectedAdjusted = Number(preview.adjusted_rows || 0);
+  if (expectedAdjusted > 0) {
+    const appliedRow = await env.DB.prepare(
+      `SELECT COUNT(*) AS c
+       FROM stock_tx
+       WHERE ref_type='STOCKTAKE'
+         AND ref_id=?
+         AND warehouse_id=?`
+    ).bind(st_id, warehouseId).first<any>();
+    const appliedCount = Number(appliedRow?.c || 0);
+    if (appliedCount < expectedAdjusted) {
+      return apiFail('盘点调整未全部完成，请检查库存是否被并发修改后重试', { status: 409, errorCode: 'STOCKTAKE_APPLY_NOT_FINALIZED', meta: { expected_adjusted: expectedAdjusted, applied_adjusted: appliedCount } });
     }
   }
 

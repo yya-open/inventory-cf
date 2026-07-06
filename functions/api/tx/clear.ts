@@ -52,14 +52,12 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
   }
 
-  // Optional warehouse filter (when provided, limits deletion to that warehouse)
-  if (body.warehouse_id && Number.isFinite(Number(body.warehouse_id))) {
-    const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, actor, Number(body.warehouse_id), '出入库明细清理');
-    wh.push("warehouse_id=?");
-    binds.push(allowedWarehouseId);
-  } else {
-    await assertPartsWarehouseAccess(env.DB, actor, 1, '出入库明细清理');
-  }
+  const requestedWarehouseId = body.warehouse_id && Number.isFinite(Number(body.warehouse_id))
+    ? Number(body.warehouse_id)
+    : null;
+  const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, actor, requestedWarehouseId, '出入库明细清理');
+  wh.push("warehouse_id=?");
+  binds.push(allowedWarehouseId);
 
   const where = wh.length ? `WHERE ${wh.join(" AND ")}` : "";
   const sql = `DELETE FROM stock_tx ${where}`;
@@ -71,8 +69,8 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     mode,
     filters:
       mode === "all"
-        ? null
-        : { type: body.type, item_id: body.item_id, warehouse_id: body.warehouse_id, date_from: body.date_from, date_to: body.date_to },
+        ? { warehouse_id: allowedWarehouseId }
+        : { type: body.type, item_id: body.item_id, warehouse_id: allowedWarehouseId, date_from: body.date_from, date_to: body.date_to },
     deleted,
   }).catch(() => {}));
   return Response.json({ ok: true, data: { deleted } });

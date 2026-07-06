@@ -37,4 +37,39 @@ describe('inventory batch store', async () => {
     expect(store.status.value).toBe('error');
     expect(store.error.value).toBe(error);
   });
+
+  it('does not let an older refresh overwrite a newer applied payload', async () => {
+    let resolveFetch: (value: any) => void = () => {};
+    fetchInventoryBatch.mockReturnValueOnce(new Promise((resolve) => {
+      resolveFetch = resolve;
+    }));
+
+    const store = useInventoryBatchStore('pc');
+    const pendingRefresh = store.refresh({ force: true });
+    store.applyPayload({ active: { id: 2 }, latest: { id: 2 }, recent: [] });
+
+    resolveFetch({ active: null, latest: null, recent: [] });
+    await pendingRefresh;
+
+    expect(store.status.value).toBe('ready');
+    expect(store.payload.value.active).toEqual({ id: 2 });
+    expect(store.payload.value.latest).toEqual({ id: 2 });
+  });
+
+  it('keeps reset state when an older refresh resolves afterward', async () => {
+    let resolveFetch: (value: any) => void = () => {};
+    fetchInventoryBatch.mockReturnValueOnce(new Promise((resolve) => {
+      resolveFetch = resolve;
+    }));
+
+    const store = useInventoryBatchStore('pc');
+    const pendingRefresh = store.refresh({ force: true });
+    store.reset();
+
+    resolveFetch({ active: { id: 3 }, latest: { id: 3 }, recent: [] });
+    await pendingRefresh;
+
+    expect(store.status.value).toBe('idle');
+    expect(store.payload.value).toEqual({ active: null, latest: null, recent: [] });
+  });
 });

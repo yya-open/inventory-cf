@@ -9,6 +9,7 @@ type BatchStoreState = {
   error: Ref<unknown | null>;
   lastLoadedAt: Ref<number>;
   inFlight: Promise<InventoryBatchPayload> | null;
+  mutationVersion: number;
 };
 
 const storeMap = new Map<InventoryBatchKind, BatchStoreState>();
@@ -26,6 +27,7 @@ function ensureStore(kind: InventoryBatchKind): BatchStoreState {
     error: ref<unknown | null>(null),
     lastLoadedAt: ref(0),
     inFlight: null,
+    mutationVersion: 0,
   };
   storeMap.set(kind, state);
   return state;
@@ -44,8 +46,12 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
       return state.payload.value;
     }
     state.status.value = options.silent && hasData ? 'refreshing' : 'loading';
+    const requestVersion = state.mutationVersion;
     const request = fetchInventoryBatch(kind, { force: options.force })
       .then((next) => {
+        if (state.mutationVersion !== requestVersion) {
+          return state.payload.value;
+        }
         state.payload.value = normalizeInventoryBatchPayload(next);
         state.error.value = null;
         state.lastLoadedAt.value = Date.now();
@@ -53,6 +59,9 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
         return state.payload.value;
       })
       .catch((error) => {
+        if (state.mutationVersion !== requestVersion) {
+          return state.payload.value;
+        }
         state.error.value = error;
         state.status.value = 'error';
         throw error;
@@ -65,6 +74,7 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
   }
 
   function applyPayload(next: Partial<InventoryBatchPayload> | InventoryBatchPayload | null | undefined) {
+    state.mutationVersion += 1;
     state.payload.value = normalizeInventoryBatchPayload(next as InventoryBatchPayload);
     state.error.value = null;
     state.lastLoadedAt.value = Date.now();
@@ -82,6 +92,7 @@ export function useInventoryBatchStore(kind: InventoryBatchKind) {
     state.lastLoadedAt.value = 0;
     state.status.value = 'idle';
     state.inFlight = null;
+    state.mutationVersion += 1;
   }
 
   return {

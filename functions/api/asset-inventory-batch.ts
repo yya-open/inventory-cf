@@ -16,9 +16,14 @@ type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_
 
 const INVENTORY_BATCH_CACHE_TTL_MS = 5 * 60_000;
 const inventoryBatchGetCache = new Map<string, { expiresAt: number; data: any }>();
+const inventoryBatchCacheVersion = new Map<string, number>();
 
 function inventoryBatchCacheKey(kind: AssetInventoryKind) {
   return `batch:${kind}`;
+}
+
+function getInventoryBatchCacheVersion(kind: AssetInventoryKind) {
+  return Number(inventoryBatchCacheVersion.get(inventoryBatchCacheKey(kind)) || 0);
 }
 
 function readInventoryBatchCache(kind: AssetInventoryKind) {
@@ -38,10 +43,14 @@ function writeInventoryBatchCache(kind: AssetInventoryKind, data: any) {
 
 function invalidateInventoryBatchCache(kind?: AssetInventoryKind | null) {
   if (kind) {
-    inventoryBatchGetCache.delete(inventoryBatchCacheKey(kind));
+    const key = inventoryBatchCacheKey(kind);
+    inventoryBatchGetCache.delete(key);
+    inventoryBatchCacheVersion.set(key, getInventoryBatchCacheVersion(kind) + 1);
     return;
   }
   inventoryBatchGetCache.clear();
+  inventoryBatchCacheVersion.set(inventoryBatchCacheKey('pc'), getInventoryBatchCacheVersion('pc') + 1);
+  inventoryBatchCacheVersion.set(inventoryBatchCacheKey('monitor'), getInventoryBatchCacheVersion('monitor') + 1);
 }
 
 export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
@@ -51,7 +60,11 @@ export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
   const kind = parseKind(url.searchParams.get('kind'));
   const cached = readInventoryBatchCache(kind);
   if (cached) return apiOk(cached);
-  const payload = writeInventoryBatchCache(kind, await getInventoryBatchDomainSnapshot(env.DB, kind));
+  const requestVersion = getInventoryBatchCacheVersion(kind);
+  const payload = await getInventoryBatchDomainSnapshot(env.DB, kind);
+  if (getInventoryBatchCacheVersion(kind) === requestVersion) {
+    writeInventoryBatchCache(kind, payload);
+  }
   return apiOk(payload);
 });
 
@@ -66,6 +79,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       invalidateInventoryBatchCache(kind);
       const clearPreviousLogs = Boolean(body?.clear_previous_logs);
       const { batch, deletedLogs } = await startInventoryBatchWorkflow(env.DB, kind, actor.username || null, { name: body?.name, clearPreviousLogs });
+      invalidateInventoryBatchCache(kind);
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_START', 'asset_inventory_batch', batch?.id || null, {
         kind,
         name: batch?.name || null,
@@ -79,6 +93,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       invalidateInventoryBatchCache(kind);
       if (!env.BACKUP_BUCKET) return apiFail('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。', { status: 500 });
       const workflow = await closeInventoryBatchWorkflow(env.DB, kind, { id: actor.id, username: actor.username }, env.BACKUP_BUCKET, { batchId: Number(body?.id || body?.batch_id || 0) || null });
+      invalidateInventoryBatchCache(kind);
       if (workflow.reused) {
         return apiOk(workflow.batch, {
           message: workflow.existingStatus === 'success'

@@ -77,11 +77,10 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   let success = 0;
   let duplicated = 0;
   const errors: { row: number; message: string }[] = [];
-  const createdAssetIds: number[] = [];
 
   // 收集需要执行的语句
-  const statements: D1PreparedStatement[] = [];
   const auditRecords: Array<{ no: string; data: any }> = [];
+  const processedSerials = new Set<string>();
 
   for (let i = 0; i < items.length; i++) {
     try {
@@ -100,6 +99,10 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       const model = must(it?.model, '型号', 160);
 
       // 检查序列号重复
+      if (processedSerials.has(serial_no)) {
+        throw new Error('本次导入中存在重复序列号');
+      }
+      processedSerials.add(serial_no);
       const existingAsset = existingSerialMap.get(serial_no);
       const manufacture_date = assertDateText(must(it?.manufacture_date, '出厂时间', 40), '出厂时间');
       const warranty_end = assertDateText(optional(it?.warranty_end, 40), '保修到期');
@@ -115,58 +118,60 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       if (existingAsset?.id) {
         // 更新已存在的资产
         const assetId = Number(existingAsset.id);
-        statements.push(
+        const statements = [
           env.DB.prepare(
             `UPDATE pc_assets
              SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
                  disk_capacity=?, memory_size=?, remark=?, search_text_norm=?, status='IN_STOCK', updated_at=${sqlNowStored()}
              WHERE id=?`
-          ).bind(brand, serial_no, model, manufacture_date, warranty_end, manufactureTs, warrantyEndTs, disk_capacity, memory_size, remark, searchText, assetId)
-        );
+          ).bind(brand, serial_no, model, manufacture_date, warranty_end, manufactureTs, warrantyEndTs, disk_capacity, memory_size, remark, searchText, assetId),
 
         // 插入入库记录
-        statements.push(
           env.DB.prepare(
             `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by, created_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-          ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username)
-        );
+          ).bind(no, assetId, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username),
 
         // 更新最新状态
-        statements.push(
           env.DB.prepare(`DELETE FROM pc_asset_latest_state WHERE asset_id=?`).bind(assetId),
           env.DB.prepare(
             `INSERT INTO pc_asset_latest_state (asset_id, last_in_id, updated_at)
              VALUES (?, (SELECT id FROM pc_in WHERE in_no=? LIMIT 1), ${sqlNowStored()})`
-          ).bind(assetId, no)
-        );
+          ).bind(assetId, no),
+        ];
+        await t.measure('batch_execute_row', () => env.DB.batch(statements));
 
-        createdAssetIds.push(assetId);
         auditRecords.push({ no, data: { asset_id: assetId, brand, serial_no, model, manufacture_date } });
       } else {
         // 创建新资产
-        statements.push(
+        const statements = [
           env.DB.prepare(
             `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
-          ).bind(brand, serial_no, model, manufacture_date, warranty_end, manufactureTs, warrantyEndTs, disk_capacity, memory_size, remark, searchText)
-        );
+          ).bind(brand, serial_no, model, manufacture_date, warranty_end, manufactureTs, warrantyEndTs, disk_capacity, memory_size, remark, searchText),
 
-        // 插入入库记录（使用 last_insert_rowid 获取 asset_id）
-        statements.push(
+        // 插入入库记录
           env.DB.prepare(
             `INSERT INTO pc_in (in_no, asset_id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, created_by, created_at)
-             VALUES (?, last_insert_rowid(), ?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
-          ).bind(no, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username)
-        );
+             VALUES (
+               ?,
+               (SELECT id FROM pc_assets WHERE UPPER(TRIM(serial_no))=? LIMIT 1),
+               ?,?,?,?,?,?,?,?,?,
+               ${sqlNowStored()}
+             )`
+          ).bind(no, serial_no, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, user.username),
 
         // 更新最新状态
-        statements.push(
           env.DB.prepare(
             `INSERT INTO pc_asset_latest_state (asset_id, last_in_id, updated_at)
-             VALUES (last_insert_rowid(), (SELECT id FROM pc_in WHERE in_no=? LIMIT 1), ${sqlNowStored()})`
-          ).bind(no)
-        );
+             VALUES (
+               (SELECT asset_id FROM pc_in WHERE in_no=? LIMIT 1),
+               (SELECT id FROM pc_in WHERE in_no=? LIMIT 1),
+               ${sqlNowStored()}
+             )`
+          ).bind(no, no),
+        ];
+        await t.measure('batch_execute_row', () => env.DB.batch(statements));
 
         auditRecords.push({ no, data: { brand, serial_no, model, manufacture_date } });
       }
@@ -177,17 +182,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
   }
 
-  // 批量执行所有语句
-  if (statements.length > 0) {
-    await t.measure('batch_execute', async () => {
-      // 分批执行，每批最多 100 条
-      const batchSize = 100;
-      for (let i = 0; i < statements.length; i += batchSize) {
-        const batch = statements.slice(i, i + batchSize);
-        await env.DB.batch(batch);
-      }
-    });
-
+  if (success > duplicated) {
     // 同步字典计数
     await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']).catch(() => {});
 

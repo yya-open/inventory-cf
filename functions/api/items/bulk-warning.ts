@@ -14,14 +14,14 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const delta = Number(body?.delta);
 
   if (!item_ids.length) return Response.json({ ok: false, message: "item_ids 不能为空" }, { status: 400 });
-  await assertPartsWarehouseAccess(env.DB, user, warehouse_id, '预警阈值批量设置');
+  const allowedWarehouseId = await assertPartsWarehouseAccess(env.DB, user, warehouse_id, '预警阈值批量设置');
   if (mode === "set") {
     if (!Number.isFinite(warning_qty) || warning_qty < 0) return Response.json({ ok: false, message: "warning_qty 必须是 >=0 的数字" }, { status: 400 });
   } else if (mode === "add") {
     if (!Number.isFinite(delta)) return Response.json({ ok: false, message: "delta 必须是数字" }, { status: 400 });
   } else if (mode === "qty_plus") {
     if (!Number.isFinite(delta) || delta < 0) return Response.json({ ok: false, message: "delta 必须是 >=0 的数字" }, { status: 400 });
-    if (!Number.isFinite(warehouse_id) || warehouse_id <= 0) return Response.json({ ok: false, message: "warehouse_id 不合法" }, { status: 400 });
+    if (!Number.isFinite(allowedWarehouseId) || allowedWarehouseId <= 0) return Response.json({ ok: false, message: "warehouse_id 不合法" }, { status: 400 });
   } else {
     return Response.json({ ok: false, message: "mode 不支持" }, { status: 400 });
   }
@@ -48,7 +48,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       )
       WHERE id IN (${placeholders})
     `;
-    binds = [warehouse_id, delta, ...item_ids];
+    binds = [allowedWarehouseId, delta, ...item_ids];
   }
 
   const r = await env.DB.prepare(sql).bind(...binds).run();

@@ -240,16 +240,17 @@ export async function assertPartsStocktakeAccess(db: D1Database, scope: UserData
 
 export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null) {
   const required = getRequiredWarehouses(scope);
-  if (!required) return Number(requestedWarehouseId || 1) || 1;
-  if (!required.includes('配件仓')) {
+  if (required && !required.includes('配件仓')) {
     return -1;
   }
-  const requested = Number(requestedWarehouseId || 1) || 1;
+  const requested = Number(requestedWarehouseId || 0) || 0;
   if (requested > 0) {
     const row = await db.prepare(`SELECT id, name FROM warehouses WHERE id=?`).bind(requested).first<any>().catch(() => null);
     if (row) {
       const normalized = normalizeWarehouseScopeValue(row?.name);
       if (normalized === '配件仓') return Number(row.id || requested);
+      if (requested !== 1) return -1;
+    } else if (requested !== 1) {
       return -1;
     }
   }

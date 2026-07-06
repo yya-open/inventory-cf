@@ -87,6 +87,25 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       }
     }
 
+    const expectedReversed = rows.length;
+    if (expectedReversed > 0) {
+      const reversedRow = await env.DB.prepare(
+        `SELECT COUNT(*) AS c
+         FROM stock_tx
+         WHERE ref_type='STOCKTAKE_ROLLBACK'
+           AND ref_id=?
+           AND warehouse_id=?`
+      ).bind(st_id, warehouseId).first<any>();
+      const reversedCount = Number(reversedRow?.c || 0);
+      if (reversedCount < expectedReversed) {
+        return apiFail('盘点撤销未全部完成，请检查库存是否被并发修改后重试', {
+          status: 409,
+          errorCode: 'STOCKTAKE_ROLLBACK_NOT_FINALIZED',
+          meta: { expected_reversed: expectedReversed, applied_reversed: reversedCount },
+        });
+      }
+    }
+
     const done = await env.DB.prepare(`UPDATE stocktake SET status='DRAFT', applied_at=NULL WHERE id=? AND status='ROLLING'`).bind(st_id).run();
     if ((done as any)?.meta?.changes !== 1) {
       const cur = await env.DB.prepare(`SELECT status FROM stocktake WHERE id=?`).bind(st_id).first<any>();
