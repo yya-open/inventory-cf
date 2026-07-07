@@ -123,7 +123,7 @@ export async function setUserDataScope(db: D1Database, userId: number, type: str
 
 export async function requireAuthWithDataScope(env: { DB: D1Database; JWT_SECRET?: string }, request: Request, minRole: 'viewer' | 'operator' | 'admin' = 'viewer') {
   const user = await requireAuth(env as any, request, minRole);
-  const loadScope = () => getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null }));
+  const loadScope = () => getUserDataScope(env.DB, user.id);
   const timing = (env as any)?.__timing;
   const scope = timing?.measure ? await timing.measure('data_scope', loadScope) : await loadScope();
   return Object.assign(user, scope) as ScopedUser;

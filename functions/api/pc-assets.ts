@@ -1,4 +1,3 @@
-import { requireAuth } from '../_auth';
 import { throwHttpError, withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
@@ -129,7 +128,7 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
 });
 
 export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
-  const user = await requireAuth(env, request, 'admin');
+  const user = await requireAuthWithDataScope(env, request, 'admin');
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
   const url = new URL(request.url);
@@ -144,6 +143,7 @@ export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: s
   const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
   const asset = await getAssetById(env.DB, 'pc', id);
   if (!asset) throwHttpError('电脑台账不存在或已删除', 404);
+  await assertPcAssetDataScopeAccess(env.DB, user, id, '电脑台账删除');
 
   if (previewOnly) {
     const [refs, settings] = await Promise.all([

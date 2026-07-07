@@ -10,20 +10,23 @@ import { batchGetRelatedRecordCounts, hasRelatedHistory } from './services/asset
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 import { invalidateAssetListCache } from './services/asset-list-cache';
+import { assertDepartmentScopeAccess, assertPcAssetIdsDataScopeAccess, getUserDataScope } from './services/data-scope';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; __timing?: any }>(async ({ env, request, waitUntil }) => {
     const timing = (env as any).__timing;
-    const user = timing?.measure
+    const actor = timing?.measure
       ? await timing.measure('permission', () => requirePermission(env, request, 'bulk_operation', 'viewer'))
       : await requirePermission(env, request, 'bulk_operation', 'viewer');
+    const user = Object.assign(actor, await getUserDataScope(env.DB, actor.id));
     const body = timing?.measure
       ? await timing.measure('parse', () => request.json().catch(() => ({} as any)))
       : await request.json().catch(() => ({} as any));
     const action = String(body?.action || '').trim();
     const ids: number[] = Array.isArray(body?.ids) ? body.ids.map((v: any) => Number(v)).filter((v: number) => v > 0) : [];
     if (!ids.length) throw Object.assign(new Error('请选择至少一条电脑台账'), { status: 400 });
+    await assertPcAssetIdsDataScopeAccess(env.DB, user, ids, '电脑批量操作');
 
     if (action === 'restore') {
       if (timing?.measure) await timing.measure('schema_fast', () => ensurePcReadFastGuards(env.DB));
@@ -115,16 +118,19 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       const settings = await getSystemSettings(env.DB);
       const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
       if (previewOnly) {
+        const existingById = new Map(existingRows.map((row) => [Number(row.id), row]));
         const needCountIds = ids.filter(id => {
-          const row = existingRows.find((item) => Number(item.id) === Number(id));
+          const row = existingById.get(Number(id));
           return row && String(row.status || '') !== 'ASSIGNED';
         });
         const refsMap = await batchGetRelatedRecordCounts(env.DB, 'pc', needCountIds);
         const previewItems = [];
+        const summary = { blocked: 0, archived: 0, deleted: 0, purged: 0 };
         for (const id of ids) {
-          const row = existingRows.find((item) => Number(item.id) === Number(id));
+          const row = existingById.get(Number(id));
           if (!row) {
             previewItems.push({ id: Number(id), blocked: true, reason: '电脑台账不存在或已删除' });
+            summary.blocked += 1;
             continue;
           }
           if (String(row.status || '') === 'ASSIGNED') {
@@ -137,6 +143,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
               related_counts: {},
               reason: '该电脑当前为已领用状态，请先办理回收/归还后再删除',
             });
+            summary.blocked += 1;
             continue;
           }
           const refs = refsMap.get(Number(id)) || {};
@@ -156,18 +163,20 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
                 ? '存在历史记录或系统策略禁用物理删除，将自动归档'
                 : '满足物理删除条件',
           });
+          if (operation === 'archive') summary.archived += 1;
+          else if (operation === 'delete') summary.deleted += 1;
+          else if (operation === 'purge') summary.purged += 1;
         }
-        const blocked = previewItems.filter((item: any) => item.blocked).length;
         return Response.json({
           ok: true,
           preview: true,
           data: {
             items: previewItems,
-            blocked,
-            processed: previewItems.length - blocked,
-            archived: previewItems.filter((item: any) => item.operation === 'archive').length,
-            deleted: previewItems.filter((item: any) => item.operation === 'delete').length,
-            purged: previewItems.filter((item: any) => item.operation === 'purge').length,
+            blocked: summary.blocked,
+            processed: previewItems.length - summary.blocked,
+            archived: summary.archived,
+            deleted: summary.deleted,
+            purged: summary.purged,
           },
         });
       }
@@ -249,6 +258,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (action === 'owner') {
       const owner = parseOwnerInput(body);
       await assertDepartmentDictionaryValue(env.DB, owner.department, '领用部门', { allowEmpty: true });
+      if (owner.department) assertDepartmentScopeAccess(user, owner.department, '电脑批量领用人更新');
       const result = await bulkUpdatePcOwner(env.DB, ids, owner, { createdBy: user.username || null });
       invalidateSystemDictionaryReferenceCache();
       if (result.changed) invalidateAssetListCache('pc-assets');

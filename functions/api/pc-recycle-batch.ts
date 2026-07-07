@@ -3,7 +3,7 @@ import { logAudit } from './_audit';
 import { ensurePcSchema, must, optional, normalizeText, pcRecycleNo } from './_pc';
 import { pcRecycleAuditAction, pcStatusAfterRecycle } from './services/asset-write';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
-import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
+import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 import { sqlNowStored } from './_time';
 import { syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
@@ -63,15 +63,22 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
   // 批量查询最近的出库记录
   const assetIdsForLastOut = new Set<number>();
-  for (const it of items) {
+  const assetIdsForScope = new Set<number>();
+  for (let i = 0; i < items.length; i++) {
+    const it = items[i];
     let asset: any = null;
     if (it.asset_id) asset = assetsByIdMap.get(Number(it.asset_id));
     else if (it.serial_no) {
       const normalizedSn = String(it.serial_no).trim().toUpperCase();
       asset = assetsBySerialMap.get(normalizedSn);
     }
-    if (asset?.id) assetIdsForLastOut.add(Number(asset.id));
+    if (asset?.id) {
+      const assetId = Number(asset.id);
+      assetIdsForLastOut.add(assetId);
+      if (!existingByNoMap.has(itemNos[i])) assetIdsForScope.add(assetId);
+    }
   }
+  await assertPcAssetIdsDataScopeAccess(env.DB, user, [...assetIdsForScope], '电脑批量回收/归还');
 
   // 批量查询每个资产的最近出库记录
   const lastOutMap = new Map<number, any>();
@@ -118,7 +125,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       }
       if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
 
-      await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑批量回收/归还');
       if (!assertAssigned(asset.status)) throw new Error('该电脑当前不是"已领用"，无法回收/归还');
 
       const action = normalizeAction(it?.action);

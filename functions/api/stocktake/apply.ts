@@ -8,7 +8,7 @@ import { apiFail, apiOk } from '../_response';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const user = await requirePermission(env, request, 'stocktake_apply', 'viewer');
-  const scopedUser = Object.assign({}, user, await getUserDataScope(env.DB, user.id).catch(() => ({ data_scope_type: 'all' as const, data_scope_value: null, data_scope_value2: null })));
+  const scopedUser = Object.assign({}, user, await getUserDataScope(env.DB, user.id));
   const body = await request.json().catch(() => ({} as any));
   const previewOnly = Boolean((body as any).preview_only);
   const st_id = Number((body as any).id);

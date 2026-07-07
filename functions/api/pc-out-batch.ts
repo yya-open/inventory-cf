@@ -12,7 +12,7 @@ import { createTiming } from './_timing';
 import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
-import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
+import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 import { sqlNowStored } from './_time';
 import { syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
@@ -68,6 +68,22 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     batchFindAssetsBySerial(env.DB, serialsToFetch, 'pc_assets')
   );
 
+  const assetIdsForScope = new Set<number>();
+  for (let i = 0; i < items.length; i++) {
+    if (existingByNoMap.has(itemNos[i])) continue;
+    const it = items[i];
+    const asset = it?.asset_id
+      ? assetsByIdMap.get(Number(it.asset_id))
+      : it?.serial_no
+        ? assetsBySerialMap.get(String(it.serial_no).trim().toUpperCase())
+        : null;
+    const assetId = Number(asset?.id || 0);
+    if (assetId > 0) assetIdsForScope.add(assetId);
+  }
+  await t.measure('batch_asset_scope', () =>
+    assertPcAssetIdsDataScopeAccess(env.DB, user, [...assetIdsForScope], '电脑批量出库')
+  );
+
   // 预加载部门字典（只调用一次）
   const allDepartments = [...new Set(items.map(it => it?.department).filter(Boolean))];
   for (const dept of allDepartments) {
@@ -109,7 +125,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       }
       if (!asset) throw new Error('未找到该电脑资产（请检查序列号/asset_id）');
 
-      await assertPcAssetDataScopeAccess(env.DB, user, Number(asset.id || 0), '电脑批量出库');
       if (!isInStockStatus(asset.status)) throw new Error('该电脑当前不是"在库"，无法出库');
 
       const afterStatus = toAssetStatusAfterOut(null);

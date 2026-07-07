@@ -1378,10 +1378,12 @@ function getAsyncJobAssetLinkSeed(row: any) {
   return { kind, batchId };
 }
 
-async function getInventorySnapshotFailedAssetLink(db: D1Database, row: any, scope?: UserDataScope | null) {
-  const seed = getAsyncJobAssetLinkSeed(row);
-  if (!seed) return null;
-  const base = {
+function assetLinkSeedKey(seed: { kind: AssetInventoryKind; batchId: number }) {
+  return `${seed.kind}:${seed.batchId}`;
+}
+
+function makeInventorySnapshotFailedAssetLinkBase(seed: { kind: AssetInventoryKind; batchId: number }) {
+  return {
     asset_kind: seed.kind,
     inventory_batch_id: seed.batchId,
     inventory_status: 'CHECKED_ISSUE',
@@ -1389,62 +1391,122 @@ async function getInventorySnapshotFailedAssetLink(db: D1Database, row: any, sco
     failed_asset_keyword: '',
     failed_asset_count: 0,
   };
+}
+
+async function collectPcInventorySnapshotFailedAssetLinks(db: D1Database, batchIds: number[], scope?: UserDataScope | null) {
+  const links = new Map<string, any>();
+  for (const batchId of batchIds) {
+    const seed = { kind: 'pc' as const, batchId };
+    links.set(assetLinkSeedKey(seed), makeInventorySnapshotFailedAssetLinkBase(seed));
+  }
+  if (!batchIds.length || !scopeAllowsAssetWarehouse(scope, '电脑仓')) return links;
   try {
-    if (seed.kind === 'pc') {
-      if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) return base;
-      const clauses = [
-        'a.inventory_batch_id=?',
-        'COALESCE(a.archived,0)=0',
-        "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
-      ];
-      const binds: any[] = [seed.batchId];
-      applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
-      const sample = await db.prepare(
-        `SELECT a.id, a.serial_no, a.brand, a.model, a.inventory_issue_type, COUNT(*) OVER () AS issue_count
+    const placeholders = batchIds.map(() => '?').join(',');
+    const clauses = [
+      `a.inventory_batch_id IN (${placeholders})`,
+      'COALESCE(a.archived,0)=0',
+      "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
+    ];
+    const binds: any[] = [...batchIds];
+    applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
+    const { results } = await db.prepare(
+      `WITH issue_rows AS (
+         SELECT a.inventory_batch_id, a.id, a.serial_no, a.brand, a.model, a.inventory_issue_type,
+                COUNT(*) OVER (PARTITION BY a.inventory_batch_id) AS issue_count,
+                ROW_NUMBER() OVER (
+                  PARTITION BY a.inventory_batch_id
+                  ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
+                ) AS rn
            FROM pc_assets a
            LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id
           WHERE ${clauses.join(' AND ')}
-          ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
-          LIMIT 1`
-      ).bind(...binds).first<any>();
-      if (!sample?.id) return base;
-      return {
-        ...base,
+       )
+       SELECT inventory_batch_id, id, serial_no, brand, model, inventory_issue_type, issue_count
+         FROM issue_rows
+        WHERE rn=1`
+    ).bind(...binds).all<any>();
+    for (const sample of results || []) {
+      const seed = { kind: 'pc' as const, batchId: Number(sample?.inventory_batch_id || 0) };
+      if (!seed.batchId || !links.has(assetLinkSeedKey(seed))) continue;
+      links.set(assetLinkSeedKey(seed), {
+        ...makeInventorySnapshotFailedAssetLinkBase(seed),
         failed_asset_id: Number(sample.id || 0),
         failed_asset_keyword: String(sample.id || sample.serial_no || sample.brand || sample.model || '').trim(),
         failed_asset_count: Number(sample.issue_count || 0),
         failed_asset_issue_type: String(sample.inventory_issue_type || ''),
-      };
+      });
     }
-    if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) return base;
+  } catch {
+    // 资产链接只是任务列表增强信息，查询失败时保留无样本的 base，避免拖垮任务中心。
+  }
+  return links;
+}
+
+async function collectMonitorInventorySnapshotFailedAssetLinks(db: D1Database, batchIds: number[], scope?: UserDataScope | null) {
+  const links = new Map<string, any>();
+  for (const batchId of batchIds) {
+    const seed = { kind: 'monitor' as const, batchId };
+    links.set(assetLinkSeedKey(seed), makeInventorySnapshotFailedAssetLinkBase(seed));
+  }
+  if (!batchIds.length || !scopeAllowsAssetWarehouse(scope, '显示器仓')) return links;
+  try {
+    const placeholders = batchIds.map(() => '?').join(',');
     const clauses = [
-      'a.inventory_batch_id=?',
+      `a.inventory_batch_id IN (${placeholders})`,
       'COALESCE(a.archived,0)=0',
       "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
     ];
-    const binds: any[] = [seed.batchId];
+    const binds: any[] = [...batchIds];
     applyDepartmentDataScopeClause(clauses, binds, 'a.department', scope);
-    const sample = await db.prepare(
-      `SELECT a.id, a.asset_code, a.sn, a.brand, a.model, a.inventory_issue_type, COUNT(*) OVER () AS issue_count
-         FROM monitor_assets a
-        WHERE ${clauses.join(' AND ')}
-        ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
-        LIMIT 1`
-    ).bind(...binds).first<any>();
-    if (!sample?.id) return base;
-    return {
-      ...base,
-      failed_asset_id: Number(sample.id || 0),
-      failed_asset_keyword: String(sample.id || sample.asset_code || sample.sn || sample.brand || sample.model || '').trim(),
-      failed_asset_count: Number(sample.issue_count || 0),
-      failed_asset_issue_type: String(sample.inventory_issue_type || ''),
-    };
+    const { results } = await db.prepare(
+      `WITH issue_rows AS (
+         SELECT a.inventory_batch_id, a.id, a.asset_code, a.sn, a.brand, a.model, a.inventory_issue_type,
+                COUNT(*) OVER (PARTITION BY a.inventory_batch_id) AS issue_count,
+                ROW_NUMBER() OVER (
+                  PARTITION BY a.inventory_batch_id
+                  ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
+                ) AS rn
+           FROM monitor_assets a
+          WHERE ${clauses.join(' AND ')}
+       )
+       SELECT inventory_batch_id, id, asset_code, sn, brand, model, inventory_issue_type, issue_count
+         FROM issue_rows
+        WHERE rn=1`
+    ).bind(...binds).all<any>();
+    for (const sample of results || []) {
+      const seed = { kind: 'monitor' as const, batchId: Number(sample?.inventory_batch_id || 0) };
+      if (!seed.batchId || !links.has(assetLinkSeedKey(seed))) continue;
+      links.set(assetLinkSeedKey(seed), {
+        ...makeInventorySnapshotFailedAssetLinkBase(seed),
+        failed_asset_id: Number(sample.id || 0),
+        failed_asset_keyword: String(sample.id || sample.asset_code || sample.sn || sample.brand || sample.model || '').trim(),
+        failed_asset_count: Number(sample.issue_count || 0),
+        failed_asset_issue_type: String(sample.inventory_issue_type || ''),
+      });
+    }
   } catch {
-    return base;
+    // 资产链接只是任务列表增强信息，查询失败时保留无样本的 base，避免拖垮任务中心。
   }
+  return links;
 }
 
-async function mapAsyncJobRow(db: D1Database, row: any, options: { detail?: boolean; assetScope?: UserDataScope | null } = {}) {
+async function collectInventorySnapshotFailedAssetLinks(db: D1Database, rows: any[], scope?: UserDataScope | null) {
+  const pcBatchIds = new Set<number>();
+  const monitorBatchIds = new Set<number>();
+  for (const row of rows || []) {
+    const seed = getAsyncJobAssetLinkSeed(row);
+    if (!seed) continue;
+    if (seed.kind === 'pc') pcBatchIds.add(seed.batchId);
+    else monitorBatchIds.add(seed.batchId);
+  }
+  const [pcLinks, monitorLinks] = await Promise.all([
+    collectPcInventorySnapshotFailedAssetLinks(db, [...pcBatchIds], scope),
+    collectMonitorInventorySnapshotFailedAssetLinks(db, [...monitorBatchIds], scope),
+  ]);
+  return new Map([...pcLinks, ...monitorLinks]);
+}
+
+function mapAsyncJobRow(row: any, options: { detail?: boolean; assetLinks?: Map<string, any> } = {}) {
   const createdMs = toMs(row?.created_at);
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
@@ -1473,7 +1535,8 @@ async function mapAsyncJobRow(db: D1Database, row: any, options: { detail?: bool
     delete (publicRow as any).permission_scope;
     delete (publicRow as any).cancel_requested;
   }
-  const assetLink = await getInventorySnapshotFailedAssetLink(db, row, options.assetScope);
+  const seed = getAsyncJobAssetLinkSeed(row);
+  const assetLink = seed ? options.assetLinks?.get(assetLinkSeedKey(seed)) : null;
   return {
     ...publicRow,
     duration_ms: durationMs,
@@ -1529,7 +1592,9 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   const sql = `${selectSql} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   try {
     const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
-    return await Promise.all((results || []).map((row) => mapAsyncJobRow(db, row, { detail: Boolean(options.detail), assetScope: options.assetScope })));
+    const rows = results || [];
+    const assetLinks = await collectInventorySnapshotFailedAssetLinks(db, rows, options.assetScope);
+    return rows.map((row) => mapAsyncJobRow(row, { detail: Boolean(options.detail), assetLinks }));
   } catch (error: any) {
     const message = String(error?.message || error || '').toLowerCase();
     if (message.includes('no such table') || message.includes('async_jobs')) return [];

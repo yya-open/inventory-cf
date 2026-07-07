@@ -49,6 +49,11 @@ function uniquePositiveIds(ids: number[]) {
   return Array.from(new Set((ids || []).map((id) => Number(id || 0)).filter((id) => id > 0)));
 }
 
+function missingRequestedIds(requestedIds: number[], targetIds: number[]) {
+  const targetSet = new Set(targetIds);
+  return uniquePositiveIds(requestedIds).filter((id) => !targetSet.has(id));
+}
+
 function tableOf(kind: AssetArchiveKind): AssetTable {
   return kind === 'pc' ? 'pc_assets' : 'monitor_assets';
 }
@@ -99,7 +104,7 @@ export async function bulkArchiveAssets(
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, kind, ids);
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const sql = kind === 'pc' ? pcAssetArchiveSql() : monitorAssetArchiveSql();
   const statements = targetIds.map((id) => db.prepare(sql).bind(reason, note, updatedBy || null, id));
   await runBatchStatements(db, statements);
@@ -113,7 +118,7 @@ export async function bulkRestoreAssets(
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, kind, ids, { archived: 1 });
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const sql = kind === 'pc' ? pcAssetRestoreSql() : monitorAssetRestoreSql();
   const statements = targetIds.map((id) => db.prepare(sql).bind(id));
   await runBatchStatements(db, statements);
@@ -127,7 +132,7 @@ export async function bulkUpdatePcStatus(
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, 'pc', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const statements = targetIds.map((id) => db.prepare(pcAssetBulkStatusSql()).bind(status, id));
   await runBatchStatements(db, statements);
   if (targetIds.length && status !== 'ASSIGNED') {
@@ -144,7 +149,7 @@ export async function bulkUpdateMonitorStatus(
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, 'monitor', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const rowsById = new Map(rows.map((row: any) => [row.id, row]));
   const statements = targetIds.map((id) => {
     const row: any = rowsById.get(id) || {};
@@ -179,7 +184,7 @@ export async function bulkUpdateMonitorLocation(
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, 'monitor', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const rowsById = new Map(rows.map((row: any) => [row.id, row]));
   const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(locationId, buildMonitorAssetSearchText(row, { employee_no: row.employee_no, employee_name: row.employee_name, department: row.department }), id); });
   await runBatchStatements(db, statements);
@@ -202,7 +207,7 @@ export async function bulkUpdateMonitorOwner(
         || String(row.department || '').trim() !== String(department || '').trim();
     })
     .map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   const rowsById = new Map(rows.map((row: any) => [row.id, row]));
   const statements = targetIds.flatMap((id) => {
     const row: any = rowsById.get(id) || {};
@@ -248,7 +253,7 @@ export async function bulkUpdatePcOwner(
 ): Promise<BulkPcOwnerSummary> {
   const rows = await loadAssetRows(db, 'pc', ids, { archived: 0, statuses: ['ASSIGNED'] });
   const targetIds = rows.map((row) => row.id);
-  const skippedIds = uniquePositiveIds(ids).filter((id) => !targetIds.includes(id));
+  const skippedIds = missingRequestedIds(ids, targetIds);
   if (!targetIds.length) return { changed: 0, skipped: skippedIds.length, ids: [], skippedIds, latestOutIds: [] };
 
   const { results } = await db.prepare(
@@ -275,7 +280,8 @@ export async function bulkUpdatePcOwner(
       || String(latest.employee_name || '').trim() !== String(owner.employee_name || '').trim()
       || String(latest.department || '').trim() !== String(department || '').trim();
   });
-  const extraSkippedIds = targetIds.filter((id) => !effectiveIds.includes(id));
+  const effectiveIdSet = new Set(effectiveIds);
+  const extraSkippedIds = targetIds.filter((id) => !effectiveIdSet.has(id));
   const outNoByAsset = new Map<number, string>(effectiveIds.map((assetId) => [assetId, pcOutNo()]));
   const statements = effectiveIds.flatMap((assetId) => {
     const latest = latestByAsset.get(assetId) || {};

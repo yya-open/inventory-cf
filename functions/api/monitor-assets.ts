@@ -1,4 +1,3 @@
-import { requireAuth } from '../_auth';
 import { throwHttpError, withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
@@ -22,7 +21,7 @@ import {
   purgeArchivedAsset,
 } from './services/asset-archive';
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
+import { assertAssetWarehouseAccess, assertMonitorAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { assertMonitorBrandDictionaryValue } from './services/master-data';
 import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
 import {
@@ -95,7 +94,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 });
 
 export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
-  const user = await requireAuth(env, request, 'admin');
+  const user = await requireAuthWithDataScope(env, request, 'admin');
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
   const url = new URL(request.url);
@@ -108,6 +107,7 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const old = await env.DB.prepare('SELECT * FROM monitor_assets WHERE id=?').bind(id).first<any>();
   if (!old) throwHttpError('显示器台账不存在', 404);
   if (Number(old.archived || 0) === 1) throwHttpError('该显示器已归档，请先恢复归档后再编辑', 400);
+  assertMonitorAssetDataScopeAccess(user, old.department, '显示器台账');
 
   const payload = parseMonitorAssetInput(body);
   await assertMonitorBrandDictionaryValue(env.DB, payload.brand, '显示器品牌', { allowEmpty: true });
@@ -137,7 +137,7 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
 });
 
 export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
-  const user = await requireAuth(env, request, 'admin');
+  const user = await requireAuthWithDataScope(env, request, 'admin');
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
   const url = new URL(request.url);
@@ -150,6 +150,7 @@ export const onRequestDelete = withErrorHandling<{ DB: D1Database; JWT_SECRET: s
   const previewOnly = body?.preview_only === true || body?.preview_only === 1 || body?.preview_only === '1';
   const asset = await getAssetById(env.DB, 'monitor', id);
   if (!asset) throwHttpError('显示器台账不存在', 404);
+  assertMonitorAssetDataScopeAccess(user, asset.department, '显示器台账删除');
 
   if (previewOnly) {
     const [refs, settings] = await Promise.all([
