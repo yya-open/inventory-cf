@@ -287,7 +287,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from "vue";
-import { useAuth } from "../store/auth";
+import { fetchMe, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiPut, apiDelete, isApiErrorCode } from "../api/client";
@@ -706,8 +706,10 @@ async function saveEdit() {
   if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return ElMessage.warning('请选择仓库范围');
   saving.value = true;
   try {
+    const isEditingSelf = editing.value.id === auth.user?.id;
     const r = await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
     rows.value = rows.value.map((item) => item.id === editing.value?.id ? ({ ...(item as any), ...(r.data as any) }) : item);
+    if (isEditingSelf) await fetchMe({ force: true });
     ElMessage.success("已更新");
     showEdit.value = false;
     await load();

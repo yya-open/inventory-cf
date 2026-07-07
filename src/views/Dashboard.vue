@@ -144,13 +144,11 @@ import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ref, computed, onMounted, watch } from "vue";
 import { ElMessage } from "../utils/el-message";
 import { apiGet } from "../api/client";
-import { useFixedWarehouseId } from "../utils/warehouse";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
 import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
 import { Document, Upload, RefreshLeft, Files, Stamp, SetUp } from '@element-plus/icons-vue';
 
-const warehouseId = useFixedWarehouseId();
 const auth = useAuth();
 const DASHBOARD_PREF_KEY = 'inventory:dashboard:prefs:v1';
 const CACHE_TTL_MS = 45_000;
@@ -249,13 +247,17 @@ function writeDashboardPrefs() {
 
 function buildCacheKey(mode = reportMode.value, dayCount = days.value) {
   return JSON.stringify({
-    warehouse_id: warehouseId.value,
+    warehouse_id: reportWarehouseId(mode),
     mode,
     days: dayCount,
     data_scope_type: auth.user?.data_scope_type || 'all',
     data_scope_value: auth.user?.data_scope_value || null,
     data_scope_value2: auth.user?.data_scope_value2 || null,
   });
+}
+
+function reportWarehouseId(mode = reportMode.value) {
+  return mode === 'parts' ? 1 : 0;
 }
 
 function getCachedSummary(mode = reportMode.value, dayCount = days.value) {
@@ -344,7 +346,7 @@ async function fetchSummary(mode = reportMode.value, dayCount = days.value, forc
     const pending = pendingSummaryRequests.get(cacheKey);
     if (pending) return pending;
   }
-  const url = `/api/reports/summary?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
+  const url = `/api/reports/summary?warehouse_id=${reportWarehouseId(mode)}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     summaryCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
     evictOldestEntries(summaryCache, CACHE_MAX_ENTRIES);
@@ -363,7 +365,7 @@ async function fetchDetail(mode = reportMode.value, dayCount = days.value, force
     const pending = pendingDetailRequests.get(cacheKey);
     if (pending) return pending;
   }
-  const url = `/api/reports/detail?warehouse_id=${warehouseId.value}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
+  const url = `/api/reports/detail?warehouse_id=${reportWarehouseId(mode)}&days=${dayCount}&mode=${mode}${force ? '&force=1' : ''}`;
   const requestPromise = apiGet(url, signal ? { signal } : undefined).then((result: any) => {
     detailCache.set(cacheKey, { data: result, fetchedAt: Date.now() });
     evictOldestEntries(detailCache, CACHE_MAX_ENTRIES);
@@ -514,7 +516,7 @@ watch(days, () => {
   writeDashboardPrefs();
 });
 
-watch([reportMode, days, () => warehouseId.value], () => {
+watch([reportMode, days], () => {
   if (!prefsReady.value) return;
   void refresh(false);
 });
