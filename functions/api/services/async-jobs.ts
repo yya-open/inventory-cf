@@ -16,6 +16,7 @@ import { buildMonitorQrRecords, buildPcQrRecords, type QrCardRecord } from './qr
 import * as XLSX from 'xlsx';
 import { buildBackupFilename, buildBackupPayload, buildBackupStats, createBackupJsonStream, gzipBackupJsonStream, parseBackupOptions } from '../admin/_backup_helpers';
 import { deleteAuditRowsByIds, recordAuditArchiveRun } from '../_audit';
+import { D1_SAFE_ID_BATCH_SIZE } from './sql-batch';
 
 export type AsyncJobType = 'AUDIT_EXPORT' | 'AUDIT_ARCHIVE_EXPORT' | 'BACKUP_EXPORT' | 'PC_AGE_WARNING_EXPORT' | 'DASHBOARD_PRECOMPUTE' | 'OPS_SCAN_REFRESH' | 'PC_QR_KEY_INIT' | 'MONITOR_QR_KEY_INIT' | 'PC_QR_CARDS_EXPORT' | 'PC_QR_SHEET_EXPORT' | 'MONITOR_QR_CARDS_EXPORT' | 'MONITOR_QR_SHEET_EXPORT' | 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT';
 export type AsyncJobStatus = 'queued' | 'running' | 'success' | 'failed' | 'canceled';
@@ -1683,7 +1684,7 @@ export async function deleteAsyncJobs(db: D1Database, ids: number[], bucket?: As
 
   const timing = ((db as any)?.__timing || null) as { measure?: <T>(name: string, fn: () => Promise<T> | T) => Promise<T> } | null;
   const rowMap = new Map<number, any>();
-  const CHUNK_SIZE = 180;
+  const CHUNK_SIZE = D1_SAFE_ID_BATCH_SIZE;
   const loadRows = async () => {
     for (let i = 0; i < normalized.length; i += CHUNK_SIZE) {
       const chunk = normalized.slice(i, i + CHUNK_SIZE);

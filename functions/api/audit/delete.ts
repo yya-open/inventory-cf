@@ -1,7 +1,7 @@
 import { requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { requireConfirm } from "../../_confirm";
-import { logAudit } from "../_audit";
+import { deleteAuditRowsByIds, logAudit } from "../_audit";
 
 // POST /api/audit/delete
 // Admin-only. Deletes audit_log rows by id(s).
@@ -24,9 +24,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     return Response.json({ ok: false, message: "一次最多删除 200 条" }, { status: 400 });
   }
 
-  const placeholders = ids.map(() => "?").join(",");
-  const r = await env.DB.prepare(`DELETE FROM audit_log WHERE id IN (${placeholders})`).bind(...ids).run();
-  const deleted = Number((r as any)?.meta?.changes ?? (r as any)?.changes ?? 0);
+  const deleted = await deleteAuditRowsByIds(env.DB, ids);
 
   // Best-effort audit; do not block the delete request
   waitUntil(

@@ -4,6 +4,7 @@ import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensureMonitorSchemaIfAllowed } from "../_monitor";
 import { syncAssetInventoryState } from '../services/asset-inventory-state';
+import { deleteRowsByIdChunks, selectDistinctNumberColumnByIdChunks } from '../services/sql-batch';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const actor = await requireAuth(env, request, "admin");
@@ -23,11 +24,8 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   if (!ids.length) return Response.json({ ok: false, message: "缺少 ids" }, { status: 400 });
   if (ids.length > 200) return Response.json({ ok: false, message: "一次最多删除 200 条" }, { status: 400 });
 
-  const placeholders = ids.map(() => "?").join(",");
-  const affectedRows = await env.DB.prepare(`SELECT DISTINCT asset_id FROM monitor_inventory_log WHERE id IN (${placeholders})`).bind(...ids).all<any>();
-  const affectedAssetIds = (affectedRows.results || []).map((item: any) => Number(item?.asset_id || 0)).filter((id: number) => id > 0);
-  const r = await env.DB.prepare(`DELETE FROM monitor_inventory_log WHERE id IN (${placeholders})`).bind(...ids).run();
-  const deleted = Number((r as any)?.meta?.changes ?? 0);
+  const affectedAssetIds = await selectDistinctNumberColumnByIdChunks(env.DB, 'monitor_inventory_log', 'asset_id', ids);
+  const deleted = await deleteRowsByIdChunks(env.DB, 'monitor_inventory_log', ids);
   await syncAssetInventoryState(env.DB, 'monitor', affectedAssetIds);
 
   await logAudit(env.DB, request, actor, "MONITOR_INVENTORY_LOG_DELETE", "monitor_inventory_log", null, { ids, deleted });

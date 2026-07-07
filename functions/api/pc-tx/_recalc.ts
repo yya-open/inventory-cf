@@ -1,31 +1,34 @@
 import { sqlNowStored } from "../_time";
 import { rebuildPcLatestStateForAssets } from '../services/pc-latest-state';
+import { D1_REPEATED_ID_BATCH_SIZE, chunkValues } from '../services/sql-batch';
 
 export async function recalcPcAssetStatuses(db: D1Database, assetIds: (number | string)[]) {
   const ids = [...new Set(assetIds.map((v) => Number(v)).filter((v) => Number.isFinite(v) && v > 0))];
   if (!ids.length) return;
 
-  const placeholders = ids.map(() => '?').join(',');
-  const { results } = await db.prepare(`
-    SELECT ranked.*
-    FROM (
-      SELECT t.*,
-             ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.rid DESC) AS rn
-      FROM (
-        SELECT asset_id, 'IN' as evt_type, created_at, id as rid FROM pc_in WHERE asset_id IN (${placeholders})
-        UNION ALL
-        SELECT asset_id, 'OUT' as evt_type, created_at, id as rid FROM pc_out WHERE asset_id IN (${placeholders})
-        UNION ALL
-        SELECT asset_id, action as evt_type, created_at, id as rid FROM pc_recycle WHERE asset_id IN (${placeholders})
-        UNION ALL
-        SELECT asset_id, 'SCRAP' as evt_type, created_at, id as rid FROM pc_scrap WHERE asset_id IN (${placeholders})
-      ) t
-    ) ranked
-    WHERE ranked.rn = 1
-  `).bind(...ids, ...ids, ...ids, ...ids).all<any>();
-
   const latest = new Map<number, any>();
-  for (const row of (results || []) as any[]) latest.set(Number(row.asset_id), row);
+  for (const chunkIds of chunkValues(ids, D1_REPEATED_ID_BATCH_SIZE)) {
+    const placeholders = chunkIds.map(() => '?').join(',');
+    const { results } = await db.prepare(`
+      SELECT ranked.*
+      FROM (
+        SELECT t.*,
+               ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.rid DESC) AS rn
+        FROM (
+          SELECT asset_id, 'IN' as evt_type, created_at, id as rid FROM pc_in WHERE asset_id IN (${placeholders})
+          UNION ALL
+          SELECT asset_id, 'OUT' as evt_type, created_at, id as rid FROM pc_out WHERE asset_id IN (${placeholders})
+          UNION ALL
+          SELECT asset_id, action as evt_type, created_at, id as rid FROM pc_recycle WHERE asset_id IN (${placeholders})
+          UNION ALL
+          SELECT asset_id, 'SCRAP' as evt_type, created_at, id as rid FROM pc_scrap WHERE asset_id IN (${placeholders})
+        ) t
+      ) ranked
+      WHERE ranked.rn = 1
+    `).bind(...chunkIds, ...chunkIds, ...chunkIds, ...chunkIds).all<any>();
+
+    for (const row of (results || []) as any[]) latest.set(Number(row.asset_id), row);
+  }
 
   const batch: D1PreparedStatement[] = [];
   for (const id of ids) {

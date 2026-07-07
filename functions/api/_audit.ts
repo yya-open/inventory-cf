@@ -11,6 +11,7 @@ const DEFAULT_WARN_AUDIT_ROWS = 200000;
 const DEFAULT_WARN_AUDIT_BYTES_MB = 128;
 const CLEANUP_COOLDOWN_MS = 12 * 60 * 60 * 1000;
 const CLEANUP_BATCH_SIZE = 2000;
+const DELETE_BY_ID_BATCH_SIZE = 50;
 const STATS_REFRESH_MS = 60 * 60 * 1000;
 
 export type AuditModuleCode = 'STOCK' | 'STOCKTAKE' | 'ITEM' | 'USER' | 'AUDIT' | 'ADMIN' | 'PC' | 'MONITOR' | 'OTHER';
@@ -197,16 +198,17 @@ async function deleteAuditRowsBefore(db: D1Database, cutoffText: string, limit =
   return totalDeleted;
 }
 
-export async function deleteAuditRowsByIds(db: D1Database, ids: number[], batchSize = 500) {
+export async function deleteAuditRowsByIds(db: D1Database, ids: number[], batchSize = DELETE_BY_ID_BATCH_SIZE) {
   const normalized = Array.from(new Set((Array.isArray(ids) ? ids : [])
     .map((value) => Math.trunc(Number(value || 0)))
     .filter((value) => Number.isFinite(value) && value > 0)));
   if (!normalized.length) return 0;
+  const safeBatchSize = clampInt(batchSize, DELETE_BY_ID_BATCH_SIZE, 1, DELETE_BY_ID_BATCH_SIZE);
   let totalDeleted = 0;
-  for (let index = 0; index < normalized.length; index += batchSize) {
-    const chunk = normalized.slice(index, index + batchSize);
+  for (let index = 0; index < normalized.length; index += safeBatchSize) {
+    const chunk = normalized.slice(index, index + safeBatchSize);
     const res = await db.prepare(`DELETE FROM audit_log WHERE id IN (${chunk.map(() => '?').join(',')})`).bind(...chunk).run();
-    totalDeleted += Number((res as any)?.meta?.changes || 0);
+    totalDeleted += Number((res as any)?.meta?.changes ?? (res as any)?.changes ?? 0);
   }
   return totalDeleted;
 }

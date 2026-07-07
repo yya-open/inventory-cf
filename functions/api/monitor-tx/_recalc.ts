@@ -1,23 +1,26 @@
 import { sqlNowStored } from "../_time";
 import { buildMonitorAssetSearchText } from '../services/asset-ledger';
+import { chunkValues } from '../services/sql-batch';
 
 export async function recalcMonitorAssets(db: D1Database, assetIds: number[]) {
   const ids = [...new Set(assetIds.filter((x) => Number.isFinite(x) && x > 0))];
   if (!ids.length) return;
 
-  const q = `
-    SELECT ranked.*
-    FROM (
-      SELECT t.*,
-             ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
-      FROM monitor_tx t
-      WHERE t.asset_id IN (${ids.map(() => "?").join(",")})
-    ) ranked
-    WHERE ranked.rn = 1
-  `;
-  const r = await db.prepare(q).bind(...ids).all<any>();
   const latest = new Map<number, any>();
-  for (const row of (r.results || []) as any[]) latest.set(Number(row.asset_id), row);
+  for (const chunkIds of chunkValues(ids)) {
+    const q = `
+      SELECT ranked.*
+      FROM (
+        SELECT t.*,
+               ROW_NUMBER() OVER (PARTITION BY t.asset_id ORDER BY t.created_at DESC, t.id DESC) AS rn
+        FROM monitor_tx t
+        WHERE t.asset_id IN (${chunkIds.map(() => "?").join(",")})
+      ) ranked
+      WHERE ranked.rn = 1
+    `;
+    const r = await db.prepare(q).bind(...chunkIds).all<any>();
+    for (const row of (r.results || []) as any[]) latest.set(Number(row.asset_id), row);
+  }
 
   const batch: D1PreparedStatement[] = [];
   for (const id of ids) {

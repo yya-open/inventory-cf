@@ -2,6 +2,7 @@ import type { QueryParts } from './asset-ledger';
 import { sqlNowStored } from '../_time';
 import { ensureAssetInventoryBatchSchema, getEffectiveInventoryBatch, type AssetInventoryKind as InventoryBatchKind } from './asset-inventory-batches';
 import { invalidateInventorySummaryCache } from './asset-inventory-summary-cache';
+import { D1_SAFE_ID_BATCH_SIZE } from './sql-batch';
 
 export type AssetInventoryKind = InventoryBatchKind;
 export type InventoryDisplayStatus = 'UNCHECKED' | 'CHECKED_OK' | 'CHECKED_ISSUE';
@@ -11,7 +12,7 @@ const KIND_CONFIG: Record<AssetInventoryKind, { assetTable: string; logTable: st
   monitor: { assetTable: 'monitor_assets', logTable: 'monitor_inventory_log' },
 };
 
-const INVENTORY_SYNC_CHUNK_SIZE = 200;
+const INVENTORY_SYNC_CHUNK_SIZE = D1_SAFE_ID_BATCH_SIZE;
 
 export function normalizeInventoryStatus(status: any): InventoryDisplayStatus {
   const value = String(status || '').toUpperCase();
