@@ -853,12 +853,13 @@ async function exportFilteredLines(){
 
 async function downloadCountTemplate(){
   if (!detail.value) return;
-  const header = ["sku","counted_qty"];
+  const header = ["sku","名称","counted_qty"];
   // 模板默认带一行示例（sku 留空，导入时会被自动忽略），并列出本次盘点涉及的 SKU
-  const exampleRow = ["", 10];
-  const rows = detail.value.lines.map((l:any)=>[l.sku,""]);
+  const exampleRow = ["", "", 10];
+  const rows = detail.value.lines.map((l:any)=>[l.sku, l.name || "", ""]);
   const XLSX = await loadXlsx();
   const ws = XLSX.utils.aoa_to_sheet([header, exampleRow, ...rows]);
+  ws["!cols"] = [{ wch: 24 }, { wch: 32 }, { wch: 14 }];
   const wb = XLSX.utils.book_new();
   XLSX.utils.book_append_sheet(wb, ws, "count");
   const filename = `stocktake_${detail.value.stocktake.st_no}.xlsx`;
@@ -897,7 +898,7 @@ function beforeUpload(file: File){
         ElMessageBox.alert(
           `表头缺少必需列：${missing.join("、")}。
 
-请使用模板表头：sku, counted_qty（也支持：盘点数量/数量）`,
+请使用模板表头：sku, 名称, counted_qty（也支持：盘点数量/数量）`,
           "导入失败",
           { type: "error" }
         );
