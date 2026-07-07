@@ -20,6 +20,7 @@ const PcIn = () => import("../views/PcIn.vue");
 const PcTx = () => import("../views/PcTx.vue");
 const PcRecycle = () => import("../views/PcRecycle.vue");
 const PcAssets = () => import("../views/PcAssets.vue");
+const AssetOwnership = () => import("../views/AssetOwnership.vue");
 const PcWarehouse = () => import("../views/PcWarehouse.vue");
 const PcAgeWarnings = () => import("../views/PcAgeWarnings.vue");
 const PcInventoryLogs = () => import("../views/PcInventoryLogs.vue");
@@ -38,7 +39,7 @@ const SystemSkuGovernance = () => import("../views/SystemSkuGovernance.vue");
 const SystemLayout = () => import("../views/SystemLayout.vue");
 const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
-import { fetchMe, hydrateAuthFromCache, shouldRefreshAuthInBackground, useAuth, can, canCapability, canPerm } from "../store/auth";
+import { fetchMe, hydrateAuthFromCache, refreshAuthInBackground, shouldRefreshAuthInBackground, useAuth, can, canCapability, canPerm } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
 import { ElMessage } from "../utils/el-message";
 import { scheduleOnIdle } from "../utils/idle";
@@ -138,6 +139,7 @@ const router = createRouter({
       meta: { role: "viewer", title: "电脑仓（仓库2）" },
       children: [
         { path: "assets", component: PcAssets, meta: { role: "viewer", title: "电脑台账" } },
+        { path: "asset-ownership", component: AssetOwnership, meta: { role: "viewer", title: "人员 / 部门资产视图" } },
         { path: "monitors", component: MonitorAssets, meta: { role: "viewer", title: "显示器台账" } },
         { path: "age-warnings", component: PcAgeWarnings, meta: { role: "viewer", title: "报废预警" } },
         { path: "tx", component: PcTx, meta: { role: "viewer", title: "出入库明细" } },
@@ -169,21 +171,26 @@ const router = createRouter({
 
 async function guardEnsureAuth(to: any) {
   const auth = useAuth();
-  if (auth.user) return null;
+  const redirectToLogin = () => {
+    const path = window.location.pathname;
+    if (path === '/login') return;
+    const redirect = encodeURIComponent(to.fullPath);
+    window.location.replace(`/login?redirect=${redirect}`);
+  };
+  const scheduleSoftRefresh = () => {
+    if (!shouldRefreshAuthInBackground()) return;
+    scheduleOnIdle(() => {
+      void refreshAuthInBackground({ onUnauthorized: redirectToLogin });
+    }, 1500);
+  };
+
+  if (auth.user) {
+    scheduleSoftRefresh();
+    return null;
+  }
   const cached = hydrateAuthFromCache();
   if (cached) {
-    if (shouldRefreshAuthInBackground()) {
-      scheduleOnIdle(() => {
-        void fetchMe({ force: true, handleUnauthorized: false }).catch(() => {
-          auth.user = null;
-          const path = window.location.pathname;
-          if (path !== '/login') {
-            const redirect = encodeURIComponent(to.fullPath);
-            window.location.replace(`/login?redirect=${redirect}`);
-          }
-        });
-      }, 1500);
-    }
+    scheduleSoftRefresh();
     return null;
   }
   try {

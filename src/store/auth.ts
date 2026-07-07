@@ -10,8 +10,9 @@ const state = reactive<{ user: User | null; loading: boolean }>({ user: null, lo
 const AUTH_CACHE_KEY = 'inventory:auth-user-cache';
 const AUTH_SESSION_KEY = 'inventory:auth-session-key';
 const AUTH_CACHE_TTL_MS = 30 * 60_000;
-const AUTH_REFRESH_SOFT_TTL_MS = AUTH_CACHE_TTL_MS;
+const AUTH_REFRESH_SOFT_TTL_MS = 5 * 60_000;
 let pendingFetchMe: Promise<User> | null = null;
+let pendingBackgroundFetchMe: Promise<User | null> | null = null;
 let authCacheTimestamp = 0;
 let authRequestEpoch = 0;
 let authSessionKey = '';
@@ -96,6 +97,11 @@ export function shouldRefreshAuthInBackground() {
   return getAuthCacheAgeMs() >= AUTH_REFRESH_SOFT_TTL_MS;
 }
 
+function isUnauthorizedAuthError(error: unknown) {
+  const status = Number((error as any)?.status || (error as any)?.response?.status || 0);
+  return status === 401;
+}
+
 function clearAuthCache() {
   writeAuthCache(null);
 }
@@ -133,7 +139,7 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
     applyAuthorizedUser(r.data.user, sessionKey);
     return r.data.user;
   }).catch((e) => {
-    if (requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey()) {
+    if (requestEpoch === getAuthRequestEpoch() && sessionKey === getAuthSessionKey() && (handleUnauthorized || isUnauthorizedAuthError(e))) {
       applyLoggedOutState(sessionKey);
     }
     throw e;
@@ -143,6 +149,25 @@ export async function fetchMe(options?: { force?: boolean; handleUnauthorized?: 
   });
   pendingFetchMe = task;
   return task;
+}
+
+export function refreshAuthInBackground(options: { force?: boolean; onUnauthorized?: () => void } = {}) {
+  if (!state.user) return null;
+  if (!options.force && !shouldRefreshAuthInBackground()) return null;
+  if (pendingBackgroundFetchMe) return pendingBackgroundFetchMe;
+  const sessionKey = getAuthSessionKey();
+  pendingBackgroundFetchMe = fetchMe({ force: true, handleUnauthorized: false })
+    .catch((error) => {
+      if (sessionKey === getAuthSessionKey() && isUnauthorizedAuthError(error)) {
+        applyLoggedOutState(sessionKey);
+        options.onUnauthorized?.();
+      }
+      return null;
+    })
+    .finally(() => {
+      pendingBackgroundFetchMe = null;
+    });
+  return pendingBackgroundFetchMe;
 }
 
 export const login = (username: string, password: string) => loginWithCaptcha(username, password);

@@ -750,10 +750,8 @@ function buildInventorySummaryFilters(filters: MonitorFilters = currentFiltersFo
 
 const {
   shouldLoadInventorySummary,
-  refreshInventoryBatch,
-  refreshInventorySummary,
-  scheduleDeferredInventoryBatchRefresh,
   scheduleAuxiliaryRefresh,
+  runWithDeferredInventoryBatchRefresh,
 } = useAssetLedgerBatchRefresh({
   assetType: 'monitor',
   batchRefreshDelayMs: 4500,
@@ -761,6 +759,7 @@ const {
   hasActiveInventoryBatch,
   inventoryStatus,
   inventoryBatch,
+  inventoryBatchLoadedAt,
   inventorySummary,
   refreshInventoryBatchStore,
   refreshInventorySummary: async (filters?: any) => {
@@ -1472,16 +1471,7 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
-  const shouldRefreshBatch = Number(inventoryBatchLoadedAt.value || 0) <= 0 || (Date.now() - Number(inventoryBatchLoadedAt.value || 0)) >= 15 * 60_000;
-  await refreshLedgerData(options);
-  if (!shouldRefreshBatch) return;
-  scheduleDeferredInventoryBatchRefresh(async () => {
-    try {
-      await refreshInventoryBatch();
-      const nextFilters = currentFiltersForList();
-      if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
-    } catch {}
-  });
+  await runWithDeferredInventoryBatchRefresh(() => refreshLedgerData(options));
 }
 
 function handleViewportResize() {

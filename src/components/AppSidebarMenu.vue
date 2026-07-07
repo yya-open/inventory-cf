@@ -75,6 +75,13 @@ import {
   FolderChecked,
   TrendCharts,
 } from '@element-plus/icons-vue';
+import {
+  PARTS_ROUTE_DEFS,
+  PC_ROUTE_DEFS,
+  SYSTEM_ROUTE_DEFS,
+  type ModuleRouteDefinition,
+  type RouteIconName,
+} from '../router/moduleRouteManifest';
 
 const props = defineProps<{
   isSystem: boolean;
@@ -124,53 +131,78 @@ const brandIcon = computed(() => {
 
 const brandTitle = '出入库管理';
 
-const systemItems = computed<MenuItem[]>(() => [
-  { index: '/system/home', label: '系统首页', icon: markRaw(Setting), visible: props.isAdmin },
-  { index: '/system/dashboard', label: '报表与看板', icon: markRaw(DataAnalysis), visible: props.isAdmin },
-  { index: '/system/reports', label: '数据报表中心', icon: markRaw(Histogram), visible: props.isAdmin },
-  { index: '/system/tasks', label: '批量任务中心', icon: markRaw(Files), visible: props.isAdmin || props.canManageSystemJobs },
-  { index: '/system/backup', label: '备份/恢复', icon: markRaw(RefreshRight), visible: props.isAdmin },
-  { index: '/system/audit', label: '审计日志', icon: markRaw(Document), visible: props.isAdmin || props.canAuditExport },
-  { index: '/system/users', label: '用户管理', icon: markRaw(User), visible: props.isAdmin },
-  { index: '/system/settings', label: '系统配置', icon: markRaw(Tools), visible: props.isAdmin || props.canManageSystemSettings },
-  { index: '/system/sku-governance', label: 'SKU 治理', icon: markRaw(Management), visible: props.isAdmin },
-  { index: '/system/tools', label: '运维工具', icon: markRaw(Operation), visible: props.isAdmin || props.canManageSystemTools },
-  { index: '/system/release-check', label: '发布前检查', icon: markRaw(FolderChecked), visible: props.isAdmin },
-  { index: '/system/performance', label: '性能面板', icon: markRaw(TrendCharts), visible: props.isAdmin || props.canManageSystemTools },
-  { index: '/system/docs', label: '系统交付文档', icon: markRaw(Reading), visible: props.isAdmin },
-]);
+const iconMap: Record<RouteIconName, object> = {
+  box: markRaw(Box),
+  document: markRaw(Document),
+  warning: markRaw(Warning),
+  plus: markRaw(Plus),
+  minus: markRaw(Minus),
+  operation: markRaw(Operation),
+  management: markRaw(Management),
+  upload: markRaw(Upload),
+  checked: markRaw(Checked),
+  setting: markRaw(Setting),
+  'data-analysis': markRaw(DataAnalysis),
+  histogram: markRaw(Histogram),
+  files: markRaw(Files),
+  refresh: markRaw(RefreshRight),
+  monitor: markRaw(Monitor),
+  cpu: markRaw(Cpu),
+  tools: markRaw(Tools),
+  user: markRaw(User),
+  reading: markRaw(Reading),
+  'folder-checked': markRaw(FolderChecked),
+  'trend-charts': markRaw(TrendCharts),
+};
 
-const partsItems = computed<MenuItem[]>(() => [
-  { index: '/stock', label: '库存查询', icon: markRaw(Box), visible: true },
-  { index: '/tx', label: '出入库明细', icon: markRaw(Document), visible: true },
-  { index: '/warnings', label: '预警中心', icon: markRaw(Warning), visible: true },
-  { index: '/in', label: '入库', icon: markRaw(Plus), visible: props.canOperator },
-  { index: '/out', label: '出库', icon: markRaw(Minus), visible: props.canOperator },
-  { index: '/batch', label: '批量出入库', icon: markRaw(Operation), visible: props.canOperator },
-  { index: '/items', label: '配件管理', icon: markRaw(Management), visible: props.isAdmin },
-  { index: '/import/items', label: 'Excel 导入配件', icon: markRaw(Upload), visible: props.isAdmin },
-  { index: '/stocktake', label: '库存盘点', icon: markRaw(Checked), visible: props.isAdmin },
-  { index: props.systemEntryPath, label: '系统', icon: markRaw(Setting), visible: props.canAccessSystemArea },
-]);
+function canShowRoute(item: ModuleRouteDefinition) {
+  if (item.area === 'system') {
+    if (props.isAdmin) return true;
+    if (item.capability === 'system.jobs.manage') return props.canManageSystemJobs;
+    if (item.capability === 'system.tools.manage') return props.canManageSystemTools;
+    if (item.capability === 'system.settings.manage') return props.canManageSystemSettings;
+    if (item.permission === 'audit_export') return props.canAuditExport;
+    return false;
+  }
+  if (item.area === 'parts') {
+    if (!props.canAccessPartsArea) return false;
+    if (props.isAdmin) return true;
+    return item.minRole === 'operator' ? props.canOperator : item.minRole !== 'admin';
+  }
+  if (!props.canAccessPcArea) return false;
+  if (item.pcSection === 'pc' && !props.canAccessPcLedger) return false;
+  if (item.pcSection === 'monitor' && !props.canAccessMonitorLedger) return false;
+  if (props.isAdmin) return true;
+  return item.minRole === 'operator' ? props.canOperator : item.minRole !== 'admin';
+}
 
-const pcItems = computed<MenuItem[]>(() => [
-  { index: '/pc/assets', label: '电脑台账', icon: markRaw(Cpu), visible: props.canAccessPcLedger },
-  { index: '/pc/age-warnings', label: '报废预警', icon: markRaw(Warning), visible: props.canAccessPcLedger },
-  { index: '/pc/tx', label: '电脑出入库明细', icon: markRaw(Document), visible: props.canAccessPcLedger },
-  { index: '/pc/inventory-logs', label: '盘点记录', icon: markRaw(Checked), visible: props.canAccessPcLedger },
-  { index: '/pc/monitors', label: '显示器台账', icon: markRaw(Monitor), visible: props.canAccessMonitorLedger },
-  { index: '/pc/monitor-tx', label: '显示器出入库明细', icon: markRaw(Document), visible: props.canAccessMonitorLedger },
-  { index: '/pc/monitor-inventory-logs', label: '显示器盘点记录', icon: markRaw(Checked), visible: props.canAccessMonitorLedger },
-  { index: '/pc/in', label: '电脑入库', icon: markRaw(Plus), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/pc/out', label: '电脑出库', icon: markRaw(Minus), visible: props.canOperator && props.canAccessPcLedger },
-  { index: '/pc/recycle', label: '电脑回收/归还', icon: markRaw(RefreshRight), visible: props.canOperator && props.canAccessPcLedger },
-  { index: props.systemEntryPath, label: '系统', icon: markRaw(Setting), visible: props.canAccessSystemArea },
-]);
+function buildMenuItems(items: ModuleRouteDefinition[]): MenuItem[] {
+  return items
+    .filter((item) => item.menu && canShowRoute(item))
+    .map((item) => ({
+      index: item.path,
+      label: item.label,
+      icon: iconMap[item.icon],
+      visible: true,
+    }));
+}
+
+function systemEntryItem(): MenuItem {
+  return { index: props.systemEntryPath, label: '系统', icon: markRaw(Setting), visible: true };
+}
 
 const visibleItems = computed(() => {
-  if (props.isSystem) return systemItems.value.filter((item) => item.visible);
-  if (props.warehouseActive === 'parts' && props.canAccessPartsArea) return partsItems.value.filter((item) => item.visible);
-  if (props.canAccessPcArea) return pcItems.value.filter((item) => item.visible);
+  if (props.isSystem) return buildMenuItems(SYSTEM_ROUTE_DEFS);
+  if (props.warehouseActive === 'parts' && props.canAccessPartsArea) {
+    const items = buildMenuItems(PARTS_ROUTE_DEFS);
+    if (props.canAccessSystemArea) items.push(systemEntryItem());
+    return items;
+  }
+  if (props.canAccessPcArea) {
+    const items = buildMenuItems(PC_ROUTE_DEFS);
+    if (props.canAccessSystemArea) items.push(systemEntryItem());
+    return items;
+  }
   return [];
 });
 

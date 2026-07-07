@@ -14,6 +14,7 @@ export interface InventoryBatchRefreshOptions {
   inventoryStatus: Ref<string>;
   /** 盘点批次数据 */
   inventoryBatch: Ref<any>;
+  inventoryBatchLoadedAt: Ref<number>;
   /** 盘点汇总数据 */
   inventorySummary: Ref<any>;
   /** 刷新盘点批次的函数 */
@@ -40,6 +41,7 @@ export function useAssetLedgerBatchRefresh(options: InventoryBatchRefreshOptions
     hasActiveInventoryBatch,
     inventoryStatus,
     inventoryBatch,
+    inventoryBatchLoadedAt,
     inventorySummary,
     refreshInventoryBatchStore,
     refreshInventorySummary: refreshSummaryFn,
@@ -50,6 +52,11 @@ export function useAssetLedgerBatchRefresh(options: InventoryBatchRefreshOptions
 
   const INVENTORY_BATCH_SOFT_TTL_MS = 15 * 60_000;
   const { runWhenBrowserIdle, scheduleDeferredTask } = useBrowserIdleTask();
+
+  function shouldRefreshInventoryBatch() {
+    const loadedAt = Number(inventoryBatchLoadedAt.value || 0);
+    return loadedAt <= 0 || Date.now() - loadedAt >= INVENTORY_BATCH_SOFT_TTL_MS;
+  }
 
   function shouldLoadInventorySummary(filters: any = currentFiltersForList()) {
     return Boolean(hasActiveInventoryBatch.value || String(filters.inventoryStatus || '').trim());
@@ -100,11 +107,26 @@ export function useAssetLedgerBatchRefresh(options: InventoryBatchRefreshOptions
     });
   }
 
+  async function runWithDeferredInventoryBatchRefresh(task: () => Promise<void>) {
+    const shouldRefreshBatch = shouldRefreshInventoryBatch();
+    await task();
+    if (!shouldRefreshBatch) return;
+    scheduleDeferredInventoryBatchRefresh(async () => {
+      try {
+        await refreshInventoryBatch();
+        const nextFilters = currentFiltersForList();
+        if (shouldLoadInventorySummary(nextFilters)) void refreshInventorySummary(nextFilters);
+      } catch {}
+    });
+  }
+
   return {
+    shouldRefreshInventoryBatch,
     shouldLoadInventorySummary,
     refreshInventoryBatch,
     refreshInventorySummary,
     scheduleDeferredInventoryBatchRefresh,
     scheduleAuxiliaryRefresh,
+    runWithDeferredInventoryBatchRefresh,
   };
 }
