@@ -18,6 +18,9 @@ coverage/
 .vite/
 .cache/
 
+# Generated local analysis outputs
+outputs/
+
 # Local temp / logs / backups
 *.log
 *.tmp
