@@ -7,6 +7,7 @@ import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { updateInventoryBatchSnapshotJobState, type AssetInventoryKind } from './asset-inventory-batches';
+import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 import QRCode from 'qrcode';
@@ -1364,7 +1365,86 @@ function estimateBase64DecodedByteLengthByCharLength(base64Length: any) {
   return Math.floor((length * 3) / 4);
 }
 
-function mapAsyncJobRow(row: any) {
+function normalizeAssetKind(input: any) {
+  const value = String(input || '').trim().toLowerCase();
+  return value === 'pc' || value === 'monitor' ? value as AssetInventoryKind : null;
+}
+
+function getAsyncJobAssetLinkSeed(row: any) {
+  const req: any = row?.request_json ? parseJsonSafe(row.request_json, {}) : {};
+  const kind = normalizeAssetKind(row?.asset_kind || req?.kind);
+  const batchId = Math.trunc(Number(row?.inventory_batch_id || req?.batch_id || 0));
+  if (String(row?.job_type || '') !== 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' || !kind || !Number.isFinite(batchId) || batchId <= 0) return null;
+  return { kind, batchId };
+}
+
+async function getInventorySnapshotFailedAssetLink(db: D1Database, row: any, scope?: UserDataScope | null) {
+  const seed = getAsyncJobAssetLinkSeed(row);
+  if (!seed) return null;
+  const base = {
+    asset_kind: seed.kind,
+    inventory_batch_id: seed.batchId,
+    inventory_status: 'CHECKED_ISSUE',
+    failed_asset_id: null as number | null,
+    failed_asset_keyword: '',
+    failed_asset_count: 0,
+  };
+  try {
+    if (seed.kind === 'pc') {
+      if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) return base;
+      const clauses = [
+        'a.inventory_batch_id=?',
+        'COALESCE(a.archived,0)=0',
+        "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
+      ];
+      const binds: any[] = [seed.batchId];
+      applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
+      const sample = await db.prepare(
+        `SELECT a.id, a.serial_no, a.brand, a.model, a.inventory_issue_type, COUNT(*) OVER () AS issue_count
+           FROM pc_assets a
+           LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id
+          WHERE ${clauses.join(' AND ')}
+          ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
+          LIMIT 1`
+      ).bind(...binds).first<any>();
+      if (!sample?.id) return base;
+      return {
+        ...base,
+        failed_asset_id: Number(sample.id || 0),
+        failed_asset_keyword: String(sample.id || sample.serial_no || sample.brand || sample.model || '').trim(),
+        failed_asset_count: Number(sample.issue_count || 0),
+        failed_asset_issue_type: String(sample.inventory_issue_type || ''),
+      };
+    }
+    if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) return base;
+    const clauses = [
+      'a.inventory_batch_id=?',
+      'COALESCE(a.archived,0)=0',
+      "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
+    ];
+    const binds: any[] = [seed.batchId];
+    applyDepartmentDataScopeClause(clauses, binds, 'a.department', scope);
+    const sample = await db.prepare(
+      `SELECT a.id, a.asset_code, a.sn, a.brand, a.model, a.inventory_issue_type, COUNT(*) OVER () AS issue_count
+         FROM monitor_assets a
+        WHERE ${clauses.join(' AND ')}
+        ORDER BY COALESCE(a.inventory_at, a.updated_at, a.created_at) DESC, a.id DESC
+        LIMIT 1`
+    ).bind(...binds).first<any>();
+    if (!sample?.id) return base;
+    return {
+      ...base,
+      failed_asset_id: Number(sample.id || 0),
+      failed_asset_keyword: String(sample.id || sample.asset_code || sample.sn || sample.brand || sample.model || '').trim(),
+      failed_asset_count: Number(sample.issue_count || 0),
+      failed_asset_issue_type: String(sample.inventory_issue_type || ''),
+    };
+  } catch {
+    return base;
+  }
+}
+
+async function mapAsyncJobRow(db: D1Database, row: any, options: { detail?: boolean; assetScope?: UserDataScope | null } = {}) {
   const createdMs = toMs(row?.created_at);
   const startedMs = toMs(row?.started_at);
   const finishedMs = toMs(row?.finished_at || row?.canceled_at);
@@ -1386,18 +1466,27 @@ function mapAsyncJobRow(row: any) {
     : String(row?.status) === 'running' ? 55
     : 5;
   const expiresInMs = row?.retain_until ? Math.max(0, toMs(row.retain_until) - Date.now()) : 0;
+  const { asset_kind: _assetKind, inventory_batch_id: _inventoryBatchId, ...publicRow } = row || {};
+  if (!options.detail) {
+    delete (publicRow as any).request_json;
+    delete (publicRow as any).created_by;
+    delete (publicRow as any).permission_scope;
+    delete (publicRow as any).cancel_requested;
+  }
+  const assetLink = await getInventorySnapshotFailedAssetLink(db, row, options.assetScope);
   return {
-    ...row,
+    ...publicRow,
     duration_ms: durationMs,
     progress_pct: progress,
     result_size: resultSize,
     expires_in_ms: expiresInMs,
     is_expired: !!row?.result_deleted_at || (!!row?.retain_until && expiresInMs <= 0),
     age_ms: createdMs ? Math.max(0, Date.now() - createdMs) : 0,
+    ...(assetLink ? { asset_link: assetLink } : {}),
   };
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null } = {}, bucket?: AsyncJobResultBucket) {
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null; assetScope?: UserDataScope | null } = {}, bucket?: AsyncJobResultBucket) {
   if (!options.skipEnsure) await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
@@ -1427,12 +1516,12 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   }
 
   const selectSql = options.detail
-    ? `SELECT id, job_type, status, created_by, created_by_name, permission_scope, request_json, message, error_text, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at,
+    ? `SELECT id, job_type, status, created_by, created_by_name, permission_scope, request_json, json_extract(request_json, '$.kind') AS asset_kind, json_extract(request_json, '$.batch_id') AS inventory_batch_id, message, error_text, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, cancel_requested, retain_until, result_deleted_at, canceled_at,
       CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
       LENGTH(result_blob_base64) AS result_blob_base64_len,
       LENGTH(result_text) AS result_text_len
       FROM async_jobs`
-    : `SELECT id, job_type, status, created_by_name, message, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, retain_until, result_deleted_at, canceled_at,
+    : `SELECT id, job_type, status, created_by_name, json_extract(request_json, '$.kind') AS asset_kind, json_extract(request_json, '$.batch_id') AS inventory_batch_id, message, result_filename, result_content_type, result_file_size, started_at, finished_at, created_at, updated_at, retry_count, max_retries, retain_until, result_deleted_at, canceled_at,
       CASE WHEN COALESCE(NULLIF(result_object_key,''), '') <> '' OR result_blob_base64 IS NOT NULL OR result_text IS NOT NULL THEN 1 ELSE 0 END AS result_available,
       LENGTH(result_blob_base64) AS result_blob_base64_len,
       LENGTH(result_text) AS result_text_len
@@ -1440,7 +1529,7 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   const sql = `${selectSql} ${where.length ? `WHERE ${where.join(' AND ')}` : ''} ORDER BY id DESC LIMIT ?`;
   try {
     const { results } = await db.prepare(sql).bind(...binds, limit).all<any>();
-    return (results || []).map(mapAsyncJobRow);
+    return await Promise.all((results || []).map((row) => mapAsyncJobRow(db, row, { detail: Boolean(options.detail), assetScope: options.assetScope })));
   } catch (error: any) {
     const message = String(error?.message || error || '').toLowerCase();
     if (message.includes('no such table') || message.includes('async_jobs')) return [];

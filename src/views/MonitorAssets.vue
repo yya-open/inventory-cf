@@ -239,7 +239,7 @@
 
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
-import { useRouter } from 'vue-router';
+import { useRoute, useRouter } from 'vue-router';
 import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
@@ -293,6 +293,7 @@ const canBulkOperation = computed(() => canPerm('bulk_operation'));
 const canQrExport = computed(() => canCapability('qr.export'));
 const canQrReset = computed(() => canCapability('qr.reset'));
 const router = useRouter();
+const route = useRoute();
 const isMobile = ref(typeof window !== 'undefined' ? isLedgerMobileViewport() : false);
 const systemSettings = ref(getCachedSystemSettings());
 const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_reason_options || []);
@@ -773,13 +774,13 @@ const {
   invalidateAssetInventorySummaryCache,
 });
 
-async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
+async function refreshLedgerData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
   clearKeywordTimer();
   const filters = currentFiltersForList();
   if (options.keepPage) {
-    await load(filters, { keepPage: true, silent: options.silent });
+    await load(filters, { keepPage: true, silent: options.silent, forceRefresh: options.forceRefresh });
   } else {
-    await reload(filters, { silent: options.silent });
+    await reload(filters, { silent: options.silent, forceRefresh: options.forceRefresh });
   }
   lastRefreshAt = Date.now();
   if (!options.skipAuxiliary) scheduleAuxiliaryRefresh(filters);
@@ -1470,12 +1471,37 @@ function openRecommendedAction(command: string, row: MonitorAsset) {
 
 
 
-async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean } = {}) {
+async function hydrateViewData(options: { keepPage?: boolean; silent?: boolean; skipAuxiliary?: boolean; forceRefresh?: boolean } = {}) {
   await runWithDeferredInventoryBatchRefresh(() => refreshLedgerData(options));
 }
 
 function handleViewportResize() {
   isMobile.value = typeof window !== 'undefined' ? isLedgerMobileViewport() : false;
+}
+
+function firstRouteQueryValue(key: string) {
+  const value = route.query[key];
+  if (Array.isArray(value)) return String(value[0] || '').trim();
+  return String(value || '').trim();
+}
+
+function applyInitialRouteFilters() {
+  const routeKeyword = firstRouteQueryValue('keyword');
+  const routeInventoryStatus = firstRouteQueryValue('inventory_status').toUpperCase();
+  const routeArchiveMode = firstRouteQueryValue('archive_mode');
+  const routeShowArchived = firstRouteQueryValue('show_archived');
+  const hasRouteFilters = Boolean(routeKeyword || routeInventoryStatus || routeArchiveMode || routeShowArchived);
+  if (!hasRouteFilters) return false;
+  runWithoutAutoSearch(() => {
+    status.value = firstRouteQueryValue('status');
+    locationId.value = firstRouteQueryValue('location_id');
+    keyword.value = routeKeyword;
+    inventoryStatus.value = routeInventoryStatus;
+    archiveReason.value = firstRouteQueryValue('archive_reason');
+    archiveMode.value = routeArchiveMode === 'archived' || routeArchiveMode === 'all' ? routeArchiveMode : 'active';
+    showArchived.value = routeShowArchived === '1' || routeShowArchived.toLowerCase() === 'true';
+  });
+  return true;
 }
 
 onBeforeMount(() => {
@@ -1485,9 +1511,10 @@ onBeforeMount(() => {
       applySavedView(defaultView.name);
     });
   }
+  const hasRouteFilters = applyInitialRouteFilters();
   handleViewportResize();
   if (typeof window !== 'undefined') window.addEventListener('resize', handleViewportResize, { passive: true });
-  void hydrateViewData({ skipAuxiliary: true }).finally(() => {
+  void hydrateViewData({ skipAuxiliary: true, keepPage: !hasRouteFilters, forceRefresh: hasRouteFilters }).finally(() => {
     initialHydrationDone = true;
     const filters = currentFiltersForList();
     scheduleAuxiliaryRefresh(filters);

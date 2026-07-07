@@ -122,6 +122,7 @@
             <div class="row-actions">
               <el-button link @click="openDetail(row)">详情</el-button>
               <el-button v-if="canDownload(row)" link type="primary" @click="downloadJob(row)">下载</el-button>
+              <el-button v-if="canOpenFailedAssets(row)" link type="primary" @click="openFailedAssets(row)">异常资产</el-button>
               <el-button v-if="row.status==='failed'" link type="warning" @click="retryJob(row)">重试</el-button>
               <el-button v-if="row.status==='queued' || row.status==='running'" link type="danger" @click="cancelJob(row)">取消</el-button>
               <el-button v-if="canDelete(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
@@ -152,6 +153,7 @@
             <div class="task-virtual-actions">
               <el-button link @click="openDetail(entry.row)">详情</el-button>
               <el-button v-if="canDownload(entry.row)" link type="primary" @click="downloadJob(entry.row)">下载</el-button>
+              <el-button v-if="canOpenFailedAssets(entry.row)" link type="primary" @click="openFailedAssets(entry.row)">异常资产</el-button>
               <el-button v-if="entry.row.status==='failed'" link type="warning" @click="retryJob(entry.row)">重试</el-button>
               <el-button v-if="entry.row.status==='queued' || entry.row.status==='running'" link type="danger" @click="cancelJob(entry.row)">取消</el-button>
               <el-button v-if="canDelete(entry.row)" link type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
@@ -187,6 +189,9 @@
           <div class="detail-title">失败原因</div>
           <pre class="detail-text detail-pre">{{ detailRow.error_text }}</pre>
         </div>
+        <div v-if="canOpenFailedAssets(detailRow)" class="detail-block">
+          <el-button type="primary" plain @click="openFailedAssets(detailRow)">查看异常资产</el-button>
+        </div>
       </template>
     </el-drawer>
   </div>
@@ -194,6 +199,7 @@
 
 <script setup lang="ts">
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { useRouter } from 'vue-router';
 import { apiDownload, apiGet, apiPost, apiPut } from '../api/client';
 import { ElMessage, ElMessageBox } from '../utils/el-services';
 import { canCapability } from '../store/auth';
@@ -203,6 +209,7 @@ const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
 const PERF_STORAGE_KEY = 'system_task_center_perf_mode';
 const PERF_HINT_DISMISSED_KEY = 'system_task_center_perf_hint_dismissed';
 const loading = ref(false);
+const router = useRouter();
 const loadingMore = ref(false);
 const snapshotSubmitting = ref(false);
 const deletingJobId = ref<number | null>(null);
@@ -275,6 +282,38 @@ function formatDuration(ms: any) { const value = Number(ms || 0); if (!value || 
 function formatBytes(value: any) { const num = Number(value || 0); if (!num) return '-'; if (num < 1024) return `${num} B`; if (num < 1024*1024) return `${(num/1024).toFixed(1)} KB`; return `${(num/(1024*1024)).toFixed(1)} MB`; }
 function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (Number(row?.result_available || 0) === 1 || !!row?.result_content_type); }
 function canDelete(row: any) { return !['queued', 'running'].includes(String(row?.status || '')); }
+function getAssetLink(row: any) {
+  const link = row?.asset_link || {};
+  const kind = String(link?.asset_kind || '').toLowerCase();
+  if (kind !== 'pc' && kind !== 'monitor') return null;
+  return {
+    kind,
+    failedAssetId: Number(link?.failed_asset_id || 0),
+    failedAssetKeyword: String(link?.failed_asset_keyword || '').trim(),
+    failedAssetCount: Number(link?.failed_asset_count || 0),
+    inventoryStatus: String(link?.inventory_status || 'CHECKED_ISSUE').trim() || 'CHECKED_ISSUE',
+  };
+}
+function canOpenFailedAssets(row: any) {
+  const link = getAssetLink(row);
+  return Boolean(link && link.failedAssetCount > 0 && (link.failedAssetId > 0 || link.failedAssetKeyword));
+}
+function openFailedAssets(row: any) {
+  const link = getAssetLink(row);
+  if (!link) return;
+  const keyword = link.failedAssetId > 0 ? String(link.failedAssetId) : link.failedAssetKeyword;
+  if (!keyword) return ElMessage.warning('该任务暂未定位到失败资产');
+  void router.push({
+    path: link.kind === 'monitor' ? '/pc/monitors' : '/pc/assets',
+    query: {
+      keyword,
+      inventory_status: link.inventoryStatus,
+      archive_mode: 'active',
+      show_archived: '0',
+      from_job: String(row?.id || ''),
+    },
+  });
+}
 function onJobSelectionChange(rows: any[]) {
   selectedJobIds.value = (rows || [])
     .map((row: any) => Number(row?.id || 0))

@@ -76,9 +76,10 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     .map((value) => Math.trunc(Number(value || 0)))
     .filter((value, index, arr) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index)
     .slice(0, 200);
+  const assetScope = await getUserDataScope(env.DB, actor.id).catch(() => null);
   const data = timing?.measure
-    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true }, env.BACKUP_BUCKET))
-    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true }, env.BACKUP_BUCKET);
+    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET))
+    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET);
   return json(true, data);
 });
 
