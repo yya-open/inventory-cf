@@ -228,18 +228,20 @@
       </el-table-column>
       <el-table-column
         label="操作"
-        width="140"
+        width="260"
         fixed="right"
       >
         <template #default="{ row }">
+          <div class="audit-row-actions">
           <el-button
-            link
+            class="audit-action-btn"
+            text
             type="primary"
             @click="openPayload(row)"
           >
             查看
           </el-button>
-          <el-button link @click="focusEntityHistory(row)">同对象历史</el-button>
+          <el-button class="audit-action-btn audit-action-btn--wide" text @click="focusEntityHistory(row)">同对象历史</el-button>
           <el-popconfirm
             v-if="isAdmin"
             title="确认删除该审计日志？"
@@ -247,13 +249,15 @@
           >
             <template #reference>
               <el-button
-                link
+                class="audit-action-btn"
+                text
                 type="danger"
               >
                 删除
               </el-button>
             </template>
           </el-popconfirm>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -1402,6 +1406,11 @@ onMounted(() => {
 .audit-header{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap}
 .title{font-weight:800;font-size:16px}
 .tools{display:flex;gap:8px;align-items:center;flex-wrap:wrap}
+.tools :deep(.el-button),.payload-toolbar :deep(.el-button){margin-left:0}
+.audit-row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;align-content:flex-start}
+.audit-row-actions :deep(.el-button){margin-left:0}
+.audit-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
+.audit-action-btn--wide{width:98px}
 .audit-filters{margin-top:0}
 .entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
 .entity-name{font-weight:600}

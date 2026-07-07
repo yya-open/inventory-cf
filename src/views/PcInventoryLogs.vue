@@ -125,12 +125,12 @@
 
           <el-table-column prop="remark" label="备注" min-width="240" show-overflow-tooltip />
 
-          <el-table-column label="操作" min-width="200" fixed="right">
+          <el-table-column label="操作" width="260" fixed="right">
             <template #default="{ row }">
               <div class="log-action-row">
-                <el-button link @click="viewLedger(row)">查看台账</el-button>
-                <el-button link type="primary" :disabled="String(row?.action || '').toUpperCase() !== 'ISSUE'" @click="handleIssue(row)">去处理</el-button>
-                <el-button v-if="isAdmin" type="danger" link @click="deleteOne(row)">删除</el-button>
+                <el-button class="inventory-log-action-btn inventory-log-action-btn--wide" text @click="viewLedger(row)">查看台账</el-button>
+                <el-button class="inventory-log-action-btn" text type="primary" :disabled="String(row?.action || '').toUpperCase() !== 'ISSUE'" @click="handleIssue(row)">去处理</el-button>
+                <el-button v-if="isAdmin" class="inventory-log-action-btn" type="danger" text @click="deleteOne(row)">删除</el-button>
               </div>
             </template>
           </el-table-column>
@@ -735,8 +735,27 @@ onUnmounted(() => {
 
 .log-action-row {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  align-items: center;
+  align-content: flex-start;
+}
+
+.log-action-row :deep(.el-button) {
+  margin-left: 0;
+}
+
+.inventory-log-action-btn {
+  width: 58px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  justify-content: center;
+  font-weight: 600;
+}
+
+.inventory-log-action-btn--wide {
+  width: 88px;
 }
 
 @media (max-width: 768px) {

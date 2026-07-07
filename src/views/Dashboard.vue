@@ -527,7 +527,7 @@ watch(reportMode, () => {
 onMounted(async () => {
   readDashboardPrefs();
   const allowed = reportModeOptions.value.map((x: any) => x.value);
-  if (allowed.length === 1) reportMode.value = allowed[0];
+  if (allowed.length && !allowed.includes(reportMode.value)) reportMode.value = allowed[0];
   prefsReady.value = true;
   await refresh(true);
 });

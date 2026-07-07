@@ -117,15 +117,15 @@
         <el-table-column label="耗时" width="100"><template #default="{ row }">{{ formatDuration(row.duration_ms) }}</template></el-table-column>
         <el-table-column v-if="!compactMode" label="结果大小" width="110"><template #default="{ row }">{{ formatBytes(row.result_size) }}</template></el-table-column>
         <el-table-column prop="created_at" label="创建时间" width="180" />
-        <el-table-column label="操作" min-width="240" fixed="right">
+        <el-table-column label="操作" width="300" fixed="right">
           <template #default="{ row }">
             <div class="row-actions">
-              <el-button link @click="openDetail(row)">详情</el-button>
-              <el-button v-if="canDownload(row)" link type="primary" @click="downloadJob(row)">下载</el-button>
-              <el-button v-if="canOpenFailedAssets(row)" link type="primary" @click="openFailedAssets(row)">异常资产</el-button>
-              <el-button v-if="row.status==='failed'" link type="warning" @click="retryJob(row)">重试</el-button>
-              <el-button v-if="row.status==='queued' || row.status==='running'" link type="danger" @click="cancelJob(row)">取消</el-button>
-              <el-button v-if="canDelete(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
+              <el-button class="task-action-btn" text @click="openDetail(row)">详情</el-button>
+              <el-button v-if="canDownload(row)" class="task-action-btn" text type="primary" @click="downloadJob(row)">下载</el-button>
+              <el-button v-if="canOpenFailedAssets(row)" class="task-action-btn task-action-btn--wide" text type="primary" @click="openFailedAssets(row)">异常资产</el-button>
+              <el-button v-if="row.status==='failed'" class="task-action-btn" text type="warning" @click="retryJob(row)">重试</el-button>
+              <el-button v-if="row.status==='queued' || row.status==='running'" class="task-action-btn" text type="danger" @click="cancelJob(row)">取消</el-button>
+              <el-button v-if="canDelete(row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -151,12 +151,12 @@
             </div>
             <div class="task-virtual-metric">{{ Number(entry.row.progress_pct || 0) }}%</div>
             <div class="task-virtual-actions">
-              <el-button link @click="openDetail(entry.row)">详情</el-button>
-              <el-button v-if="canDownload(entry.row)" link type="primary" @click="downloadJob(entry.row)">下载</el-button>
-              <el-button v-if="canOpenFailedAssets(entry.row)" link type="primary" @click="openFailedAssets(entry.row)">异常资产</el-button>
-              <el-button v-if="entry.row.status==='failed'" link type="warning" @click="retryJob(entry.row)">重试</el-button>
-              <el-button v-if="entry.row.status==='queued' || entry.row.status==='running'" link type="danger" @click="cancelJob(entry.row)">取消</el-button>
-              <el-button v-if="canDelete(entry.row)" link type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
+              <el-button class="task-action-btn" text @click="openDetail(entry.row)">详情</el-button>
+              <el-button v-if="canDownload(entry.row)" class="task-action-btn" text type="primary" @click="downloadJob(entry.row)">下载</el-button>
+              <el-button v-if="canOpenFailedAssets(entry.row)" class="task-action-btn task-action-btn--wide" text type="primary" @click="openFailedAssets(entry.row)">异常资产</el-button>
+              <el-button v-if="entry.row.status==='failed'" class="task-action-btn" text type="warning" @click="retryJob(entry.row)">重试</el-button>
+              <el-button v-if="entry.row.status==='queued' || entry.row.status==='running'" class="task-action-btn" text type="danger" @click="cancelJob(entry.row)">取消</el-button>
+              <el-button v-if="canDelete(entry.row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </div>
         </div>
@@ -643,7 +643,22 @@ onBeforeUnmount(() => {
 </script>
 
 <style scoped>
-.system-task-center{max-width:1680px;margin:0 auto}.page-card{border-radius:8px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.summary-row{margin-bottom:12px}.summary-row :deep(.el-card){border-radius:8px;border-color:#e5e7eb}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px;color:#111827}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:8px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
+.system-task-center{max-width:1680px;margin:0 auto}.page-card{border-radius:8px}.page-actions,.toolbar,.row-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.row-actions{gap:6px;align-content:flex-start}.summary-row{margin-bottom:12px}.summary-row :deep(.el-card){border-radius:8px;border-color:#e5e7eb}.metric-label{font-size:12px;color:#6b7280}.metric-value{font-size:28px;font-weight:800;margin-top:6px;color:#111827}.toolbar{margin-bottom:8px}.toolbar-meta{margin-left:auto;font-size:12px;color:#6b7280}.list-meta{display:flex;justify-content:space-between;gap:12px;font-size:12px;color:#6b7280;margin:0 0 12px}.load-more-wrap{display:flex;justify-content:center;padding-top:12px}.error-text{font-size:12px;color:#c45656;margin-top:4px;white-space:pre-wrap}.line-clamp-2{display:-webkit-box;-webkit-box-orient:vertical;-webkit-line-clamp:2;overflow:hidden}.detail-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.detail-grid>div{display:flex;flex-direction:column;gap:4px;padding:10px;border:1px solid #e5e7eb;border-radius:8px}.detail-grid span{font-size:12px;color:#6b7280}.detail-block{display:flex;flex-direction:column;gap:8px;margin-bottom:12px}.detail-title{font-weight:700}.detail-text{font-size:13px;line-height:1.6;color:#374151;white-space:pre-wrap;word-break:break-word}.detail-pre{background:#f8fafc;border:1px solid #e5e7eb;border-radius:8px;padding:12px}@media (max-width:768px){.toolbar-meta{width:100%;margin-left:0}.list-meta{flex-direction:column}.detail-grid{grid-template-columns:1fr}}
+.row-actions :deep(.el-button),
+.task-virtual-actions :deep(.el-button){
+  margin-left:0;
+}
+.task-action-btn{
+  width:64px;
+  min-height:28px;
+  padding:0 8px;
+  border-radius:6px;
+  justify-content:center;
+  font-weight:600;
+}
+.task-action-btn--wide{
+  width:88px;
+}
 .task-w-140{width:140px}
 .task-w-260{width:260px}
 .task-mode-hint{font-size:12px;color:#909399}

@@ -303,13 +303,13 @@
                 <div class="table-subtle">{{ row.updated_by || '系统' }}</div>
               </template>
             </el-table-column>
-            <el-table-column label="操作" width="220" fixed="right">
+            <el-table-column label="操作" width="260" fixed="right">
               <template #default="scope">
                 <div class="row-actions">
-                  <el-button link @click="moveRow(def.key, scope.$index, -1)" :disabled="scope.$index === 0 || reorderBusy(def.key)">上移</el-button>
-                  <el-button link @click="moveRow(def.key, scope.$index, 1)" :disabled="scope.$index >= dictionaryRows(def.key).length - 1 || reorderBusy(def.key)">下移</el-button>
-                  <el-button link type="primary" :loading="rowBusy(scope.row.id, def.key)" @click="saveDictionary(scope.row)">保存</el-button>
-                  <el-button link type="danger" :disabled="Boolean(scope.row.reference_count) || rowBusy(scope.row.id, def.key)" @click="removeDictionary(scope.row)">删除</el-button>
+                  <el-button class="settings-action-btn" text @click="moveRow(def.key, scope.$index, -1)" :disabled="scope.$index === 0 || reorderBusy(def.key)">上移</el-button>
+                  <el-button class="settings-action-btn" text @click="moveRow(def.key, scope.$index, 1)" :disabled="scope.$index >= dictionaryRows(def.key).length - 1 || reorderBusy(def.key)">下移</el-button>
+                  <el-button class="settings-action-btn" text type="primary" :loading="rowBusy(scope.row.id, def.key)" @click="saveDictionary(scope.row)">保存</el-button>
+                  <el-button class="settings-action-btn" text type="danger" :disabled="Boolean(scope.row.reference_count) || rowBusy(scope.row.id, def.key)" @click="removeDictionary(scope.row)">删除</el-button>
                 </div>
               </template>
             </el-table-column>
@@ -750,7 +750,9 @@ onMounted(() => { reload(); });
 .dictionary-card-header{display:flex;align-items:flex-start;justify-content:space-between;gap:12px;flex-wrap:wrap}
 .dictionary-subtitle{color:#8a8a8a;font-size:12px;margin-top:4px}
 .dictionary-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
-.row-actions{display:flex;align-items:center;gap:2px;flex-wrap:wrap}
+.row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;align-content:flex-start}
+.row-actions :deep(.el-button){margin-left:0}
+.settings-action-btn{width:52px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
 .table-subtle{color:#909399;font-size:12px;margin-top:2px}
 .drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:8px;border:1px dashed transparent;transition:.15s ease}
 .drag-cell:hover{background:#f5f7fa;border-color:#dcdfe6}
@@ -782,6 +784,11 @@ onMounted(() => { reload(); });
   .row-actions :deep(.el-button){
     width:100%;
     max-width:100%;
+  }
+
+  .row-actions :deep(.settings-action-btn){
+    width:52px;
+    max-width:52px;
   }
 
   .settings-summary{

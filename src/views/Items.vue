@@ -129,13 +129,16 @@
         width="260"
       >
         <template #default="{row}">
+          <div class="items-row-actions">
           <el-button
+            class="items-action-btn"
             size="small"
             @click="openEdit(row)"
           >
             编辑
           </el-button>
           <el-button
+            class="items-action-btn"
             size="small"
             type="info"
             plain
@@ -146,6 +149,7 @@
         
           <el-button
             v-if="isAdmin"
+            class="items-action-btn"
             size="small"
             type="danger"
             plain
@@ -153,6 +157,7 @@
           >
             删除
           </el-button>
+          </div>
         </template>
       </el-table-column>
     </el-table>
@@ -488,6 +493,9 @@ onMounted(async () => {
 .items-card{border-radius:8px}
 .items-card :deep(.el-card__body){display:grid;gap:12px}
 .items-card :deep(.el-table){border-radius:8px}
+.items-row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;align-content:flex-start}
+.items-row-actions :deep(.el-button){margin-left:0}
+.items-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
 
 @media (max-width:768px){
   .items-card :deep(.el-card__body > div:first-child){
@@ -498,6 +506,10 @@ onMounted(async () => {
   .items-card :deep(.el-select){
     width:100%;
     max-width:100%;
+  }
+  .items-row-actions :deep(.el-button){
+    width:58px;
+    max-width:58px;
   }
 }
 </style>

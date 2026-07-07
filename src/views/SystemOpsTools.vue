@@ -138,16 +138,16 @@
             </template>
           </el-table-column>
           <el-table-column prop="created_at" label="创建时间" width="180" />
-          <el-table-column label="操作" min-width="220">
+          <el-table-column label="操作" width="300">
             <template #default="{ row }">
                <div class="ops-inline-actions">
-                <el-button link @click="openJobDetail(row)">详情</el-button>
-                <el-button v-if="row.status==='success'" link type="primary" @click="downloadJob(row)">下载</el-button>
-                <el-button v-if="row.status==='success' && canPreviewJob(row)" link type="success" @click="previewJob(row)">预览</el-button>
-                <el-button v-if="row.status==='success' && canPrintJob(row)" link type="warning" @click="printJob(row)">打印</el-button>
-                <el-button v-if="['failed','canceled'].includes(row.status)" link type="warning" @click="retryJob(row.id)">重试</el-button>
-                <el-button v-if="['queued','running'].includes(row.status)" link type="danger" @click="cancelJob(row.id)">取消</el-button>
-                <el-button v-if="canDeleteJob(row)" link type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeletingJobs" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
+                <el-button class="ops-action-btn" text @click="openJobDetail(row)">详情</el-button>
+                <el-button v-if="row.status==='success'" class="ops-action-btn" text type="primary" @click="downloadJob(row)">下载</el-button>
+                <el-button v-if="row.status==='success' && canPreviewJob(row)" class="ops-action-btn" text type="success" @click="previewJob(row)">预览</el-button>
+                <el-button v-if="row.status==='success' && canPrintJob(row)" class="ops-action-btn" text type="warning" @click="printJob(row)">打印</el-button>
+                <el-button v-if="['failed','canceled'].includes(row.status)" class="ops-action-btn" text type="warning" @click="retryJob(row.id)">重试</el-button>
+                <el-button v-if="['queued','running'].includes(row.status)" class="ops-action-btn" text type="danger" @click="cancelJob(row.id)">取消</el-button>
+                <el-button v-if="canDeleteJob(row)" class="ops-action-btn" text type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeletingJobs" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
               </div>
             </template>
           </el-table-column>
@@ -910,8 +910,22 @@ onBeforeUnmount(() => {
 
 .ops-inline-actions {
   display: flex;
-  gap: 8px;
+  gap: 6px;
   flex-wrap: wrap;
+  align-content: flex-start;
+}
+
+.ops-inline-actions :deep(.el-button) {
+  margin-left: 0;
+}
+
+.ops-action-btn {
+  width: 64px;
+  min-height: 28px;
+  padding: 0 8px;
+  border-radius: 6px;
+  justify-content: center;
+  font-weight: 600;
 }
 
 .ops-tag-wrap {

@@ -139,11 +139,13 @@
               fixed="right"
             >
               <template #default="{ row }">
+                <div class="stocktake-row-actions">
                 <template v-if="row.status==='DRAFT'">
                   <el-button
                     v-if="isAdmin"
+                    class="stocktake-action-btn"
                     type="danger"
-                    link
+                    text
                     @click.stop="deleteStocktake(row)"
                   >
                     删除
@@ -151,16 +153,18 @@
                 </template>
                 <template v-else-if="row.status==='APPLIED'">
                   <el-button
+                    class="stocktake-action-btn"
                     type="warning"
-                    link
+                    text
                     @click.stop="rollbackStocktakeByRow(row)"
                   >
                     撤销
                   </el-button>
                   <el-button
                     v-if="isAdmin"
+                    class="stocktake-action-btn"
                     type="danger"
-                    link
+                    text
                     @click.stop="deleteStocktake(row)"
                   >
                     删除
@@ -169,6 +173,7 @@
                 <template v-else>
                   <span class="muted">-</span>
                 </template>
+                </div>
               </template>
             </el-table-column>
           </el-table>
@@ -1097,6 +1102,10 @@ onBeforeUnmount(() => {
 .page-header{ display:flex; justify-content:space-between; align-items:center; }
 .title{ font-weight:800; font-size:16px; }
 .actions{ display:flex; gap:10px; align-items:center; }
+.actions :deep(.el-button),.panel-tools :deep(.el-button),.detail-actions :deep(.el-button),.detail-tools :deep(.el-button){margin-left:0}
+.stocktake-row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;align-content:flex-start}
+.stocktake-row-actions :deep(.el-button){margin-left:0}
+.stocktake-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
 .wh-select{ width:180px; }
 .body{ display:flex; flex-direction:column; gap:16px; }
 .panel{ background: var(--ui-surface,#fff); border:1px solid var(--ui-border,#d9e1ec); border-radius:8px; overflow:hidden; }
