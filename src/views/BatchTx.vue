@@ -511,9 +511,9 @@ onMounted(async () => {
   gap: 12px;
   margin-bottom: 12px;
   padding: 12px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fafafa;
+  background: var(--surface-soft);
 }
 .batch-tx-input-sm {
   width: 220px;
@@ -533,15 +533,15 @@ onMounted(async () => {
 }
 .batch-tx-tip {
   margin-top: 12px;
-  color: #999;
+  color: var(--subtle);
   font-size: 12px;
   line-height: 1.6;
 }
 .row-error {
-  background: rgba(245, 108, 108, 0.06);
+  background: var(--danger-tint);
 }
 .cell-error {
-  background: rgba(245, 108, 108, 0.08) !important;
+  background: var(--danger-tint) !important;
 }
 .cell-error :deep(.el-input__wrapper),
 .cell-error :deep(.el-textarea__inner),

@@ -112,7 +112,7 @@ const repairDocs = [
 
 .docs-help-block {
   margin-top: 12px;
-  color: #666;
+  color: var(--muted);
   line-height: 1.8;
 }
 
@@ -127,13 +127,13 @@ const repairDocs = [
 .doc-list {
   margin: 0;
   padding-left: 18px;
-  color: #555;
+  color: var(--ink-secondary);
   line-height: 1.9;
 }
 .cmd {
   margin: 0;
   padding: 12px 14px;
-  background: #f7f8fa;
+  background: var(--surface-soft);
   border-radius: 8px;
   overflow: auto;
   font-size: 12px;

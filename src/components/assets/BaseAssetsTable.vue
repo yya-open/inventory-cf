@@ -198,11 +198,11 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 .render-hint {
   margin-top: 12px;
   padding: 10px 14px;
-  color: #64748b;
+  color: var(--muted);
   font-size: 12px;
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  border-radius: 14px;
-  background: linear-gradient(180deg, rgba(248, 250, 255, 0.92), rgba(255, 255, 255, 0.96));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
 }
 
 .ledger-table-shell {
@@ -217,12 +217,12 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   gap: 10px;
   margin-bottom: 8px;
   padding: 8px 12px;
-  border: 1px solid rgba(191, 219, 254, 0.72);
-  border-radius: 12px;
-  background: rgba(239, 246, 255, 0.86);
-  color: #475569;
+  border: 1px solid var(--el-color-primary-light-8);
+  border-radius: var(--radius-md);
+  background: var(--brand-tint);
+  color: var(--ink-secondary);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .ledger-refresh-badge {
@@ -231,8 +231,8 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   right: 12px;
   z-index: 5;
   margin: 0;
-  background: rgba(255, 255, 255, 0.94);
-  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.1);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .pager-wrap {
@@ -240,7 +240,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
   justify-content: flex-end;
   margin-top: 16px;
   padding-top: 14px;
-  border-top: 1px solid rgba(226, 232, 240, 0.9);
+  border-top: 1px solid var(--border-soft);
 }
 
 .ledger-table-shell--mobile .pager-wrap {
@@ -258,7 +258,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 .empty-tip {
-  color: #64748b;
+  color: var(--muted);
   font-size: 12px;
   max-width: 320px;
   text-align: center;
@@ -269,7 +269,7 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 :deep(.ledger-table .el-table__inner-wrapper) {
-  border-radius: 20px;
+  border-radius: var(--radius-lg);
   overflow: hidden;
 }
 
@@ -280,41 +280,41 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 :deep(.ledger-table__row td) {
   padding-top: 10px;
   padding-bottom: 10px;
-  border-bottom-color: rgba(226, 232, 240, 0.88);
+  border-bottom-color: var(--border-soft);
 }
 
 :deep(.ledger-table__body tr:nth-child(even) > td.el-table__cell) {
-  background: rgba(248, 250, 252, 0.56);
+  background: var(--surface-soft);
 }
 
 :deep(.ledger-table__body tr:hover > td.el-table__cell) {
-  background: linear-gradient(90deg, rgba(64, 158, 255, 0.08), rgba(255, 255, 255, 0.96)) !important;
+  background: var(--brand-tint) !important;
 }
 
 :deep(.ledger-table__header-wrapper th) {
-  background: linear-gradient(180deg, #f8fbff 0%, #f1f5fb 100%);
-  color: #475569;
+  background: var(--surface-soft);
+  color: var(--ink-secondary);
   font-size: 12px;
   font-weight: 700;
   letter-spacing: 0.02em;
 }
 
 :deep(.ledger-table__header-wrapper th.el-table__cell.is-leaf) {
-  border-bottom-color: rgba(203, 213, 225, 0.8);
+  border-bottom-color: var(--border);
 }
 
 :deep(.ledger-table .el-table__fixed-right::before),
 :deep(.ledger-table .el-table__fixed::before) {
-  background-color: rgba(148, 163, 184, 0.16);
+  background-color: var(--border);
 }
 
 :deep(.ledger-table .el-table__fixed-right),
 :deep(.ledger-table .el-table__fixed) {
-  box-shadow: 0 0 0 1px rgba(241, 245, 249, 0.88);
+  box-shadow: 0 0 0 1px var(--border-soft);
 }
 
 :deep(.ledger-table .el-table__empty-block) {
-  background: linear-gradient(180deg, rgba(248, 250, 255, 0.74), rgba(255, 255, 255, 0.98));
+  background: var(--surface);
 }
 
 :deep(.ledger-table .el-table__empty-text) {
@@ -322,18 +322,18 @@ function handleHeaderDragend(newWidth: number, _oldWidth: number, column: any) {
 }
 
 :deep(.inventory-row-issue td) {
-  background: linear-gradient(90deg, rgba(245, 108, 108, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(245, 108, 108, 0.05);
+  background: var(--danger-tint);
 }
 
 :deep(.inventory-row-issue td:first-child) {
-  box-shadow: inset 4px 0 0 rgba(245, 108, 108, 0.85);
+  box-shadow: inset 3px 0 0 var(--danger);
 }
 
 :deep(.inventory-row-unchecked td) {
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.12) 0%, rgba(255, 255, 255, 0) 18%), rgba(148, 163, 184, 0.04);
+  background: var(--surface-soft);
 }
 
 :deep(.inventory-row-unchecked td:first-child) {
-  box-shadow: inset 4px 0 0 rgba(100, 116, 139, 0.72);
+  box-shadow: inset 3px 0 0 var(--subtle);
 }
 </style>

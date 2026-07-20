@@ -364,9 +364,9 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid #d8dee9;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
 }
 
 .ownership-toolbar__search {
@@ -385,9 +385,9 @@ onBeforeUnmount(() => {
 .ownership-assets,
 .ownership-timeline {
   min-width: 0;
-  border: 1px solid #d8dee9;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 14px;
   overflow: hidden;
 }
@@ -403,13 +403,13 @@ onBeforeUnmount(() => {
 .panel-heading__title {
   font-size: 16px;
   font-weight: 700;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .panel-heading__sub {
   margin-top: 3px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .group-list {
@@ -427,9 +427,9 @@ onBeforeUnmount(() => {
   justify-content: space-between;
   gap: 10px;
   padding: 10px;
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   color: inherit;
   text-align: left;
   cursor: pointer;
@@ -437,8 +437,8 @@ onBeforeUnmount(() => {
 
 .group-row:hover,
 .group-row--active {
-  border-color: #409eff;
-  background: #f0f7ff;
+  border-color: var(--brand);
+  background: var(--brand-tint);
 }
 
 .group-row__main {
@@ -458,7 +458,7 @@ onBeforeUnmount(() => {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -472,26 +472,26 @@ onBeforeUnmount(() => {
 .group-row__counts b {
   font-size: 18px;
   line-height: 1;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .group-row__counts small {
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .asset-main {
   font-weight: 650;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .asset-sub {
   margin-top: 2px;
   font-size: 12px;
-  color: #6b7280;
+  color: var(--muted);
 }
 
 .ownership-table :deep(.ownership-table-row--active > td) {
-  background: #f0f7ff !important;
+  background: var(--brand-tint) !important;
 }
 
 .asset-timeline {
@@ -507,7 +507,7 @@ onBeforeUnmount(() => {
 
 .timeline-event__title {
   font-weight: 700;
-  color: #1f2937;
+  color: var(--ink);
 }
 
 .timeline-event__meta {
@@ -515,18 +515,18 @@ onBeforeUnmount(() => {
   align-items: center;
   gap: 8px;
   flex-wrap: wrap;
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 
 .timeline-event__detail {
-  color: #374151;
+  color: var(--ink-secondary);
   font-size: 13px;
   line-height: 1.5;
 }
 
 .timeline-event__remark {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.5;
   word-break: break-word;

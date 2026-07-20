@@ -180,7 +180,7 @@ onMounted(() => load(false));
 .cmd {
   margin: 0;
   padding: 12px 14px;
-  background: #f7f8fa;
+  background: var(--surface-soft);
   border-radius: 8px;
   overflow: auto;
   font-size: 12px;

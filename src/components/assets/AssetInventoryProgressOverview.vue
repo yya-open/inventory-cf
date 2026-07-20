@@ -96,9 +96,9 @@ const progressSubtitle = computed(() => {
 
 <style scoped>
 .progress-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: linear-gradient(180deg, #fff 0%, #f7fbff 100%);
+  background: var(--surface);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
@@ -123,16 +123,16 @@ const progressSubtitle = computed(() => {
   flex-direction: column;
   gap: 14px;
 }
-.progress-title { font-size: 14px; font-weight: 700; color: #303133; }
-.progress-subtle { margin-top: 4px; color: #909399; font-size: 12px; line-height: 1.6; }
+.progress-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.progress-subtle { margin-top: 4px; color: var(--subtle); font-size: 12px; line-height: 1.6; }
 .progress-rate-row {
   display: flex;
   justify-content: space-between;
   gap: 12px;
   align-items: flex-end;
 }
-.progress-rate { font-size: 30px; font-weight: 800; color: #303133; line-height: 1; }
-.progress-count { font-size: 14px; font-weight: 600; color: #606266; }
+.progress-rate { font-size: 30px; font-weight: 800; color: var(--ink); line-height: 1; }
+.progress-count { font-size: 14px; font-weight: 600; color: var(--muted); }
 .progress-metrics {
   display: grid;
   grid-template-columns: repeat(2, minmax(0, 1fr));
@@ -141,14 +141,14 @@ const progressSubtitle = computed(() => {
 .metric-card {
   border-radius: 12px;
   padding: 10px 12px;
-  background: #fff;
-  border: 1px solid #ebeef5;
+  background: var(--surface);
+  border: 1px solid var(--border);
   display: flex;
   flex-direction: column;
   gap: 6px;
 }
-.metric-card span { font-size: 12px; color: #909399; }
-.metric-card strong { font-size: 20px; color: #303133; }
+.metric-card span { font-size: 12px; color: var(--subtle); }
+.metric-card strong { font-size: 20px; color: var(--ink); }
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-warning); }
 .metric-card.unchecked strong { color: var(--el-color-info); }

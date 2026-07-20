@@ -222,10 +222,7 @@ async function changePassword() {
   justify-content: center;
   padding: 32px;
   overflow: hidden;
-  background:
-    radial-gradient(880px 440px at 15% -8%, rgba(79, 70, 229, 0.07), rgba(255, 255, 255, 0) 60%),
-    radial-gradient(720px 400px at 88% 108%, rgba(79, 70, 229, 0.05), rgba(255, 255, 255, 0) 55%),
-    var(--bg, #f4f5f7);
+  background: var(--bg);
 }
 
 .login-shell {
@@ -233,10 +230,10 @@ async function changePassword() {
   z-index: 1;
   width: min(420px, 100%);
   overflow: hidden;
-  border: 1px solid var(--border, #e3e6eb);
-  border-radius: var(--radius-xl, 16px);
-  background: var(--surface, #ffffff);
-  box-shadow: var(--shadow-lg, 0 20px 48px rgba(16, 24, 40, 0.16));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-xl);
+  background: var(--surface);
+  box-shadow: var(--shadow-lg);
 }
 
 .login-card {
@@ -245,7 +242,7 @@ async function changePassword() {
   gap: 20px;
   min-width: 0;
   padding: 36px 32px 32px;
-  background: var(--surface, #ffffff);
+  background: var(--surface);
 }
 
 .login-card__header {
@@ -261,23 +258,23 @@ async function changePassword() {
   align-items: center;
   justify-content: center;
   border-radius: 12px;
-  background: var(--brand, #4f46e5);
+  background: var(--brand);
   color: #ffffff;
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.02em;
-  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.32);
+  box-shadow: var(--shadow-sm);
 }
 
 .login-card__eyebrow {
-  color: var(--muted, #5b6472);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 600;
 }
 
 .login-card__title {
   margin-top: 2px;
-  color: var(--ink, #191e28);
+  color: var(--ink);
   font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
@@ -285,7 +282,7 @@ async function changePassword() {
 
 .login-card__subtitle {
   margin-top: -8px;
-  color: var(--muted, #5b6472);
+  color: var(--muted);
   font-size: 14px;
   line-height: 1.6;
 }
@@ -294,23 +291,23 @@ async function changePassword() {
   width: 100%;
   height: 44px;
   margin-top: 4px;
-  border: 1px solid var(--brand, #4f46e5);
+  border: 1px solid var(--brand);
   border-radius: 10px;
-  background: var(--brand, #4f46e5);
+  background: var(--brand);
   font-size: 15px;
   font-weight: 700;
-  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.24);
+  box-shadow: var(--shadow-sm);
   transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .login-submit:hover {
-  border-color: var(--brand-hover, #4338ca);
-  background: var(--brand-hover, #4338ca);
-  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.3);
+  border-color: var(--brand-hover);
+  background: var(--brand-hover);
+  box-shadow: var(--shadow-md);
 }
 
 .login-submit:focus-visible {
-  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.16);
+  box-shadow: 0 0 0 4px var(--brand-soft);
 }
 
 .login-turnstile {
@@ -324,32 +321,32 @@ async function changePassword() {
 }
 
 .password-tip {
-  color: var(--subtle, #8a93a2);
+  color: var(--subtle);
   font-size: 12px;
   margin-top: 6px;
 }
 
 :deep(.login-card .el-form-item__label) {
   padding-bottom: 7px;
-  color: var(--ink-secondary, #3d4451);
+  color: var(--ink-secondary);
   font-weight: 600;
 }
 
 :deep(.login-card .el-input__wrapper) {
   min-height: 44px;
   border-radius: 10px;
-  background: var(--surface-soft, #f8f9fb);
-  box-shadow: 0 0 0 1px var(--border-strong, #d3d8e0) inset;
+  background: var(--surface-soft);
+  box-shadow: 0 0 0 1px var(--border-strong) inset;
   transition: box-shadow 160ms ease, background-color 160ms ease;
 }
 
 :deep(.login-card .el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px var(--subtle, #8a93a2) inset;
+  box-shadow: 0 0 0 1px var(--subtle) inset;
 }
 
 :deep(.login-card .el-input__wrapper.is-focus) {
-  background: var(--surface, #ffffff);
-  box-shadow: 0 0 0 1px var(--brand, #4f46e5) inset, 0 0 0 4px rgba(79, 70, 229, 0.12);
+  background: var(--surface);
+  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px var(--brand-soft);
 }
 
 :deep(.login-card .el-form) {

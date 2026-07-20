@@ -1,8 +1,12 @@
+/* system-tokens.css —— 系统页（System* 视图）共享排版与布局
+ * 颜色一律走 tokens.css；组件皮肤护栏见 enterprise.css。
+ */
+
 :root {
   --sys-title-size: 18px;
   --sys-title-weight: 700;
   --sys-muted-size: 12px;
-  --sys-muted-color: var(--ui-muted, #64748b);
+  --sys-muted-color: var(--muted);
   --sys-metric-size: 28px;
   --sys-metric-weight: 700;
 }
@@ -54,7 +58,7 @@
 }
 
 .sys-rounded-card {
-  border-radius: var(--ui-radius-md, 8px);
+  border-radius: var(--radius-md);
 }
 
 .sys-section-gap {
@@ -71,18 +75,18 @@
 }
 
 .sys-help-text {
-  color: #888;
+  color: var(--subtle);
   font-size: 12px;
   margin-top: 10px;
 }
 
 .sys-metric-card {
-  border-radius: var(--ui-radius-md, 8px);
+  border-radius: var(--radius-md);
   min-height: 112px;
 }
 
 .sys-metric-card-label {
-  color: #888;
+  color: var(--subtle);
   font-size: 12px;
   margin-bottom: 8px;
 }

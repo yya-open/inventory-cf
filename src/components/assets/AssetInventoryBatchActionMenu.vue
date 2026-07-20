@@ -82,16 +82,16 @@ function handleCommand(command: string | number | object) {
 
 <style scoped>
 .batch-actions-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: linear-gradient(180deg, #fff 0%, #f7fbff 100%);
+  background: var(--surface);
   padding: 14px 16px;
   display: flex;
   flex-direction: column;
   gap: 14px;
 }
-.batch-actions-title { font-size: 14px; font-weight: 700; color: #303133; }
-.batch-actions-subtle { margin-top: 4px; color:#909399; font-size:12px; line-height:1.6; }
+.batch-actions-title { font-size: 14px; font-weight: 700; color: var(--ink); }
+.batch-actions-subtle { margin-top: 4px; color:var(--subtle); font-size:12px; line-height:1.6; }
 .batch-actions-row { display:flex; flex-wrap:wrap; gap:10px; }
 @media (max-width: 768px) {
   .batch-actions-row, .batch-actions-row :deep(.el-button) { width: 100%; }

@@ -552,31 +552,30 @@ onMounted(async () => {
   gap: 16px;
   flex-wrap: wrap;
   padding: 18px;
-  border: 1px solid var(--ui-border, #d9e1ec);
-  border-radius: var(--ui-radius-md, 8px);
-  background:
-    linear-gradient(90deg, rgba(31, 95, 191, 0.08), transparent 48%),
-    #ffffff;
-  box-shadow: var(--ui-shadow-card, 0 1px 2px rgba(16, 24, 40, 0.06));
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
 }
 
 .dashboard-kicker {
-  color: var(--ui-subtle, #94a3b8);
+  color: var(--subtle);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
+  letter-spacing: 0.06em;
 }
 
 .dashboard-title {
   margin-top: 4px;
-  font-size: 26px;
-  font-weight: 800;
-  color: var(--ui-text, #172033);
+  font-size: 24px;
+  font-weight: 700;
+  color: var(--ink);
   line-height: 1.2;
 }
 
 .dashboard-subtitle {
   margin-top: 6px;
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 13px;
 }
 
@@ -591,26 +590,26 @@ onMounted(async () => {
   justify-content: space-between;
   gap: 14px;
   padding: 12px;
-  border: 1px solid var(--ui-border-soft, #e7edf5);
-  border-radius: var(--ui-radius-md, 8px);
-  background: var(--ui-surface-soft, #f8fafc);
-  color: #334155;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--ink-secondary);
 }
 
 .message-item__title {
-  color: var(--ui-text, #172033);
+  color: var(--ink);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .message-item__hint {
   margin-top: 4px;
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .message-item strong {
-  color: var(--ui-text, #172033);
+  color: var(--ink);
   font-size: 20px;
   line-height: 1;
 }
@@ -626,20 +625,20 @@ onMounted(async () => {
   align-items: center;
   gap: 10px;
   padding: 12px;
-  border: 1px solid var(--ui-border-soft, #e7edf5);
-  border-radius: var(--ui-radius-md, 8px);
-  background: var(--ui-surface-soft, #f8fafc);
-  color: #334155;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
+  color: var(--ink-secondary);
   font-size: 13px;
-  font-weight: 700;
+  font-weight: 600;
   text-decoration: none;
   transition: border-color 150ms ease, background-color 150ms ease, color 150ms ease;
 }
 
 .shortcut-item:hover {
-  background: var(--ui-surface-tint, #f2f7ff);
-  border-color: #bfd3f0;
-  color: var(--ui-primary, #1f5fbf);
+  background: var(--brand-tint);
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .shortcut-item__icon {
@@ -648,10 +647,10 @@ onMounted(async () => {
   justify-content: center;
   width: 28px;
   height: 28px;
-  border: 1px solid var(--ui-border, #d9e1ec);
-  border-radius: var(--ui-radius-sm, 6px);
-  background: #fff;
-  color: var(--ui-primary, #1f5fbf);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--brand);
   font-size: 14px;
 }
 
@@ -664,12 +663,12 @@ onMounted(async () => {
 
 .message-card__badge {
   padding: 3px 8px;
-  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border: 1px solid var(--border-soft);
   border-radius: 999px;
-  background: var(--ui-surface-soft, #f8fafc);
-  color: var(--ui-muted, #64748b);
+  background: var(--surface-soft);
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .dashboard-toolbar {
@@ -693,15 +692,15 @@ onMounted(async () => {
   display: flex;
   gap: 10px;
   flex-wrap: wrap;
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .dashboard-meta span {
   padding: 5px 9px;
-  border: 1px solid var(--ui-border-soft, #e7edf5);
+  border: 1px solid var(--border-soft);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.72);
+  background: var(--surface);
 }
 
 .dashboard-messages {
@@ -730,16 +729,16 @@ onMounted(async () => {
 }
 
 .metric-card__label {
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .metric-card__value {
   margin-top: 6px;
   font-size: 28px;
-  font-weight: 800;
-  color: var(--ui-text, #172033);
+  font-weight: 700;
+  color: var(--ink);
   line-height: 1.15;
 }
 
@@ -749,7 +748,7 @@ onMounted(async () => {
 
 .metric-card__desc {
   font-size: 12px;
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   margin-top: 6px;
 }
 
@@ -779,13 +778,13 @@ onMounted(async () => {
 
 .chart-row__day {
   width: 96px;
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 12px;
 }
 
 .chart-row__bar-bg {
   flex: 1;
-  background: #eef2f7;
+  background: var(--border-soft);
   height: 10px;
   border-radius: 999px;
   overflow: hidden;
@@ -794,13 +793,13 @@ onMounted(async () => {
 .chart-row__bar-fill {
   height: 10px;
   border-radius: 999px;
-  background: var(--ui-primary, #1f5fbf);
+  background: var(--brand);
 }
 
 .chart-row__qty {
   width: 60px;
   text-align: right;
-  color: #334155;
+  color: var(--ink-secondary);
   font-size: 12px;
 }
 
@@ -814,7 +813,7 @@ onMounted(async () => {
 }
 
 .dashboard-loading {
-  color: #64748b;
+  color: var(--muted);
 }
 
 @media (max-width: 1200px) {

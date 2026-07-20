@@ -366,7 +366,7 @@
       title="审计保留与归档策略"
       width="760px"
     >
-      <div style="color:#606266; margin-bottom:10px">
+      <div style="color:var(--muted); margin-bottom:10px">
         当前策略：保留近 <b>{{ retentionDays }}</b> 天；上次清理：{{ retentionLast || "-" }}；上次归档：{{ archiveLast || "-" }}
       </div>
       <el-alert
@@ -1414,8 +1414,8 @@ onMounted(() => {
 .audit-filters{margin-top:0}
 .entity-cell{display:flex;flex-direction:column;gap:2px;line-height:1.15}
 .entity-name{font-weight:600}
-.entity-meta{font-size:12px;color:#909399}
-.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:#fafcff}.payload-kv-label{font-size:12px;color:#909399;margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:#fff}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:8px}.payload-diff-cell.before{background:#fff7ed}.payload-diff-cell.after{background:#ecfdf5}.payload-diff-caption{display:inline-block;font-size:12px;color:#606266;margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:8px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
+.entity-meta{font-size:12px;color:var(--subtle)}
+.payload-toolbar{display:flex;justify-content:space-between;align-items:center;gap:12px;flex-wrap:wrap;margin-bottom:10px}.payload-summary-meta{margin-bottom:14px}.payload-kv-grid{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-kv-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:var(--surface-soft)}.payload-kv-label{font-size:12px;color:var(--subtle);margin-bottom:6px}.payload-kv-value{white-space:pre-wrap;word-break:break-word}.payload-diff-list{display:flex;flex-direction:column;gap:12px}.payload-diff-item{padding:12px;border:1px solid var(--el-border-color);border-radius:8px;background:var(--surface)}.payload-diff-key{font-weight:700;margin-bottom:10px}.payload-diff-values{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px}.payload-diff-cell{padding:10px;border-radius:8px}.payload-diff-cell.before{background:var(--warning-tint)}.payload-diff-cell.after{background:var(--success-tint)}.payload-diff-caption{display:inline-block;font-size:12px;color:var(--muted);margin-bottom:6px}.payload-diff-text{white-space:pre-wrap;word-break:break-word}.payload-box{border:1px solid var(--el-border-color);border-radius:8px}.payload-pre{margin:0;padding:12px;font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;font-size:12px;line-height:1.45;white-space:pre-wrap;word-break:break-word}@media (max-width: 900px){.payload-kv-grid,.payload-diff-values{grid-template-columns:1fr}}
 
 @media (max-width: 768px){
   .audit-header,

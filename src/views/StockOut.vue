@@ -41,7 +41,7 @@
         <el-tag :type="available <= warning ? 'danger' : 'success'">
           {{ available }}
         </el-tag>
-        <span style="margin-left: 10px; color: #888">（预警值：{{ warning }}）</span>
+        <span style="margin-left: 10px; color: var(--subtle)">（预警值：{{ warning }}）</span>
       </el-form-item>
 
       <el-form-item
@@ -54,7 +54,7 @@
         />
         <span
           v-if="form.qty > available"
-          style="margin-left: 10px; color: #d93026; font-weight: 600"
+          style="margin-left: 10px; color: var(--danger); font-weight: 600"
         >库存不足</span>
       </el-form-item>
 

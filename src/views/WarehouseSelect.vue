@@ -4,7 +4,7 @@
       <div style="font-size:18px; font-weight:700; margin-bottom:6px">
         选择要进入的仓库
       </div>
-      <div style="color:#888; font-size:13px; margin-bottom:18px">
+      <div style="color:var(--subtle); font-size:13px; margin-bottom:18px">
         你可以随时在右上角切换
       </div>
 
@@ -25,7 +25,7 @@
                 配件仓
               </div>
             </div>
-            <div style="margin-top:10px; color:#666; font-size:13px; line-height:1.6">
+            <div style="margin-top:10px; color:var(--muted); font-size:13px; line-height:1.6">
               库存查询、出入库明细、预警中心、入库/出库、批量出入库、配件管理、库存盘点等
             </div>
             <div style="margin-top:14px">
@@ -54,7 +54,7 @@
                 电脑/显示器仓
               </div>
             </div>
-            <div style="margin-top:10px; color:#666; font-size:13px; line-height:1.6">
+            <div style="margin-top:10px; color:var(--muted); font-size:13px; line-height:1.6">
               电脑台账、显示器台账、出入库明细、盘点记录、导入/导出 Excel
             </div>
             <div style="margin-top:14px">
@@ -99,15 +99,15 @@ function choose(k: WarehouseKey) {
   justify-content:center;
   padding:24px 16px;
   background:
-    radial-gradient(880px 440px at 15% -8%, rgba(79,70,229,.06), rgba(255,255,255,0) 60%),
-    var(--bg, #f4f5f7);
+    
+    var(--bg);
 }
 .warehouse-select-card{
   width:760px;
   max-width:100%;
   border-radius:var(--radius-xl, 16px);
-  border:1px solid var(--border, #e3e6eb);
-  box-shadow:var(--shadow-md, 0 8px 24px rgba(16,24,40,.10));
+  border:1px solid var(--border);
+  box-shadow:var(--shadow-md);
 }
 .warehouse-option-card{
   height:100%;
@@ -116,8 +116,8 @@ function choose(k: WarehouseKey) {
   transition:border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .warehouse-option-card:hover{
-  border-color:var(--brand, #4f46e5);
-  box-shadow:0 10px 24px rgba(79,70,229,.14);
+  border-color:var(--brand);
+  box-shadow:var(--shadow-sm);
   transform:translateY(-2px);
 }
 @media (min-width: 640px) {

@@ -245,17 +245,17 @@ const statusClass = computed(() => {
 <style scoped>
 :deep(.qr-dialog .el-dialog) {
   max-width: calc(100vw - 32px);
-  border: 1px solid var(--ent-border-soft, #e7ebf2);
-  border-radius: 12px;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-lg);
   overflow: hidden;
-  box-shadow: 0 24px 70px rgba(16, 24, 40, 0.2);
+  box-shadow: var(--shadow-lg);
 }
 
 :deep(.qr-dialog .el-dialog__header) {
   padding: 26px 30px 18px;
   margin-right: 0;
-  border-bottom: 1px solid var(--ent-border-soft, #e7ebf2);
-  background: linear-gradient(180deg, #ffffff 0%, #f7f9fc 100%);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface);
 }
 
 :deep(.qr-dialog .el-dialog__headerbtn) {
@@ -265,13 +265,13 @@ const statusClass = computed(() => {
 
 :deep(.qr-dialog .el-dialog__body) {
   padding: 28px 30px;
-  background: #ffffff;
+  background: var(--surface);
 }
 
 :deep(.qr-dialog .el-dialog__footer) {
   padding: 18px 30px 24px;
-  border-top: 1px solid var(--ent-border-soft, #e7ebf2);
-  background: #ffffff;
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface);
 }
 
 .qr-header {
@@ -288,7 +288,7 @@ const statusClass = computed(() => {
 
 .qr-header__eyebrow {
   margin-bottom: 8px;
-  color: var(--ent-subtle, #8a94a6);
+  color: var(--subtle);
   font-size: 12px;
   font-weight: 700;
   line-height: 1;
@@ -296,15 +296,15 @@ const statusClass = computed(() => {
 }
 
 .qr-header__title {
-  color: var(--ent-text, #1f2937);
-  font-size: 26px;
-  font-weight: 800;
+  color: var(--ink);
+  font-size: 24px;
+  font-weight: 700;
   line-height: 1.2;
 }
 
 .qr-header__desc {
   margin-top: 6px;
-  color: var(--ent-muted, #667085);
+  color: var(--muted);
   font-size: 14px;
 }
 
@@ -312,9 +312,9 @@ const statusClass = computed(() => {
   max-width: 360px;
   height: 34px;
   padding: 0 14px;
-  border-radius: 6px;
-  color: var(--ent-muted, #667085);
-  font-weight: 700;
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  font-weight: 600;
 }
 
 .qr-body {
@@ -328,18 +328,16 @@ const statusClass = computed(() => {
 .qr-tool-card,
 .qr-link-card,
 .qr-tip-card {
-  border: 1px solid var(--ent-border, #d8dee9);
-  border-radius: 8px;
-  background: #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
 }
 
 .qr-preview-panel {
   display: flex;
   min-height: 570px;
   padding: 24px;
-  background:
-    linear-gradient(135deg, rgba(31, 95, 191, 0.08) 0, transparent 36%),
-    linear-gradient(180deg, #f8fafc 0, #ffffff 70%);
+  background: var(--surface-soft);
 }
 
 .qr-preview-card {
@@ -351,10 +349,10 @@ const statusClass = computed(() => {
   gap: 20px;
   min-width: 0;
   padding: 24px;
-  border: 1px solid rgba(216, 222, 233, 0.86);
-  border-radius: 10px;
-  background: rgba(255, 255, 255, 0.9);
-  box-shadow: 0 18px 38px rgba(16, 24, 40, 0.08);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .qr-preview-head {
@@ -367,15 +365,15 @@ const statusClass = computed(() => {
 
 .qr-preview-kicker {
   margin-bottom: 6px;
-  color: var(--ent-subtle, #8a94a6);
+  color: var(--subtle);
   font-size: 12px;
   font-weight: 700;
 }
 
 .qr-preview-title {
-  color: var(--ent-text, #1f2937);
+  color: var(--ink);
   font-size: 18px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1.35;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -386,38 +384,38 @@ const statusClass = computed(() => {
   flex: 0 0 auto;
   min-width: 64px;
   padding: 6px 10px;
-  border: 1px solid #d8dee9;
+  border: 1px solid var(--border);
   border-radius: 999px;
-  color: var(--ent-muted, #667085);
-  background: #f8fafc;
+  color: var(--muted);
+  background: var(--surface-soft);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 700;
   line-height: 1;
   text-align: center;
 }
 
 .qr-status-chip.is-success {
-  border-color: rgba(60, 140, 68, 0.26);
-  color: #27763c;
-  background: #edf8ef;
+  border-color: var(--success-border);
+  color: var(--success);
+  background: var(--success-tint);
 }
 
 .qr-status-chip.is-warning {
-  border-color: rgba(184, 119, 18, 0.28);
-  color: #9a650f;
-  background: #fff7e7;
+  border-color: var(--warning-border);
+  color: var(--warning);
+  background: var(--warning-tint);
 }
 
 .qr-status-chip.is-info {
-  border-color: rgba(102, 112, 133, 0.24);
-  color: #667085;
-  background: #f2f4f7;
+  border-color: var(--border);
+  color: var(--muted);
+  background: var(--surface-soft);
 }
 
 .qr-status-chip.is-danger {
-  border-color: rgba(199, 53, 43, 0.24);
-  color: #b42318;
-  background: #fff1f0;
+  border-color: var(--danger-border);
+  color: var(--danger);
+  background: var(--danger-tint);
 }
 
 .qr-code-frame {
@@ -427,11 +425,9 @@ const statusClass = computed(() => {
   width: min(360px, 100%);
   aspect-ratio: 1;
   padding: 24px;
-  border: 1px solid rgba(216, 222, 233, 0.9);
-  border-radius: 12px;
-  background:
-    linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(247, 249, 252, 0.98)),
-    #ffffff;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background: var(--surface);
 }
 
 .qr-code-frame img {
@@ -447,11 +443,11 @@ const statusClass = computed(() => {
   justify-content: center;
   width: 100%;
   height: 100%;
-  border: 1px dashed var(--ent-border, #d8dee9);
-  border-radius: 8px;
-  color: var(--ent-subtle, #8a94a6);
-  background: #f8fafc;
-  font-weight: 700;
+  border: 1px dashed var(--border-strong);
+  border-radius: var(--radius-md);
+  color: var(--subtle);
+  background: var(--surface-soft);
+  font-weight: 600;
 }
 
 .qr-meta-grid {
@@ -464,24 +460,24 @@ const statusClass = computed(() => {
 .qr-meta-item {
   min-width: 0;
   padding: 14px 16px;
-  border: 1px solid var(--ent-border-soft, #e7ebf2);
-  border-radius: 8px;
-  background: #f8fafc;
+  border: 1px solid var(--border-soft);
+  border-radius: var(--radius-md);
+  background: var(--surface-soft);
 }
 
 .qr-meta-label {
   display: block;
   margin-bottom: 6px;
-  color: var(--ent-subtle, #8a94a6);
+  color: var(--subtle);
   font-size: 12px;
-  font-weight: 700;
+  font-weight: 600;
 }
 
 .qr-meta-value {
   display: block;
-  color: var(--ent-text, #1f2937);
+  color: var(--ink);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -508,14 +504,14 @@ const statusClass = computed(() => {
 }
 
 .qr-tool-card__title {
-  color: var(--ent-text, #1f2937);
+  color: var(--ink);
   font-size: 15px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .qr-tool-card__desc {
   margin-top: 4px;
-  color: var(--ent-subtle, #8a94a6);
+  color: var(--subtle);
   font-size: 12px;
 }
 
@@ -551,8 +547,8 @@ const statusClass = computed(() => {
 }
 
 .qr-tool-button--danger.el-button.is-plain {
-  color: var(--ent-danger, #c7352b);
-  background: #fff8f7;
+  color: var(--danger);
+  background: var(--danger-tint);
 }
 
 .qr-link-card {
@@ -562,17 +558,17 @@ const statusClass = computed(() => {
 
 .qr-link-input :deep(.el-input__wrapper) {
   min-height: 42px;
-  box-shadow: 0 0 0 1px var(--ent-border, #d8dee9) inset;
+  box-shadow: 0 0 0 1px var(--border) inset;
 }
 
 .qr-link-input :deep(.el-input__inner) {
-  color: var(--ent-muted, #667085);
+  color: var(--muted);
   font-weight: 600;
 }
 
 .qr-link-input :deep(.el-input-group__append) {
   padding: 0;
-  background: #f8fafc;
+  background: var(--surface-soft);
 }
 
 .qr-link-input :deep(.el-input-group__append .el-button) {
@@ -585,8 +581,8 @@ const statusClass = computed(() => {
   display: grid;
   grid-template-columns: 38px minmax(0, 1fr);
   gap: 12px;
-  border-color: rgba(60, 140, 68, 0.22);
-  background: #f0faed;
+  border-color: var(--success-border);
+  background: var(--success-tint);
 }
 
 .qr-tip-card__icon {
@@ -597,21 +593,21 @@ const statusClass = computed(() => {
   height: 38px;
   border-radius: 50%;
   color: #ffffff;
-  background: #52b837;
+  background: var(--success);
   font-size: 20px;
 }
 
 .qr-tip-card__title {
-  color: #2f8d1f;
+  color: var(--success);
   font-size: 16px;
-  font-weight: 800;
+  font-weight: 700;
 }
 
 .qr-tip-card__text {
   margin-top: 6px;
-  color: #3c9b2c;
+  color: var(--success);
   font-size: 14px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.55;
 }
 
@@ -624,7 +620,7 @@ const statusClass = computed(() => {
 }
 
 .qr-footnote {
-  color: var(--ent-muted, #667085);
+  color: var(--muted);
   font-size: 13px;
   line-height: 1.5;
 }

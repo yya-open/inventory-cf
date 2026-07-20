@@ -51,9 +51,9 @@ const stageText = computed(() => props.stage || '准备中');
 
 <style scoped>
 .progress-wrap{display:grid;gap:12px}
-.progress-title{font-size:16px;font-weight:700;color:#111827}
-.progress-stage{font-size:13px;color:#475569}
-.progress-meta{display:flex;justify-content:space-between;font-size:12px;color:#64748b}
-.progress-detail{font-size:12px;color:#334155;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px;padding:10px 12px;line-height:1.6}
-.progress-tip{font-size:12px;color:#94a3b8}
+.progress-title{font-size:16px;font-weight:700;color:var(--ink)}
+.progress-stage{font-size:13px;color:var(--ink-secondary)}
+.progress-meta{display:flex;justify-content:space-between;font-size:12px;color:var(--muted)}
+.progress-detail{font-size:12px;color:var(--ink-secondary);background:var(--surface-soft);border:1px solid var(--border);border-radius:10px;padding:10px 12px;line-height:1.6}
+.progress-tip{font-size:12px;color:var(--subtle)}
 </style>

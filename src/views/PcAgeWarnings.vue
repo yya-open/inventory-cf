@@ -455,12 +455,12 @@ onBeforeUnmount(() => {
 }
 
 .age-warning-title {
-  color: var(--ui-text, #172033);
+  color: var(--ink);
   font-weight: 700;
 }
 
 .age-warning-sub {
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 12px;
 }
 

@@ -901,7 +901,7 @@ onBeforeUnmount(() => {
 
 .ops-subtitle {
   margin-bottom: 8px;
-  color: #666;
+  color: var(--muted);
 }
 
 .ops-auto-refresh {
@@ -935,7 +935,7 @@ onBeforeUnmount(() => {
 }
 
 .ops-error-text {
-  color: #c45656;
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -952,8 +952,8 @@ onBeforeUnmount(() => {
 .ops-error-pre {
   white-space: pre-wrap;
   word-break: break-word;
-  background: #f8fafc;
-  border: 1px solid #e5e7eb;
+  background: var(--surface-soft);
+  border: 1px solid var(--border);
   border-radius: 8px;
   padding: 12px;
 }

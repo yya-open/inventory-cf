@@ -1570,11 +1570,11 @@ onActivated(() => {
 :deep(.ledger-toolbar-card),
 :deep(.ledger-table-card) {
   position: relative;
-  border: 1px solid #d8dee9;
+  border: 1px solid var(--border);
   border-radius: 8px;
   overflow: hidden;
-  background: #ffffff;
-  box-shadow: 0 1px 2px rgba(16, 24, 40, 0.06);
+  background: var(--surface);
+  box-shadow: var(--shadow-xs);
 }
 
 :deep(.ledger-toolbar-card > .el-card__body),
@@ -1590,7 +1590,7 @@ onActivated(() => {
 }
 
 .batch-help {
-  color: #909399;
+  color: var(--subtle);
   font-size: 12px;
   padding-left: 4px;
 }

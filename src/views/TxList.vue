@@ -624,7 +624,7 @@ onActivated(() => {
 .tx-select-xs { width: 110px; }
 .tx-input { width: 220px; }
 .tx-cell-title { font-weight: 600; }
-.tx-cell-sub { color: #999; font-size: 12px; }
+.tx-cell-sub { color: var(--subtle); font-size: 12px; }
 
 @media (max-width: 768px) {
   .tx-select-lg,

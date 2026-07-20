@@ -71,7 +71,7 @@
             :value="a.id"
           />
         </el-select>
-        <div style="margin-top:6px; color:#999; font-size:12px">
+        <div style="margin-top:6px; color:var(--subtle); font-size:12px">
           没有找到？请先到「电脑入库」把电脑录入。
         </div>
       </el-form-item>

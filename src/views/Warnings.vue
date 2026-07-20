@@ -565,7 +565,7 @@ onActivated(() => {
 
 .warning-bulk-panel__hint,
 .warning-muted {
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
 }
 
 .warning-number {
@@ -573,11 +573,11 @@ onActivated(() => {
 }
 
 .warning-number.is-danger {
-  color: var(--ui-danger, #c7352b);
+  color: var(--danger);
 }
 
 .warning-number.is-ok {
-  color: var(--ui-success, #16845f);
+  color: var(--success);
 }
 
 @media (max-width: 768px) {

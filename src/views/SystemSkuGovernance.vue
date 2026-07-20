@@ -344,9 +344,9 @@ onMounted(load);
 
 .summary-tile,
 .precheck-tile {
-  border: 1px solid #e5e7eb;
+  border: 1px solid var(--border);
   border-radius: 8px;
-  background: #fff;
+  background: var(--surface);
   padding: 14px;
   display: flex;
   flex-direction: column;
@@ -356,7 +356,7 @@ onMounted(load);
 
 .summary-tile span,
 .precheck-tile span {
-  color: #6b7280;
+  color: var(--muted);
   font-size: 12px;
 }
 
@@ -364,7 +364,7 @@ onMounted(load);
 .precheck-tile strong {
   font-size: 28px;
   line-height: 1;
-  color: #111827;
+  color: var(--ink);
 }
 
 .notice,

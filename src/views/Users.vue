@@ -76,7 +76,7 @@
         <el-form-item label="账号"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="密码">
           <el-input v-model="form.password" type="password" show-password />
-          <div style="color:#999; font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
+          <div style="color:var(--subtle); font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
         <el-form-item label="角色">
           <el-select v-model="form.role" style="width:100%">
@@ -241,12 +241,12 @@
             </el-select>
             <el-tag v-if="previewRouteResult" :type="previewRouteResult.enabled ? 'success' : 'danger'">{{ previewRouteResult.enabled ? '允许访问' : '将被拦截' }}</el-tag>
           </div>
-          <div style="margin-top:8px; color:#666">{{ previewRouteResult?.reason || '请选择一个入口查看策略结果' }}</div>
+          <div style="margin-top:8px; color:var(--muted)">{{ previewRouteResult?.reason || '请选择一个入口查看策略结果' }}</div>
         </el-card>
         <el-row :gutter="12">
-          <el-col :span="8"><el-card shadow="never"><div style="color:#999">电脑台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
-          <el-col :span="8"><el-card shadow="never"><div style="color:#999">显示器台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
-          <el-col :span="8"><el-card shadow="never"><div style="color:#999">配件条目</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.parts_items ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">电脑台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">显示器台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">配件条目</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.parts_items ?? 0 }}</div></el-card></el-col>
         </el-row>
         <el-table :data="scopePreview.routes || []" border>
           <el-table-column prop="label" label="模块" min-width="180" />
@@ -263,7 +263,7 @@
           <el-table-column prop="reason" label="命中规则" min-width="260" />
         </el-table>
       </div>
-      <div v-else style="color:#999">暂无预览数据</div>
+      <div v-else style="color:var(--subtle)">暂无预览数据</div>
       <template #footer>
         <el-button @click="showScopePreview=false">关闭</el-button>
       </template>
@@ -795,9 +795,9 @@ onMounted(() => {
 .access-summary {
   width: 100%;
   padding: 10px 12px;
-  border: 1px solid #dcdfe6;
+  border: 1px solid var(--border);
   border-radius: 6px;
-  background: #fafafa;
+  background: var(--surface-soft);
 }
 
 .access-summary__head,
@@ -815,7 +815,7 @@ onMounted(() => {
 .access-summary__hint,
 .access-summary__note,
 .access-summary__label {
-  color: #606266;
+  color: var(--muted);
   font-size: 12px;
   line-height: 1.4;
 }
@@ -823,7 +823,7 @@ onMounted(() => {
 .access-summary__label {
   width: 56px;
   flex: none;
-  color: #909399;
+  color: var(--subtle);
 }
 
 .access-summary__note {
@@ -833,11 +833,11 @@ onMounted(() => {
 .access-summary__change {
   margin-top: 8px;
   padding-top: 8px;
-  border-top: 1px dashed #dcdfe6;
+  border-top: 1px dashed var(--border-strong);
 }
 
 .access-summary__arrow {
-  color: #909399;
+  color: var(--subtle);
   font-size: 12px;
 }
 

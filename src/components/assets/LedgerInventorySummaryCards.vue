@@ -51,17 +51,16 @@ const safeSummary = computed(() => ({
 .summary-card {
   position: relative;
   overflow: hidden;
-  border: 1px solid rgba(148, 163, 184, 0.14);
-  background: rgba(255, 255, 255, 0.94);
-  border-radius: 18px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+  border-radius: var(--radius-lg);
   padding: 14px 15px;
   text-align: left;
   cursor: pointer;
   display: flex;
   flex-direction: column;
   gap: 6px;
-  box-shadow: 0 14px 24px rgba(15, 23, 42, 0.05);
-  transition: transform 160ms ease, box-shadow 160ms ease, border-color 160ms ease, background 160ms ease;
+  transition: border-color 160ms ease, background 160ms ease;
 }
 
 .summary-card::before {
@@ -71,40 +70,38 @@ const safeSummary = computed(() => ({
   right: 0;
   top: 0;
   height: 3px;
-  background: linear-gradient(90deg, rgba(148, 163, 184, 0.2), rgba(148, 163, 184, 0.7));
+  background: var(--border-strong);
 }
 
 .summary-card.checked::before {
-  background: linear-gradient(90deg, rgba(103, 194, 58, 0.35), rgba(103, 194, 58, 0.86));
+  background: var(--success);
 }
 
 .summary-card.issue::before {
-  background: linear-gradient(90deg, rgba(245, 108, 108, 0.35), rgba(245, 108, 108, 0.86));
+  background: var(--danger);
 }
 
 .summary-card.unchecked::before {
-  background: linear-gradient(90deg, rgba(144, 147, 153, 0.35), rgba(144, 147, 153, 0.86));
+  background: var(--subtle);
 }
 
 .summary-card:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 18px 28px rgba(15, 23, 42, 0.08);
+  border-color: var(--border-strong);
 }
 
 .summary-card strong {
   font-size: 24px;
-  color: #0f172a;
+  color: var(--ink);
 }
 
 .summary-label {
   font-size: 12px;
-  color: #8a94a6;
+  color: var(--subtle);
 }
 
 .summary-card.active {
-  border-color: rgba(64, 158, 255, 0.34);
-  background: linear-gradient(180deg, rgba(255, 255, 255, 0.98), rgba(237, 245, 255, 0.92));
-  box-shadow: 0 0 0 1px rgba(64, 158, 255, 0.10), 0 20px 32px rgba(64, 158, 255, 0.12);
+  border-color: var(--brand);
+  background: var(--brand-tint);
 }
 
 .summary-card.checked strong { color: var(--el-color-success); }

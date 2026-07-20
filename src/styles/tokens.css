@@ -33,6 +33,12 @@
   --success: #15803d;
   --warning: #b45309;
   --danger: #dc2626;
+  --success-tint: #e9f7ef;
+  --success-border: #b9e5cb;
+  --warning-tint: #fdf3e3;
+  --warning-border: #f0dab0;
+  --danger-tint: #fdecec;
+  --danger-border: #f4c0c0;
 
   /* ---- 深色侧边栏 ---- */
   --sidebar-bg: #12151d;

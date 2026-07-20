@@ -1,7 +1,10 @@
-/* enterprise.css —— 页面级组件外观（卡片/按钮/输入/表格/弹窗等）
+/* enterprise.css —— 页面级组件外观护栏（卡片/按钮/输入/表格/弹窗等）
  * 令牌已迁移至 tokens.css（--ent-* 为桥接别名）；骨架样式由 chrome.css 接管。
+ * 职责：以 !important 压住 40 个 vue scoped 里的旧装饰，保证全局皮肤一致。
+ * 已清理过的源（app.css / ledger-*-shared.css）不再在此重复压制。
  */
 
+/* ---- 卡片：全局统一皮肤（压 scoped 装饰） ---- */
 .el-card,
 .ui-page-card,
 .ledger-table-card,
@@ -24,80 +27,34 @@
   color: var(--ent-text);
 }
 
-.ui-toolbar-block,
-.toolbar-block,
-.ui-toolbar--ledger .ui-toolbar-block,
-.ledger-table-skeleton,
-.ledger-detail-card,
-.ledger-detail-hero,
-.ledger-form-section,
-.ledger-audit-event,
+/* ---- scoped 装饰仍活着的零散块（BaseAssetsTable / QrPrintTemplateDialog） ---- */
 .render-hint,
-.qr-action-group,
 .preview-card {
   border: 1px solid var(--ent-border) !important;
   border-radius: var(--ent-radius-lg) !important;
   background: var(--ent-surface) !important;
   box-shadow: none !important;
-  backdrop-filter: none !important;
 }
 
-.toolbar-block::before,
-.toolbar-block::after,
-.ui-toolbar--ledger .ui-toolbar-block::before,
-.ui-toolbar--ledger .ui-toolbar-block::after,
-.ledger-toolbar-card::after,
-.ledger-table-card::after,
-.ledger-section--table::before,
-.password-dialog .el-dialog::before {
-  content: none !important;
-  display: none !important;
-}
-
-.page-wrap__content .ledger-page::before {
-  content: none !important;
-  display: none !important;
-}
-
-.toolbar-kicker,
-.ledger-drawer__eyebrow,
-.monitor-asset-form-dialog__eyebrow {
-  color: var(--ent-subtle) !important;
-  letter-spacing: 0.04em !important;
-}
-
-.toolbar-block-title,
-.ui-toolbar-title,
-.ui-toolbar--ledger .ui-toolbar-title,
-.sys-header-title,
-.ledger-detail-hero__title {
+/* ---- 系统页标题（system-tokens.css 源，p2-t5 收敛后可删） ---- */
+.sys-header-title {
   color: var(--ent-text) !important;
   font-weight: 700 !important;
 }
 
-.toolbar-subtle,
 .sys-muted,
-.sys-header-muted,
-.ledger-detail-hero__meta,
-.ledger-drawer__desc {
+.sys-header-muted {
   color: var(--ent-muted) !important;
 }
 
+/* ---- 按钮 ---- */
 .el-button {
   border-radius: var(--ent-radius) !important;
   font-weight: 600;
   box-shadow: none !important;
 }
 
-.el-button--primary,
-.ui-toolbar-segment.is-active,
-.ui-toolbar-segment.el-button--primary,
-.ui-toolbar--ledger .ui-toolbar-actions .el-button--primary,
-.ui-toolbar--ledger .ui-toolbar-tool-grid .el-button--primary,
-.ui-toolbar--ledger .ui-toolbar-tool-grid .el-upload .el-button--primary,
-.toolbar-actions .el-button--primary,
-.toolbar-action-grid .el-button--primary,
-.ledger-drawer__primary-btn {
+.el-button--primary {
   border-color: var(--ent-primary) !important;
   background: var(--ent-primary) !important;
   color: #ffffff !important;
@@ -105,9 +62,7 @@
 }
 
 .el-button--primary:hover,
-.el-button--primary:focus,
-.toolbar-actions .el-button--primary:hover,
-.toolbar-action-grid .el-button--primary:hover {
+.el-button--primary:focus {
   border-color: var(--ent-primary-hover) !important;
   background: var(--ent-primary-hover) !important;
 }
@@ -120,46 +75,42 @@
   color: #ffffff !important;
 }
 
-.el-button.is-plain,
-.ui-toolbar--ledger .ui-toolbar-actions .el-button:not(.el-button--primary),
-.ui-toolbar--ledger .ui-toolbar-tool-grid .el-button:not(.el-button--primary),
-.toolbar-actions .el-button:not(.el-button--primary),
-.toolbar-action-grid .el-button:not(.el-button--primary),
-.ledger-drawer__ghost-btn,
-.ledger-drawer__ghost-btn--strong {
+.el-button.is-plain {
   border-color: var(--ent-border) !important;
-  background: #ffffff !important;
-  color: #344054 !important;
+  background: var(--ent-surface) !important;
+  color: var(--ent-text) !important;
 }
 
 .el-button.is-disabled,
 .el-button.is-disabled:hover {
-  border-color: #e4e7ee !important;
-  background: #f5f7fa !important;
-  color: #a0a8b5 !important;
+  border-color: var(--ent-border) !important;
+  background: var(--ent-surface-muted) !important;
+  color: var(--ent-subtle) !important;
 }
 
+/* ---- 输入控件 ---- */
 .el-input__wrapper,
 .el-select__wrapper,
 .el-textarea__inner,
 .el-input-number .el-input__wrapper {
   border-radius: var(--ent-radius) !important;
-  background: #ffffff !important;
+  background: var(--ent-surface) !important;
   box-shadow: 0 0 0 1px var(--ent-border) inset !important;
 }
 
 .el-input__wrapper:hover,
 .el-select__wrapper:hover,
 .el-textarea__inner:hover {
-  box-shadow: 0 0 0 1px #b8c2d0 inset !important;
+  box-shadow: 0 0 0 1px var(--ent-subtle) inset !important;
 }
 
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--ent-primary) inset, 0 0 0 3px rgba(79, 70, 229, 0.12) !important;
+  box-shadow: 0 0 0 1px var(--ent-primary) inset, 0 0 0 3px var(--brand-soft) !important;
 }
 
+/* ---- 表格 ---- */
 .el-table {
   border: 1px solid var(--ent-border);
   border-radius: var(--ent-radius-lg) !important;
@@ -169,8 +120,8 @@
 
 .el-table th.el-table__cell,
 .el-table__header th {
-  background: #f3f6fa !important;
-  color: #465267;
+  background: var(--ent-surface-muted) !important;
+  color: var(--ink-secondary);
   font-weight: 700;
 }
 
@@ -180,56 +131,45 @@
 }
 
 .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
-  background: #f8fafd !important;
+  background: var(--el-fill-color-lighter) !important;
 }
 
 .ledger-table__row.is-selected td,
 .el-table__row.current-row > td {
-  background: #edf4ff !important;
+  background: var(--brand-tint) !important;
 }
 
-.el-dialog,
-.password-dialog .el-dialog {
+/* ---- 弹窗（password-dialog 已由 app.css 重设计，不在此压制） ---- */
+.el-dialog {
   border: 1px solid var(--ent-border) !important;
   border-radius: var(--ent-radius-lg) !important;
-  background: #ffffff !important;
-  box-shadow: 0 18px 44px rgba(16, 24, 40, 0.16) !important;
+  background: var(--ent-surface) !important;
+  box-shadow: var(--shadow-lg) !important;
 }
 
-.el-dialog__header,
-.password-dialog .el-dialog__header {
+.el-dialog__header {
   padding: 18px 20px 12px !important;
   border-bottom: 1px solid var(--ent-border-soft) !important;
-  background: #ffffff !important;
+  background: var(--ent-surface) !important;
 }
 
-.el-dialog__title,
-.password-dialog .el-dialog__title {
+.el-dialog__title {
   color: var(--ent-text) !important;
   font-size: 18px !important;
   font-weight: 700 !important;
 }
 
-.el-dialog__body,
-.password-dialog .el-dialog__body {
+.el-dialog__body {
   padding: 18px 20px !important;
 }
 
-.el-dialog__footer,
-.password-dialog .el-dialog__footer {
+.el-dialog__footer {
   padding: 12px 20px 18px !important;
   border-top: 1px solid var(--ent-border-soft) !important;
-  background: #ffffff !important;
+  background: var(--ent-surface) !important;
 }
 
-.password-dialog__hint,
-.password-dialog__notice {
-  border-color: var(--ent-border) !important;
-  border-radius: var(--ent-radius-lg) !important;
-  background: #f7f9fc !important;
-  color: var(--ent-muted) !important;
-}
-
+/* ---- 其他基础件 ---- */
 .el-tag {
   border-radius: 4px !important;
   font-weight: 600;
@@ -257,29 +197,11 @@
   border-radius: var(--ent-radius) !important;
 }
 
-.toolbar-inline-badge,
-.toolbar-count-pill,
-.ui-toolbar-tag,
-.ledger-audit-event__pill,
-.inventory-status-pill,
-.asset-status-pill {
+/* ---- 工具区计数标签（el-tag 灰丸化） ---- */
+.ui-toolbar-tag {
   border: 1px solid var(--ent-border) !important;
   border-radius: 999px !important;
-  background: #f7f9fc !important;
-  color: #465267 !important;
+  background: var(--ent-surface-muted) !important;
+  color: var(--ink-secondary) !important;
   box-shadow: none !important;
-}
-
-.ledger-drawer .el-drawer__body,
-.ledger-drawer__sticky-actions,
-.ledger-drawer__sticky-actions--monitor-form,
-.monitor-asset-form-dialog__sticky-actions {
-  background: #ffffff !important;
-  backdrop-filter: none !important;
-  box-shadow: none !important;
-}
-
-.ledger-drawer__sticky-actions--monitor-form {
-  border-color: var(--ent-border) !important;
-  border-radius: var(--ent-radius-lg) !important;
 }

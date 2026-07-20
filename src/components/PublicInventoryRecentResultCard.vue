@@ -35,8 +35,8 @@ defineProps<{
 .recent-result-alert { margin-bottom: 12px; }
 .recent-result-body { display:flex; flex-direction:column; gap:8px; }
 .recent-result-main { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
-.recent-result-target { font-weight: 600; color:#303133; }
-.recent-result-time { font-size: 12px; color:#909399; }
+.recent-result-target { font-weight: 600; color:var(--ink); }
+.recent-result-time { font-size: 12px; color:var(--subtle); }
 .recent-result-message,
-.recent-result-remark { font-size: 12px; color:#606266; line-height:1.6; }
+.recent-result-remark { font-size: 12px; color:var(--muted); line-height:1.6; }
 </style>

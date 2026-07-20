@@ -183,29 +183,29 @@ async function downloadSnapshot(item: InventoryBatchRow) {
 
 <style scoped>
 .batch-inline-wrap { display:flex; flex-direction:column; gap:14px; }
-.batch-inline-shell { border: 1px solid #ebeef5; border-radius: 16px; background: linear-gradient(180deg, #fff 0%, #f8fbff 100%); padding: 14px 16px; }
+.batch-inline-shell { border: 1px solid var(--border); border-radius: 16px; background: var(--surface); padding: 14px 16px; }
 .batch-inline-shell-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
 .batch-inline-shell-actions { display:flex; gap:10px; align-items:center; flex-wrap:wrap; }
 .batch-inline-shell-body { display:flex; flex-direction:column; gap:12px; margin-top: 12px; }
 .batch-collapse-btn { padding-inline: 4px; }
 .batch-inline-header-card {
-  border: 1px solid #ebeef5;
+  border: 1px solid var(--border);
   border-radius: 16px;
-  background: #fff;
+  background: var(--surface);
   padding: 14px 16px;
 }
-.batch-inline-title { font-size: 14px; font-weight: 700; color:#303133; }
-.batch-inline-name { font-size: 16px; font-weight: 700; color:#303133; margin-top: 10px; }
-.batch-inline-subtle { margin-top: 4px; color:#909399; font-size:12px; line-height:1.6; }
-.batch-inline-snapshot { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: #f8fbff; border: 1px dashed #d7e6ff; display:flex; flex-direction:column; gap:6px; }
+.batch-inline-title { font-size: 14px; font-weight: 700; color:var(--ink); }
+.batch-inline-name { font-size: 16px; font-weight: 700; color:var(--ink); margin-top: 10px; }
+.batch-inline-subtle { margin-top: 4px; color:var(--subtle); font-size:12px; line-height:1.6; }
+.batch-inline-snapshot { margin-top: 12px; padding: 10px 12px; border-radius: 12px; background: var(--surface-soft); border: 1px dashed var(--el-color-primary-light-8); display:flex; flex-direction:column; gap:6px; }
 .batch-inline-snapshot-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .batch-inline-snapshot-actions { display:flex; justify-content:flex-end; }
 .batch-inline-time-grid,
 .batch-inline-metric-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; margin-top: 12px; }
 .batch-inline-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.batch-inline-label { display:block; font-size:12px; color:#909399; margin-bottom:4px; }
-.metric-card { border-radius: 12px; padding: 10px 12px; background:#fff; border:1px solid #ebeef5; display:flex; flex-direction:column; gap:6px; }
-.metric-card strong { font-size: 20px; color:#303133; }
+.batch-inline-label { display:block; font-size:12px; color:var(--subtle); margin-bottom:4px; }
+.metric-card { border-radius: 12px; padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+.metric-card strong { font-size: 20px; color:var(--ink); }
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-danger); }
 .metric-card.unchecked strong { color: var(--el-color-info); }

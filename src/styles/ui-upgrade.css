@@ -1,16 +1,10 @@
 /* ui-upgrade.css —— 页面级面板/工具栏/表格增强
  * 令牌已迁移至 tokens.css（--ui-* 为桥接别名）；骨架样式由 chrome.css 接管。
+ * 组件皮肤护栏在 enterprise.css；台账工具条/表格单元格外观由
+ * ledger-toolbar-shared.css / ledger-table-shared.css 拥有，此处不再重复压制。
  */
 
-.el-card,
-.ui-page-card,
-.ledger-table-card,
-.ledger-toolbar-card,
-.sys-rounded-card,
-.sys-metric-card {
-  box-shadow: var(--ui-shadow-card) !important;
-}
-
+/* ---- Element 基础件的几何尺寸（皮肤见 enterprise.css） ---- */
 .el-card__body {
   padding: 18px;
 }
@@ -19,21 +13,10 @@
   min-height: 32px;
 }
 
-.el-button--primary {
-  background: var(--ui-primary) !important;
-  border-color: var(--ui-primary) !important;
-}
-
-.el-button--primary:hover,
-.el-button--primary:focus-visible {
-  background: var(--ui-primary-hover) !important;
-  border-color: var(--ui-primary-hover) !important;
-}
-
 .el-button:focus-visible,
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused {
-  outline: 2px solid rgba(31, 95, 191, 0.16);
+  outline: 2px solid var(--brand-soft);
   outline-offset: 1px;
 }
 
@@ -54,6 +37,7 @@
   min-height: 24px;
 }
 
+/* ---- 页面骨架 ---- */
 .ui-page-shell {
   display: grid;
   gap: 14px;
@@ -145,136 +129,24 @@
   margin-left: 0;
 }
 
+/* ---- 预警页（scoped 源仍在，保留增强） ---- */
 .warnings-page .warning-filter-panel__trailing {
   padding-left: 10px;
   border-left: 1px solid var(--ui-border-soft);
 }
 
 .warnings-page .warning-bulk-panel {
-  border-color: #bfd3f0;
+  border-color: var(--el-color-primary-light-7);
   background: var(--ui-surface-tint);
 }
 
-.ledger-toolbar-shell {
-  gap: 14px;
-}
-
+/* ---- 台账卡片：工具条/表格卡片去 body 内边距（布局贴合） ---- */
 .ledger-toolbar-card > .el-card__body {
   padding: 0 !important;
 }
 
-.toolbar-block {
-  padding: 16px !important;
-  border-color: var(--ui-border) !important;
-  border-radius: var(--ui-radius-md) !important;
-  background: var(--ui-surface) !important;
-  box-shadow: none !important;
-  backdrop-filter: none !important;
-}
-
-.toolbar-block::before,
-.toolbar-block::after {
-  content: none !important;
-}
-
-.toolbar-head {
-  margin-bottom: 14px;
-}
-
-.toolbar-kicker {
-  color: var(--ui-subtle) !important;
-  letter-spacing: 0.06em !important;
-}
-
-.toolbar-block-title {
-  color: var(--ui-text) !important;
-  font-size: 14px !important;
-  font-weight: 800 !important;
-}
-
-.toolbar-subtle {
-  color: var(--ui-muted) !important;
-}
-
-.toolbar-action-group,
-.toolbar-utility-group,
-.toolbar-minor-group {
-  border-color: var(--ui-border-soft) !important;
-  border-radius: var(--ui-radius-md) !important;
-  background: var(--ui-surface-soft) !important;
-  box-shadow: none !important;
-}
-
 .toolbar-action-group {
   width: 100%;
-}
-
-.toolbar-primary-btn,
-.toolbar-secondary-btn,
-.toolbar-soft-btn {
-  height: 36px !important;
-  border-radius: var(--ui-radius-sm) !important;
-  transform: none !important;
-}
-
-.toolbar-primary-btn {
-  background: var(--ui-primary) !important;
-  box-shadow: none !important;
-}
-
-.toolbar-primary-btn:hover {
-  background: var(--ui-primary-hover) !important;
-}
-
-.toolbar-secondary-btn,
-.toolbar-soft-btn {
-  border-color: var(--ui-border) !important;
-  background: #fff !important;
-  color: #344054 !important;
-  box-shadow: none !important;
-}
-
-.toolbar-primary-btn:hover,
-.toolbar-secondary-btn:hover,
-.toolbar-soft-btn:hover {
-  transform: none !important;
-  box-shadow: none !important;
-}
-
-.toolbar-inline-badge {
-  min-height: 30px !important;
-  border: 1px solid var(--ui-border-soft) !important;
-  background: var(--ui-surface-soft) !important;
-  color: var(--ui-muted) !important;
-  box-shadow: none !important;
-}
-
-.toolbar-inline-badge.is-active {
-  border-color: #bfd3f0 !important;
-  background: var(--ui-surface-tint) !important;
-  color: var(--ui-primary) !important;
-}
-
-.ledger-toolbar-card .el-input__wrapper,
-.ledger-toolbar-card .el-select__wrapper {
-  min-height: 36px !important;
-  border-radius: var(--ui-radius-sm) !important;
-}
-
-.ledger-toolbar-card .el-segmented {
-  border: 1px solid var(--ui-border) !important;
-  border-radius: var(--ui-radius-md) !important;
-  background: #f3f6fa !important;
-  box-shadow: none !important;
-}
-
-.ledger-toolbar-card .el-segmented__item {
-  min-height: 30px !important;
-  border-radius: var(--ui-radius-sm) !important;
-}
-
-.ledger-toolbar-card .el-segmented__item-selected {
-  box-shadow: none !important;
 }
 
 .ledger-table-card {
@@ -291,37 +163,10 @@
   border-radius: 0 !important;
 }
 
-.table-cell {
-  min-height: 52px;
-}
-
-.asset-cell {
-  border-radius: var(--ui-radius-sm);
-}
-
+/* ---- 台账单元格 hover 增强（皮肤本体见 ledger-table-shared.css） ---- */
 .asset-cell:hover .asset-main,
 .asset-cell:hover .cell-primary {
   color: var(--ui-primary);
-}
-
-.status-chip {
-  border-radius: 999px;
-  box-shadow: none !important;
-}
-
-.row-more-trigger {
-  min-height: 30px !important;
-  border-radius: var(--ui-radius-sm) !important;
-  background: #fff !important;
-  box-shadow: none !important;
-  transform: none !important;
-}
-
-.row-more-trigger:hover {
-  border-color: #bfd3f0 !important;
-  color: var(--ui-primary) !important;
-  transform: none !important;
-  box-shadow: none !important;
 }
 
 @media (max-width: 1100px) {

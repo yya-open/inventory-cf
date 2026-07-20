@@ -62,4 +62,4 @@
   </el-dialog>
 </template>
 <script setup lang="ts">defineProps<{ visible:boolean; title:string; kind:'in'|'out'|'return'|'transfer'; asset:Record<string,any>|null; form:Record<string,any>; locationOptions:Array<{value:number;label:string}>; submitting:boolean }>(); const emit = defineEmits<{ 'update:visible':[boolean]; submit:[] }>();</script>
-<style scoped>.asset-meta{margin-bottom:8px;color:#666}</style>
+<style scoped>.asset-meta{margin-bottom:8px;color:var(--muted)}</style>

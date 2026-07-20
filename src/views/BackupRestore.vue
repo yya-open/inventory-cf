@@ -6,7 +6,7 @@
         <div style="font-weight:700; font-size:16px">
           备份 / 恢复
         </div>
-        <div style="color:#888; font-size:12px; margin-top:6px; line-height:1.5">
+        <div style="color:var(--subtle); font-size:12px; margin-top:6px; line-height:1.5">
           备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。
           <b>恢复属于高风险操作</b>，请谨慎。
         </div>
@@ -30,14 +30,14 @@
 
     <el-row :gutter="16" style="margin-bottom:16px">
       <el-col :xs="24" :md="12">
-        <el-card shadow="never" style="border:1px solid #f0f0f0">
+        <el-card shadow="never" style="border:1px solid var(--border)">
           <template #header>
             <div style="display:flex; justify-content:space-between; align-items:center">
               <span style="font-weight:700">恢复演练 SOP</span>
               <el-tag type="warning" effect="light">建议每月一次</el-tag>
             </div>
           </template>
-          <ol style="margin:0; padding-left:18px; color:#666; line-height:1.8; font-size:13px">
+          <ol style="margin:0; padding-left:18px; color:var(--muted); line-height:1.8; font-size:13px">
             <li>先下载一份最新完整备份，建议启用 gzip。</li>
             <li>在隔离环境上传备份，先执行“恢复前校验”。</li>
             <li>用 merge 或 merge_upsert 模式恢复，避免直接替换生产数据。</li>
@@ -52,14 +52,14 @@
       </el-col>
       <el-col :xs="24" :md="12">
         <LazyMountBlock title="正在装载演练记录…" min-height="280px">
-          <el-card shadow="never" style="border:1px solid #f0f0f0">
+          <el-card shadow="never" style="border:1px solid var(--border)">
             <template #header>
               <div style="display:flex; justify-content:space-between; align-items:center">
                 <span style="font-weight:700">最近恢复演练</span>
               <el-button link type="primary" @click="loadBackupDrills">刷新</el-button>
             </div>
           </template>
-          <div v-if="lastBackupDrillAt" style="color:#666; font-size:12px; margin-bottom:8px">最近一次：{{ lastBackupDrillAt }}</div>
+          <div v-if="lastBackupDrillAt" style="color:var(--muted); font-size:12px; margin-bottom:8px">最近一次：{{ lastBackupDrillAt }}</div>
           <el-table :data="backupDrills" border size="small" max-height="240">
             <el-table-column prop="drill_at" label="演练时间" width="180" />
             <el-table-column prop="outcome" label="结果" width="90" />
@@ -92,7 +92,7 @@
       >
         <el-card
           shadow="never"
-          style="border:1px solid #f0f0f0"
+          style="border:1px solid var(--border)"
         >
           <template #header>
             <div style="display:flex; justify-content:space-between; align-items:center">
@@ -114,7 +114,7 @@
               v-if="bk.include_tx"
               style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
             >
-              <span style="color:#666; font-size:12px">明细时间范围：</span>
+              <span style="color:var(--muted); font-size:12px">明细时间范围：</span>
               <el-date-picker
                 v-model="bk.txRange"
                 type="daterange"
@@ -124,7 +124,7 @@
                 end-placeholder="结束日期"
                 value-format="YYYY-MM-DD"
               />
-              <span style="color:#999; font-size:12px">（为空则导出全部）</span>
+              <span style="color:var(--subtle); font-size:12px">（为空则导出全部）</span>
             </div>
 
             <el-checkbox v-model="bk.include_stocktake">
@@ -137,7 +137,7 @@
               v-if="bk.include_audit"
               style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
             >
-              <span style="color:#666; font-size:12px">审计时间范围：</span>
+              <span style="color:var(--muted); font-size:12px">审计时间范围：</span>
               <el-date-picker
                 v-model="bk.auditRange"
                 type="daterange"
@@ -147,7 +147,7 @@
                 end-placeholder="结束日期"
                 value-format="YYYY-MM-DD"
               />
-              <span style="color:#999; font-size:12px">（为空则导出全部）</span>
+              <span style="color:var(--subtle); font-size:12px">（为空则导出全部）</span>
             </div>
 
             <el-checkbox v-model="bk.include_throttle">
@@ -162,7 +162,7 @@
                 active-text="gzip 压缩（推荐）"
               />
               <div style="display:flex; align-items:center; gap:8px">
-                <span style="color:#666; font-size:12px">分页大小</span>
+                <span style="color:var(--muted); font-size:12px">分页大小</span>
                 <el-input-number
                   v-model="bk.page_size"
                   :min="200"
@@ -170,7 +170,7 @@
                   :step="200"
                 />
               </div>
-              <span style="color:#999; font-size:12px">（大数据建议 1000～2000）</span>
+              <span style="color:var(--subtle); font-size:12px">（大数据建议 1000～2000）</span>
             </div>
 
             <div style="display:flex; gap:10px; flex-wrap:wrap">
@@ -214,7 +214,7 @@
       >
         <el-card
           shadow="never"
-          style="border:1px solid #f0f0f0"
+          style="border:1px solid var(--border)"
         >
           <template #header>
             <div style="display:flex; justify-content:space-between; align-items:center">
@@ -280,7 +280,7 @@
               </el-button>
               <span
                 v-if="restoreValidateAt"
-                style="color:#999; font-size:12px"
+                style="color:var(--subtle); font-size:12px"
               >最近校验：{{ restoreValidateAt }}</span>
             </div>
 
@@ -293,11 +293,11 @@
               <div>
                 <div>
                   校验结果：{{ restoreValidate.valid ? '通过' : '未通过' }}
-                  <span style="color:#666">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
+                  <span style="color:var(--muted)">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
                 </div>
                 <div
                   v-if="restoreValidatePreview.length"
-                  style="margin-top:6px; color:#666; line-height:1.6"
+                  style="margin-top:6px; color:var(--muted); line-height:1.6"
                 >
                   <div
                     v-for="(it,idx) in restoreValidatePreview"
@@ -307,7 +307,7 @@
                   </div>
                   <div
                     v-if="(restoreValidate.issues?.length || 0) > restoreValidatePreview.length"
-                    style="color:#999"
+                    style="color:var(--subtle)"
                   >
                     仅显示前 {{ restoreValidatePreview.length }} 条，点击“查看校验明细”查看全部
                   </div>
@@ -405,11 +405,11 @@
                 :percentage="progressPercent"
                 :status="progressStatus"
               />
-              <div style="color:#666; font-size:12px; line-height:1.6">
+              <div style="color:var(--muted); font-size:12px; line-height:1.6">
                 已处理：{{ jobProcessed }} / {{ jobTotal || '计算中...' }} 行
                 <span
                   v-if="jobLastError"
-                  style="color:#d33"
+                  style="color:var(--danger)"
                 >　错误：{{ jobLastError }}</span>
               </div>
             </div>
@@ -473,13 +473,13 @@
                 <div
                   v-for="g in restoreValidateIssueGroups"
                   :key="g.key"
-                  style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff"
+                  style="border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface)"
                 >
                   <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
                     <div style="font-weight:600">
                       {{ g.label }}
                     </div>
-                    <div style="color:#666; font-size:12px">
+                    <div style="color:var(--muted); font-size:12px">
                       共 {{ g.rows.length }} 项 ｜ 错误 {{ g.countError }} ｜ 警告 {{ g.countWarn }} ｜ 提示 {{ g.countInfo }}
                     </div>
                   </div>
@@ -509,7 +509,7 @@
                       <template #default="{row}">
                         <div style="display:flex; flex-direction:column; line-height:1.2">
                           <span style="font-weight:600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
-                          <span style="color:#999; font-size:12px">{{ row.table || '-' }}</span>
+                          <span style="color:var(--subtle); font-size:12px">{{ row.table || '-' }}</span>
                         </div>
                       </template>
                     </el-table-column>
@@ -577,20 +577,20 @@
             width="860px"
             :append-to-body="true"
           >
-            <div style="color:#666; font-size:12px; margin-bottom:10px">
+            <div style="color:var(--muted); font-size:12px; margin-bottom:10px">
               涉及表：{{ affectedTablesText }}
             </div>
             <div style="display:flex; flex-direction:column; gap:12px">
               <div
                 v-for="g in restoreDetailGroups"
                 :key="g.key"
-                style="border:1px solid #ebeef5; border-radius:8px; padding:10px; background:#fff"
+                style="border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface)"
               >
                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
                   <div style="font-weight:600">
                     {{ g.label }}
                   </div>
-                  <div style="color:#666; font-size:12px">
+                  <div style="color:var(--muted); font-size:12px">
                     表数 {{ g.rows.length }} ｜ 已处理 {{ g.sumProcessed }} ｜ 写入变更 {{ g.sumWritten }}
                   </div>
                 </div>
@@ -607,7 +607,7 @@
                     <template #default="{row}">
                       <div style="display:flex; flex-direction:column; line-height:1.2">
                         <span style="font-weight:600">{{ row.table_cn }}</span>
-                        <span style="color:#999; font-size:12px">{{ row.table }}</span>
+                        <span style="color:var(--subtle); font-size:12px">{{ row.table }}</span>
                       </div>
                     </template>
                   </el-table-column>
@@ -619,7 +619,7 @@
                       <span v-if="row.in_backup">{{ row.total }}</span>
                       <span
                         v-else
-                        style="color:#999"
+                        style="color:var(--subtle)"
                       >—</span>
                     </template>
                   </el-table-column>
@@ -1288,7 +1288,7 @@ onMounted(() => {
   border-radius:8px;
 }
 .backup-restore-card :deep(.el-card__header){
-  background:#fafafa;
+  background:var(--surface-soft);
 }
 .backup-restore-card :deep(.el-row){
   row-gap:16px;

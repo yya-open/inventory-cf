@@ -80,7 +80,7 @@
             :value="a.id"
           />
         </el-select>
-        <div style="margin-top:6px; color:#999; font-size:12px">
+        <div style="margin-top:6px; color:var(--subtle); font-size:12px">
           只会列出“已领用”的电脑；若电脑仍在库，请先到「电脑出库」完成领用。
         </div>
       </el-form-item>

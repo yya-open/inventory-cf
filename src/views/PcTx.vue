@@ -223,7 +223,7 @@
           <div style="font-weight:600">
             {{ row.brand }} · {{ row.model }}
           </div>
-          <div style="color:#999;font-size:12px">
+          <div style="color:var(--subtle);font-size:12px">
             SN：{{ row.serial_no }}
           </div>
         </template>
@@ -238,7 +238,7 @@
             <div style="font-weight:600">
               {{ row.employee_name || "-" }}
             </div>
-            <div style="color:#999;font-size:12px">
+            <div style="color:var(--subtle);font-size:12px">
               {{ row.employee_no || "-" }} · {{ row.department || "-" }}
             </div>
           </div>

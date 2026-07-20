@@ -4,7 +4,7 @@
     <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px">
       <div>
         <span style="font-weight:700">Excel 导入配件</span>
-        <span style="margin-left:10px; color:#999; font-size:12px">支持字段：SKU、名称、品牌、型号、分类、单位、预警值</span>
+        <span style="margin-left:10px; color:var(--subtle); font-size:12px">支持字段：SKU、名称、品牌、型号、分类、单位、预警值</span>
       </div>
       <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
         <el-button @click="downloadTemplate">
@@ -105,7 +105,7 @@
         <div>跳过：<b>{{ result?.skipped || 0 }}</b></div>
         <div
           v-if="result?.errors?.length"
-          style="margin-top:10px; color:#d33"
+          style="margin-top:10px; color:var(--danger)"
         >
           有 {{ result.errors.length }} 条错误（缺少 SKU/名称），已跳过
         </div>

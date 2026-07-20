@@ -167,8 +167,8 @@ onMounted(() => {
 .home-title-gap { margin-bottom: 8px; }
 .home-desc-gap { margin-bottom: 12px; }
 .home-section-gap { margin-bottom: 10px; }
-.home-muted { color: #777; font-size: 12px; }
-.home-subtle-block { color: #999; font-size: 12px; line-height: 1.7; min-height: 52px; }
+.home-muted { color: var(--muted); font-size: 12px; }
+.home-subtle-block { color: var(--subtle); font-size: 12px; line-height: 1.7; min-height: 52px; }
 .system-home-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .system-home-metric { min-height: 142px; }
 .system-home-metric__label { color: var(--ui-muted); font-size: 12px; font-weight: 600; }

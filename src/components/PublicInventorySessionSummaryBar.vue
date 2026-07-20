@@ -34,6 +34,6 @@ defineEmits<{ reset: [] }>();
 .session-summary-alert { margin-bottom: 12px; }
 .session-summary-body { display:flex; flex-direction:column; gap:8px; }
 .session-summary-main, .session-summary-meta { display:flex; gap:12px; flex-wrap:wrap; align-items:center; }
-.session-summary-main { color:#303133; }
-.session-summary-meta { font-size:12px; color:#909399; }
+.session-summary-main { color:var(--ink); }
+.session-summary-meta { font-size:12px; color:var(--subtle); }
 </style>

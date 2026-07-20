@@ -728,7 +728,7 @@ onUnmounted(() => {
 }
 
 .inventory-log-footer__total {
-  color: var(--ui-muted, #64748b);
+  color: var(--muted);
   font-size: 13px;
   font-weight: 700;
 }
