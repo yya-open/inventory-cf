@@ -139,6 +139,10 @@
           </div>
 
           <div v-if="!isMobile || mobileHeaderExpanded" class="app-header__actions">
+            <el-button class="app-header__command" size="small" @click="openCommandPalette">
+              <span>快速导航</span>
+              <kbd v-if="!isMobile">Ctrl K</kbd>
+            </el-button>
             <div
               v-if="auth.user"
               class="app-header__user"
@@ -230,6 +234,8 @@
       </el-container>
     </el-container>
 
+    <GlobalCommandPalette v-model:visible="commandPaletteVisible" :user="auth.user" :is-mobile="isMobile" />
+
     <el-dialog
       v-model="showChange"
       title="修改密码"
@@ -276,6 +282,7 @@
 <script setup lang="ts">
 import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue";
 import AppSidebarMenu from "./components/AppSidebarMenu.vue";
+import GlobalCommandPalette from "./components/GlobalCommandPalette.vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-message";
 import { apiPost } from "./api/client";
@@ -327,6 +334,7 @@ const sidebarToggleHovered = ref(false);
 const isMobile = ref(false);
 const mobileSidebarVisible = ref(false);
 const mobileHeaderExpanded = ref(false);
+const commandPaletteVisible = ref(false);
 const mobileSidebarSize = computed(() => 'min(340px, calc(100vw - 56px))');
 
 const activeMenu = computed(() => route.path);
@@ -421,13 +429,26 @@ onMounted(() => {
     mobileHeaderExpanded.value = localStorage.getItem(MOBILE_HEADER_EXPANDED_KEY) === "1";
     updateViewport();
     window.addEventListener("resize", updateViewport, { passive: true });
+    window.addEventListener("keydown", handleGlobalKeydown);
   } catch {}
 });
 onBeforeUnmount(() => {
   removeGlobalTableScrollEnhancer?.();
   removeGlobalTableScrollEnhancer = null;
   window.removeEventListener("resize", updateViewport);
+  window.removeEventListener("keydown", handleGlobalKeydown);
 });
+
+function openCommandPalette() {
+  if (!auth.user || simpleLayout.value) return;
+  commandPaletteVisible.value = true;
+}
+
+function handleGlobalKeydown(event: KeyboardEvent) {
+  if (!(event.ctrlKey || event.metaKey) || event.key.toLowerCase() !== 'k') return;
+  event.preventDefault();
+  openCommandPalette();
+}
 
 watch(desktopSidebarCollapsed, (value, previous) => {
   try {

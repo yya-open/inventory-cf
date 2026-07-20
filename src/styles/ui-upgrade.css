@@ -59,6 +59,21 @@ body {
   font-weight: 600;
 }
 
+.app-header__command {
+  display: inline-flex;
+  gap: 8px;
+  align-items: center;
+  color: var(--ui-text);
+}
+
+.app-header__command kbd {
+  padding: 1px 5px;
+  border: 1px solid var(--ui-border);
+  border-radius: 4px;
+  color: var(--ui-muted);
+  font: 600 10px/1 Inter, "Segoe UI", sans-serif;
+}
+
 .app-aside {
   box-shadow: 1px 0 0 rgba(216, 222, 233, 0.8) !important;
 }
@@ -257,6 +272,16 @@ body {
 
 .ui-row-actions .el-button + .el-button {
   margin-left: 0;
+}
+
+.warnings-page .warning-filter-panel__trailing {
+  padding-left: 10px;
+  border-left: 1px solid var(--ui-border-soft);
+}
+
+.warnings-page .warning-bulk-panel {
+  border-color: #bfd3f0;
+  background: var(--ui-surface-tint);
 }
 
 .ledger-toolbar-shell {

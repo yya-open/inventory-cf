@@ -12,6 +12,29 @@
       </div>
     </div>
 
+    <div class="system-home-metrics" aria-label="系统工作摘要">
+      <el-card shadow="never" class="sys-rounded-card system-home-metric">
+        <div class="system-home-metric__label">待处理问题</div>
+        <div class="system-home-metric__value" :class="{ 'is-warning': Number(ops.problem_count || 0) > 0 }">{{ opsLoaded ? ops.problem_count : '-' }}</div>
+        <button type="button" class="system-home-metric__link" @click="go('/system/tools')">查看巡检与修复</button>
+      </el-card>
+      <el-card shadow="never" class="sys-rounded-card system-home-metric">
+        <div class="system-home-metric__label">失败任务</div>
+        <div class="system-home-metric__value" :class="{ 'is-warning': Number(ops.failed_jobs || 0) > 0 }">{{ opsLoaded ? ops.failed_jobs : '-' }}</div>
+        <button type="button" class="system-home-metric__link" @click="go('/system/tasks')">打开任务中心</button>
+      </el-card>
+      <el-card shadow="never" class="sys-rounded-card system-home-metric">
+        <div class="system-home-metric__label">备份演练待闭环</div>
+        <div class="system-home-metric__value" :class="{ 'is-warning': Number(ops.open_backup_drill_issue_count || 0) > 0 }">{{ opsLoaded ? ops.open_backup_drill_issue_count : '-' }}</div>
+        <button type="button" class="system-home-metric__link" @click="go('/system/backup')">查看备份与恢复</button>
+      </el-card>
+      <el-card shadow="never" class="sys-rounded-card system-home-metric">
+        <div class="system-home-metric__label">数据库结构</div>
+        <div class="system-home-metric__value" :class="{ 'is-danger': opsLoaded && !ops.schema_ok }">{{ opsLoaded ? (ops.schema_ok ? '正常' : '异常') : '-' }}</div>
+        <button type="button" class="system-home-metric__link" @click="go('/system/release-check')">打开发布检查</button>
+      </el-card>
+    </div>
+
     <el-card shadow="never" class="sys-rounded-card sys-section-gap">
       <el-alert
         v-if="opsLoaded && (ops.problem_count || ops.failed_jobs || !ops.schema_ok)"
@@ -62,7 +85,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, defineComponent, h, reactive, ref, resolveComponent } from 'vue';
+import { computed, defineComponent, h, onMounted, reactive, ref, resolveComponent } from 'vue';
 import { useRouter } from 'vue-router';
 import { useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
@@ -121,6 +144,12 @@ async function loadOpsSummary(options: { force?: boolean } = {}) {
   applyOpsSummary(payload);
   opsLoaded.value = true;
 }
+
+onMounted(() => {
+  void loadOpsSummary().catch(() => {
+    opsLoaded.value = true;
+  });
+});
 </script>
 
 <style scoped>
@@ -140,10 +169,24 @@ async function loadOpsSummary(options: { force?: boolean } = {}) {
 .home-section-gap { margin-bottom: 10px; }
 .home-muted { color: #777; font-size: 12px; }
 .home-subtle-block { color: #999; font-size: 12px; line-height: 1.7; min-height: 52px; }
+.system-home-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
+.system-home-metric { min-height: 142px; }
+.system-home-metric__label { color: var(--ui-muted); font-size: 12px; font-weight: 600; }
+.system-home-metric__value { margin: 10px 0 16px; color: var(--ui-text); font-size: 28px; font-weight: 800; line-height: 1; }
+.system-home-metric__value.is-warning { color: var(--ui-warning); }
+.system-home-metric__value.is-danger { color: var(--ui-danger); }
+.system-home-metric__link { padding: 0; border: 0; background: transparent; color: var(--ui-primary); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.system-home-metric__link:hover, .system-home-metric__link:focus-visible { text-decoration: underline; }
 
 @media (max-width: 768px) {
   .system-home-actions {
     justify-content: flex-start;
   }
+
+  .system-home-metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+
+@media (max-width: 420px) {
+  .system-home-metrics { grid-template-columns: 1fr; }
 }
 </style>

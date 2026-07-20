@@ -2,7 +2,7 @@
   --sys-title-size: 18px;
   --sys-title-weight: 700;
   --sys-muted-size: 12px;
-  --sys-muted-color: #909399;
+  --sys-muted-color: var(--ui-muted, #64748b);
   --sys-metric-size: 28px;
   --sys-metric-weight: 700;
 }
@@ -54,7 +54,7 @@
 }
 
 .sys-rounded-card {
-  border-radius: 12px;
+  border-radius: var(--ui-radius-md, 8px);
 }
 
 .sys-section-gap {
@@ -77,7 +77,7 @@
 }
 
 .sys-metric-card {
-  border-radius: 12px;
+  border-radius: var(--ui-radius-md, 8px);
   min-height: 112px;
 }
 
