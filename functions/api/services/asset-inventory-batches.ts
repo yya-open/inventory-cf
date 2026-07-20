@@ -211,6 +211,22 @@ export async function ensureAssetInventoryBatchSchema(db: D1Database) {
         `CREATE INDEX IF NOT EXISTS idx_monitor_inventory_log_batch_id_asset_created ON monitor_inventory_log(batch_id, asset_id, created_at DESC, id DESC)`,
       )
       .run();
+    await db.prepare(`
+      DELETE FROM pc_inventory_log
+       WHERE batch_id IS NOT NULL
+         AND id NOT IN (
+           SELECT MAX(id) FROM pc_inventory_log WHERE batch_id IS NOT NULL GROUP BY batch_id, asset_id
+         )
+    `).run();
+    await db.prepare(`
+      DELETE FROM monitor_inventory_log
+       WHERE batch_id IS NOT NULL
+         AND id NOT IN (
+           SELECT MAX(id) FROM monitor_inventory_log WHERE batch_id IS NOT NULL GROUP BY batch_id, asset_id
+         )
+    `).run();
+    await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS uq_pc_inventory_log_batch_asset ON pc_inventory_log(batch_id, asset_id) WHERE batch_id IS NOT NULL`).run();
+    await db.prepare(`CREATE UNIQUE INDEX IF NOT EXISTS uq_monitor_inventory_log_batch_asset ON monitor_inventory_log(batch_id, asset_id) WHERE batch_id IS NOT NULL`).run();
     schemaReady = true;
   })().finally(() => {
     schemaInit = null;

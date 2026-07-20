@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202604270020_item_sku_aliases";
+export const REQUIRED_SCHEMA_VERSION = "202607210010_inventory_log_unique_data_quality";
 
 type SchemaStatus = {
   ok: boolean;
@@ -68,6 +68,12 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'item_sku_aliases', label: 'SKU 别名表', ok: tables.has('item_sku_aliases'), need: 'item_sku_aliases' },
     { key: 'idx_item_sku_aliases_alias_active', label: 'SKU 别名唯一索引', ok: indexes.has('idx_item_sku_aliases_alias_active'), need: 'idx_item_sku_aliases_alias_active' },
   ];
+
+  checks.push(
+    { key: 'uq_pc_inventory_log_batch_asset', label: 'PC inventory batch uniqueness', ok: indexes.has('uq_pc_inventory_log_batch_asset'), need: 'uq_pc_inventory_log_batch_asset' },
+    { key: 'uq_monitor_inventory_log_batch_asset', label: 'Monitor inventory batch uniqueness', ok: indexes.has('uq_monitor_inventory_log_batch_asset'), need: 'uq_monitor_inventory_log_batch_asset' },
+    { key: 'data_quality_cases', label: 'Data quality case table', ok: tables.has('data_quality_cases'), need: 'data_quality_cases' },
+  );
 
   let currentVersion: string | null = null;
   try {

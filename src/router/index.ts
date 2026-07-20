@@ -32,6 +32,7 @@ const SystemSettings = () => import("../views/SystemSettings.vue");
 const SystemTaskCenter = () => import("../views/SystemTaskCenter.vue");
 const SystemReportsCenter = () => import("../views/SystemReportsCenter.vue");
 const SystemOpsTools = () => import("../views/SystemOpsTools.vue");
+const SystemDataQuality = () => import("../views/SystemDataQuality.vue");
 const SystemPerformance = () => import("../views/SystemPerformance.vue");
 const SystemReleaseCheck = () => import("../views/SystemReleaseCheck.vue");
 const SystemDocs = () => import("../views/SystemDocs.vue");
@@ -125,6 +126,7 @@ const router = createRouter({
         { path: "settings", component: SystemSettings, meta: { role: "viewer", title: "系统配置", capability: 'system.settings.manage' } },
         { path: "sku-governance", component: SystemSkuGovernance, meta: { role: "admin", title: "SKU 治理" } },
         { path: "tools", component: SystemOpsTools, meta: { role: "viewer", title: "运维工具", capability: 'system.tools.manage' } },
+        { path: "data-quality", component: SystemDataQuality, meta: { role: "viewer", title: "数据质量中心", capability: 'system.tools.manage' } },
         { path: "release-check", component: SystemReleaseCheck, meta: { role: "admin", title: "发布前检查" } },
         { path: "performance", component: SystemPerformance, meta: { role: "viewer", title: "性能面板", capability: 'system.tools.manage' } },
         { path: "docs", component: SystemDocs, meta: { role: "admin", title: "系统交付文档" } },

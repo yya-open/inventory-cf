@@ -166,29 +166,6 @@ async function getExistingInventoryLog(
   return stmt.first<any>();
 }
 
-async function applyInventoryStateForAction(
-  db: D1Database,
-  kind: PublicAssetKind,
-  assetId: number,
-  batchId: number,
-  action: string,
-  issueType: string | null,
-) {
-  const assetTable = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
-  const normalized = String(action || '').toUpperCase();
-  const inventoryStatus = normalized === 'ISSUE' ? 'CHECKED_ISSUE' : normalized === 'OK' ? 'CHECKED_OK' : 'UNCHECKED';
-  const inventoryIssueType = normalized === 'ISSUE' ? (issueType || null) : null;
-  await db.prepare(
-    `UPDATE ${assetTable}
-        SET inventory_status=?,
-            inventory_at=${sqlNowStored()},
-            inventory_issue_type=?,
-            inventory_batch_id=?,
-            updated_at=${sqlNowStored()}
-      WHERE id=?`
-  ).bind(inventoryStatus, inventoryIssueType, batchId, assetId).run();
-}
-
 export async function insertPublicInventoryLog(
   db: D1Database,
   kind: PublicAssetKind,
@@ -225,32 +202,49 @@ export async function insertPublicInventoryLog(
       });
     }
 
-    await db
-      .prepare(
+    const assetTable = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
+    const normalized = String(action || '').toUpperCase();
+    await db.batch([
+      db.prepare(
         `UPDATE ${table}
-            SET action=?,
-                issue_type=?,
-                remark=?,
-                ip=?,
-                ua=?,
-                created_at=${sqlNowStored()}
+            SET action=?, issue_type=?, remark=?, ip=?, ua=?, created_at=${sqlNowStored()}
           WHERE id=?`
-      )
-      .bind(action, issueType, remark, ip, ua, Number(existing.id))
-      .run();
-
-    await applyInventoryStateForAction(db, kind, assetId, batchId, action, issueType);
+      ).bind(action, issueType, remark, ip, ua, Number(existing.id)),
+      db.prepare(
+        `UPDATE ${assetTable}
+            SET inventory_status=?, inventory_at=${sqlNowStored()}, inventory_issue_type=?,
+                inventory_batch_id=?, updated_at=${sqlNowStored()}
+          WHERE id=?`
+      ).bind(normalized === 'ISSUE' ? 'CHECKED_ISSUE' : 'CHECKED_OK', normalized === 'ISSUE' ? (issueType || null) : null, batchId, assetId),
+    ]);
     return { ok: true, updated: true, id: Number(existing.id) };
   }
 
-  await db
-    .prepare(
-      `INSERT INTO ${table} (asset_id, action, issue_type, remark, ip, ua, batch_id, created_at)
-       VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
-    )
-    .bind(assetId, action, issueType, remark, ip, ua, batchId)
-    .run();
+  const assetTable = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
+  const normalized = String(action || '').toUpperCase();
+  const inventoryStatus = normalized === 'ISSUE' ? 'CHECKED_ISSUE' : 'CHECKED_OK';
+  const inventoryIssueType = normalized === 'ISSUE' ? (issueType || null) : null;
 
-  await applyInventoryStateForAction(db, kind, assetId, batchId, action, issueType);
+  // The partial unique index on (batch_id, asset_id) makes concurrent scans converge
+  // to one log row. D1 batches the log and current-state write atomically.
+  await db.batch([
+    db.prepare(
+      `INSERT INTO ${table} (asset_id, action, issue_type, remark, ip, ua, batch_id, created_at)
+       VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})
+       ON CONFLICT(batch_id, asset_id) WHERE batch_id IS NOT NULL DO UPDATE SET
+         action=excluded.action,
+         issue_type=excluded.issue_type,
+         remark=excluded.remark,
+         ip=excluded.ip,
+         ua=excluded.ua,
+         created_at=${sqlNowStored()}`
+    ).bind(assetId, action, issueType, remark, ip, ua, batchId),
+    db.prepare(
+      `UPDATE ${assetTable}
+          SET inventory_status=?, inventory_at=${sqlNowStored()}, inventory_issue_type=?,
+              inventory_batch_id=?, updated_at=${sqlNowStored()}
+        WHERE id=?`
+    ).bind(inventoryStatus, inventoryIssueType, batchId, assetId),
+  ]);
   return { ok: true, updated: false };
 }

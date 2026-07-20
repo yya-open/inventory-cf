@@ -56,6 +56,7 @@ export const SYSTEM_ROUTE_DEFS: ModuleRouteDefinition[] = [
   { code: 'system_release_check', path: '/system/release-check', label: '发布前检查', area: 'system', icon: 'folder-checked', minRole: 'admin', menu: true, accessibleSummary: true },
   { code: 'system_performance', path: '/system/performance', label: '性能面板', area: 'system', icon: 'trend-charts', minRole: 'viewer', capability: 'system.tools.manage', menu: true, accessibleSummary: true },
   { code: 'system_docs', path: '/system/docs', label: '系统交付文档', area: 'system', icon: 'reading', minRole: 'admin', menu: true, accessibleSummary: true },
+  { code: 'system_data_quality', path: '/system/data-quality', label: '数据质量中心', area: 'system', icon: 'checked', minRole: 'viewer', capability: 'system.tools.manage', menu: true, accessibleSummary: true },
 ];
 
 export const PARTS_ROUTE_DEFS: ModuleRouteDefinition[] = [
