@@ -1,0 +1,163 @@
+/* ============================================================
+ * Design Tokens —— 全站唯一设计令牌源
+ * 现代中性风：浅灰底 / 深色侧边栏 / 单一品牌色（靛蓝）
+ *
+ * 职责边界：
+ *   - 本文件只定义令牌与基础排版，不写任何组件规则；
+ *   - 旧令牌（--ent-* / --ui-* / --b-admin-*）在此处做别名桥接，
+ *     页面级旧样式在分批迁移期间无需改动即可继承新视觉。
+ * ============================================================ */
+
+:root {
+  /* ---- 品牌色 ---- */
+  --brand: #4f46e5;
+  --brand-hover: #4338ca;
+  --brand-active: #3730a3;
+  --brand-tint: #eef0fe;
+  --brand-soft: rgba(79, 70, 229, 0.08);
+
+  /* ---- 中性色 ---- */
+  --ink: #191e28;
+  --ink-secondary: #3d4451;
+  --muted: #5b6472;
+  --subtle: #8a93a2;
+  --bg: #f4f5f7;
+  --surface: #ffffff;
+  --surface-soft: #f8f9fb;
+  --surface-tint: #f4f5fe;
+  --border: #e3e6eb;
+  --border-soft: #edeff3;
+  --border-strong: #d3d8e0;
+
+  /* ---- 语义色 ---- */
+  --success: #15803d;
+  --warning: #b45309;
+  --danger: #dc2626;
+
+  /* ---- 深色侧边栏 ---- */
+  --sidebar-bg: #12151d;
+  --sidebar-bg-raised: #1a1e28;
+  --sidebar-border: rgba(255, 255, 255, 0.07);
+  --sidebar-text: #98a1b0;
+  --sidebar-text-strong: #eef1f6;
+  --sidebar-hover: rgba(255, 255, 255, 0.06);
+  --sidebar-icon-bg: rgba(255, 255, 255, 0.07);
+
+  /* ---- 圆角 ---- */
+  --radius-sm: 6px;
+  --radius-md: 8px;
+  --radius-lg: 12px;
+  --radius-xl: 16px;
+
+  /* ---- 阴影 ---- */
+  --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
+  --shadow-sm: 0 1px 2px rgba(16, 24, 40, 0.04), 0 4px 12px rgba(16, 24, 40, 0.04);
+  --shadow-md: 0 8px 24px rgba(16, 24, 40, 0.1);
+  --shadow-lg: 0 20px 48px rgba(16, 24, 40, 0.16);
+
+  /* ---- 字体 ---- */
+  --font-sans: Inter, "Segoe UI", "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+
+  /* ========================================================
+   * Element Plus 变量映射
+   * ====================================================== */
+  --el-color-primary: var(--brand);
+  --el-color-primary-light-3: #7a76ec;
+  --el-color-primary-light-5: #a5a2f2;
+  --el-color-primary-light-7: #cfcff8;
+  --el-color-primary-light-8: #dfdefa;
+  --el-color-primary-light-9: var(--brand-tint);
+  --el-color-primary-dark-2: var(--brand-hover);
+  --el-color-danger: var(--danger);
+  --el-color-error: var(--danger);
+  --el-color-success: var(--success);
+  --el-color-warning: var(--warning);
+  --el-border-radius-base: var(--radius-md);
+  --el-border-radius-small: var(--radius-sm);
+  --el-text-color-primary: var(--ink);
+  --el-text-color-regular: var(--ink-secondary);
+  --el-text-color-secondary: var(--muted);
+  --el-text-color-placeholder: var(--subtle);
+  --el-border-color: var(--border-strong);
+  --el-border-color-light: var(--border);
+  --el-border-color-lighter: var(--border-soft);
+  --el-border-color-extra-light: #f1f3f6;
+  --el-fill-color-light: var(--surface-soft);
+  --el-fill-color-lighter: #fafbfc;
+  --el-bg-color: var(--surface);
+  --el-bg-color-page: var(--bg);
+  --el-font-family: var(--font-sans);
+
+  /* ========================================================
+   * 旧令牌别名桥接（兼容层，随页面级迁移逐步收敛）
+   * ====================================================== */
+  /* enterprise.css */
+  --ent-bg: var(--bg);
+  --ent-bg-top: #f7f8fa;
+  --ent-bg-mid: var(--bg);
+  --ent-bg-bottom: #eef0f3;
+  --ent-bg-panel: var(--brand-soft);
+  --ent-bg-panel-warm: rgba(180, 83, 9, 0.05);
+  --ent-bg-panel-cool: rgba(79, 70, 229, 0.06);
+  --ent-bg-line: rgba(23, 32, 51, 0.05);
+  --ent-surface: var(--surface);
+  --ent-surface-muted: var(--surface-soft);
+  --ent-border: var(--border);
+  --ent-border-soft: var(--border-soft);
+  --ent-text: var(--ink);
+  --ent-muted: var(--muted);
+  --ent-subtle: var(--subtle);
+  --ent-primary: var(--brand);
+  --ent-primary-hover: var(--brand-hover);
+  --ent-danger: var(--danger);
+  --ent-radius: var(--radius-md);
+  --ent-radius-lg: var(--radius-lg);
+  --ent-shadow: var(--shadow-xs);
+
+  /* ui-upgrade.css */
+  --ui-bg: var(--bg);
+  --ui-surface: var(--surface);
+  --ui-surface-soft: var(--surface-soft);
+  --ui-surface-tint: var(--surface-tint);
+  --ui-border: var(--border);
+  --ui-border-soft: var(--border-soft);
+  --ui-text: var(--ink);
+  --ui-muted: var(--muted);
+  --ui-subtle: var(--subtle);
+  --ui-primary: var(--brand);
+  --ui-primary-hover: var(--brand-hover);
+  --ui-success: var(--success);
+  --ui-warning: var(--warning);
+  --ui-danger: var(--danger);
+  --ui-radius-sm: var(--radius-sm);
+  --ui-radius-md: var(--radius-md);
+  --ui-shadow-card: var(--shadow-sm);
+  --ui-shadow-float: var(--shadow-lg);
+
+  /* app.css ledger */
+  --b-admin-bg: var(--bg);
+  --b-admin-card-bg: var(--surface);
+  --b-admin-card-strong: var(--surface);
+  --b-admin-border: var(--border);
+  --b-admin-border-strong: var(--border-strong);
+  --b-admin-text: var(--ink);
+  --b-admin-text-secondary: var(--ink-secondary);
+  --b-admin-text-muted: var(--subtle);
+  --b-admin-radius-lg: var(--radius-lg);
+  --b-admin-radius-md: 10px;
+  --b-admin-shadow-sm: var(--shadow-xs);
+  --b-admin-shadow-md: var(--shadow-md);
+}
+
+/* ---- 基础排版 ---- */
+html {
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+html,
+body {
+  color: var(--ink);
+  background: var(--bg);
+  font-family: var(--font-sans);
+}

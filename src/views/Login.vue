@@ -222,31 +222,21 @@ async function changePassword() {
   justify-content: center;
   padding: 32px;
   overflow: hidden;
-  background: #eef2f6;
-}
-
-.login-page::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  pointer-events: none;
-  background: none;
-  opacity: 0.9;
-}
-
-.login-page::after {
-  content: none;
+  background:
+    radial-gradient(880px 440px at 15% -8%, rgba(79, 70, 229, 0.07), rgba(255, 255, 255, 0) 60%),
+    radial-gradient(720px 400px at 88% 108%, rgba(79, 70, 229, 0.05), rgba(255, 255, 255, 0) 55%),
+    var(--bg, #f4f5f7);
 }
 
 .login-shell {
   position: relative;
   z-index: 1;
-  width: min(440px, 100%);
+  width: min(420px, 100%);
   overflow: hidden;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  background: #ffffff;
-  box-shadow: 0 12px 32px rgba(31, 45, 61, 0.12);
+  border: 1px solid var(--border, #e3e6eb);
+  border-radius: var(--radius-xl, 16px);
+  background: var(--surface, #ffffff);
+  box-shadow: var(--shadow-lg, 0 20px 48px rgba(16, 24, 40, 0.16));
 }
 
 .login-card {
@@ -254,8 +244,8 @@ async function changePassword() {
   flex-direction: column;
   gap: 20px;
   min-width: 0;
-  padding: 32px 28px;
-  background: #ffffff;
+  padding: 36px 32px 32px;
+  background: var(--surface, #ffffff);
 }
 
 .login-card__header {
@@ -265,56 +255,62 @@ async function changePassword() {
 }
 
 .login-card__mark {
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid #d8e0ea;
-  border-radius: 8px;
-  background: #f6f8fb;
-  color: #334155;
-  font-weight: 700;
+  border-radius: 12px;
+  background: var(--brand, #4f46e5);
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 800;
+  letter-spacing: 0.02em;
+  box-shadow: 0 6px 16px rgba(79, 70, 229, 0.32);
 }
 
 .login-card__eyebrow {
-  color: #64748b;
+  color: var(--muted, #5b6472);
   font-size: 13px;
   font-weight: 600;
 }
 
 .login-card__title {
-  margin-top: 4px;
-  color: #111827;
+  margin-top: 2px;
+  color: var(--ink, #191e28);
   font-size: 24px;
   font-weight: 700;
   line-height: 1.2;
 }
 
 .login-card__subtitle {
-  color: #64748b;
+  margin-top: -8px;
+  color: var(--muted, #5b6472);
   font-size: 14px;
   line-height: 1.6;
 }
 
 .login-submit {
   width: 100%;
-  height: 42px;
-  margin-top: 2px;
-  border-radius: 6px;
-  font-weight: 600;
-  border: 1px solid #1f5fbf;
-  background: #2563eb;
-  box-shadow: none;
+  height: 44px;
+  margin-top: 4px;
+  border: 1px solid var(--brand, #4f46e5);
+  border-radius: 10px;
+  background: var(--brand, #4f46e5);
+  font-size: 15px;
+  font-weight: 700;
+  box-shadow: 0 8px 18px rgba(79, 70, 229, 0.24);
+  transition: background 160ms ease, border-color 160ms ease, box-shadow 160ms ease;
 }
 
 .login-submit:hover {
-  border-color: #1d4ed8;
-  background: #1d4ed8;
+  border-color: var(--brand-hover, #4338ca);
+  background: var(--brand-hover, #4338ca);
+  box-shadow: 0 10px 22px rgba(79, 70, 229, 0.3);
 }
 
 .login-submit:focus-visible {
-  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.14);
+  box-shadow: 0 0 0 4px rgba(79, 70, 229, 0.16);
 }
 
 .login-turnstile {
@@ -328,31 +324,32 @@ async function changePassword() {
 }
 
 .password-tip {
-  color: #999;
+  color: var(--subtle, #8a93a2);
   font-size: 12px;
   margin-top: 6px;
 }
 
 :deep(.login-card .el-form-item__label) {
   padding-bottom: 7px;
-  color: #475569;
+  color: var(--ink-secondary, #3d4451);
   font-weight: 600;
 }
 
 :deep(.login-card .el-input__wrapper) {
-  min-height: 42px;
-  border-radius: 6px;
-  background: #fbfdff;
-  box-shadow: 0 0 0 1px #d8e0ea inset;
+  min-height: 44px;
+  border-radius: 10px;
+  background: var(--surface-soft, #f8f9fb);
+  box-shadow: 0 0 0 1px var(--border-strong, #d3d8e0) inset;
+  transition: box-shadow 160ms ease, background-color 160ms ease;
 }
 
 :deep(.login-card .el-input__wrapper:hover) {
-  box-shadow: 0 0 0 1px #aebccc inset;
+  box-shadow: 0 0 0 1px var(--subtle, #8a93a2) inset;
 }
 
 :deep(.login-card .el-input__wrapper.is-focus) {
-  background: #ffffff;
-  box-shadow: 0 0 0 1px #409eff inset;
+  background: var(--surface, #ffffff);
+  box-shadow: 0 0 0 1px var(--brand, #4f46e5) inset, 0 0 0 4px rgba(79, 70, 229, 0.12);
 }
 
 :deep(.login-card .el-form) {
@@ -368,11 +365,11 @@ async function changePassword() {
 
   .login-shell {
     align-self: center;
-    border-radius: 6px;
+    border-radius: var(--radius-lg, 12px);
   }
 
   .login-card {
-    padding: 26px 18px;
+    padding: 28px 20px;
   }
 
   .login-card__title {

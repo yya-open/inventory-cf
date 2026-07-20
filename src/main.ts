@@ -2,10 +2,12 @@ import { createApp } from 'vue';
 import App from './App.vue';
 import router from './router';
 import { installElementPlus } from './plugins/element-plus';
+import './styles/tokens.css';
 import './styles/app.css';
 import './styles/system-tokens.css';
 import './styles/enterprise.css';
 import './styles/ui-upgrade.css';
+import './styles/chrome.css';
 import { startBuildVersionWatcher } from './utils/appVersion';
 import { scheduleOnIdle } from './utils/idle';
 

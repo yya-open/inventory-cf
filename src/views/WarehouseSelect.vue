@@ -98,19 +98,27 @@ function choose(k: WarehouseKey) {
   align-items:center;
   justify-content:center;
   padding:24px 16px;
-  background:#f4f6f8;
+  background:
+    radial-gradient(880px 440px at 15% -8%, rgba(79,70,229,.06), rgba(255,255,255,0) 60%),
+    var(--bg, #f4f5f7);
 }
 .warehouse-select-card{
   width:760px;
   max-width:100%;
-  border-radius:8px;
-  border:1px solid #dfe5ec;
-  box-shadow:0 14px 36px rgba(31,45,61,.10);
+  border-radius:var(--radius-xl, 16px);
+  border:1px solid var(--border, #e3e6eb);
+  box-shadow:var(--shadow-md, 0 8px 24px rgba(16,24,40,.10));
 }
 .warehouse-option-card{
   height:100%;
   cursor:pointer;
-  border-radius:8px;
+  border-radius:var(--radius-lg, 12px);
+  transition:border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
+}
+.warehouse-option-card:hover{
+  border-color:var(--brand, #4f46e5);
+  box-shadow:0 10px 24px rgba(79,70,229,.14);
+  transform:translateY(-2px);
 }
 @media (min-width: 640px) {
   .pc-col { margin-top: 0 !important; }
