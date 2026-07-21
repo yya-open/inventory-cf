@@ -4,9 +4,9 @@ import { runDataIntegrityChecks, type DataIntegrityIssue } from './data-integrit
 export type DataQualityStatus = 'open' | 'in_progress' | 'ignored' | 'resolved';
 const VALID_STATUSES = new Set<DataQualityStatus>(['open', 'in_progress', 'ignored', 'resolved']);
 
-export async function ensureDataQualityCaseSchema(db: D1Database) {
-  await db.prepare(`CREATE TABLE IF NOT EXISTS data_quality_cases (id INTEGER PRIMARY KEY AUTOINCREMENT, issue_key TEXT NOT NULL UNIQUE, severity TEXT NOT NULL CHECK(severity IN ('error', 'warn')), source_table TEXT, title TEXT NOT NULL, detail TEXT, affected_count INTEGER NOT NULL DEFAULT 0, sample_json TEXT, status TEXT NOT NULL DEFAULT 'open' CHECK(status IN ('open', 'in_progress', 'ignored', 'resolved')), owner TEXT, due_at TEXT, note TEXT, first_seen_at TEXT NOT NULL DEFAULT (${sqlNowStored()}), last_seen_at TEXT NOT NULL DEFAULT (${sqlNowStored()}), resolved_at TEXT, updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}))`).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_data_quality_cases_status_severity_seen ON data_quality_cases(status, severity, last_seen_at DESC, id DESC)`).run();
+export async function ensureDataQualityCaseSchema(_db: D1Database) {
+  // The table and index are created by 202607210010_inventory_log_unique_data_quality.
+  return;
 }
 
 export async function scanDataQualityCases(db: D1Database) {
@@ -14,7 +14,20 @@ export async function scanDataQualityCases(db: D1Database) {
   const scan = await runDataIntegrityChecks(db, { sampleLimit: 8 });
   const statements: D1PreparedStatement[] = scan.issues.map((issue: DataIntegrityIssue) => db.prepare(`INSERT INTO data_quality_cases (issue_key, severity, source_table, title, detail, affected_count, sample_json, status, first_seen_at, last_seen_at, resolved_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'open', ${sqlNowStored()}, ${sqlNowStored()}, NULL, ${sqlNowStored()}) ON CONFLICT(issue_key) DO UPDATE SET severity=excluded.severity, source_table=excluded.source_table, title=excluded.title, detail=excluded.detail, affected_count=excluded.affected_count, sample_json=excluded.sample_json, status=CASE WHEN data_quality_cases.status='resolved' THEN 'open' ELSE data_quality_cases.status END, resolved_at=CASE WHEN data_quality_cases.status='resolved' THEN NULL ELSE data_quality_cases.resolved_at END, last_seen_at=${sqlNowStored()}, updated_at=${sqlNowStored()}`).bind(issue.key, issue.severity, issue.table || null, `${issue.table || 'database'}: ${issue.key}`, issue.message, Math.max(0, Number(issue.count || 0)), JSON.stringify(issue.sample || [])));
   if (statements.length) await db.batch(statements);
-  return { ...scan, scanned_cases: scan.issues.length };
+  const issueKeys = scan.issues.map((issue) => issue.key);
+  const unresolvedSql = issueKeys.length
+    ? `UPDATE data_quality_cases
+         SET status='resolved', resolved_at=COALESCE(resolved_at, ${sqlNowStored()}), updated_at=${sqlNowStored()}
+       WHERE status IN ('open', 'in_progress') AND issue_key NOT IN (${issueKeys.map(() => '?').join(',')})`
+    : `UPDATE data_quality_cases
+         SET status='resolved', resolved_at=COALESCE(resolved_at, ${sqlNowStored()}), updated_at=${sqlNowStored()}
+       WHERE status IN ('open', 'in_progress')`;
+  const resolved = await db.prepare(unresolvedSql).bind(...issueKeys).run();
+  return {
+    ...scan,
+    scanned_cases: scan.issues.length,
+    resolved_cases: Number((resolved as any)?.meta?.changes ?? (resolved as any)?.changes ?? 0),
+  };
 }
 
 export async function listDataQualityCases(db: D1Database, options?: { status?: string; limit?: number }) {

@@ -51,22 +51,9 @@ export async function ensureAuthLoginThrottleTable(db: D1Database) {
 }
 
 export async function ensurePublicThrottleTable(db: D1Database) {
-  if ((ensurePublicThrottleTable as any).__ready) return;
-  if ((ensurePublicThrottleTable as any).__pending) return (ensurePublicThrottleTable as any).__pending;
-  (ensurePublicThrottleTable as any).__pending = (async () => {
-  await db.prepare(
-    `CREATE TABLE IF NOT EXISTS public_api_throttle (
-      k TEXT PRIMARY KEY,
-      count INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-    )`
-  ).run();
-  await db.prepare(`CREATE INDEX IF NOT EXISTS idx_public_api_throttle_updated_at ON public_api_throttle(updated_at)`).run();
-    (ensurePublicThrottleTable as any).__ready = true;
-  })().finally(() => {
-    (ensurePublicThrottleTable as any).__pending = null;
-  });
-  return (ensurePublicThrottleTable as any).__pending;
+  // The table is created by the public-QR migration and the index is guaranteed
+  // by the follow-up migration. Do not issue DDL from public request paths.
+  return;
 }
 
 export async function cleanupPublicThrottleBuckets(db: D1Database, maxAgeHours = 2) {

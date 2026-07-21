@@ -44,17 +44,37 @@ const ASSET_CONFIG: Record<PublicAssetKind, {
 
 export { ensurePublicThrottleTable, getClientIp };
 
-export async function rateLimitPublic(db: D1Database, request: Request, route: string, subject: string, limitPerMinute: number) {
+export async function rateLimitPublic(
+  db: D1Database,
+  request: Request,
+  route: string,
+  subject: string,
+  limitPerMinute: number,
+  options?: { sourceLimitPerMinute?: number },
+) {
   await ensurePublicThrottleTable(db);
 
   const ip = getClientIp(request) || 'unknown';
   const minuteBucket = Math.floor(Date.now() / 60000);
-  const key = `${route}|${subject}|${ip}|${minuteBucket}`;
+  const subjectKey = `${route}|subject|${subject}|${ip}|${minuteBucket}`;
+  const sourceKey = `${route}|source|${ip}|${minuteBucket}`;
+  const configuredSourceLimit = Number(options?.sourceLimitPerMinute);
+  const defaultSourceLimit = Math.max(60, limitPerMinute * 10);
+  const sourceLimit = Math.max(
+    limitPerMinute,
+    Number.isFinite(configuredSourceLimit) && configuredSourceLimit > 0
+      ? Math.floor(configuredSourceLimit)
+      : defaultSourceLimit,
+  );
 
   if ((Date.now() & 63) === 0) await cleanupPublicThrottleBuckets(db, 2);
 
-  const row = await incrementPublicThrottleBucket(db, key);
-  if (Number(row?.count || 0) > limitPerMinute) {
+  const sourceRow = await incrementPublicThrottleBucket(db, sourceKey);
+  if (Number(sourceRow?.count || 0) > sourceLimit) {
+    throwHttpError('访问过于频繁，请稍后再试', 429);
+  }
+  const subjectRow = await incrementPublicThrottleBucket(db, subjectKey);
+  if (Number(subjectRow?.count || 0) > limitPerMinute) {
     throwHttpError('访问过于频繁，请稍后再试', 429);
   }
 }
@@ -222,12 +242,10 @@ export async function insertPublicInventoryLog(
 
   const assetTable = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
   const normalized = String(action || '').toUpperCase();
-  const inventoryStatus = normalized === 'ISSUE' ? 'CHECKED_ISSUE' : 'CHECKED_OK';
-  const inventoryIssueType = normalized === 'ISSUE' ? (issueType || null) : null;
 
-  // The partial unique index on (batch_id, asset_id) makes concurrent scans converge
-  // to one log row. D1 batches the log and current-state write atomically.
-  await db.batch([
+  // An ISSUE is an explicit correction, whereas a concurrent OK must never overwrite
+  // either an existing ISSUE log or the current asset state.
+  const results = await db.batch([
     db.prepare(
       `INSERT INTO ${table} (asset_id, action, issue_type, remark, ip, ua, batch_id, created_at)
        VALUES (?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})
@@ -237,14 +255,37 @@ export async function insertPublicInventoryLog(
          remark=excluded.remark,
          ip=excluded.ip,
          ua=excluded.ua,
-         created_at=${sqlNowStored()}`
+         created_at=${sqlNowStored()}
+       WHERE excluded.action='ISSUE'`
     ).bind(assetId, action, issueType, remark, ip, ua, batchId),
     db.prepare(
       `UPDATE ${assetTable}
-          SET inventory_status=?, inventory_at=${sqlNowStored()}, inventory_issue_type=?,
+          SET inventory_status=CASE WHEN (
+                SELECT UPPER(action) FROM ${table} WHERE asset_id=? AND batch_id=? LIMIT 1
+              )='ISSUE' THEN 'CHECKED_ISSUE' ELSE 'CHECKED_OK' END,
+              inventory_at=${sqlNowStored()},
+              inventory_issue_type=(
+                SELECT CASE WHEN UPPER(action)='ISSUE' THEN issue_type ELSE NULL END
+                  FROM ${table} WHERE asset_id=? AND batch_id=? LIMIT 1
+              ),
               inventory_batch_id=?, updated_at=${sqlNowStored()}
         WHERE id=?`
-    ).bind(inventoryStatus, inventoryIssueType, batchId, assetId),
+    ).bind(assetId, batchId, assetId, batchId, batchId, assetId),
   ]);
+
+  const changes = Number((results[0] as any)?.meta?.changes || 0);
+  if (normalized === 'OK' && changes === 0) {
+    const finalLog = await getExistingInventoryLog(db, kind, assetId, batchId);
+    throw Object.assign(new Error(duplicateInventoryPrompt(kind, finalLog)), {
+      status: 409,
+      code: 'DUPLICATE_INVENTORY_LOG',
+      data: finalLog ? {
+        id: Number(finalLog.id),
+        action: String(finalLog.action || '').toUpperCase(),
+        issue_type: finalLog.issue_type ? String(finalLog.issue_type).toUpperCase() : null,
+        created_at: finalLog.created_at ? String(finalLog.created_at) : null,
+      } : undefined,
+    });
+  }
   return { ok: true, updated: false };
 }

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import { createBackupJsonStream, gzipBackupJsonStream } from '../functions/api/admin/_backup_helpers';
 import { validateBackupEnvelope } from '../functions/api/admin/_backup_integrity';
 import { iterBackupRowsFromStream, readBackupEnvelopeMetadataFromStream } from '../functions/api/admin/restore_job/_util';
+import { EXPORTABLE_TABLE_NAMES, RESTORABLE_TABLE_NAMES, TABLE_BY_NAME } from '../functions/api/admin/_backup_schema';
 
 type TableMap = Record<string, any[]>;
 
@@ -68,6 +69,12 @@ function chunkedTextStream(text: string, chunkSize: number) {
 }
 
 describe('backup stream helper', () => {
+  it('includes data quality cases in export and restore table definitions', () => {
+    expect(EXPORTABLE_TABLE_NAMES).toContain('data_quality_cases');
+    expect(RESTORABLE_TABLE_NAMES).toContain('data_quality_cases');
+    expect(TABLE_BY_NAME.data_quality_cases?.columns).toContain('issue_key');
+  });
+
   it('streams valid backup json with manifest and integrity hashes', async () => {
     const db = new FakeDB({
       warehouses: [

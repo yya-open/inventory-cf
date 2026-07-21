@@ -238,5 +238,10 @@
     "id": "202607210010_inventory_log_unique_data_quality",
     "file": "sql/migrate_inventory_log_unique_and_data_quality.sql",
     "description": "enforce one inventory log per asset batch and add data quality case workflow"
+  },
+  {
+    "id": "202607220010_public_api_throttle_index",
+    "file": "sql/migrate_public_api_throttle_index.sql",
+    "description": "restore public API throttle cleanup index without runtime DDL"
   }
 ]

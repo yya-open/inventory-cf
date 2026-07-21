@@ -172,6 +172,19 @@ export function buildClearAuthCookie() {
   return `${AUTH_COOKIE_NAME}=; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=0; Expires=Thu, 01 Jan 1970 00:00:00 GMT`;
 }
 
+function assertPasswordChangePolicy(request: Request, user: AuthUser) {
+  if (Number(user.must_change_password || 0) !== 1) return;
+  let path = '';
+  try {
+    path = new URL(request.url).pathname;
+  } catch {}
+  if (path === '/api/auth/change-password' || path === '/api/auth/logout' || path === '/api/auth/me') return;
+  throw Object.assign(new Error('请先修改密码后再继续操作'), {
+    status: 403,
+    code: 'PASSWORD_CHANGE_REQUIRED',
+  });
+}
+
 export async function requireAuth(
   env: { DB: D1Database; JWT_SECRET?: string },
   request: Request,
@@ -181,6 +194,7 @@ export async function requireAuth(
   if (token) {
     const reqCache = authRequestCache.get(request);
     if (reqCache?.token === token && reqCache.user && Number(reqCache.role_level || 0) >= roleLevel(minRole)) {
+      assertPasswordChangePolicy(request, reqCache.user);
       return reqCache.user;
     }
   }
@@ -267,6 +281,7 @@ async function requireAuthInternal(
   if (tv !== dbTv) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });
 
   if (roleLevel(user.role) < roleLevel(minRole)) throw Object.assign(new Error("权限不足"), { status: 403 });
+  assertPasswordChangePolicy(request, user);
 
   try {
     const nowSec = Math.floor(Date.now() / 1000);

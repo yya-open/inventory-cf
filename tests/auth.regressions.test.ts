@@ -354,6 +354,22 @@ beforeEach(() => {
 });
 
 describe('auth regression fixes', () => {
+  it('requires a password change before allowing protected API operations', async () => {
+    const env = await makeEnv();
+    const token = await issueToken(env, 2);
+    env.DB.__getUser(2)!.must_change_password = 1;
+    invalidateCachedAuthUser(2);
+
+    await expect(requireAuth(env as any, makeRequest('https://example.com/api/items', token), 'viewer'))
+      .rejects.toMatchObject({ status: 403, code: 'PASSWORD_CHANGE_REQUIRED' });
+    await expect(requireAuth(env as any, makeRequest('https://example.com/api/auth/me', token), 'viewer'))
+      .resolves.toMatchObject({ id: 2, must_change_password: 1 });
+    await expect(requireAuth(env as any, makeRequest('https://example.com/api/auth/change-password', token, 'POST'), 'viewer'))
+      .resolves.toMatchObject({ id: 2 });
+    await expect(requireAuth(env as any, makeRequest('https://example.com/api/auth/logout', token, 'POST'), 'viewer'))
+      .resolves.toMatchObject({ id: 2 });
+  });
+
   it('keeps the current session usable after password change', async () => {
     const env = await makeEnv();
     const token = await issueToken(env, 2);
