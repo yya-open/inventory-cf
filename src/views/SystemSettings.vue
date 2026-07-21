@@ -720,11 +720,26 @@ onMounted(() => { reload(); });
 </script>
 
 <style scoped>
+.settings-page > .ui-page-heading > div:first-child > h1 {
+  margin: 4px 0 0;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
+}
+
+.settings-page > .ui-page-heading > div:first-child > p {
+  margin: 6px 0 0;
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.6;
+}
+
 .settings-page{max-width:1680px;margin:0 auto}
-.settings-card,.section-card{border-radius:8px}
+.settings-card,.section-card{border-radius:var(--radius-md)}
 .settings-actions{display:flex;gap:10px;flex-wrap:wrap}
 .settings-summary{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:12px;margin:14px 0 4px}
-.summary-item{padding:14px 16px;border:1px solid var(--border);border-radius:8px;background:var(--surface-soft)}
+.summary-item{padding:14px 16px;border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface-soft)}
 .summary-label{font-size:12px;color:var(--subtle);margin-bottom:6px}
 .summary-value{font-size:20px;font-weight:800;color:var(--ink)}
 .settings-grid{
@@ -752,9 +767,9 @@ onMounted(() => { reload(); });
 .dictionary-card-actions{display:flex;align-items:center;gap:8px;flex-wrap:wrap}
 .row-actions{display:flex;align-items:center;gap:6px;flex-wrap:wrap;align-content:flex-start}
 .row-actions :deep(.el-button){margin-left:0}
-.settings-action-btn{width:52px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
+.settings-action-btn{width:52px;min-height:28px;padding:0 8px;border-radius:var(--radius-sm);justify-content:center;font-weight:600}
 .table-subtle{color:var(--subtle);font-size:12px;margin-top:2px}
-.drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:8px;border:1px dashed transparent;transition:.15s ease}
+.drag-cell{display:flex;align-items:center;justify-content:center;gap:8px;cursor:grab;user-select:none;padding:8px 0;border-radius:var(--radius-md);border:1px dashed transparent;transition:.15s ease}
 .drag-cell:hover{background:var(--surface-soft);border-color:var(--border-strong)}
 .drag-cell--active{background:var(--brand-tint);border-color:var(--brand);color:var(--brand)}
 .drag-cell--busy{cursor:not-allowed;opacity:.6}

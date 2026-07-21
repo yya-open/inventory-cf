@@ -923,7 +923,7 @@ onBeforeUnmount(() => {
   width: 64px;
   min-height: 28px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius:var(--radius-sm);
   justify-content: center;
   font-weight: 600;
 }
@@ -954,7 +954,7 @@ onBeforeUnmount(() => {
   word-break: break-word;
   background: var(--surface-soft);
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   padding: 12px;
 }
 

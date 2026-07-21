@@ -365,7 +365,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   background: var(--surface);
 }
 
@@ -386,7 +386,7 @@ onBeforeUnmount(() => {
 .ownership-timeline {
   min-width: 0;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   background: var(--surface);
   padding: 14px;
   overflow: hidden;
@@ -428,7 +428,7 @@ onBeforeUnmount(() => {
   gap: 10px;
   padding: 10px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   background: var(--surface);
   color: inherit;
   text-align: left;

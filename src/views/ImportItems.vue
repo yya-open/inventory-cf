@@ -291,10 +291,10 @@ async function submit() {
 
 <style scoped>
 .import-items-page{max-width:1680px;margin:0 auto}
-.import-items-card{border-radius:8px}
+.import-items-card{border-radius:var(--radius-md)}
 .import-items-card :deep(.el-card__body){display:grid;gap:12px}
-.import-items-card :deep(.el-alert){border-radius:8px}
-.import-items-card :deep(.el-table){border-radius:8px}
+.import-items-card :deep(.el-alert){border-radius:var(--radius-md)}
+.import-items-card :deep(.el-table){border-radius:var(--radius-md)}
 
 @media (max-width:768px){
   .import-items-card :deep(.el-button),

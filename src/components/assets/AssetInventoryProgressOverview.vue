@@ -97,7 +97,7 @@ const progressSubtitle = computed(() => {
 <style scoped>
 .progress-card {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius: var(--radius-xl);
   background: var(--surface);
   padding: 14px 16px;
   display: flex;
@@ -139,7 +139,7 @@ const progressSubtitle = computed(() => {
   gap: 10px;
 }
 .metric-card {
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   padding: 10px 12px;
   background: var(--surface);
   border: 1px solid var(--border);

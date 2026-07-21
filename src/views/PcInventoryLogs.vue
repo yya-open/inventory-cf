@@ -749,7 +749,7 @@ onUnmounted(() => {
   width: 58px;
   min-height: 28px;
   padding: 0 8px;
-  border-radius: 6px;
+  border-radius:var(--radius-sm);
   justify-content: center;
   font-weight: 600;
 }

@@ -490,12 +490,12 @@ onMounted(async () => {
 
 <style scoped>
 .items-page{max-width:1680px;margin:0 auto}
-.items-card{border-radius:8px}
+.items-card{border-radius:var(--radius-md)}
 .items-card :deep(.el-card__body){display:grid;gap:12px}
-.items-card :deep(.el-table){border-radius:8px}
+.items-card :deep(.el-table){border-radius:var(--radius-md)}
 .items-row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;align-content:flex-start}
 .items-row-actions :deep(.el-button){margin-left:0}
-.items-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
+.items-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:var(--radius-sm);justify-content:center;font-weight:600}
 
 @media (max-width:768px){
   .items-card :deep(.el-card__body > div:first-child){

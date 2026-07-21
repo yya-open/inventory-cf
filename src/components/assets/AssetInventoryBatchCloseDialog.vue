@@ -59,12 +59,12 @@ const emit = defineEmits<{
 
 <style scoped>
 .close-wrap { display:flex; flex-direction:column; gap:14px; }
-.close-card { border:1px solid var(--border); border-radius:16px; padding:14px 16px; background:var(--surface); }
+.close-card { border:1px solid var(--border); border-radius:var(--radius-xl); padding:14px 16px; background:var(--surface); }
 .close-title { font-size:14px; font-weight:700; color:var(--ink); }
 .close-name { font-size:18px; font-weight:700; color:var(--ink); margin-top:8px; }
 .close-subtle { margin-top:8px; color:var(--subtle); font-size:12px; line-height:1.7; }
 .close-metric-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; margin-top:12px; }
-.metric-card { border-radius: 12px; padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+.metric-card { border-radius: var(--radius-lg); padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
 .metric-card strong { font-size: 20px; color:var(--ink); }
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-danger); }

@@ -257,7 +257,7 @@ async function changePassword() {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--brand);
   color: #ffffff;
   font-size: 15px;

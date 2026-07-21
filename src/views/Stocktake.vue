@@ -1094,7 +1094,7 @@ onBeforeUnmount(() => {
 
 <style scoped>
 .stocktake-page{ padding:0; }
-.stocktake-card{ border-radius:8px; }
+.stocktake-card{ border-radius: var(--radius-md); }
 .stocktake-card :deep(.el-card__body){padding:16px}
 .stocktake-heading-actions{display:flex;justify-content:flex-end;gap:10px;flex-wrap:wrap}
 .page-header{ display:flex; justify-content:space-between; align-items:center; }
@@ -1103,10 +1103,10 @@ onBeforeUnmount(() => {
 .actions :deep(.el-button),.panel-tools :deep(.el-button),.detail-actions :deep(.el-button),.detail-tools :deep(.el-button){margin-left:0}
 .stocktake-row-actions{display:flex;gap:6px;align-items:center;flex-wrap:wrap;align-content:flex-start}
 .stocktake-row-actions :deep(.el-button){margin-left:0}
-.stocktake-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:6px;justify-content:center;font-weight:600}
+.stocktake-action-btn{width:58px;min-height:28px;padding:0 8px;border-radius:var(--radius-sm);justify-content:center;font-weight:600}
 .wh-select{ width:180px; }
 .body{ display:flex; flex-direction:column; gap:16px; }
-.panel{ background: var(--surface); border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+.panel{ background: var(--surface); border:1px solid var(--border); border-radius: var(--radius-md); overflow:hidden; }
 .left{ width:100%; }
 .right{ width:100%; padding:12px; min-height: 520px; }
 .panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
@@ -1123,7 +1123,7 @@ onBeforeUnmount(() => {
 .detail-actions{ display:flex; flex-wrap:wrap; gap:8px; justify-content:flex-end; }
 .preview-list{display:grid;grid-template-columns:repeat(auto-fit,minmax(160px,1fr));gap:10px;list-style:none;padding:0;margin:0 0 12px}
 .preview-list--dialog{margin:0}
-.preview-list-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--el-border-color-light);border-radius:8px;background:var(--surface-soft)}
+.preview-list-item{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:12px 14px;border:1px solid var(--el-border-color-light);border-radius: var(--radius-md);background:var(--surface-soft)}
 .preview-list-item--changed{border-color:var(--warning-border);background:var(--warning-tint)}
 .preview-list-item--increase{border-color:var(--success-border);background:var(--success-tint)}
 .preview-list-item--decrease{border-color:var(--danger-border);background:var(--danger-tint)}

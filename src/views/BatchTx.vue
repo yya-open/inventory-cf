@@ -494,7 +494,7 @@ onMounted(async () => {
 
 <style scoped>
 .batch-tx-page{max-width:1680px;margin:0 auto}
-.batch-tx-card{border-radius:8px}
+.batch-tx-card{border-radius:var(--radius-md)}
 .batch-tx-header,
 .batch-tx-header-actions,
 .batch-tx-toolbar,
@@ -512,7 +512,7 @@ onMounted(async () => {
   margin-bottom: 12px;
   padding: 12px;
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
 }
 .batch-tx-input-sm {

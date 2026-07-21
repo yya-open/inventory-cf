@@ -400,11 +400,11 @@ onMounted(async () => {
 
 <style scoped>
 .pc-operation-page{max-width:1120px;margin:0 auto}
-.pc-operation-card{border-radius:8px}
+.pc-operation-card{border-radius:var(--radius-md)}
 .pc-operation-card :deep(.el-card__body){padding:24px}
 .pc-operation-card :deep(.el-form){max-width:840px}
 .pc-operation-card :deep(.el-alert),
-.pc-operation-card :deep(.el-descriptions){border-radius:8px}
+.pc-operation-card :deep(.el-descriptions){border-radius:var(--radius-md)}
 .pc-recycle-form :deep(.el-form-item__label) {
   white-space: nowrap;
 }

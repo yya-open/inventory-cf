@@ -345,7 +345,7 @@ onMounted(load);
 .summary-tile,
 .precheck-tile {
   border: 1px solid var(--border);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   background: var(--surface);
   padding: 14px;
   display: flex;
@@ -374,7 +374,7 @@ onMounted(load);
 }
 
 .governance-table {
-  border-radius: 8px;
+  border-radius:var(--radius-md);
 }
 
 .issue-tags {

@@ -83,7 +83,7 @@ function handleCommand(command: string | number | object) {
 <style scoped>
 .batch-actions-card {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius:var(--radius-xl);
   background: var(--surface);
   padding: 14px 16px;
   display: flex;

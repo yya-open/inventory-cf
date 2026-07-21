@@ -39,6 +39,11 @@
   --danger-tint: #fdecec;
   --danger-border: #f4c0c0;
 
+  /* ---- 公共扫码摄像头 ---- */
+  --camera-surface: #0f1720;
+  --camera-overlay-border: rgba(255, 255, 255, 0.42);
+  --camera-overlay-mask: rgba(0, 0, 0, 0.1);
+
   /* ---- 深色侧边栏 ---- */
   --sidebar-bg: #12151d;
   --sidebar-bg-raised: #1a1e28;
@@ -123,6 +128,10 @@
   --warning-border: #76551f;
   --danger-tint: #3d2025;
   --danger-border: #7d3943;
+
+  --camera-surface: #080c12;
+  --camera-overlay-border: rgba(255, 255, 255, 0.52);
+  --camera-overlay-mask: rgba(0, 0, 0, 0.22);
 
   --sidebar-bg: #0b0f15;
   --sidebar-bg-raised: #151b25;

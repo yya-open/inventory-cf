@@ -89,12 +89,12 @@ function confirmStart() {
 
 <style scoped>
 .start-wrap { display:flex; flex-direction:column; gap:14px; }
-.start-card { border:1px solid var(--border); border-radius:16px; padding:14px 16px; background:var(--surface); }
+.start-card { border:1px solid var(--border); border-radius:var(--radius-xl); padding:14px 16px; background:var(--surface); }
 .start-title { font-size:14px; font-weight:700; color:var(--ink); }
 .start-subtle { margin-top:8px; color:var(--subtle); font-size:12px; line-height:1.7; }
 .start-risk-list { margin:10px 0 0; padding-left: 18px; color:var(--muted); font-size:13px; line-height:1.8; }
 .metric-grid { display:grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap:10px; margin-top:12px; }
-.metric-card { border-radius: 12px; padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+.metric-card { border-radius:var(--radius-lg); padding:10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
 .metric-card strong { font-size:20px; color:var(--ink); }
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-danger); }

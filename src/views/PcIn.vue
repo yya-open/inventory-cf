@@ -335,10 +335,10 @@ onMounted(async () => {
 
 <style scoped>
 .pc-operation-page{max-width:1040px;margin:0 auto}
-.pc-operation-card{border-radius:8px}
+.pc-operation-card{border-radius:var(--radius-md)}
 .pc-operation-card :deep(.el-card__body){padding:24px}
 .pc-operation-card :deep(.el-form){max-width:720px}
-.pc-operation-card :deep(.el-alert){border-radius:8px}
+.pc-operation-card :deep(.el-alert){border-radius:var(--radius-md)}
 
 @media (max-width:768px){
   .pc-operation-card :deep(.el-card__body){padding:16px}

@@ -52,7 +52,7 @@ function handleClick(code: string) {
 .issue-title { font-size: 13px; font-weight: 700; color:var(--muted); }
 .issue-subtle { color:var(--subtle); font-size:12px; }
 .issue-grid { display:grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap:10px; margin-top:10px; }
-.issue-card { border:1px solid var(--border); background:var(--surface); border-radius:12px; padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
+.issue-card { border:1px solid var(--border); background:var(--surface); border-radius:var(--radius-lg); padding:10px 12px; display:flex; flex-direction:column; gap:6px; }
 .issue-card.clickable { cursor:pointer; text-align:left; transition:all .18s ease; }
 .issue-card.clickable:hover { border-color: var(--el-color-primary-light-5); box-shadow: 0 0 0 1px var(--brand-soft); }
 .issue-card.active { border-color: var(--el-color-primary); box-shadow: 0 0 0 1px var(--brand-soft); background: var(--brand-tint); }

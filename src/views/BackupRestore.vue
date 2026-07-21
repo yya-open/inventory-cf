@@ -1283,9 +1283,9 @@ onMounted(() => {
 
 <style scoped>
 .backup-restore-page{max-width:1680px;margin:0 auto}
-.backup-restore-card{border-radius:8px}
+.backup-restore-card{border-radius:var(--radius-md)}
 .backup-restore-card :deep(.el-card){
-  border-radius:8px;
+  border-radius:var(--radius-md);
 }
 .backup-restore-card :deep(.el-card__header){
   background:var(--surface-soft);
@@ -1294,10 +1294,10 @@ onMounted(() => {
   row-gap:16px;
 }
 .backup-restore-card :deep(.el-alert){
-  border-radius:8px;
+  border-radius:var(--radius-md);
 }
 .backup-restore-card :deep(.el-table){
-  border-radius:8px;
+  border-radius:var(--radius-md);
 }
 
 @media (max-width:768px){

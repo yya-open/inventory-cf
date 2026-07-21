@@ -522,18 +522,18 @@ const previewQrStyle = computed(() => {
 .label-preset-help{display:grid;gap:4px;margin:-2px 0 12px}
 .hint-line{font-size:12px;color:var(--muted)}
 .print-template-preview{display:flex;flex-direction:column;gap:14px;position:sticky;top:0}
-.preview-card{border:1px solid var(--border);border-radius:14px;background:var(--surface-soft);padding:14px}
+.preview-card{border:1px solid var(--border);border-radius:var(--radius-lg);background:var(--surface-soft);padding:14px}
 .preview-title{font-size:14px;font-weight:800;margin-bottom:10px;color:var(--ink)}
 .preview-line{font-size:12px;line-height:1.6;color:var(--ink-secondary)}
 .preview-warning-card{background:var(--warning-tint);border-color:var(--warning-border)}
 .preview-warning-line{font-size:12px;line-height:1.6;color:var(--warning)}
 .preview-scale-tip{font-size:12px;line-height:1.5;color:var(--muted)}
-.preview-page{border:1px solid var(--border);border-radius:16px;background:var(--surface);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column}
+.preview-page{border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column}
 .preview-header{font-size:12px;font-weight:700;color:var(--ink-secondary);padding:8px 10px;border-bottom:1px solid var(--border-soft)}
 .preview-grid{flex:1;display:grid;align-content:start}
 .preview-cell{border:1px solid var(--border);border-radius:10px;background:var(--surface);display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:8px;min-height:0;overflow:hidden}
 .preview-cell.vertical{grid-template-columns:1fr;justify-items:center;text-align:center}
-.preview-qr{border-radius:8px;background:repeating-linear-gradient(45deg,var(--ink) 0,var(--ink) 4px,var(--surface) 4px,var(--surface) 8px)}
+.preview-qr{border-radius:var(--radius-sm);background:repeating-linear-gradient(45deg,var(--ink) 0,var(--ink) 4px,var(--surface) 4px,var(--surface) 8px)}
 .preview-text{display:grid;gap:4px;min-width:0;width:100%}
 .preview-cell.vertical .preview-text{justify-items:center}
 .preview-text-line{height:7px;border-radius:999px;background:var(--border-strong)}

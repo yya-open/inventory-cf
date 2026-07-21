@@ -796,7 +796,7 @@ onMounted(() => {
   width: 100%;
   padding: 10px 12px;
   border: 1px solid var(--border);
-  border-radius: 6px;
+  border-radius: var(--radius-sm);
   background: var(--surface-soft);
 }
 

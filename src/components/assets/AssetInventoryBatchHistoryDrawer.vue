@@ -166,7 +166,7 @@ async function downloadSnapshot(item: InventoryBatchRow) {
 .history-header-card,
 .history-item {
   border: 1px solid var(--border);
-  border-radius: 16px;
+  border-radius:var(--radius-xl);
   background: var(--surface);
   padding: 14px 16px;
 }
@@ -181,12 +181,12 @@ async function downloadSnapshot(item: InventoryBatchRow) {
 .history-metric-grid { display:grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap:10px; margin-top: 12px; }
 .history-metric-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 .history-label { display:block; font-size:12px; color:var(--subtle); margin-bottom:4px; }
-.metric-card { border-radius: 12px; padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
+.metric-card { border-radius: var(--radius-lg); padding: 10px 12px; background:var(--surface); border:1px solid var(--border); display:flex; flex-direction:column; gap:6px; }
 .metric-card strong { font-size: 20px; color:var(--ink); }
 .metric-card.checked strong { color: var(--el-color-success); }
 .metric-card.issue strong { color: var(--el-color-danger); }
 .metric-card.unchecked strong { color: var(--el-color-info); }
-.history-snapshot { margin-top: 10px; padding: 10px 12px; border-radius: 12px; background: var(--surface-soft); border: 1px dashed var(--el-color-primary-light-8); display:flex; flex-direction:column; gap:6px; }
+.history-snapshot { margin-top: 10px; padding: 10px 12px; border-radius: var(--radius-lg); background: var(--surface-soft); border: 1px dashed var(--el-color-primary-light-8); display:flex; flex-direction:column; gap:6px; }
 .history-snapshot-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; }
 .history-snapshot-actions { display:flex; justify-content:flex-end; }
 .history-footnote { margin-top: 10px; color:var(--subtle); font-size:12px; line-height:1.6; }

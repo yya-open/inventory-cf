@@ -107,7 +107,10 @@ const repairDocs = [
 }
 
 .docs-title {
-  font-size: 16px;
+  color: var(--ink);
+  font-size: 22px;
+  font-weight: 800;
+  line-height: 1.25;
 }
 
 .docs-help-block {
@@ -117,7 +120,7 @@ const repairDocs = [
 }
 
 .doc-card {
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   height: 100%;
 }
 .doc-title {
@@ -134,7 +137,7 @@ const repairDocs = [
   margin: 0;
   padding: 12px 14px;
   background: var(--surface-soft);
-  border-radius: 8px;
+  border-radius:var(--radius-md);
   overflow: auto;
   font-size: 12px;
   line-height: 1.7;

@@ -229,7 +229,7 @@ onMounted(async () => {
 
 <style scoped>
 .stock-operation-page{max-width:960px;margin:0 auto}
-.stock-operation-card{border-radius:8px}
+.stock-operation-card{border-radius:var(--radius-md)}
 .stock-operation-card :deep(.el-card__body){padding:24px}
 .stock-operation-card :deep(.el-form){max-width:640px}
 

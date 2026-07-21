@@ -323,12 +323,16 @@ onMounted(() => {
 </script>
 
 <style scoped>
-.system-performance-page{max-width:1680px;margin:0 auto}
-.system-performance-card{border-radius:8px}
-.system-performance-card :deep(.el-card){border-radius:8px}
+.system-performance-page{max-width:1680px;margin:0 auto;padding:24px 0}
+.system-performance-card{border-radius:var(--radius-md)}
+.system-performance-card :deep(.sys-header-title) {
+  color: var(--ink);
+  font-size: 22px;
+  line-height: 1.25;
+}
 
-.perf-loading-wrap {
-  padding: 24px 0;
+.system-performance-card :deep(.sys-header-muted) {
+  line-height: 1.6;
 }
 
 .perf-row-gap-top {
