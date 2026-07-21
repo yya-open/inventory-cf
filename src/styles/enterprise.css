@@ -1,6 +1,6 @@
 /* enterprise.css —— 页面级组件外观护栏（卡片/按钮/输入/表格/弹窗等）
  * 令牌见 tokens.css；骨架样式由 chrome.css 接管。
- * 职责：以 !important 压住 40 个 vue scoped 里的旧装饰，保证全局皮肤一致。
+ * 职责：覆盖仍存在的 scoped 旧装饰，保证全局皮肤一致。
  * 已清理过的源（app.css / ledger-*-shared.css）不再在此重复压制。
  */
 
@@ -36,17 +36,6 @@
   box-shadow: none !important;
 }
 
-/* ---- 系统页标题（system-tokens.css 源，p2-t5 收敛后可删） ---- */
-.sys-header-title {
-  color: var(--ink) !important;
-  font-weight: 700 !important;
-}
-
-.sys-muted,
-.sys-header-muted {
-  color: var(--muted) !important;
-}
-
 /* ---- 按钮 ---- */
 .el-button {
   border-radius: var(--radius-md) !important;
@@ -57,7 +46,7 @@
 .el-button--primary {
   border-color: var(--brand) !important;
   background: var(--brand) !important;
-  color: #ffffff !important;
+  color: var(--on-brand) !important;
   box-shadow: none !important;
 }
 
@@ -72,7 +61,7 @@
 .el-button--danger.is-plain:focus {
   border-color: var(--danger) !important;
   background: var(--danger) !important;
-  color: #ffffff !important;
+  color: var(--on-brand) !important;
 }
 
 .el-button.is-plain {
@@ -171,7 +160,7 @@
 
 /* ---- 其他基础件 ---- */
 .el-tag {
-  border-radius: 4px !important;
+  border-radius: var(--radius-xs) !important;
   font-weight: 600;
 }
 

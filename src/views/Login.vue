@@ -259,7 +259,7 @@ async function changePassword() {
   justify-content: center;
   border-radius: var(--radius-lg);
   background: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
   font-size: 15px;
   font-weight: 800;
   letter-spacing: 0.02em;
@@ -292,7 +292,7 @@ async function changePassword() {
   height: 44px;
   margin-top: 4px;
   border: 1px solid var(--brand);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--brand);
   font-size: 15px;
   font-weight: 700;
@@ -334,7 +334,7 @@ async function changePassword() {
 
 :deep(.login-card .el-input__wrapper) {
   min-height: 44px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
   box-shadow: 0 0 0 1px var(--border-strong) inset;
   transition: box-shadow 160ms ease, background-color 160ms ease;
@@ -362,7 +362,7 @@ async function changePassword() {
 
   .login-shell {
     align-self: center;
-    border-radius: var(--radius-lg, 12px);
+    border-radius: var(--radius-lg);
   }
 
   .login-card {

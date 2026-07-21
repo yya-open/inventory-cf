@@ -531,7 +531,7 @@ const previewQrStyle = computed(() => {
 .preview-page{border:1px solid var(--border);border-radius:var(--radius-xl);background:var(--surface);box-shadow:var(--shadow-sm);overflow:hidden;display:flex;flex-direction:column}
 .preview-header{font-size:12px;font-weight:700;color:var(--ink-secondary);padding:8px 10px;border-bottom:1px solid var(--border-soft)}
 .preview-grid{flex:1;display:grid;align-content:start}
-.preview-cell{border:1px solid var(--border);border-radius:10px;background:var(--surface);display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:8px;min-height:0;overflow:hidden}
+.preview-cell{border:1px solid var(--border);border-radius:var(--radius-md);background:var(--surface);display:grid;grid-template-columns:auto minmax(0,1fr);gap:8px;align-items:start;padding:8px;min-height:0;overflow:hidden}
 .preview-cell.vertical{grid-template-columns:1fr;justify-items:center;text-align:center}
 .preview-qr{border-radius:var(--radius-sm);background:repeating-linear-gradient(45deg,var(--ink) 0,var(--ink) 4px,var(--surface) 4px,var(--surface) 8px)}
 .preview-text{display:grid;gap:4px;min-width:0;width:100%}

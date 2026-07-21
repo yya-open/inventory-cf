@@ -72,7 +72,7 @@
   height: 44px;
   padding: 0;
   border: 1px solid var(--border-strong);
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
   color: var(--muted);
   box-shadow: var(--shadow-md);
@@ -135,7 +135,7 @@
   --el-menu-border-color: transparent;
   --el-menu-text-color: var(--sidebar-text);
   --el-menu-hover-bg-color: var(--sidebar-hover);
-  --el-menu-active-color: #ffffff;
+  --el-menu-active-color: var(--on-brand);
 }
 
 .app-sidebar-menu__brand {
@@ -156,9 +156,9 @@
   width: 34px;
   height: 34px;
   border: 1px solid rgba(255, 255, 255, 0.14);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
   box-shadow: 0 4px 12px rgba(79, 70, 229, 0.35);
 }
 
@@ -185,7 +185,7 @@
 .app-sidebar-menu .el-sub-menu__title {
   height: 42px;
   line-height: 42px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 .app-sidebar-menu .el-menu-item [class^="el-icon"],
@@ -212,7 +212,7 @@
   width: 28px;
   height: 28px;
   flex: 0 0 28px;
-  border-radius: 8px;
+  border-radius: var(--radius-md);
   background: var(--sidebar-icon-bg);
   color: var(--sidebar-text);
 }
@@ -243,12 +243,12 @@
 
 .app-sidebar-menu .el-menu-item.is-active {
   background: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
 }
 
 .app-sidebar-menu .el-menu-item.is-active .app-sidebar-menu__item-icon {
   background: rgba(255, 255, 255, 0.18);
-  color: #ffffff;
+  color: var(--on-brand);
 }
 
 .app-sidebar-menu__meta {
@@ -316,7 +316,7 @@
   margin-inline: auto;
   padding: 0;
   justify-content: center;
-  border-radius: 12px;
+  border-radius: var(--radius-lg);
 }
 
 .app-sidebar-menu--collapsed .app-sidebar-menu__collapse-arrow {
@@ -337,7 +337,7 @@
   width: 32px;
   height: 32px;
   flex-basis: 32px;
-  border-radius: 10px;
+  border-radius: var(--radius-md);
 }
 
 /* ---- 顶栏 ---- */
@@ -383,7 +383,7 @@
   flex-wrap: wrap;
   padding: 3px;
   border: 1px solid var(--border);
-  border-radius: 10px;
+  border-radius: var(--radius-md);
   background: var(--surface-soft);
 }
 
@@ -397,7 +397,7 @@
 
 .app-header__switches > .el-button.el-button--primary {
   background: var(--brand);
-  color: #ffffff;
+  color: var(--on-brand);
 }
 
 .app-header__actions {
@@ -426,7 +426,7 @@
 .app-header__command kbd {
   padding: 1px 5px;
   border: 1px solid var(--border);
-  border-radius: 4px;
+  border-radius: var(--radius-xs);
   color: var(--subtle);
   font: 600 10px/1 var(--font-sans);
 }
@@ -500,7 +500,7 @@
   gap: 18px;
   padding-bottom: 12px;
   pointer-events: none;
-  background: rgba(244, 245, 247, 0.9);
+  background: var(--skeleton-surface);
 }
 
 .app-page-skeleton__toolbar {
@@ -517,16 +517,6 @@
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
-}
-
-.app-page-skeleton__panel::after,
-.app-page-skeleton__table::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  transform: translateX(-100%);
-  background: linear-gradient(90deg, rgba(255, 255, 255, 0) 0%, rgba(255, 255, 255, 0.62) 48%, rgba(255, 255, 255, 0) 100%);
-  animation: page-skeleton-shimmer 1.45s ease-in-out infinite;
 }
 
 .app-page-skeleton__panel {
@@ -548,7 +538,7 @@
 .app-page-skeleton__cell {
   display: block;
   border-radius: 999px;
-  background: linear-gradient(180deg, #e6e9ef 0%, #eceff4 100%);
+  background: var(--skeleton-block);
 }
 
 .app-page-skeleton__kicker {
@@ -607,7 +597,7 @@
 
 .app-page-skeleton__button--primary {
   width: 124px;
-  background: linear-gradient(135deg, #6f6aea 0%, #8f8bf0 100%);
+  background: var(--brand);
 }
 
 .app-page-skeleton__table {
@@ -635,18 +625,7 @@
 .app-page-skeleton__cell--mid { width: 86px; justify-self: end; }
 .app-page-skeleton__cell--wide { width: 78%; }
 
-@keyframes page-skeleton-shimmer {
-  100% {
-    transform: translateX(100%);
-  }
-}
-
 @media (prefers-reduced-motion: reduce) {
-  .app-page-skeleton__panel::after,
-  .app-page-skeleton__table::after {
-    animation: none;
-  }
-
   .app-aside,
   .app-aside-toggle {
     transition: none;
@@ -709,7 +688,7 @@
     height: 38px;
     min-height: 38px;
     border-color: var(--border);
-    border-radius: 10px;
+    border-radius: var(--radius-md);
     background: var(--surface);
     color: var(--ink-secondary);
     font-size: 18px;
@@ -753,7 +732,7 @@
     max-width: 136px;
     overflow: hidden;
     padding: 5px 9px;
-    border: 1px solid #cfcff8;
+    border: 1px solid var(--el-color-primary-light-7);
     border-radius: 999px;
     background: var(--brand-tint);
     color: var(--brand);
@@ -770,14 +749,14 @@
     gap: 4px;
     width: 100%;
     padding: 4px;
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
   }
 
   .app-header__switches > .el-button {
     min-width: 0;
     height: 34px;
     padding-inline: 8px;
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     font-size: 13px;
     font-weight: 700;
   }
@@ -789,7 +768,7 @@
     width: 100%;
     padding: 10px;
     border: 1px solid var(--border);
-    border-radius: 12px;
+    border-radius: var(--radius-lg);
     background: var(--surface-soft);
   }
 
@@ -799,7 +778,7 @@
     overflow: hidden;
     padding: 8px 10px;
     border: 1px solid var(--border-soft);
-    border-radius: 9px;
+    border-radius: var(--radius-md);
     background: var(--surface);
     color: var(--muted);
     font-size: 13px;
@@ -884,26 +863,3 @@
   }
 }
 
-:root[data-theme="dark"] .app-page-skeleton {
-  background: rgba(17, 21, 28, 0.92);
-}
-
-:root[data-theme="dark"] .app-page-skeleton__kicker,
-:root[data-theme="dark"] .app-page-skeleton__title,
-:root[data-theme="dark"] .app-page-skeleton__text,
-:root[data-theme="dark"] .app-page-skeleton__control,
-:root[data-theme="dark"] .app-page-skeleton__badge,
-:root[data-theme="dark"] .app-page-skeleton__button,
-:root[data-theme="dark"] .app-page-skeleton__table-head,
-:root[data-theme="dark"] .app-page-skeleton__cell {
-  background: #2a3340;
-}
-
-:root[data-theme="dark"] .app-page-skeleton__button--primary {
-  background: var(--brand);
-}
-
-:root[data-theme="dark"] .app-page-skeleton__panel::after,
-:root[data-theme="dark"] .app-page-skeleton__table::after {
-  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 48%, transparent 100%);
-}

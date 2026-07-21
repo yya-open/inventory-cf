@@ -185,7 +185,7 @@
 .toolbar-primary-btn {
   border: 1px solid var(--brand);
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 
 .toolbar-primary-btn:hover {

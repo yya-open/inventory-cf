@@ -165,7 +165,7 @@ watch(visible, (open) => {
 
 <style scoped>
 .command-palette__header { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
-kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
+kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: var(--radius-xs); color: var(--muted); font-size: 11px; font-weight: 600; }
 .command-palette__search { margin-bottom: 8px; }
 .command-palette__hint { margin-bottom: 16px; color: var(--muted); font-size: 12px; }
 .command-palette__section + .command-palette__section { margin-top: 18px; }

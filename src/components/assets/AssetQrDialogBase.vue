@@ -592,7 +592,7 @@ const statusClass = computed(() => {
   width: 38px;
   height: 38px;
   border-radius: 50%;
-  color: #ffffff;
+  color: var(--on-success);
   background: var(--success);
   font-size: 20px;
 }

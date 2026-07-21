@@ -12,8 +12,11 @@
   --brand: #4f46e5;
   --brand-hover: #4338ca;
   --brand-active: #3730a3;
+  --on-brand: #ffffff;
   --brand-tint: #eef0fe;
   --brand-soft: rgba(79, 70, 229, 0.08);
+  --skeleton-surface: rgba(244, 245, 247, 0.9);
+  --skeleton-block: #e6e9ef;
 
   /* ---- 中性色 ---- */
   --ink: #191e28;
@@ -30,6 +33,7 @@
 
   /* ---- 语义色 ---- */
   --success: #15803d;
+  --on-success: #ffffff;
   --warning: #b45309;
   --danger: #dc2626;
   --success-tint: #e9f7ef;
@@ -54,6 +58,7 @@
   --sidebar-icon-bg: rgba(255, 255, 255, 0.07);
 
   /* ---- 圆角 ---- */
+  --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
   --radius-lg: 12px;
@@ -104,8 +109,11 @@
   --brand: #818cf8;
   --brand-hover: #a5b4fc;
   --brand-active: #c7d2fe;
+  --on-brand: #161a2a;
   --brand-tint: #252b55;
   --brand-soft: rgba(129, 140, 248, 0.16);
+  --skeleton-surface: rgba(17, 21, 28, 0.92);
+  --skeleton-block: #2a3340;
 
   --ink: #eef2f7;
   --ink-secondary: #c6cfdb;
@@ -120,6 +128,7 @@
   --border-strong: #414c5d;
 
   --success: #4ade80;
+  --on-success: #102217;
   --warning: #fbbf24;
   --danger: #f87171;
   --success-tint: #163525;

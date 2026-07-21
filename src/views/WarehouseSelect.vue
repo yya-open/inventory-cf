@@ -104,14 +104,14 @@ function choose(k: WarehouseKey) {
 .warehouse-select-card{
   width:760px;
   max-width:100%;
-  border-radius:var(--radius-xl, 16px);
+  border-radius:var(--radius-xl);
   border:1px solid var(--border);
   box-shadow:var(--shadow-md);
 }
 .warehouse-option-card{
   height:100%;
   cursor:pointer;
-  border-radius:var(--radius-lg, 12px);
+  border-radius:var(--radius-lg);
   transition:border-color 160ms ease, box-shadow 160ms ease, transform 160ms ease;
 }
 .warehouse-option-card:hover{

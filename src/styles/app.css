@@ -489,7 +489,7 @@ html, body, #app {
 .ui-toolbar-segment.el-button--primary {
   border-color: var(--brand);
   background: var(--brand);
-  color: #fff;
+  color: var(--on-brand);
 }
 
 @media (max-width: 1100px) {
