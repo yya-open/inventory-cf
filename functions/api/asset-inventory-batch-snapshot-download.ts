@@ -1,7 +1,8 @@
-import { json, requireAuth } from './_auth';
+import { json } from './_auth';
 import { withErrorHandling } from './_error';
-import { buildAsyncJobDownloadResponse, getAsyncJob } from './services/async-jobs';
+import { buildAsyncJobDownloadResponse, assertAsyncJobDownloadAccess, getAsyncJob } from './services/async-jobs';
 import { ensureAssetInventoryBatchSchema } from './services/asset-inventory-batches';
+import { requireAuthWithDataScope } from './services/data-scope';
 
 function parseKind(input: any) {
   const kind = String(input || '').trim().toLowerCase();
@@ -10,7 +11,7 @@ function parseKind(input: any) {
 }
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
-  await requireAuth(env, request, 'viewer');
+  const actor = await requireAuthWithDataScope(env, request, 'viewer');
   await ensureAssetInventoryBatchSchema(env.DB);
   const url = new URL(request.url);
   const kind = parseKind(url.searchParams.get('kind'));
@@ -23,6 +24,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   if (!Number(batch.snapshot_job_id || 0)) return json(false, null, '该批次暂无可下载结果快照', 404);
   const row = await getAsyncJob(env.DB, Number(batch.snapshot_job_id), env.BACKUP_BUCKET);
   if (!row) return json(false, null, '结果快照任务不存在', 404);
+  await assertAsyncJobDownloadAccess(env.DB, row, actor, actor);
   const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
   return await buildAsyncJobDownloadResponse(row, env.BACKUP_BUCKET, { inline, print: false });
 });

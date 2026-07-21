@@ -54,30 +54,28 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         if (!itemId || !diff) continue;
         stmts.push(
           env.DB.prepare(
+            `INSERT OR IGNORE INTO stock (item_id, warehouse_id, qty, updated_at)
+             VALUES (?, ?, 0, ${sqlNowStored()})`
+          ).bind(itemId, warehouseId),
+          env.DB.prepare(
+            `UPDATE stock
+             SET qty=qty + ?, updated_at=${sqlNowStored()}
+             WHERE item_id=? AND warehouse_id=?
+               AND (qty + ?) >= 0
+               AND EXISTS (
+                 SELECT 1 FROM stocktake
+                 WHERE id=? AND status='ROLLING'
+               )
+               AND NOT EXISTS (
+                 SELECT 1 FROM stock_tx
+                 WHERE ref_type='STOCKTAKE_ROLLBACK' AND ref_id=? AND item_id=? AND warehouse_id=?
+               )`
+          ).bind(-diff, itemId, warehouseId, -diff, st_id, st_id, itemId, warehouseId),
+          env.DB.prepare(
             `INSERT INTO stock_tx (tx_no, type, item_id, warehouse_id, qty, delta_qty, ref_type, ref_id, ref_no, remark, created_by)
              SELECT ?, 'REVERSAL', ?, ?, ?, ?, 'STOCKTAKE_ROLLBACK', ?, ?, ?, ?
-             WHERE EXISTS (
-               SELECT 1 FROM stocktake
-               WHERE id=? AND status='ROLLING'
-             )
-             AND NOT EXISTS (
-               SELECT 1 FROM stock_tx
-               WHERE ref_type='STOCKTAKE_ROLLBACK' AND ref_id=? AND item_id=? AND warehouse_id=?
-             )`
-          ).bind(stocktakeRollbackTxNo(stNo, itemId), itemId, warehouseId, Math.abs(diff), -diff, st_id, stNo, `撤销盘点 ${stNo}`, user.username, st_id, st_id, itemId, warehouseId),
-          env.DB.prepare(
-            `INSERT INTO stock (item_id, warehouse_id, qty, updated_at)
-             SELECT ?, ?, ?, ${sqlNowStored()}
-             WHERE EXISTS (
-               SELECT 1 FROM stocktake
-               WHERE id=? AND status='ROLLING'
-             )
-             ON CONFLICT(item_id, warehouse_id) DO UPDATE SET qty=excluded.qty, updated_at=${sqlNowStored()}
-             WHERE EXISTS (
-               SELECT 1 FROM stocktake
-               WHERE id=? AND status='ROLLING'
-             )`
-          ).bind(itemId, warehouseId, Number(l.system_qty), st_id, st_id)
+             WHERE (SELECT changes()) > 0`
+          ).bind(stocktakeRollbackTxNo(stNo, itemId), itemId, warehouseId, Math.abs(diff), -diff, st_id, stNo, `撤销盘点 ${stNo}`, user.username)
         );
       }
       if (!stmts.length) continue;

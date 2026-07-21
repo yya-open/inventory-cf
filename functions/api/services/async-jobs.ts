@@ -7,7 +7,7 @@ import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { updateInventoryBatchSnapshotJobState, type AssetInventoryKind } from './asset-inventory-batches';
-import { applyDepartmentDataScopeClause, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
+import { applyDepartmentDataScopeClause, assertAssetInventoryBatchDataScopeAccess, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
 import { precomputeDashboardSnapshots } from './dashboard-report';
 import { getAutoRepairScan } from './ops-tools';
 import QRCode from 'qrcode';
@@ -61,6 +61,8 @@ export async function ensureAsyncJobsTable(db: D1Database) {
     `ALTER TABLE async_jobs ADD COLUMN canceled_at TEXT`,
     `ALTER TABLE async_jobs ADD COLUMN retain_until TEXT`,
     `ALTER TABLE async_jobs ADD COLUMN result_deleted_at TEXT`,
+    `ALTER TABLE async_jobs ADD COLUMN worker_token TEXT`,
+    `ALTER TABLE async_jobs ADD COLUMN lease_until TEXT`,
   ];
   for (const sql of alters) {
     try { await db.prepare(sql).run(); } catch {}
@@ -1191,6 +1193,18 @@ export async function cleanupAsyncJobHousekeeping(db: D1Database, bucket?: Async
        AND COALESCE(result_object_key,'')=''
        AND COALESCE(finished_at, canceled_at, updated_at, created_at) < datetime('now','+8 hours','-30 day')`
   ).run();
+  await db.prepare(
+    `UPDATE async_jobs
+     SET status='queued',
+         worker_token=NULL,
+         lease_until=NULL,
+         message='任务租约已过期，重新排队',
+         updated_at=${sqlNowStored()}
+     WHERE status='running'
+       AND cancel_requested=0
+       AND lease_until IS NOT NULL
+       AND lease_until < ${sqlNowStored()}`
+  ).run();
   const staleQueued = await db.prepare(
     `UPDATE async_jobs
      SET status='canceled',
@@ -1249,7 +1263,7 @@ export async function createAsyncJob(db: D1Database, input: AsyncJobCreateInput,
   return Number((res as any)?.meta?.last_row_id || 0);
 }
 
-function createAsyncJobCancelChecker(db: D1Database, id: number) {
+function createAsyncJobCancelChecker(db: D1Database, id: number, workerToken?: string) {
   let lastCheckedAt = 0;
   let canceled = false;
   return async (force = false) => {
@@ -1257,15 +1271,24 @@ function createAsyncJobCancelChecker(db: D1Database, id: number) {
     const now = Date.now();
     if (!force && now - lastCheckedAt < 1000) return false;
     lastCheckedAt = now;
-    const latest = await db.prepare(`SELECT status, cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
-    canceled = Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled';
+    const latest = await db.prepare(`SELECT status, cancel_requested, worker_token FROM async_jobs WHERE id=?`).bind(id).first<any>();
+    canceled = Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled' || (!!workerToken && String(latest?.worker_token || '') !== workerToken);
+    if (!canceled && workerToken) {
+      await db.prepare(`UPDATE async_jobs SET lease_until=datetime('now','+8 hours','+30 minutes'), updated_at=${sqlNowStored()} WHERE id=? AND status='running' AND worker_token=?`).bind(id, workerToken).run();
+    }
     return canceled;
   };
 }
 
-async function markAsyncJobCanceled(db: D1Database, id: number, message = '任务已取消') {
-  await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), updated_at=${sqlNowStored()}, message=? WHERE id=?`)
-    .bind(message, id).run();
+function createAsyncJobWorkerToken() {
+  try { return crypto.randomUUID(); } catch { return `${Date.now()}_${Math.random().toString(36).slice(2)}`; }
+}
+
+async function markAsyncJobCanceled(db: D1Database, id: number, message = '任务已取消', workerToken?: string) {
+  const where = workerToken ? 'id=? AND worker_token=?' : 'id=?';
+  const binds = workerToken ? [message, id, workerToken] : [message, id];
+  await db.prepare(`UPDATE async_jobs SET status='canceled', canceled_at=COALESCE(canceled_at, ${sqlNowStored()}), worker_token=NULL, lease_until=NULL, updated_at=${sqlNowStored()}, message=? WHERE ${where}`)
+    .bind(...binds).run();
 }
 
 export async function processAsyncJob(db: D1Database, id: number, bucket?: AsyncJobResultBucket, options: { skipHousekeeping?: boolean } = {}) {
@@ -1281,26 +1304,47 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   const jobType = String(row.job_type || '') as AsyncJobType;
   const req: any = parseJsonSafe(row.request_json, {});
   if ((jobType === 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT' || jobType === 'AUDIT_ARCHIVE_EXPORT') && !bucket) throw new Error('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。');
-  await db.prepare(`UPDATE async_jobs SET status='running', started_at=${sqlNowStored()}, updated_at=${sqlNowStored()}, error_text=NULL WHERE id=?`).bind(id).run();
+  const workerToken = createAsyncJobWorkerToken();
+  const claimed = await db.prepare(
+    `UPDATE async_jobs
+        SET status='running',
+            started_at=${sqlNowStored()},
+            updated_at=${sqlNowStored()},
+            error_text=NULL,
+            worker_token=?,
+            lease_until=datetime('now','+8 hours','+30 minutes')
+      WHERE id=? AND status='queued' AND cancel_requested=0`
+  ).bind(workerToken, id).run();
+  if (Number((claimed as any)?.meta?.changes || 0) !== 1) {
+    const latest = await db.prepare(`SELECT status, cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
+    if (Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled') {
+      await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
+    }
+    return;
+  }
   await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'running', errorMessage: null });
   try {
-    const shouldCancel = createAsyncJobCancelChecker(db, id);
+    const shouldCancel = createAsyncJobCancelChecker(db, id, workerToken);
     const result = await buildJobResult(db, jobType, req, bucket);
     if (await shouldCancel(true)) {
-      await markAsyncJobCanceled(db, id);
+      await markAsyncJobCanceled(db, id, '任务已取消', workerToken);
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
     const storedFile = await saveAsyncJobResultFile(bucket, row, result, shouldCancel);
     if (await shouldCancel(true)) {
       if (storedFile?.objectKey && bucket && typeof bucket.delete === 'function') await bucket.delete(storedFile.objectKey).catch(() => {});
-      await markAsyncJobCanceled(db, id);
+      await markAsyncJobCanceled(db, id, '任务已取消', workerToken);
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
-    await db.prepare(
-      `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_object_key=?, result_file_size=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`
-    ).bind(storedFile ? null : (result.text ?? null), storedFile ? null : (result.blobBase64 ?? null), storedFile?.objectKey ?? null, storedFile?.fileSize ?? null, result.contentType, result.filename, result.message, id).run();
+    const completed = await db.prepare(
+      `UPDATE async_jobs SET status='success', result_text=?, result_blob_base64=?, result_object_key=?, result_file_size=?, result_content_type=?, result_filename=?, message=?, finished_at=${sqlNowStored()}, worker_token=NULL, lease_until=NULL, updated_at=${sqlNowStored()} WHERE id=? AND worker_token=?`
+    ).bind(storedFile ? null : (result.text ?? null), storedFile ? null : (result.blobBase64 ?? null), storedFile?.objectKey ?? null, storedFile?.fileSize ?? null, result.contentType, result.filename, result.message, id, workerToken).run();
+    if (Number((completed as any)?.meta?.changes || 0) !== 1) {
+      if (storedFile?.objectKey && bucket && typeof bucket.delete === 'function') await bucket.delete(storedFile.objectKey).catch(() => {});
+      return;
+    }
     if (jobType === 'AUDIT_ARCHIVE_EXPORT') {
       const archiveBefore = String((result.meta as any)?.archive_before || req?.archive_before || '').trim();
       const rowIds = Array.isArray((result.meta as any)?.row_ids) ? (result.meta as any)?.row_ids : [];
@@ -1326,12 +1370,12 @@ export async function processAsyncJob(db: D1Database, id: number, bucket?: Async
   } catch (error: any) {
     const latest = await db.prepare(`SELECT cancel_requested FROM async_jobs WHERE id=?`).bind(id).first<any>();
     if (isAsyncJobCanceledError(error) || Number(latest?.cancel_requested || 0) === 1 || String(latest?.status || '') === 'canceled') {
-      await markAsyncJobCanceled(db, id);
+      await markAsyncJobCanceled(db, id, '任务已取消', workerToken);
       await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'canceled', errorMessage: '任务已取消' });
       return;
     }
     const errorText = String(error?.message || error || '任务执行失败');
-    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, updated_at=${sqlNowStored()} WHERE id=?`).bind(errorText, id).run();
+    await db.prepare(`UPDATE async_jobs SET status='failed', error_text=?, finished_at=${sqlNowStored()}, worker_token=NULL, lease_until=NULL, updated_at=${sqlNowStored()} WHERE id=? AND worker_token=?`).bind(errorText, id, workerToken).run();
     await syncInventoryBatchSnapshotJobState(db, jobType, req, { status: 'failed', errorMessage: errorText });
   }
 }
@@ -1550,6 +1594,31 @@ function mapAsyncJobRow(row: any, options: { detail?: boolean; assetLinks?: Map<
   };
 }
 
+export async function assertAsyncJobDownloadAccess(db: D1Database, row: any, actor: { id: number; role: string }, scope: UserDataScope | null | undefined) {
+  const jobType = String(row?.job_type || '');
+  const ownerId = Number(row?.created_by || 0);
+  if (jobType !== 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') {
+    if (actor.role !== 'admin' && (!ownerId || ownerId !== Number(actor.id))) {
+      throwHttpError('无权下载该任务结果', 403);
+    }
+    return;
+  }
+
+  const requestJson: any = parseJsonSafe(row?.request_json, {});
+  const kind = String(requestJson?.kind || '').trim().toLowerCase();
+  const batchId = Math.trunc(Number(requestJson?.batch_id || 0));
+  if (!['pc', 'monitor'].includes(kind) || batchId <= 0) {
+    throwHttpError('任务资源信息无效', 403);
+  }
+  const batch = await db.prepare(
+    `SELECT id, kind, snapshot_job_id FROM asset_inventory_batch WHERE id=? AND kind=? LIMIT 1`
+  ).bind(batchId, kind).first<any>();
+  if (!batch || Number(batch.snapshot_job_id || 0) !== Number(row.id || 0)) {
+    throwHttpError('任务未绑定有效的盘点批次', 403);
+  }
+  await assertAssetInventoryBatchDataScopeAccess(db, scope, kind as 'pc' | 'monitor', batchId);
+}
+
 export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null; assetScope?: UserDataScope | null } = {}, bucket?: AsyncJobResultBucket) {
   if (!options.skipEnsure) await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
@@ -1637,7 +1706,7 @@ export async function retryAsyncJob(db: D1Database, id: number, bucket?: AsyncJo
   const maxRetries = Number(row.max_retries || 1);
   if (retryCount >= maxRetries) throwHttpError(`已超过最大重试次数（${maxRetries}）`, 409);
   await db.prepare(
-    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_object_key=NULL, result_file_size=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
+    `UPDATE async_jobs SET status='queued', cancel_requested=0, canceled_at=NULL, worker_token=NULL, lease_until=NULL, error_text=NULL, message='任务已重新排队', started_at=NULL, finished_at=NULL, result_text=NULL, result_blob_base64=NULL, result_object_key=NULL, result_file_size=NULL, result_content_type=NULL, result_filename=NULL, result_deleted_at=NULL, retry_count=COALESCE(retry_count,0)+1, updated_at=${sqlNowStored()} WHERE id=?`
   ).bind(id).run();
   const req = parseJsonSafe(row.request_json, {});
   await syncInventoryBatchSnapshotJobState(db, String(row.job_type || '') as AsyncJobType, req, { status: 'queued', errorMessage: null, filename: null, exportedAt: null });

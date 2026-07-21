@@ -156,7 +156,7 @@ export function assertDepartmentScopeAccess(scope: UserDataScope | null | undefi
 
 export async function getPcAssetCurrentDepartment(db: D1Database, assetId: number) {
   if (!Number.isFinite(assetId) || assetId <= 0) return null;
-  const row = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id=?`).bind(assetId).first<any>().catch(() => null);
+  const row = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id=?`).bind(assetId).first<any>();
   if (!row) return null;
   return { id: Number(row.id || 0), current_department: normalizeDepartmentScopeValue(row.current_department) };
 }
@@ -180,7 +180,7 @@ export async function assertPcAssetIdsDataScopeAccess(db: D1Database, scope: Use
   const ids = Array.from(new Set((Array.isArray(assetIds) ? assetIds : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
   if (!required || !ids.length) return;
   const placeholders = ids.map(() => '?').join(',');
-  const rows = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
+  const rows = await db.prepare(`SELECT a.id, s.current_department FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE a.id IN (${placeholders})`).bind(...ids).all<any>();
   for (const row of Array.isArray(rows?.results) ? rows.results : []) {
     if (scopeAllowsDepartment(scope, row?.current_department)) continue;
     throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403, error_code: 'SCOPE_DEPARTMENT_DENIED' });
@@ -193,7 +193,7 @@ export async function assertMonitorAssetIdsDataScopeAccess(db: D1Database, scope
   const ids = Array.from(new Set((Array.isArray(assetIds) ? assetIds : []).map((value) => Number(value)).filter((value) => Number.isFinite(value) && value > 0)));
   if (!required || !ids.length) return;
   const placeholders = ids.map(() => '?').join(',');
-  const rows = await db.prepare(`SELECT id, department FROM monitor_assets WHERE id IN (${placeholders})`).bind(...ids).all<any>().catch(() => ({ results: [] as any[] }));
+  const rows = await db.prepare(`SELECT id, department FROM monitor_assets WHERE id IN (${placeholders})`).bind(...ids).all<any>();
   for (const row of Array.isArray(rows?.results) ? rows.results : []) {
     if (scopeAllowsDepartment(scope, row?.department)) continue;
     throw Object.assign(new Error(`当前账号的数据范围未包含资产 #${Number(row?.id || 0)} 所属部门${moduleLabel ? `，无法访问${moduleLabel}` : ''}`), { status: 403, error_code: 'SCOPE_DEPARTMENT_DENIED' });
@@ -238,6 +238,33 @@ export async function assertPartsStocktakeAccess(db: D1Database, scope: UserData
   return stocktake;
 }
 
+export async function assertAssetInventoryBatchDataScopeAccess(db: D1Database, scope: UserDataScope | null | undefined, kind: 'pc' | 'monitor', batchId: number, moduleLabel = '盘点快照') {
+  const warehouseName = kind === 'pc' ? '电脑仓' : '显示器仓';
+  assertAssetWarehouseAccess(scope, warehouseName, moduleLabel);
+  const table = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
+  const departmentExpr = kind === 'pc' ? 's.current_department' : 'a.department';
+  const join = kind === 'pc' ? ' LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id' : '';
+  const clauses = [`a.inventory_batch_id=?`, 'COALESCE(a.archived,0)=0'];
+  const binds: any[] = [Math.trunc(batchId)];
+  const requiredDepartment = getRequiredDepartment(scope);
+  if (requiredDepartment) {
+    clauses.push(`COALESCE(${departmentExpr}, '')=?`);
+    binds.push(requiredDepartment);
+  }
+  const allowed = await db.prepare(
+    `SELECT COUNT(*) AS count FROM ${table} a${join} WHERE ${clauses.join(' AND ')}`
+  ).bind(...binds).first<any>();
+  const total = await db.prepare(
+    `SELECT COUNT(*) AS count FROM ${table} a WHERE a.inventory_batch_id=? AND COALESCE(a.archived,0)=0`
+  ).bind(Math.trunc(batchId)).first<any>();
+  const totalCount = Number(total?.count || 0);
+  const allowedCount = Number(allowed?.count || 0);
+  if (!totalCount || allowedCount !== totalCount) {
+    throw Object.assign(new Error(`当前账号的数据范围未包含该${moduleLabel}`), { status: 403, error_code: 'SCOPE_ASSET_BATCH_DENIED' });
+  }
+  return { total: totalCount, allowed: allowedCount };
+}
+
 export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataScope | null, requestedWarehouseId?: number | null) {
   const required = getRequiredWarehouses(scope);
   if (required && !required.includes('配件仓')) {
@@ -245,7 +272,7 @@ export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataSc
   }
   const requested = Number(requestedWarehouseId || 0) || 0;
   if (requested > 0) {
-    const row = await db.prepare(`SELECT id, name FROM warehouses WHERE id=?`).bind(requested).first<any>().catch(() => null);
+    const row = await db.prepare(`SELECT id, name FROM warehouses WHERE id=?`).bind(requested).first<any>();
     if (row) {
       const normalized = normalizeWarehouseScopeValue(row?.name);
       if (normalized === '配件仓') return Number(row.id || requested);
@@ -254,7 +281,7 @@ export async function resolvePartsWarehouseId(db: D1Database, scope?: UserDataSc
       return -1;
     }
   }
-  const fallback = await db.prepare(`SELECT id, name FROM warehouses ORDER BY id ASC`).all<any>().catch(() => ({ results: [] as any[] }));
+  const fallback = await db.prepare(`SELECT id, name FROM warehouses ORDER BY id ASC`).all<any>();
   for (const row of Array.isArray(fallback?.results) ? fallback.results : []) {
     if (normalizeWarehouseScopeValue(row?.name) === '配件仓') return Number(row?.id || 0) || 1;
   }
