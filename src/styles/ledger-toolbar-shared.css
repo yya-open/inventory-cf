@@ -255,7 +255,11 @@
 
 .ledger-toolbar-card .el-segmented__item.is-selected,
 .ledger-toolbar-card .el-segmented__item.is-selected .el-segmented__item-label {
-  color: var(--brand);
+  color: var(--on-brand);
+}
+
+.ledger-toolbar-card .el-segmented__item-selected {
+  background: var(--brand);
 }
 
 @media (max-width: 1100px) {
