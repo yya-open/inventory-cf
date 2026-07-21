@@ -15,7 +15,7 @@
       :model="form"
       :rules="rules"
       label-width="90px"
-      style="max-width: 560px"
+      class="u-max-w-560"
     >
       <el-form-item
         label="配件"
@@ -25,7 +25,7 @@
           v-model="form.item_id"
           filterable
           placeholder="输入搜索 SKU/名称"
-          style="width: 100%"
+          class="u-w-full"
         >
           <el-option
             v-for="it in items"

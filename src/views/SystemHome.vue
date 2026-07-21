@@ -171,11 +171,11 @@ onMounted(() => {
 .home-subtle-block { color: var(--subtle); font-size: 12px; line-height: 1.7; min-height: 52px; }
 .system-home-metrics { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 12px; }
 .system-home-metric { min-height: 142px; }
-.system-home-metric__label { color: var(--ui-muted); font-size: 12px; font-weight: 600; }
-.system-home-metric__value { margin: 10px 0 16px; color: var(--ui-text); font-size: 28px; font-weight: 800; line-height: 1; }
-.system-home-metric__value.is-warning { color: var(--ui-warning); }
-.system-home-metric__value.is-danger { color: var(--ui-danger); }
-.system-home-metric__link { padding: 0; border: 0; background: transparent; color: var(--ui-primary); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
+.system-home-metric__label { color: var(--muted); font-size: 12px; font-weight: 600; }
+.system-home-metric__value { margin: 10px 0 16px; color: var(--ink); font-size: 28px; font-weight: 800; line-height: 1; }
+.system-home-metric__value.is-warning { color: var(--warning); }
+.system-home-metric__value.is-danger { color: var(--danger); }
+.system-home-metric__link { padding: 0; border: 0; background: transparent; color: var(--brand); font: inherit; font-size: 12px; font-weight: 700; cursor: pointer; }
 .system-home-metric__link:hover, .system-home-metric__link:focus-visible { text-decoration: underline; }
 
 @media (max-width: 768px) {

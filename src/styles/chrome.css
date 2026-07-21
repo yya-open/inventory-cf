@@ -9,9 +9,7 @@
   position: fixed;
   inset: 0;
   z-index: -1;
-  background:
-    radial-gradient(960px 480px at 12% -10%, rgba(79, 70, 229, 0.05), rgba(255, 255, 255, 0) 60%),
-    linear-gradient(180deg, #f7f8fa 0%, var(--bg) 100%);
+  background: var(--bg);
 }
 
 .app-root {
@@ -179,8 +177,8 @@
 
 .app-sidebar-menu__menu {
   padding: 4px 10px 8px;
-  border-right: 0 !important;
-  background: transparent !important;
+  border-right: 0;
+  background: transparent;
 }
 
 .app-sidebar-menu .el-menu-item,
@@ -240,11 +238,11 @@
 }
 
 .app-sidebar-menu .el-menu-item:hover {
-  background: var(--sidebar-hover) !important;
+  background: var(--sidebar-hover);
 }
 
 .app-sidebar-menu .el-menu-item.is-active {
-  background: var(--brand) !important;
+  background: var(--brand);
   color: #ffffff;
 }
 
@@ -326,7 +324,7 @@
 }
 
 .app-sidebar-menu--collapsed .el-menu--collapse .el-menu-item {
-  padding: 0 !important;
+  padding: 0;
   justify-content: center;
 }
 
@@ -391,15 +389,15 @@
 
 .app-header__switches > .el-button {
   min-width: 78px;
-  margin-left: 0 !important;
-  border: 0 !important;
-  background: transparent !important;
+  margin-left: 0;
+  border: 0;
+  background: transparent;
   font-weight: 600;
 }
 
 .app-header__switches > .el-button.el-button--primary {
-  background: var(--brand) !important;
-  color: #ffffff !important;
+  background: var(--brand);
+  color: #ffffff;
 }
 
 .app-header__actions {
@@ -412,10 +410,11 @@
   font-size: 13px;
 }
 
-.app-header__user {
-  color: var(--muted);
-  font-weight: 600;
+.app-theme-toggle {
+  flex: 0 0 auto;
+  color: var(--ink-secondary);
 }
+
 
 .app-header__command {
   display: inline-flex;
@@ -481,14 +480,14 @@
   position: relative;
   z-index: 3;
   flex: 0 0 auto;
-  border-color: var(--sidebar-border) !important;
-  background: transparent !important;
-  color: var(--sidebar-text) !important;
+  border-color: var(--sidebar-border);
+  background: transparent;
+  color: var(--sidebar-text);
 }
 
 .app-mobile-drawer__close:hover {
-  border-color: rgba(255, 255, 255, 0.2) !important;
-  color: var(--sidebar-text-strong) !important;
+  border-color: rgba(255, 255, 255, 0.2);
+  color: var(--sidebar-text-strong);
 }
 
 /* ---- 路由骨架屏 ---- */
@@ -674,25 +673,25 @@
   }
 
   .app-bg {
-    background: linear-gradient(180deg, #f7f8fa 0%, var(--bg) 100%);
+    background: var(--bg);
   }
 
   .app-aside,
   .app-aside-toggle {
-    display: none !important;
+    display: none;
   }
 
   .app-header {
     position: sticky;
     top: 0;
     z-index: 24;
-    height: auto !important;
-    min-height: 58px !important;
-    padding: 8px 10px !important;
+    height: auto;
+    min-height: 58px;
+    padding: 8px 10px;
     gap: 8px;
-    align-items: stretch !important;
+    align-items: stretch;
     flex-direction: column;
-    background: rgba(255, 255, 255, 0.96);
+    background: var(--surface);
     box-shadow: 0 1px 0 var(--border), 0 10px 22px rgba(16, 24, 40, 0.06);
   }
 
@@ -709,10 +708,10 @@
     width: 38px;
     height: 38px;
     min-height: 38px;
-    border-color: var(--border) !important;
-    border-radius: 10px !important;
-    background: var(--surface) !important;
-    color: var(--ink-secondary) !important;
+    border-color: var(--border);
+    border-radius: 10px;
+    background: var(--surface);
+    color: var(--ink-secondary);
     font-size: 18px;
     font-weight: 800;
   }
@@ -766,7 +765,7 @@
   }
 
   .app-header__switches {
-    display: grid !important;
+    display: grid;
     grid-template-columns: repeat(3, minmax(0, 1fr));
     gap: 4px;
     width: 100%;
@@ -778,7 +777,7 @@
     min-width: 0;
     height: 34px;
     padding-inline: 8px;
-    border-radius: 9px !important;
+    border-radius: 9px;
     font-size: 13px;
     font-weight: 700;
   }
@@ -802,7 +801,7 @@
     border: 1px solid var(--border-soft);
     border-radius: 9px;
     background: var(--surface);
-    color: var(--muted) !important;
+    color: var(--muted);
     font-size: 13px;
     font-weight: 700;
     text-overflow: ellipsis;
@@ -812,7 +811,12 @@
   .app-header__actions > .el-button {
     width: 100%;
     height: 38px;
-    margin-left: 0 !important;
+    margin-left: 0;
+  }
+
+  .app-theme-toggle {
+    width: 100%;
+    justify-content: space-between;
   }
 
   .app-main {
@@ -860,7 +864,7 @@
   }
 
   .app-header__actions > div {
-    color: var(--muted) !important;
+    color: var(--muted);
     font-size: 13px;
   }
 }
@@ -878,4 +882,28 @@
   .app-header__switches {
     grid-template-columns: 1fr;
   }
+}
+
+:root[data-theme="dark"] .app-page-skeleton {
+  background: rgba(17, 21, 28, 0.92);
+}
+
+:root[data-theme="dark"] .app-page-skeleton__kicker,
+:root[data-theme="dark"] .app-page-skeleton__title,
+:root[data-theme="dark"] .app-page-skeleton__text,
+:root[data-theme="dark"] .app-page-skeleton__control,
+:root[data-theme="dark"] .app-page-skeleton__badge,
+:root[data-theme="dark"] .app-page-skeleton__button,
+:root[data-theme="dark"] .app-page-skeleton__table-head,
+:root[data-theme="dark"] .app-page-skeleton__cell {
+  background: #2a3340;
+}
+
+:root[data-theme="dark"] .app-page-skeleton__button--primary {
+  background: var(--brand);
+}
+
+:root[data-theme="dark"] .app-page-skeleton__panel::after,
+:root[data-theme="dark"] .app-page-skeleton__table::after {
+  background: linear-gradient(90deg, transparent 0%, rgba(255, 255, 255, 0.08) 48%, transparent 100%);
 }

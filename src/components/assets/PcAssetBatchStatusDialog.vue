@@ -2,7 +2,7 @@
   <el-dialog v-model="visibleModel" title="批量修改电脑状态" width="420px">
     <el-form label-width="90px">
       <el-form-item label="目标状态">
-        <el-select v-model="statusModel" style="width:100%">
+        <el-select v-model="statusModel" class="u-w-full">
           <el-option label="在库" value="IN_STOCK" />
           <el-option label="已回收" value="RECYCLED" />
           <el-option label="已报废" value="SCRAPPED" />

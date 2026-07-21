@@ -1,5 +1,5 @@
 /* enterprise.css —— 页面级组件外观护栏（卡片/按钮/输入/表格/弹窗等）
- * 令牌已迁移至 tokens.css（--ent-* 为桥接别名）；骨架样式由 chrome.css 接管。
+ * 令牌见 tokens.css；骨架样式由 chrome.css 接管。
  * 职责：以 !important 压住 40 个 vue scoped 里的旧装饰，保证全局皮肤一致。
  * 已清理过的源（app.css / ledger-*-shared.css）不再在此重复压制。
  */
@@ -11,81 +11,81 @@
 .ledger-toolbar-card,
 .sys-rounded-card,
 .sys-metric-card {
-  border: 1px solid var(--ent-border) !important;
-  border-radius: var(--ent-radius-lg) !important;
-  background: var(--ent-surface) !important;
-  box-shadow: var(--ent-shadow) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--surface) !important;
+  box-shadow: var(--shadow-xs) !important;
 }
 
 .el-card__header {
   padding: 14px 16px;
-  border-bottom: 1px solid var(--ent-border-soft);
-  background: var(--ent-surface-muted);
+  border-bottom: 1px solid var(--border-soft);
+  background: var(--surface-soft);
 }
 
 .el-card__body {
-  color: var(--ent-text);
+  color: var(--ink);
 }
 
 /* ---- scoped 装饰仍活着的零散块（BaseAssetsTable / QrPrintTemplateDialog） ---- */
 .render-hint,
 .preview-card {
-  border: 1px solid var(--ent-border) !important;
-  border-radius: var(--ent-radius-lg) !important;
-  background: var(--ent-surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--surface) !important;
   box-shadow: none !important;
 }
 
 /* ---- 系统页标题（system-tokens.css 源，p2-t5 收敛后可删） ---- */
 .sys-header-title {
-  color: var(--ent-text) !important;
+  color: var(--ink) !important;
   font-weight: 700 !important;
 }
 
 .sys-muted,
 .sys-header-muted {
-  color: var(--ent-muted) !important;
+  color: var(--muted) !important;
 }
 
 /* ---- 按钮 ---- */
 .el-button {
-  border-radius: var(--ent-radius) !important;
+  border-radius: var(--radius-md) !important;
   font-weight: 600;
   box-shadow: none !important;
 }
 
 .el-button--primary {
-  border-color: var(--ent-primary) !important;
-  background: var(--ent-primary) !important;
+  border-color: var(--brand) !important;
+  background: var(--brand) !important;
   color: #ffffff !important;
   box-shadow: none !important;
 }
 
 .el-button--primary:hover,
 .el-button--primary:focus {
-  border-color: var(--ent-primary-hover) !important;
-  background: var(--ent-primary-hover) !important;
+  border-color: var(--brand-hover) !important;
+  background: var(--brand-hover) !important;
 }
 
 .el-button--danger,
 .el-button--danger.is-plain:hover,
 .el-button--danger.is-plain:focus {
-  border-color: var(--ent-danger) !important;
-  background: var(--ent-danger) !important;
+  border-color: var(--danger) !important;
+  background: var(--danger) !important;
   color: #ffffff !important;
 }
 
 .el-button.is-plain {
-  border-color: var(--ent-border) !important;
-  background: var(--ent-surface) !important;
-  color: var(--ent-text) !important;
+  border-color: var(--border) !important;
+  background: var(--surface) !important;
+  color: var(--ink) !important;
 }
 
 .el-button.is-disabled,
 .el-button.is-disabled:hover {
-  border-color: var(--ent-border) !important;
-  background: var(--ent-surface-muted) !important;
-  color: var(--ent-subtle) !important;
+  border-color: var(--border) !important;
+  background: var(--surface-soft) !important;
+  color: var(--subtle) !important;
 }
 
 /* ---- 输入控件 ---- */
@@ -93,41 +93,41 @@
 .el-select__wrapper,
 .el-textarea__inner,
 .el-input-number .el-input__wrapper {
-  border-radius: var(--ent-radius) !important;
-  background: var(--ent-surface) !important;
-  box-shadow: 0 0 0 1px var(--ent-border) inset !important;
+  border-radius: var(--radius-md) !important;
+  background: var(--surface) !important;
+  box-shadow: 0 0 0 1px var(--border) inset !important;
 }
 
 .el-input__wrapper:hover,
 .el-select__wrapper:hover,
 .el-textarea__inner:hover {
-  box-shadow: 0 0 0 1px var(--ent-subtle) inset !important;
+  box-shadow: 0 0 0 1px var(--subtle) inset !important;
 }
 
 .el-input__wrapper.is-focus,
 .el-select__wrapper.is-focused,
 .el-textarea__inner:focus {
-  box-shadow: 0 0 0 1px var(--ent-primary) inset, 0 0 0 3px var(--brand-soft) !important;
+  box-shadow: 0 0 0 1px var(--brand) inset, 0 0 0 3px var(--brand-soft) !important;
 }
 
 /* ---- 表格 ---- */
 .el-table {
-  border: 1px solid var(--ent-border);
-  border-radius: var(--ent-radius-lg) !important;
-  color: var(--ent-text);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg) !important;
+  color: var(--ink);
   box-shadow: none;
 }
 
 .el-table th.el-table__cell,
 .el-table__header th {
-  background: var(--ent-surface-muted) !important;
+  background: var(--surface-soft) !important;
   color: var(--ink-secondary);
   font-weight: 700;
 }
 
 .el-table td.el-table__cell,
 .el-table th.el-table__cell.is-leaf {
-  border-bottom-color: var(--ent-border-soft) !important;
+  border-bottom-color: var(--border-soft) !important;
 }
 
 .el-table--enable-row-hover .el-table__body tr:hover > td.el-table__cell {
@@ -141,20 +141,20 @@
 
 /* ---- 弹窗（password-dialog 已由 app.css 重设计，不在此压制） ---- */
 .el-dialog {
-  border: 1px solid var(--ent-border) !important;
-  border-radius: var(--ent-radius-lg) !important;
-  background: var(--ent-surface) !important;
+  border: 1px solid var(--border) !important;
+  border-radius: var(--radius-lg) !important;
+  background: var(--surface) !important;
   box-shadow: var(--shadow-lg) !important;
 }
 
 .el-dialog__header {
   padding: 18px 20px 12px !important;
-  border-bottom: 1px solid var(--ent-border-soft) !important;
-  background: var(--ent-surface) !important;
+  border-bottom: 1px solid var(--border-soft) !important;
+  background: var(--surface) !important;
 }
 
 .el-dialog__title {
-  color: var(--ent-text) !important;
+  color: var(--ink) !important;
   font-size: 18px !important;
   font-weight: 700 !important;
 }
@@ -165,8 +165,8 @@
 
 .el-dialog__footer {
   padding: 12px 20px 18px !important;
-  border-top: 1px solid var(--ent-border-soft) !important;
-  background: var(--ent-surface) !important;
+  border-top: 1px solid var(--border-soft) !important;
+  background: var(--surface) !important;
 }
 
 /* ---- 其他基础件 ---- */
@@ -176,32 +176,32 @@
 }
 
 .el-alert {
-  border-radius: var(--ent-radius-lg) !important;
+  border-radius: var(--radius-lg) !important;
 }
 
 .el-tabs__nav-wrap::after {
-  background-color: var(--ent-border-soft) !important;
+  background-color: var(--border-soft) !important;
 }
 
 .el-tabs__item {
-  color: var(--ent-muted);
+  color: var(--muted);
   font-weight: 600;
 }
 
 .el-tabs__item.is-active {
-  color: var(--ent-primary);
+  color: var(--brand);
 }
 
 .el-pagination .el-pager li,
 .el-pagination button {
-  border-radius: var(--ent-radius) !important;
+  border-radius: var(--radius-md) !important;
 }
 
 /* ---- 工具区计数标签（el-tag 灰丸化） ---- */
 .ui-toolbar-tag {
-  border: 1px solid var(--ent-border) !important;
+  border: 1px solid var(--border) !important;
   border-radius: 999px !important;
-  background: var(--ent-surface-muted) !important;
+  background: var(--surface-soft) !important;
   color: var(--ink-secondary) !important;
   box-shadow: none !important;
 }

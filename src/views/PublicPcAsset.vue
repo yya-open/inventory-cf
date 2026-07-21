@@ -75,7 +75,7 @@
       <PublicInventoryRecentResultCard :record="recentResult" />
       <PublicInventorySessionSummaryBar :summary="sessionSummary" @reset="resetSessionSummary" />
 
-      <div v-if="loading" style="padding:18px 0">
+      <div v-if="loading" class="u-py-18">
         <el-skeleton :rows="6" animated />
       </div>
       <el-alert v-else-if="error" :title="error" type="error" show-icon>
@@ -110,12 +110,12 @@
         <el-descriptions-item label="回收日期">{{ row?.last_recycle_date || '-' }}</el-descriptions-item>
         <el-descriptions-item label="当前领用人" :span="2">
           <div v-if="row?.status==='ASSIGNED'">
-            <div style="font-weight:600">{{ row?.last_employee_name || '-' }}</div>
-            <div style="color:var(--subtle);font-size:12px">{{ row?.last_employee_no || '-' }} · {{ row?.last_department || '-' }}</div>
+            <div class="u-fw-600">{{ row?.last_employee_name || '-' }}</div>
+            <div class="u-text-subtle u-fs-12">{{ row?.last_employee_no || '-' }} · {{ row?.last_department || '-' }}</div>
           </div>
           <span v-else>-</span>
         </el-descriptions-item>
-        <el-descriptions-item label="备注" :span="2"><div style="white-space:pre-wrap">{{ row?.remark || '-' }}</div></el-descriptions-item>
+        <el-descriptions-item label="备注" :span="2"><div class="u-text-prewrap">{{ row?.remark || '-' }}</div></el-descriptions-item>
         <template v-if="settings.public_asset_show_updated_at">
           <el-descriptions-item label="资料更新">{{ row?.updated_at || '-' }}</el-descriptions-item>
           <el-descriptions-item label="二维码更新">{{ row?.qr_updated_at || '-' }}</el-descriptions-item>
@@ -144,7 +144,7 @@
       <el-form :model="issueForm" label-width="86px">
         <el-form-item label="异常类型" required>
           <el-segmented v-if="isMobile" v-model="issueForm.issue_type" :options="issueSegmentOptions" class="issue-segmented" />
-          <el-select v-else v-model="issueForm.issue_type" placeholder="请选择" style="width:100%">
+          <el-select v-else v-model="issueForm.issue_type" placeholder="请选择" class="u-w-full">
             <el-option v-for="item in issueOptions" :key="item.value" :label="item.label" :value="item.value" />
           </el-select>
         </el-form-item>

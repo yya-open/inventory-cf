@@ -25,7 +25,7 @@
           v-model="form.location_id"
           filterable
           clearable
-          style="width:100%"
+          class="u-w-full"
           placeholder="可选/建议填写"
         >
           <el-option

@@ -165,15 +165,15 @@ watch(visible, (open) => {
 
 <style scoped>
 .command-palette__header { display: flex; align-items: center; justify-content: space-between; font-weight: 700; }
-kbd { padding: 2px 6px; border: 1px solid var(--ui-border); border-radius: 4px; color: var(--ui-muted); font-size: 11px; font-weight: 600; }
+kbd { padding: 2px 6px; border: 1px solid var(--border); border-radius: 4px; color: var(--muted); font-size: 11px; font-weight: 600; }
 .command-palette__search { margin-bottom: 8px; }
-.command-palette__hint { margin-bottom: 16px; color: var(--ui-muted); font-size: 12px; }
+.command-palette__hint { margin-bottom: 16px; color: var(--muted); font-size: 12px; }
 .command-palette__section + .command-palette__section { margin-top: 18px; }
-.command-palette__section-title { margin-bottom: 6px; color: var(--ui-subtle); font-size: 12px; font-weight: 700; }
-.command-palette__item { display: flex; width: 100%; gap: 12px; align-items: center; padding: 10px; border: 0; border-radius: var(--ui-radius-sm); background: transparent; color: inherit; text-align: left; cursor: pointer; }
-.command-palette__item:hover, .command-palette__item:focus-visible { outline: none; background: var(--ui-surface-tint); }
-.command-palette__icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--ui-border-soft); border-radius: var(--ui-radius-sm); color: var(--ui-primary); background: var(--ui-surface); }
+.command-palette__section-title { margin-bottom: 6px; color: var(--subtle); font-size: 12px; font-weight: 700; }
+.command-palette__item { display: flex; width: 100%; gap: 12px; align-items: center; padding: 10px; border: 0; border-radius: var(--radius-sm); background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.command-palette__item:hover, .command-palette__item:focus-visible { outline: none; background: var(--surface-tint); }
+.command-palette__icon { display: grid; width: 30px; height: 30px; place-items: center; border: 1px solid var(--border-soft); border-radius: var(--radius-sm); color: var(--brand); background: var(--surface); }
 .command-palette__copy { display: grid; min-width: 0; gap: 2px; }
 .command-palette__copy strong { font-size: 13px; }
-.command-palette__copy small { color: var(--ui-muted); font-size: 12px; }
+.command-palette__copy small { color: var(--muted); font-size: 12px; }
 </style>

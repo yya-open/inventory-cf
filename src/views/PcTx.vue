@@ -209,7 +209,7 @@
           >
             回收
           </el-tag>
-          <div v-if="row.is_current_effective" style="margin-top:8px">
+          <div v-if="row.is_current_effective" class="u-mt-8">
             <el-tag type="success" effect="plain" size="small">当前生效</el-tag>
           </div>
         </template>
@@ -220,10 +220,10 @@
         min-width="260"
       >
         <template #default="{row}">
-          <div style="font-weight:600">
+          <div class="u-fw-600">
             {{ row.brand }} · {{ row.model }}
           </div>
-          <div style="color:var(--subtle);font-size:12px">
+          <div class="u-text-subtle u-fs-12">
             SN：{{ row.serial_no }}
           </div>
         </template>
@@ -235,10 +235,10 @@
       >
         <template #default="{row}">
           <div v-if="row.type!=='IN'">
-            <div style="font-weight:600">
+            <div class="u-fw-600">
               {{ row.employee_name || "-" }}
             </div>
-            <div style="color:var(--subtle);font-size:12px">
+            <div class="u-text-subtle u-fs-12">
               {{ row.employee_no || "-" }} · {{ row.department || "-" }}
             </div>
           </div>

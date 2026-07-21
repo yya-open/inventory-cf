@@ -149,6 +149,13 @@
             >
               {{ auth.user.username }}（{{ roleText(auth.user.role) }}）
             </div>
+            <el-switch
+              class="app-theme-toggle"
+              :model-value="isDark"
+              active-text="深色"
+              inactive-text="浅色"
+              @change="toggleTheme"
+            />
             <el-button
               size="small"
               @click="goChangePwd"
@@ -168,18 +175,18 @@
 
         <el-main class="app-main">
           <div class="page-wrap">
-            <el-alert v-if="schemaStatus.loaded && !schemaStatus.ok" type="error" :closable="false" show-icon style="margin-bottom:12px" :title="schemaStatus.message || '数据库结构未升级到当前版本，请先执行迁移'" />
+            <el-alert v-if="schemaStatus.loaded && !schemaStatus.ok" type="error" :closable="false" show-icon class="u-mb-12" :title="schemaStatus.message || '数据库结构未升级到当前版本，请先执行迁移'" />
             <el-alert
               v-if="opsAlert.visible"
               :type="opsAlert.type"
               :closable="false"
               show-icon
-              style="margin-bottom:12px"
+              class="u-mb-12"
             >
               <template #title>
-                <div style="display:flex; justify-content:space-between; gap:12px; align-items:center; flex-wrap:wrap">
+                <div class="u-flex u-justify-between u-gap-12 u-items-center u-flex-wrap">
                   <div>{{ opsAlert.title }}</div>
-                  <div style="display:flex; gap:8px; flex-wrap:wrap">
+                  <div class="u-flex u-gap-8 u-flex-wrap">
                     <el-button size="small" @click="router.push('/system/tools')">打开运维工具</el-button>
                     <el-button size="small" plain @click="router.push('/system/release-check')">打开发布前检查</el-button>
                   </div>
@@ -294,11 +301,13 @@ import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAcce
 import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
 import { trackUiEvent } from "./utils/browserPerf";
 import { isAppMobileViewport } from "./utils/responsive";
+import { useTheme } from "./composables/useTheme";
 
 const route = useRoute();
 const router = useRouter();
 const auth = useAuth();
 const warehouse = useWarehouse();
+const { isDark, toggleTheme } = useTheme();
 
 const isSystem = computed(() => route.path.startsWith("/system"));
 

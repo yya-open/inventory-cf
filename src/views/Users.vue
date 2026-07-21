@@ -76,18 +76,18 @@
         <el-form-item label="账号"><el-input v-model="form.username" /></el-form-item>
         <el-form-item label="密码">
           <el-input v-model="form.password" type="password" show-password />
-          <div style="color:var(--subtle); font-size:12px; margin-top:6px">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
+          <div class="u-text-subtle u-fs-12 u-mt-6">密码长度需为 6-64 位，且必须同时包含字母和数字</div>
         </el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="form.role" style="width:100%">
+          <el-select v-model="form.role" class="u-w-full">
             <el-option label="管理员" value="admin" />
             <el-option label="操作员" value="operator" />
             <el-option label="只读" value="viewer" />
           </el-select>
         </el-form-item>
         <el-form-item label="数据范围">
-          <div style="display:flex; gap:8px; width:100%">
-            <el-select v-model="form.data_scope_type" style="flex:1">
+          <div class="u-flex u-gap-8 u-w-full">
+            <el-select v-model="form.data_scope_type" class="u-flex-1">
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
             <el-button @click="previewCreateScope">预览范围</el-button>
@@ -97,7 +97,7 @@
           <el-input v-model="form.data_scope_value" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="form.data_scope_type === 'warehouse' || form.data_scope_type === 'department_warehouse'" label="仓库">
-          <el-select v-model="createWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable style="width:100%" placeholder="请选择一个或多个授权仓域">
+          <el-select v-model="createWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable class="u-w-full" placeholder="请选择一个或多个授权仓域">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
@@ -119,15 +119,15 @@
           </div>
         </el-form-item>
         <el-form-item label="权限模板">
-          <div style="display:flex; gap:8px; width:100%">
-            <el-select v-model="form.permission_template_code" style="flex:1">
+          <div class="u-flex u-gap-8 u-w-full">
+            <el-select v-model="form.permission_template_code" class="u-flex-1">
               <el-option v-for="item in permissionTemplateOptions" :key="item.code" :label="item.label" :value="item.code" />
             </el-select>
             <el-button @click="applyCreateTemplate">套用</el-button>
           </div>
         </el-form-item>
         <el-form-item label="细分权限">
-          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
+          <div class="u-grid-permissions u-gap-6 u-w-full">
             <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!form.permissions[code]" @change="(v:any)=>form.permissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
           </div>
         </el-form-item>
@@ -142,15 +142,15 @@
       <el-form label-width="100px">
         <el-form-item label="账号"><el-input :model-value="editing?.username" disabled /></el-form-item>
         <el-form-item label="角色">
-          <el-select v-model="editRole" style="width:100%">
+          <el-select v-model="editRole" class="u-w-full">
             <el-option label="管理员" value="admin" />
             <el-option label="操作员" value="operator" />
             <el-option label="只读" value="viewer" />
           </el-select>
         </el-form-item>
         <el-form-item label="数据范围">
-          <div style="display:flex; gap:8px; width:100%">
-            <el-select v-model="editDataScopeType" style="flex:1">
+          <div class="u-flex u-gap-8 u-w-full">
+            <el-select v-model="editDataScopeType" class="u-flex-1">
             <el-option v-for="item in DATA_SCOPE_OPTIONS" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
             <el-button @click="previewEditScope">预览范围</el-button>
@@ -160,7 +160,7 @@
           <el-input v-model="editDataScopeValue" clearable placeholder="请输入部门" />
         </el-form-item>
         <el-form-item v-if="editDataScopeType === 'warehouse' || editDataScopeType === 'department_warehouse'" label="仓库">
-          <el-select v-model="editWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable style="width:100%" placeholder="请选择一个或多个授权仓域">
+          <el-select v-model="editWarehouseScopeValue" multiple collapse-tags collapse-tags-tooltip filterable clearable class="u-w-full" placeholder="请选择一个或多个授权仓域">
             <el-option v-for="item in warehouseOptions" :key="item" :label="item" :value="item" />
           </el-select>
         </el-form-item>
@@ -201,8 +201,8 @@
           </div>
         </el-form-item>
         <el-form-item label="权限模板">
-          <div style="display:flex; gap:8px; width:100%">
-            <el-select v-model="editTemplateCode" style="flex:1">
+          <div class="u-flex u-gap-8 u-w-full">
+            <el-select v-model="editTemplateCode" class="u-flex-1">
               <el-option v-for="item in permissionTemplateOptions" :key="item.code" :label="item.label" :value="item.code" />
             </el-select>
             <el-button @click="applyEditTemplate">套用</el-button>
@@ -210,7 +210,7 @@
         </el-form-item>
         <el-form-item label="状态"><el-switch v-model="editActive" active-text="启用" inactive-text="禁用" /></el-form-item>
         <el-form-item label="细分权限">
-          <div style="display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:6px; width:100%">
+          <div class="u-grid-permissions u-gap-6 u-w-full">
             <el-checkbox v-for="code in ALL_PERMISSION_CODES" :key="code" :model-value="!!editPermissions[code]" @change="(v:any)=>editPermissions[code]=!!v">{{ PERMISSION_LABEL[code] }}</el-checkbox>
           </div>
         </el-form-item>
@@ -223,8 +223,8 @@
 
 
     <el-dialog v-model="showScopePreview" title="数据可见范围预览" width="680px">
-      <div v-if="scopePreview" style="display:flex; flex-direction:column; gap:12px">
-        <div style="display:flex; gap:8px; flex-wrap:wrap">
+      <div v-if="scopePreview" class="u-col-gap-12">
+        <div class="u-row-wrap-8">
           <el-tag type="warning">{{ scopePreview.scope_label }}</el-tag>
           <el-tag v-for="item in scopePreview.route_meta?.report_modes || []" :key="item.value" type="success">看板：{{ item.label }}</el-tag>
         </div>
@@ -234,19 +234,19 @@
           </template>
         </el-alert>
         <el-card shadow="never">
-          <div style="display:flex; align-items:center; gap:10px; flex-wrap:wrap">
-            <div style="font-weight:700">权限策略测试器</div>
-            <el-select v-model="previewTargetPath" style="min-width:280px; flex:1" placeholder="请选择要测试的入口">
+          <div class="u-flex u-items-center u-gap-10 u-flex-wrap">
+            <div class="u-fw-700">权限策略测试器</div>
+            <el-select v-model="previewTargetPath" class="u-min-w-280">
               <el-option v-for="item in scopePreview.route_checks || []" :key="item.path" :label="item.label" :value="item.path" />
             </el-select>
             <el-tag v-if="previewRouteResult" :type="previewRouteResult.enabled ? 'success' : 'danger'">{{ previewRouteResult.enabled ? '允许访问' : '将被拦截' }}</el-tag>
           </div>
-          <div style="margin-top:8px; color:var(--muted)">{{ previewRouteResult?.reason || '请选择一个入口查看策略结果' }}</div>
+          <div class="u-mt-8 u-text-muted">{{ previewRouteResult?.reason || '请选择一个入口查看策略结果' }}</div>
         </el-card>
         <el-row :gutter="12">
-          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">电脑台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
-          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">显示器台账</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
-          <el-col :span="8"><el-card shadow="never"><div style="color:var(--subtle)">配件条目</div><div style="font-size:26px; font-weight:700">{{ scopePreview.counts?.parts_items ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div class="u-text-subtle">电脑台账</div><div class="u-fs-26 u-fw-700">{{ scopePreview.counts?.pc_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div class="u-text-subtle">显示器台账</div><div class="u-fs-26 u-fw-700">{{ scopePreview.counts?.monitor_assets ?? 0 }}</div></el-card></el-col>
+          <el-col :span="8"><el-card shadow="never"><div class="u-text-subtle">配件条目</div><div class="u-fs-26 u-fw-700">{{ scopePreview.counts?.parts_items ?? 0 }}</div></el-card></el-col>
         </el-row>
         <el-table :data="scopePreview.routes || []" border>
           <el-table-column prop="label" label="模块" min-width="180" />
@@ -263,7 +263,7 @@
           <el-table-column prop="reason" label="命中规则" min-width="260" />
         </el-table>
       </div>
-      <div v-else style="color:var(--subtle)">暂无预览数据</div>
+      <div v-else class="u-text-subtle">暂无预览数据</div>
       <template #footer>
         <el-button @click="showScopePreview=false">关闭</el-button>
       </template>

@@ -15,17 +15,17 @@
       :model="form"
       :rules="rules"
       label-width="90px"
-      style="max-width: 760px"
+      class="u-max-w-760"
     >
       <el-alert
         :title="`电脑出库（仓库2：${settings.warehouse_default_pc_label || '电脑仓' }）`"
         type="warning"
         show-icon
         :closable="false"
-        style="margin-bottom: 12px"
+        class="u-mb-12"
       />
 
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
+      <div class="u-row-wrap-10 u-row-wrap-10-mb-12">
         <el-button
           size="small"
           @click="downloadOutTemplate"
@@ -60,7 +60,7 @@
           :remote-method="remoteSearch"
           :loading="assetLoading"
           placeholder="输入序列号/品牌/型号搜索（仅显示在库）"
-          style="width: 100%"
+          class="u-w-full"
           clearable
           @change="onPickAsset"
         >
@@ -71,7 +71,7 @@
             :value="a.id"
           />
         </el-select>
-        <div style="margin-top:6px; color:var(--subtle); font-size:12px">
+        <div class="u-text-subtle u-fs-12 u-mt-6">
           没有找到？请先到「电脑入库」把电脑录入。
         </div>
       </el-form-item>
@@ -119,7 +119,7 @@
         v-if="pickedAsset"
         :column="2"
         border
-        style="margin-bottom:12px"
+        class="u-mb-12"
       >
         <el-descriptions-item label="品牌">
           {{ pickedAsset.brand }}
@@ -170,7 +170,7 @@
           type="date"
           value-format="YYYY-MM-DD"
           placeholder="选择日期"
-          style="width: 100%"
+          class="u-w-full"
         />
       </el-form-item>
       <el-form-item label="备注">

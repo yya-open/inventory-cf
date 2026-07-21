@@ -5,10 +5,130 @@ html, body, #app {
   height: 100%;
 }
 
-body {
-  margin: 0;
+/* ---- 模板通用 utility：集中承载重复的静态布局声明 ---- */
+.u-flex { display: flex; }
+.u-flex-col { display: flex; flex-direction: column; }
+.u-flex-wrap { flex-wrap: wrap; }
+.u-items-center { align-items: center; }
+.u-items-start { align-items: flex-start; }
+.u-justify-between { justify-content: space-between; }
+.u-justify-end { justify-content: flex-end; }
+.u-flex-1 { flex: 1; }
+.u-w-full { width: 100%; }
+.u-grid-permissions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
 }
-
+.u-gap-6 { gap: 6px; }
+.u-gap-8 { gap: 8px; }
+.u-gap-10 { gap: 10px; }
+.u-gap-12 { gap: 12px; }
+.u-gap-16 { gap: 16px; }
+.u-mt-6 { margin-top: 6px; }
+.u-mt-8 { margin-top: 8px; }
+.u-mt-10 { margin-top: 10px; }
+.u-mt-12 { margin-top: 12px; }
+.u-mt-14 { margin-top: 14px; }
+.u-mb-6 { margin-bottom: 6px; }
+.u-mb-8 { margin-bottom: 8px; }
+.u-mb-10 { margin-bottom: 10px; }
+.u-mb-12 { margin-bottom: 12px; }
+.u-ml-6 { margin-left: 6px; }
+.u-ml-10 { margin-left: 10px; }
+.u-px-24 { padding-left: 24px; }
+.u-fw-600 { font-weight: 600; }
+.u-fw-700 { font-weight: 700; }
+.u-fs-12 { font-size: 12px; }
+.u-fs-13 { font-size: 13px; }
+.u-fs-16 { font-size: 16px; }
+.u-fs-18 { font-size: 18px; }
+.u-fs-22 { font-size: 22px; }
+.u-fs-26 { font-size: 26px; }
+.u-leading-15 { line-height: 1.5; }
+.u-leading-16 { line-height: 1.6; }
+.u-leading-18 { line-height: 1.8; }
+.u-leading-19 { line-height: 1.9; }
+.u-text-muted { color: var(--muted); }
+.u-text-subtle { color: var(--subtle); }
+.u-text-danger { color: var(--danger); }
+.u-text-prewrap { white-space: pre-wrap; }
+.u-w-95 { width: 95px; }
+.u-w-120 { width: 120px; }
+.u-w-130 { width: 130px; }
+.u-w-140 { width: 140px; }
+.u-w-150 { width: 150px; }
+.u-w-170 { width: 170px; }
+.u-w-190 { width: 190px; }
+.u-w-200 { width: 200px; }
+.u-w-220 { width: 220px; }
+.u-w-240 { width: 240px; }
+.u-max-w-260 { max-width: 260px; }
+.u-max-w-360 { max-width: 360px; }
+.u-max-w-560 { max-width: 560px; }
+.u-max-w-620 { max-width: 620px; }
+.u-mb-16 { margin-bottom: 16px; }
+.u-mb-18 { margin-bottom: 18px; }
+.u-mt-18 { margin-top: 18px; }
+.u-mt-auto { margin-top: auto; }
+.u-ml-auto { margin-left: auto; }
+.u-py-18 { padding: 18px 0; }
+.u-row-between {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+.u-row-between-start {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.u-row-wrap-8 {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.u-row-wrap-10 {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.u-row-wrap-10-mb-12 { margin-bottom: 12px; }
+.u-row-wrap-10-mt-12 { margin-top: 12px; }
+.u-row-wrap-10-pl-24 { padding-left: 24px; }
+.u-col-gap-8 { display: flex; flex-direction: column; gap: 8px; }
+.u-col-gap-10 { display: flex; flex-direction: column; gap: 10px; }
+.u-col-gap-12 { display: flex; flex-direction: column; gap: 12px; }
+.u-border-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  padding: 10px;
+  background: var(--surface);
+}
+.u-list-sop {
+  margin: 0;
+  padding-left: 18px;
+  color: var(--muted);
+  line-height: 1.8;
+  font-size: 13px;
+}
+.u-text-subtle-12 { color: var(--subtle); font-size: 12px; }
+.u-text-muted-12 { color: var(--muted); font-size: 12px; }
+.u-text-muted-13 { color: var(--muted); font-size: 13px; }
+.u-text-subtle-13 { color: var(--subtle); font-size: 13px; }
+.u-text-muted-leading-16 { color: var(--muted); line-height: 1.6; }
+.u-text-danger-fw-600 { color: var(--danger); font-weight: 600; }
+.u-fw-700-fs-16 { font-weight: 700; font-size: 16px; }
+.u-fw-700-fs-18-mb-6 { font-size: 18px; font-weight: 700; margin-bottom: 6px; }
+.u-text-subtle-13-mb-18 { color: var(--subtle); font-size: 13px; margin-bottom: 18px; }
+.u-text-muted-13-leading-16-mt-10 { margin-top: 10px; color: var(--muted); font-size: 13px; line-height: 1.6; }
+.u-border-card-simple { border: 1px solid var(--border); }
+.u-divider-8 { margin: 8px 0; }
+.u-mt-neg-4 { margin-top: -4px; }
+.u-mt-6-muted-leading-16 { margin-top: 6px; color: var(--muted); line-height: 1.6; }
+.u-min-w-240 { min-width: 240px; }
 /* ---- Element 基础件全局皮肤 ---- */
 .el-card {
   border-radius: var(--radius-lg);
@@ -193,7 +313,7 @@ body {
 
 @media (max-width: 640px) {
   .password-dialog .el-dialog {
-    width: calc(100vw - 24px) !important;
+    width: calc(100vw - 24px);
     margin-top: 12vh;
   }
 
@@ -348,29 +468,28 @@ body {
   gap: 8px;
 }
 
-/* !important：直接覆盖 el-button 内联皮肤，保留 */
 .ui-toolbar-segment {
   min-width: 108px;
   height: 34px;
   padding: 0 16px;
-  border-radius: 999px !important;
-  border: 1px solid var(--border-strong) !important;
-  background: var(--surface) !important;
-  color: var(--ink-secondary) !important;
-  box-shadow: none !important;
+  border-radius: 999px;
+  border: 1px solid var(--border-strong);
+  background: var(--surface);
+  color: var(--ink-secondary);
+  box-shadow: none;
 }
 
 .ui-toolbar-segment:hover,
 .ui-toolbar-segment:focus-visible {
-  border-color: var(--brand) !important;
-  color: var(--brand) !important;
+  border-color: var(--brand);
+  color: var(--brand);
 }
 
 .ui-toolbar-segment.is-active,
 .ui-toolbar-segment.el-button--primary {
-  border-color: var(--brand) !important;
-  background: var(--brand) !important;
-  color: #fff !important;
+  border-color: var(--brand);
+  background: var(--brand);
+  color: #fff;
 }
 
 @media (max-width: 1100px) {
@@ -549,8 +668,8 @@ body {
 
 .ledger-table-shell--compact .ledger-table__row td,
 .ledger-table-shell--compact .el-table__row td {
-  padding-top: 6px !important;
-  padding-bottom: 6px !important;
+  padding-top: 6px;
+  padding-bottom: 6px;
 }
 
 .ledger-table-shell--comfortable .table-cell {
@@ -572,8 +691,8 @@ body {
 
 .ledger-table-shell--comfortable .ledger-table__row td,
 .ledger-table-shell--comfortable .el-table__row td {
-  padding-top: 12px !important;
-  padding-bottom: 12px !important;
+  padding-top: 12px;
+  padding-bottom: 12px;
 }
 
 /* ---- 抽屉 ---- */
@@ -1295,7 +1414,7 @@ body {
 
   .el-button-group > .el-button {
     flex: 1 1 auto;
-    margin-left: 0 !important;
+    margin-left: 0;
   }
 
   .el-form--inline,

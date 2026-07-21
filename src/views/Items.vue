@@ -9,16 +9,16 @@
     </div>
 
   <el-card class="items-card ui-panel" shadow="never">
-    <div style="display:flex; gap:12px; align-items:center; margin-bottom:12px; flex-wrap:wrap">
+    <div class="u-flex u-gap-12 u-items-center u-flex-wrap u-mb-12">
       <el-input
         v-model="keyword"
         placeholder="搜索：名称/SKU/品牌/型号"
-        style="max-width: 360px"
+        class="u-max-w-360"
         clearable
       />
       <el-select
         v-model="sortBy"
-        style="width: 170px"
+        class="u-w-170"
         @change="onSearch"
       >
         <el-option
@@ -52,7 +52,7 @@
       </el-select>
       <el-select
         v-model="sortDir"
-        style="width: 120px"
+        class="u-w-120"
         @change="onSearch"
       >
         <el-option
@@ -162,7 +162,7 @@
       </el-table-column>
     </el-table>
 
-    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div class="u-flex u-justify-end u-mt-12">
       <el-pagination
         v-model:current-page="page"
         v-model:page-size="pageSize"
@@ -213,7 +213,7 @@
             default-first-option
             clearable
             placeholder="请选择或输入分类"
-            style="width: 100%"
+            class="u-w-full"
           >
             <el-option
               v-for="item in categoryOptions"
@@ -224,7 +224,7 @@
           </el-select>
           <div
             v-if="isAdmin && categoryOptions.length"
-            style="margin-top:8px; display:flex; gap:6px; flex-wrap:wrap"
+            class="u-mt-8 u-flex u-gap-6 u-flex-wrap"
           >
             <el-tag
               v-for="item in categoryOptions"

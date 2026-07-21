@@ -12,21 +12,20 @@
   <el-card class="pc-operation-card ui-panel" shadow="never">
     <el-form
       ref="formRef"
-      class="pc-recycle-form"
+      class="pc-recycle-form u-max-w-760"
       :model="form"
       :rules="rules"
       label-width="110px"
-      style="max-width: 760px"
     >
       <el-alert
         title="电脑回收/归还（仓库2：电脑仓）"
         type="info"
         show-icon
         :closable="false"
-        style="margin-bottom: 12px"
+        class="u-mb-12"
       />
 
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap; margin-bottom:12px">
+      <div class="u-row-wrap-10 u-row-wrap-10-mb-12">
         <el-button
           size="small"
           @click="downloadRecycleTemplate"
@@ -69,7 +68,7 @@
           :loading="assetLoading"
           placeholder="输入序列号/品牌/型号搜索（仅显示已领用）"
           name="asset_id"
-          style="width: 100%"
+          class="u-w-full"
           clearable
           @change="onPickAsset"
         >
@@ -80,7 +79,7 @@
             :value="a.id"
           />
         </el-select>
-        <div style="margin-top:6px; color:var(--subtle); font-size:12px">
+        <div class="u-text-subtle u-fs-12 u-mt-6">
           只会列出“已领用”的电脑；若电脑仍在库，请先到「电脑出库」完成领用。
         </div>
       </el-form-item>
@@ -111,7 +110,7 @@
         v-if="pickedAsset"
         :column="2"
         border
-        style="margin-bottom:12px"
+        class="u-mb-12"
       >
         <el-descriptions-item label="品牌">
           {{ pickedAsset.brand }}
@@ -168,7 +167,7 @@
           value-format="YYYY-MM-DD"
           placeholder="选择日期"
           name="recycle_date"
-          style="width: 100%"
+          class="u-w-full"
         />
       </el-form-item>
 

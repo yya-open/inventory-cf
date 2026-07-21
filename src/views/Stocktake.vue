@@ -31,12 +31,12 @@
                 size="small"
                 clearable
                 placeholder="搜索 ID / 单号 / 状态"
-                style="width: 190px;"
+                class="u-w-190"
               />
               <el-select
                 v-model="listSortBy"
                 size="small"
-                style="width: 120px"
+                class="u-w-120"
                 @change="onListSortChange"
               >
                 <el-option
@@ -55,7 +55,7 @@
               <el-select
                 v-model="listSortDir"
                 size="small"
-                style="width: 95px"
+                class="u-w-95"
                 @change="onListSortChange"
               >
                 <el-option
@@ -107,8 +107,7 @@
               <template #default="{ row }">
                 <span class="mono">{{ row.st_no }}</span>
                 <span
-                  class="muted"
-                  style="margin-left:6px;"
+                  class="muted u-ml-6"
                 >#{{ row.id }}</span>
               </template>
             </el-table-column>
@@ -283,7 +282,7 @@
                 v-model="lineKeyword"
                 clearable
                 placeholder="搜索 SKU / 名称"
-                style="max-width: 260px;"
+                class="u-max-w-260"
               />
               <el-segmented
                 v-model="lineFilter"
@@ -299,8 +298,7 @@
               <el-button size="small" :disabled="detail.stocktake.status!=='DRAFT'" @click="batchClearCountedQty">批量标记未盘</el-button>
               <el-button size="small" @click="exportStocktakeReport">导出结果报表</el-button>
               <div
-                class="muted"
-                style="margin-left:auto;"
+                class="muted u-ml-auto"
               >
                 共 {{ filteredLines.length }} 条明细，已选 {{ selectedRows.length }} 条
               </div>
@@ -1114,7 +1112,7 @@ onBeforeUnmount(() => {
 .panel-header{ display:flex; justify-content:space-between; align-items:center; padding:12px 12px 8px; }
 .panel-title{ font-weight:700; }
 .panel-tools{ display:flex; gap:8px; align-items:center; }
-.stocktake-pagination{display:flex;justify-content:flex-end;padding:12px;border-top:1px solid var(--border-soft);background:var(--ui-surface-soft,var(--surface-soft))}
+.stocktake-pagination{display:flex;justify-content:flex-end;padding:12px;border-top:1px solid var(--border-soft);background:var(--surface-soft)}
 .empty{ padding:36px 0; }
 .detail-header{ display:flex; justify-content:space-between; align-items:flex-start; gap:12px; margin-bottom:10px; }
 .detail-title .main{ font-weight:800; font-size:14px; }

@@ -15,7 +15,7 @@
       :model="form"
       :rules="rules"
       label-width="90px"
-      style="max-width: 560px"
+      class="u-max-w-560"
     >
       <el-form-item
         label="配件"
@@ -25,7 +25,7 @@
           v-model="form.item_id"
           filterable
           placeholder="输入搜索 SKU/名称"
-          style="width: 100%"
+          class="u-w-full"
           @change="loadQty"
         >
           <el-option
@@ -41,7 +41,7 @@
         <el-tag :type="available <= warning ? 'danger' : 'success'">
           {{ available }}
         </el-tag>
-        <span style="margin-left: 10px; color: var(--subtle)">（预警值：{{ warning }}）</span>
+        <span class="u-ml-10 u-text-subtle">（预警值：{{ warning }}）</span>
       </el-form-item>
 
       <el-form-item
@@ -54,7 +54,7 @@
         />
         <span
           v-if="form.qty > available"
-          style="margin-left: 10px; color: var(--danger); font-weight: 600"
+          class="u-text-danger-fw-600 u-ml-10"
         >库存不足</span>
       </el-form-item>
 

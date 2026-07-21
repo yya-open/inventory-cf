@@ -10,7 +10,7 @@
     <div class="print-template-layout">
       <section class="print-template-main">
         <div class="preset-toolbar">
-          <el-select v-model="selectedPresetId" clearable placeholder="加载已保存预设" style="min-width: 240px" @change="applySelectedPreset">
+          <el-select v-model="selectedPresetId" clearable placeholder="加载已保存预设" class="u-min-w-240" @change="applySelectedPreset">
             <el-option v-for="item in presets" :key="item.id" :label="item.name" :value="item.id" />
           </el-select>
           <el-button :disabled="!selectedPresetId" @click="removeSelectedPreset">删除预设</el-button>

@@ -7,13 +7,13 @@
         <div class="ui-page-heading__desc">扫描配件物料中不规范或旧格式 SKU，生成映射建议，预检通过后批量应用。</div>
       </div>
       <div class="page-actions">
-        <el-input v-model="keyword" clearable placeholder="搜索 SKU / 名称 / 分类" style="width: 220px" @keyup.enter="onSearch" />
-        <el-select v-model="severity" style="width: 130px" @change="onSearch">
+        <el-input v-model="keyword" clearable placeholder="搜索 SKU / 名称 / 分类" class="u-w-220" @keyup.enter="onSearch" />
+        <el-select v-model="severity" class="u-w-130" @change="onSearch">
           <el-option label="全部问题" value="all" />
           <el-option label="风险 SKU" value="risk" />
           <el-option label="旧格式" value="legacy" />
         </el-select>
-        <el-select v-model="issueType" style="width: 150px" @change="onSearch">
+        <el-select v-model="issueType" class="u-w-150" @change="onSearch">
           <el-option label="全部类型" value="all" />
           <el-option label="小写字母" value="lowercase" />
           <el-option label="中文/特殊符号" value="special" />

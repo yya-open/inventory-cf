@@ -1,18 +1,18 @@
 <template>
   <div class="ui-page-shell backup-restore-page">
   <el-card class="backup-restore-card ui-panel" shadow="never">
-    <div style="display:flex; justify-content:space-between; align-items:flex-start; gap:16px; flex-wrap:wrap">
+    <div class="u-row-between-start">
       <div>
-        <div style="font-weight:700; font-size:16px">
+        <div class="u-fw-700-fs-16">
           备份 / 恢复
         </div>
-        <div style="color:var(--subtle); font-size:12px; margin-top:6px; line-height:1.5">
+        <div class="u-text-subtle u-fs-12 u-mt-6 u-leading-15">
           备份文件为 JSON（支持 <b>.json.gz</b> 压缩）。
           <b>恢复属于高风险操作</b>，请谨慎。
         </div>
       </div>
 
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <div class="u-row-wrap-10">
         <el-button
           v-if="canAdmin"
           type="warning"
@@ -28,23 +28,23 @@
     <el-divider />
 
 
-    <el-row :gutter="16" style="margin-bottom:16px">
+    <el-row :gutter="16" class="u-mb-16">
       <el-col :xs="24" :md="12">
-        <el-card shadow="never" style="border:1px solid var(--border)">
+        <el-card shadow="never" class="u-border-card-simple">
           <template #header>
-            <div style="display:flex; justify-content:space-between; align-items:center">
-              <span style="font-weight:700">恢复演练 SOP</span>
+            <div class="u-row-between">
+              <span class="u-fw-700">恢复演练 SOP</span>
               <el-tag type="warning" effect="light">建议每月一次</el-tag>
             </div>
           </template>
-          <ol style="margin:0; padding-left:18px; color:var(--muted); line-height:1.8; font-size:13px">
+          <ol class="u-list-sop">
             <li>先下载一份最新完整备份，建议启用 gzip。</li>
             <li>在隔离环境上传备份，先执行“恢复前校验”。</li>
             <li>用 merge 或 merge_upsert 模式恢复，避免直接替换生产数据。</li>
             <li>验证用户、台账、盘点、审计、字典和系统配置是否完整。</li>
             <li>记录演练结果、问题和耗时，确认恢复 SOP 可执行。</li>
           </ol>
-          <div style="display:flex; gap:10px; flex-wrap:wrap; margin-top:12px">
+          <div class="u-flex u-gap-10 u-flex-wrap u-mt-12">
             <el-button plain @click="downloadDrillSop">下载 SOP</el-button>
             <el-button type="primary" plain @click="openDrillDialog">记录本次演练</el-button>
           </div>
@@ -52,14 +52,14 @@
       </el-col>
       <el-col :xs="24" :md="12">
         <LazyMountBlock title="正在装载演练记录…" min-height="280px">
-          <el-card shadow="never" style="border:1px solid var(--border)">
+          <el-card shadow="never" class="u-border-card-simple">
             <template #header>
-              <div style="display:flex; justify-content:space-between; align-items:center">
-                <span style="font-weight:700">最近恢复演练</span>
+              <div class="u-row-between">
+                <span class="u-fw-700">最近恢复演练</span>
               <el-button link type="primary" @click="loadBackupDrills">刷新</el-button>
             </div>
           </template>
-          <div v-if="lastBackupDrillAt" style="color:var(--muted); font-size:12px; margin-bottom:8px">最近一次：{{ lastBackupDrillAt }}</div>
+          <div v-if="lastBackupDrillAt" class="u-text-muted u-fs-12 u-mb-8">最近一次：{{ lastBackupDrillAt }}</div>
           <el-table :data="backupDrills" border size="small" max-height="240">
             <el-table-column prop="drill_at" label="演练时间" width="180" />
             <el-table-column prop="outcome" label="结果" width="90" />
@@ -92,11 +92,11 @@
       >
         <el-card
           shadow="never"
-          style="border:1px solid var(--border)"
+          class="u-border-card-simple"
         >
           <template #header>
-            <div style="display:flex; justify-content:space-between; align-items:center">
-              <span style="font-weight:700">导出备份</span>
+            <div class="u-row-between">
+              <span class="u-fw-700">导出备份</span>
               <el-tag
                 type="success"
                 effect="light"
@@ -106,15 +106,15 @@
             </div>
           </template>
 
-          <div style="display:flex; flex-direction:column; gap:10px">
+          <div class="u-col-gap-10">
             <el-checkbox v-model="bk.include_tx">
               包含出入库明细（stock_tx，可能很大）
             </el-checkbox>
             <div
               v-if="bk.include_tx"
-              style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
+              class="u-row-wrap-10 u-row-wrap-10-pl-24"
             >
-              <span style="color:var(--muted); font-size:12px">明细时间范围：</span>
+              <span class="u-text-muted u-fs-12">明细时间范围：</span>
               <el-date-picker
                 v-model="bk.txRange"
                 type="daterange"
@@ -124,7 +124,7 @@
                 end-placeholder="结束日期"
                 value-format="YYYY-MM-DD"
               />
-              <span style="color:var(--subtle); font-size:12px">（为空则导出全部）</span>
+              <span class="u-text-subtle u-fs-12">（为空则导出全部）</span>
             </div>
 
             <el-checkbox v-model="bk.include_stocktake">
@@ -135,9 +135,9 @@
             </el-checkbox>
             <div
               v-if="bk.include_audit"
-              style="display:flex; gap:10px; flex-wrap:wrap; align-items:center; padding-left:24px"
+              class="u-row-wrap-10 u-row-wrap-10-pl-24"
             >
-              <span style="color:var(--muted); font-size:12px">审计时间范围：</span>
+              <span class="u-text-muted u-fs-12">审计时间范围：</span>
               <el-date-picker
                 v-model="bk.auditRange"
                 type="daterange"
@@ -147,22 +147,22 @@
                 end-placeholder="结束日期"
                 value-format="YYYY-MM-DD"
               />
-              <span style="color:var(--subtle); font-size:12px">（为空则导出全部）</span>
+              <span class="u-text-subtle u-fs-12">（为空则导出全部）</span>
             </div>
 
             <el-checkbox v-model="bk.include_throttle">
               包含登录限流（auth_login_throttle）
             </el-checkbox>
 
-            <el-divider style="margin:8px 0" />
+            <el-divider class="u-divider-8" />
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap; align-items:center">
+            <div class="u-row-wrap-10">
               <el-switch
                 v-model="bk.gzip"
                 active-text="gzip 压缩（推荐）"
               />
-              <div style="display:flex; align-items:center; gap:8px">
-                <span style="color:var(--muted); font-size:12px">分页大小</span>
+              <div class="u-flex u-items-center u-gap-8">
+                <span class="u-text-muted u-fs-12">分页大小</span>
                 <el-input-number
                   v-model="bk.page_size"
                   :min="200"
@@ -170,10 +170,10 @@
                   :step="200"
                 />
               </div>
-              <span style="color:var(--subtle); font-size:12px">（大数据建议 1000～2000）</span>
+              <span class="u-text-subtle u-fs-12">（大数据建议 1000～2000）</span>
             </div>
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <div class="u-flex u-gap-10 u-flex-wrap">
               <el-button
                 type="primary"
                 :loading="downloading"
@@ -214,11 +214,11 @@
       >
         <el-card
           shadow="never"
-          style="border:1px solid var(--border)"
+          class="u-border-card-simple"
         >
           <template #header>
-            <div style="display:flex; justify-content:space-between; align-items:center">
-              <span style="font-weight:700">从备份恢复</span>
+            <div class="u-row-between">
+              <span class="u-fw-700">从备份恢复</span>
               <el-tag
                 type="danger"
                 effect="light"
@@ -228,7 +228,7 @@
             </div>
           </template>
 
-          <div style="display:flex; flex-direction:column; gap:12px">
+          <div class="u-col-gap-12">
             <!--
               Element Plus Upload 在不同构建/浏览器下 raw 字段偶尔为空。
               这里使用 v-model:file-list + change 事件双保险，确保选中文件后按钮可用。
@@ -259,7 +259,7 @@
 
             <div
               v-if="pickedInfo"
-              style="margin-top:-4px; display:flex; gap:8px; align-items:center; flex-wrap:wrap"
+              class="u-mt-neg-4 u-flex u-gap-8 u-items-center u-flex-wrap"
             >
               <el-button
                 size="small"
@@ -280,7 +280,7 @@
               </el-button>
               <span
                 v-if="restoreValidateAt"
-                style="color:var(--subtle); font-size:12px"
+                class="u-text-subtle u-fs-12"
               >最近校验：{{ restoreValidateAt }}</span>
             </div>
 
@@ -293,11 +293,11 @@
               <div>
                 <div>
                   校验结果：{{ restoreValidate.valid ? '通过' : '未通过' }}
-                  <span style="color:var(--muted)">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
+                  <span class="u-text-muted">（错误 {{ restoreValidate.counts?.error || 0 }}，警告 {{ restoreValidate.counts?.warn || 0 }}，提示 {{ restoreValidate.counts?.info || 0 }}）</span>
                 </div>
                 <div
                   v-if="restoreValidatePreview.length"
-                  style="margin-top:6px; color:var(--muted); line-height:1.6"
+                  class="u-mt-6-muted-leading-16"
                 >
                   <div
                     v-for="(it,idx) in restoreValidatePreview"
@@ -307,12 +307,12 @@
                   </div>
                   <div
                     v-if="(restoreValidate.issues?.length || 0) > restoreValidatePreview.length"
-                    style="color:var(--subtle)"
+                    class="u-text-subtle"
                   >
                     仅显示前 {{ restoreValidatePreview.length }} 条，点击“查看校验明细”查看全部
                   </div>
                 </div>
-                <div style="margin-top:8px">
+                <div class="u-mt-8">
                   <el-button
                     size="small"
                     plain
@@ -351,7 +351,7 @@
               清空并恢复：会先创建恢复点快照，再清空库写入；如需回滚可用恢复点重建。
             </el-alert>
 
-            <div style="display:flex; gap:10px; flex-wrap:wrap">
+            <div class="u-flex u-gap-10 u-flex-wrap">
               <el-button
                 type="primary"
                 :disabled="!pickedFile || creatingJob"
@@ -399,17 +399,17 @@
 
             <div
               v-if="jobId"
-              style="display:flex; flex-direction:column; gap:8px"
+              class="u-col-gap-8"
             >
               <el-progress
                 :percentage="progressPercent"
                 :status="progressStatus"
               />
-              <div style="color:var(--muted); font-size:12px; line-height:1.6">
+              <div class="u-text-muted u-fs-12 u-leading-16">
                 已处理：{{ jobProcessed }} / {{ jobTotal || '计算中...' }} 行
                 <span
                   v-if="jobLastError"
-                  style="color:var(--danger)"
+                  class="u-text-danger"
                 >　错误：{{ jobLastError }}</span>
               </div>
             </div>
@@ -427,7 +427,7 @@
             <!-- 恢复完成后仅通过弹窗查看明细，避免页面内容过长且保持风格一致 -->
             <div
               v-if="jobStatus==='DONE' && restoreDetailRows.length"
-              style="margin-top:10px"
+              class="u-mt-10"
             >
               <el-button
                 type="primary"
@@ -456,7 +456,7 @@
             width="980px"
             :append-to-body="true"
           >
-            <div style="display:flex; flex-direction:column; gap:10px">
+            <div class="u-col-gap-10">
               <el-alert
                 v-if="restoreValidate"
                 :type="restoreValidate.valid ? 'success' : 'error'"
@@ -468,18 +468,18 @@
 
               <div
                 v-if="restoreValidateIssues.length"
-                style="display:flex; flex-direction:column; gap:12px"
+                class="u-col-gap-12"
               >
                 <div
                   v-for="g in restoreValidateIssueGroups"
                   :key="g.key"
-                  style="border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface)"
+                  class="u-border-card"
                 >
-                  <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-                    <div style="font-weight:600">
+                  <div class="u-row-between u-mb-8">
+                    <div class="u-fw-600">
                       {{ g.label }}
                     </div>
-                    <div style="color:var(--muted); font-size:12px">
+                    <div class="u-text-muted u-fs-12">
                       共 {{ g.rows.length }} 项 ｜ 错误 {{ g.countError }} ｜ 警告 {{ g.countWarn }} ｜ 提示 {{ g.countInfo }}
                     </div>
                   </div>
@@ -487,7 +487,7 @@
                     :data="g.rows"
                     size="small"
                     border
-                    style="width:100%"
+                    class="u-w-full"
                   >
                     <el-table-column
                       label="级别"
@@ -507,9 +507,9 @@
                       min-width="190"
                     >
                       <template #default="{row}">
-                        <div style="display:flex; flex-direction:column; line-height:1.2">
-                          <span style="font-weight:600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
-                          <span style="color:var(--subtle); font-size:12px">{{ row.table || '-' }}</span>
+                        <div class="u-line-12">
+                          <span class="u-fw-600">{{ row.table ? tableCn(row.table) : '（未指定表）' }}</span>
+                          <span class="u-text-subtle u-fs-12">{{ row.table || '-' }}</span>
                         </div>
                       </template>
                     </el-table-column>
@@ -546,22 +546,22 @@
     <el-form label-width="96px">
       <el-form-item label="场景"><el-input v-model="drillClosureForm.scenario" /></el-form-item>
       <el-form-item label="结果">
-        <el-select v-model="drillClosureForm.outcome" style="width:100%">
+        <el-select v-model="drillClosureForm.outcome" class="u-w-full">
           <el-option label="成功" value="success" />
           <el-option label="警告" value="warn" />
           <el-option label="失败" value="failed" />
         </el-select>
       </el-form-item>
-      <el-form-item label="问题数"><el-input-number v-model="drillClosureForm.issue_count" :min="0" :max="99" style="width:100%" /></el-form-item>
+      <el-form-item label="问题数"><el-input-number v-model="drillClosureForm.issue_count" :min="0" :max="99" class="u-w-full" /></el-form-item>
       <el-form-item label="闭环状态">
-        <el-select v-model="drillClosureForm.follow_up_status" style="width:100%">
+        <el-select v-model="drillClosureForm.follow_up_status" class="u-w-full">
           <el-option label="无需整改" value="not_required" />
           <el-option label="待整改" value="open" />
           <el-option label="已闭环" value="closed" />
         </el-select>
       </el-form-item>
       <el-form-item label="责任人"><el-input v-model="drillClosureForm.rect_owner" /></el-form-item>
-      <el-form-item label="整改截止"><el-date-picker v-model="drillClosureForm.rect_due_at" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
+      <el-form-item label="整改截止"><el-date-picker v-model="drillClosureForm.rect_due_at" type="date" value-format="YYYY-MM-DD" class="u-w-full" /></el-form-item>
       <el-form-item label="备注"><el-input v-model="drillClosureForm.note" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
       <el-form-item label="复盘结论"><el-input v-model="drillClosureForm.review_note" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
     </el-form>
@@ -577,20 +577,20 @@
             width="860px"
             :append-to-body="true"
           >
-            <div style="color:var(--muted); font-size:12px; margin-bottom:10px">
+            <div class="u-text-muted u-fs-12 u-mb-10">
               涉及表：{{ affectedTablesText }}
             </div>
-            <div style="display:flex; flex-direction:column; gap:12px">
+            <div class="u-col-gap-12">
               <div
                 v-for="g in restoreDetailGroups"
                 :key="g.key"
-                style="border:1px solid var(--border); border-radius:8px; padding:10px; background:var(--surface)"
+                class="u-border-card"
               >
-                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px">
-                  <div style="font-weight:600">
+                <div class="u-row-between u-mb-8">
+                  <div class="u-fw-600">
                     {{ g.label }}
                   </div>
-                  <div style="color:var(--muted); font-size:12px">
+                  <div class="u-text-muted u-fs-12">
                     表数 {{ g.rows.length }} ｜ 已处理 {{ g.sumProcessed }} ｜ 写入变更 {{ g.sumWritten }}
                   </div>
                 </div>
@@ -598,16 +598,16 @@
                   :data="g.rows"
                   size="small"
                   border
-                  style="width:100%"
+                  class="u-w-full"
                 >
                   <el-table-column
                     label="表"
                     min-width="220"
                   >
                     <template #default="{row}">
-                      <div style="display:flex; flex-direction:column; line-height:1.2">
-                        <span style="font-weight:600">{{ row.table_cn }}</span>
-                        <span style="color:var(--subtle); font-size:12px">{{ row.table }}</span>
+                      <div class="u-line-12">
+                        <span class="u-fw-600">{{ row.table_cn }}</span>
+                        <span class="u-text-subtle u-fs-12">{{ row.table }}</span>
                       </div>
                     </template>
                   </el-table-column>
@@ -619,7 +619,7 @@
                       <span v-if="row.in_backup">{{ row.total }}</span>
                       <span
                         v-else
-                        style="color:var(--subtle)"
+                        class="u-text-subtle"
                       >—</span>
                     </template>
                   </el-table-column>
@@ -646,7 +646,7 @@
               type="info"
               show-icon
               :closable="false"
-              style="margin-top:12px"
+              class="u-mt-12"
             >
               说明：合并导入时，重复主键会被忽略，因此“写入变更”可能小于“已处理”。
             </el-alert>
@@ -664,22 +664,22 @@
     <el-form label-width="90px">
       <el-form-item label="场景"><el-input v-model="drillForm.scenario" placeholder="restore_drill / validate_only" /></el-form-item>
       <el-form-item label="结果">
-        <el-select v-model="drillForm.outcome" style="width:100%">
+        <el-select v-model="drillForm.outcome" class="u-w-full">
           <el-option label="成功" value="success" />
           <el-option label="警告" value="warn" />
           <el-option label="失败" value="failed" />
         </el-select>
       </el-form-item>
-      <el-form-item label="问题数"><el-input-number v-model="drillForm.issue_count" :min="0" :max="99" style="width:100%" /></el-form-item>
+      <el-form-item label="问题数"><el-input-number v-model="drillForm.issue_count" :min="0" :max="99" class="u-w-full" /></el-form-item>
       <el-form-item label="闭环状态">
-        <el-select v-model="drillForm.follow_up_status" style="width:100%">
+        <el-select v-model="drillForm.follow_up_status" class="u-w-full">
           <el-option label="无需整改" value="not_required" />
           <el-option label="待整改" value="open" />
           <el-option label="已闭环" value="closed" />
         </el-select>
       </el-form-item>
       <el-form-item label="责任人"><el-input v-model="drillForm.rect_owner" placeholder="整改责任人" /></el-form-item>
-      <el-form-item label="整改截止"><el-date-picker v-model="drillForm.rect_due_at" type="date" value-format="YYYY-MM-DD" style="width:100%" /></el-form-item>
+      <el-form-item label="整改截止"><el-date-picker v-model="drillForm.rect_due_at" type="date" value-format="YYYY-MM-DD" class="u-w-full" /></el-form-item>
       <el-form-item label="备注"><el-input v-model="drillForm.note" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
       <el-form-item label="复盘结论"><el-input v-model="drillForm.review_note" type="textarea" :rows="3" maxlength="500" show-word-limit /></el-form-item>
     </el-form>

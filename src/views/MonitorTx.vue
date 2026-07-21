@@ -170,7 +170,7 @@
         >
           <template #default="{ row }">
             <div>{{ typeText(row.tx_type) }}</div>
-            <el-tag v-if="row.is_current_effective" type="success" effect="plain" size="small" style="margin-top:6px">当前生效</el-tag>
+            <el-tag v-if="row.is_current_effective" type="success" effect="plain" size="small" class="u-mt-6">当前生效</el-tag>
           </template>
         </el-table-column>
         <el-table-column

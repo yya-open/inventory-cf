@@ -1,18 +1,18 @@
 <template>
   <div class="ui-page-shell import-items-page">
   <el-card class="import-items-card ui-panel" shadow="never">
-    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; flex-wrap:wrap; gap:10px">
+    <div class="u-row-between u-flex-wrap u-gap-10 u-mb-12">
       <div>
-        <span style="font-weight:700">Excel 导入配件</span>
-        <span style="margin-left:10px; color:var(--subtle); font-size:12px">支持字段：SKU、名称、品牌、型号、分类、单位、预警值</span>
+        <span class="u-fw-700">Excel 导入配件</span>
+        <span class="u-ml-10 u-text-subtle u-fs-12">支持字段：SKU、名称、品牌、型号、分类、单位、预警值</span>
       </div>
-      <div style="display:flex; gap:10px; align-items:center; flex-wrap:wrap">
+      <div class="u-row-wrap-10">
         <el-button @click="downloadTemplate">
           下载模板
         </el-button>
         <el-select
           v-model="mode"
-          style="width: 200px"
+          class="u-w-200"
         >
           <el-option
             label="存在则更新（推荐）"
@@ -47,7 +47,7 @@
     <el-alert
       type="info"
       show-icon
-      style="margin-bottom:12px"
+      class="u-mb-12"
     >
       Excel 第一行请使用表头：SKU、名称、品牌、型号、分类、单位、预警值（大小写不敏感）。
     </el-alert>
@@ -99,13 +99,13 @@
       title="导入结果"
       width="520px"
     >
-      <div style="line-height: 1.9">
+      <div class="u-leading-19">
         <div>新增：<b>{{ result?.inserted || 0 }}</b></div>
         <div>更新：<b>{{ result?.updated || 0 }}</b></div>
         <div>跳过：<b>{{ result?.skipped || 0 }}</b></div>
         <div
           v-if="result?.errors?.length"
-          style="margin-top:10px; color:var(--danger)"
+          class="u-mt-10 u-text-danger"
         >
           有 {{ result.errors.length }} 条错误（缺少 SKU/名称），已跳过
         </div>

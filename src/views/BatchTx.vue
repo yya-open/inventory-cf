@@ -3,7 +3,7 @@
     <el-card class="batch-tx-card ui-panel" shadow="never">
       <template #header>
         <div class="batch-tx-header">
-          <div style="font-weight:700">
+          <div class="u-fw-700">
             批量出入库
           </div>
           <div class="batch-tx-header-actions">

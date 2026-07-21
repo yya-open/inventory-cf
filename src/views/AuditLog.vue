@@ -51,7 +51,7 @@
             v-model="keyword"
             placeholder="搜索：用户/动作/实体/ID"
             clearable
-            style="width: 240px"
+            class="u-w-240"
           />
         </el-form-item>
         <el-form-item>
@@ -60,7 +60,7 @@
             placeholder="动作"
             clearable
             filterable
-            style="width: 190px"
+            class="u-w-190"
             @change="onSearch"
           >
             <el-option
@@ -77,7 +77,7 @@
             placeholder="实体"
             clearable
             filterable
-            style="width: 190px"
+            class="u-w-190"
             @change="onSearch"
           >
             <el-option
@@ -93,7 +93,7 @@
             v-model="entityId"
             placeholder="对象ID（如资产ID / tx_no）"
             clearable
-            style="width: 190px"
+            class="u-w-190"
           />
         </el-form-item>
         <el-form-item>
@@ -101,7 +101,7 @@
             v-model="moduleFilter"
             placeholder="模块"
             clearable
-            style="width: 150px"
+            class="u-w-150"
             @change="onSearch"
           >
             <el-option v-for="opt in moduleOptions" :key="opt.value" :label="opt.label" :value="opt.value" />
@@ -115,7 +115,7 @@
             v-model="user"
             placeholder="用户（如 admin）"
             clearable
-            style="width: 150px"
+            class="u-w-150"
           />
         </el-form-item>
         <el-form-item>
@@ -131,7 +131,7 @@
           <el-select
             v-model="sortBy"
             placeholder="排序字段"
-            style="width: 140px"
+            class="u-w-140"
             @change="onSearch"
           >
             <el-option
@@ -144,7 +144,7 @@
           <el-select
             v-model="sortDir"
             placeholder="方向"
-            style="width: 120px"
+            class="u-w-120"
             @change="onSearch"
           >
             <el-option
@@ -165,7 +165,7 @@
         v-loading="loading"
         :data="rows"
         border
-        style="width:100%"
+        class="u-w-full"
         @selection-change="onSelect"
       >
       <el-table-column
@@ -262,7 +262,7 @@
       </el-table-column>
     </el-table>
 
-    <div style="display:flex; justify-content:flex-end; margin-top:12px">
+    <div class="u-flex u-justify-end u-mt-12">
       <el-pagination
         v-model:current-page="page"
         v-model:page-size="pageSize"
@@ -366,7 +366,7 @@
       title="审计保留与归档策略"
       width="760px"
     >
-      <div style="color:var(--muted); margin-bottom:10px">
+      <div class="u-text-muted u-mb-10">
         当前策略：保留近 <b>{{ retentionDays }}</b> 天；上次清理：{{ retentionLast || "-" }}；上次归档：{{ archiveLast || "-" }}
       </div>
       <el-alert
@@ -374,7 +374,7 @@
         type="warning"
         show-icon
         :closable="false"
-        style="margin-bottom:12px"
+        class="u-mb-12"
       >
         <div v-for="item in auditWarnings" :key="item.code">{{ item.message }}</div>
       </el-alert>

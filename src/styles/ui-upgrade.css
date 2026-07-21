@@ -1,5 +1,5 @@
 /* ui-upgrade.css —— 页面级面板/工具栏/表格增强
- * 令牌已迁移至 tokens.css（--ui-* 为桥接别名）；骨架样式由 chrome.css 接管。
+ * 令牌见 tokens.css；骨架样式由 chrome.css 接管。
  * 组件皮肤护栏在 enterprise.css；台账工具条/表格单元格外观由
  * ledger-toolbar-shared.css / ledger-table-shared.css 拥有，此处不再重复压制。
  */
@@ -56,14 +56,14 @@
 }
 
 .ui-page-heading__kicker {
-  color: var(--ui-subtle);
+  color: var(--subtle);
   font-size: 12px;
   font-weight: 800;
 }
 
 .ui-page-heading__title {
   margin-top: 4px;
-  color: var(--ui-text);
+  color: var(--ink);
   font-size: 22px;
   font-weight: 800;
   line-height: 1.25;
@@ -71,16 +71,16 @@
 
 .ui-page-heading__desc {
   margin-top: 6px;
-  color: var(--ui-muted);
+  color: var(--muted);
   font-size: 13px;
   line-height: 1.6;
 }
 
 .ui-panel {
-  border: 1px solid var(--ui-border);
-  border-radius: var(--ui-radius-md);
-  background: var(--ui-surface);
-  box-shadow: var(--ui-shadow-card);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface);
+  box-shadow: var(--shadow-sm);
 }
 
 .ui-filter-panel {
@@ -107,8 +107,8 @@
   display: flex;
   justify-content: flex-end;
   padding: 12px 14px 14px;
-  border-top: 1px solid var(--ui-border-soft);
-  background: var(--ui-surface-soft);
+  border-top: 1px solid var(--border-soft);
+  background: var(--surface-soft);
 }
 
 .ui-status-number {
@@ -116,7 +116,7 @@
 }
 
 .ui-status-number.is-warning {
-  color: var(--ui-danger);
+  color: var(--danger);
 }
 
 .ui-row-actions {
@@ -132,12 +132,12 @@
 /* ---- 预警页（scoped 源仍在，保留增强） ---- */
 .warnings-page .warning-filter-panel__trailing {
   padding-left: 10px;
-  border-left: 1px solid var(--ui-border-soft);
+  border-left: 1px solid var(--border-soft);
 }
 
 .warnings-page .warning-bulk-panel {
   border-color: var(--el-color-primary-light-7);
-  background: var(--ui-surface-tint);
+  background: var(--surface-tint);
 }
 
 /* ---- 台账卡片：工具条/表格卡片去 body 内边距（布局贴合） ---- */
@@ -166,7 +166,7 @@
 /* ---- 台账单元格 hover 增强（皮肤本体见 ledger-table-shared.css） ---- */
 .asset-cell:hover .asset-main,
 .asset-cell:hover .cell-primary {
-  color: var(--ui-primary);
+  color: var(--brand);
 }
 
 @media (max-width: 1100px) {

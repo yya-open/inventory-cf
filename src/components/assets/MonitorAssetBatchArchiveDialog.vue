@@ -2,7 +2,7 @@
   <el-dialog v-model="visibleModel" title="批量归档显示器" width="460px">
     <el-form label-width="90px">
       <el-form-item label="归档原因">
-        <el-select v-model="form.reason" style="width:100%" placeholder="请选择归档原因" filterable allow-create default-first-option>
+        <el-select v-model="form.reason" class="u-w-full" placeholder="请选择归档原因" filterable allow-create default-first-option>
           <el-option v-for="item in archiveReasonOptions" :key="item" :label="item" :value="item" />
         </el-select>
       </el-form-item>

@@ -2,7 +2,7 @@
   <el-dialog v-model="visibleModel" title="批量修改显示器位置" width="420px">
     <el-form label-width="90px">
       <el-form-item label="目标位置">
-        <el-select v-model="valueModel" clearable style="width:100%" placeholder="请选择位置">
+        <el-select v-model="valueModel" clearable class="u-w-full" placeholder="请选择位置">
           <el-option v-for="item in locationOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>

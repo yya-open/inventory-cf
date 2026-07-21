@@ -1,10 +1,10 @@
 <template>
   <div class="warehouse-select-page">
     <el-card class="warehouse-select-card" shadow="never">
-      <div style="font-size:18px; font-weight:700; margin-bottom:6px">
+      <div class="u-fw-700-fs-18-mb-6">
         选择要进入的仓库
       </div>
-      <div style="color:var(--subtle); font-size:13px; margin-bottom:18px">
+      <div class="u-text-subtle-13-mb-18">
         你可以随时在右上角切换
       </div>
 
@@ -19,16 +19,16 @@
             shadow="hover"
             @click="choose('parts')"
           >
-            <div style="display:flex; align-items:center; gap:10px">
-              <span style="font-size:22px">📦</span>
-              <div style="font-weight:700; font-size:16px">
+            <div class="u-flex u-items-center u-gap-10">
+              <span class="u-fs-22">📦</span>
+              <div class="u-fw-700-fs-16">
                 配件仓
               </div>
             </div>
-            <div style="margin-top:10px; color:var(--muted); font-size:13px; line-height:1.6">
+            <div class="u-text-muted-13-leading-16-mt-10">
               库存查询、出入库明细、预警中心、入库/出库、批量出入库、配件管理、库存盘点等
             </div>
-            <div style="margin-top:14px">
+            <div class="u-mt-14">
               <el-button type="primary">
                 进入配件仓
               </el-button>
@@ -40,24 +40,23 @@
           v-if="canAccessPc"
           :xs="24"
           :sm="12"
-          style="margin-top:12px"
-          class="pc-col"
+          class="pc-col u-mt-12"
         >
           <el-card
             class="warehouse-option-card"
             shadow="hover"
             @click="choose('pc')"
           >
-            <div style="display:flex; align-items:center; gap:10px">
-              <span style="font-size:22px">💻</span>
-              <div style="font-weight:700; font-size:16px">
+            <div class="u-flex u-items-center u-gap-10">
+              <span class="u-fs-22">💻</span>
+              <div class="u-fw-700-fs-16">
                 电脑/显示器仓
               </div>
             </div>
-            <div style="margin-top:10px; color:var(--muted); font-size:13px; line-height:1.6">
+            <div class="u-text-muted-13-leading-16-mt-10">
               电脑台账、显示器台账、出入库明细、盘点记录、导入/导出 Excel
             </div>
-            <div style="margin-top:14px">
+            <div class="u-mt-14">
               <el-button type="primary">
                 进入电脑/显示器仓
               </el-button>
