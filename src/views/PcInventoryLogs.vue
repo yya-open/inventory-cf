@@ -1,12 +1,5 @@
 <template>
   <div class="ui-page-shell inventory-log-page">
-    <div class="ui-page-heading">
-      <div class="inventory-log-meta">
-        <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
-        <el-tag v-if="selectedRows.length" type="primary" effect="plain">已选 {{ selectedRows.length }} 条</el-tag>
-      </div>
-    </div>
-
     <el-card shadow="never" class="ui-page-card">
       <div class="ui-toolbar ui-toolbar--ledger">
         <div class="ui-toolbar-main">

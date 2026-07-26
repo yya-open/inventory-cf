@@ -1,13 +1,5 @@
 <template>
   <div class="ui-page-shell ledger-page ledger-page--monitor">
-    <section class="ui-page-heading ledger-page-heading">
-      <div class="ledger-page-heading__meta">
-        <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
-        <el-tag v-if="selectedCount" type="primary" effect="plain">已选 {{ selectedCount }} 台</el-tag>
-        <el-tag v-if="hasActiveInventoryBatch" type="warning" effect="plain">盘点中</el-tag>
-      </div>
-    </section>
-
     <section class="ledger-section ledger-section--toolbar">
       <MonitorAssetsToolbar
       :mobile-mode="isMobile"

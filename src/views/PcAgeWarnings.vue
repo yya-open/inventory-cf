@@ -1,13 +1,5 @@
 <template>
   <div class="ui-page-shell pc-age-warning-page">
-    <div class="ui-page-heading">
-      <div class="age-warning-meta">
-        <el-tag type="warning" effect="plain">超过 {{ ageYears }} 年</el-tag>
-        <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
-        <el-tag v-if="selectedIds.length" type="primary" effect="plain">已选 {{ selectedIds.length }} 台</el-tag>
-      </div>
-    </div>
-
   <el-card class="ui-page-card">
     <div class="ui-toolbar ui-toolbar--ledger">
       <div class="ui-toolbar-main">

@@ -12,14 +12,6 @@
       label-width="90px"
       class="u-max-w-760"
     >
-      <el-alert
-        :title="`电脑出库（仓库2：${settings.warehouse_default_pc_label || '电脑仓' }）`"
-        type="warning"
-        show-icon
-        :closable="false"
-        class="u-mb-12"
-      />
-
       <div class="u-row-wrap-10 u-row-wrap-10-mb-12">
         <el-button
           size="small"

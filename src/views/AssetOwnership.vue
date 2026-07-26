@@ -1,14 +1,5 @@
 <template>
   <div class="ui-page-shell ownership-page">
-    <section class="ui-page-heading ownership-heading">
-      <div class="ownership-heading__meta">
-        <el-tag type="info" effect="plain">分组 {{ overview.summary.groups }}</el-tag>
-        <el-tag type="primary" effect="plain">资产 {{ overview.summary.total }}</el-tag>
-        <el-tag effect="plain">电脑 {{ overview.summary.pc }}</el-tag>
-        <el-tag effect="plain">显示器 {{ overview.summary.monitor }}</el-tag>
-      </div>
-    </section>
-
     <section class="ownership-toolbar">
       <el-segmented
         v-model="groupBy"

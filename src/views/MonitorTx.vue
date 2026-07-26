@@ -1,12 +1,5 @@
 <template>
   <div class="ui-page-shell monitor-tx-page">
-    <div class="ui-page-heading">
-      <div class="tx-heading-meta">
-        <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
-        <el-tag v-if="selected.length" type="primary" effect="plain">已选 {{ selected.length }} 条</el-tag>
-      </div>
-    </div>
-
     <el-card
       shadow="never"
       class="ui-page-card"

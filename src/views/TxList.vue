@@ -1,9 +1,5 @@
 <template>
   <div class="ui-page-shell tx-page">
-    <div class="ui-page-heading">
-      <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
-    </div>
-
     <div class="ui-panel tx-filter-panel">
       <el-select
         v-model="type"

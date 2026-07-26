@@ -1,14 +1,5 @@
 <template>
   <div class="ui-page-shell warnings-page">
-    <div class="ui-page-heading">
-      <div class="warning-heading-meta">
-        <el-tag :type="filters.only_alert ? 'danger' : 'info'" effect="plain">
-          {{ filters.only_alert ? "预警" : "列表" }} {{ total }} 条
-        </el-tag>
-        <el-tag v-if="selectedIds.length" type="primary" effect="plain">已选 {{ selectedIds.length }} 条</el-tag>
-      </div>
-    </div>
-
     <div class="ui-panel warning-filter-panel">
       <el-select
         v-model="filters.category"

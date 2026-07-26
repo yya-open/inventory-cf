@@ -1,9 +1,5 @@
 <template>
   <div class="ui-page-shell stock-query-page">
-    <div class="ui-page-heading">
-      <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
-    </div>
-
     <div class="ui-panel ui-filter-panel">
       <el-input
         v-model="keyword"
