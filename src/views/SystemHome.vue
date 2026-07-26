@@ -49,7 +49,7 @@
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="批量任务中心" desc="查看异步导出、预计算和巡检任务进度" @open="go('/system/tasks')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8"><HomeCard title="审计日志" desc="查看用户操作记录、筛选与导出" @open="go('/system/audit')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" class="home-col-gap"><HomeCard title="用户管理" desc="新增/编辑用户、角色管理" @open="go('/system/users')" /></el-col>
-        <el-col :xs="24" :sm="12" :md="12" :lg="8" class="home-col-gap"><HomeCard title="系统配置" desc="设置扫码现场体验、默认页大小等系统级规则" @open="go('/system/settings')" /></el-col>
+        <el-col v-if="canManageSystemSettings" :xs="24" :sm="12" :md="12" :lg="8" class="home-col-gap"><HomeCard title="系统配置" desc="设置扫码现场体验、默认页大小等系统级规则" @open="go('/system/settings')" /></el-col>
         <el-col :xs="24" :sm="12" :md="12" :lg="8" class="home-col-gap">
           <el-card shadow="never" class="sys-rounded-card home-full-card">
             <div class="sys-title-strong home-title-gap">运维工具</div>
@@ -82,7 +82,7 @@
 <script setup lang="ts">
 import { computed, defineComponent, h, onMounted, reactive, ref, resolveComponent } from 'vue';
 import { useRouter } from 'vue-router';
-import { useAuth } from '../store/auth';
+import { canCapability, useAuth } from '../store/auth';
 import { canAccessModuleArea, preferredPcRoute } from '../utils/moduleAccess';
 import { getSystemHealth } from '../api/systemHealth';
 import { getCachedResource } from '../utils/resourceCache';
@@ -106,6 +106,7 @@ const router = useRouter();
 const auth = useAuth();
 const canAccessParts = computed(() => canAccessModuleArea(auth.user, 'parts'));
 const canAccessPc = computed(() => canAccessModuleArea(auth.user, 'pc'));
+const canManageSystemSettings = computed(() => canCapability('system.settings.manage'));
 const go = (path: string) => router.push(path);
 const ops = reactive<any>({ schema_ok: true, problem_count: 0, failed_jobs: 0, last_scan_at: '', last_backup_drill_at: '', open_backup_drill_issue_count: 0, overdue_backup_drill_issue_count: 0 });
 const opsLoaded = ref(false);

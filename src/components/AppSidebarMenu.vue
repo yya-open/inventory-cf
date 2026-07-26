@@ -157,12 +157,11 @@ const iconMap: Record<RouteIconName, object> = {
 
 function canShowRoute(item: ModuleRouteDefinition) {
   if (item.area === 'system') {
-    if (props.isAdmin) return true;
     if (item.capability === 'system.jobs.manage') return props.canManageSystemJobs;
     if (item.capability === 'system.tools.manage') return props.canManageSystemTools;
     if (item.capability === 'system.settings.manage') return props.canManageSystemSettings;
     if (item.permission === 'audit_export') return props.canAuditExport;
-    return false;
+    return props.isAdmin;
   }
   if (item.area === 'parts') {
     if (!props.canAccessPartsArea) return false;
