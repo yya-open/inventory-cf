@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell stock-query-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">配件仓</div>
-        <div class="ui-page-heading__title">库存查询</div>
-        <div class="ui-page-heading__desc">按名称、SKU、品牌或型号定位库存，优先处理低于预警值的物料。</div>
-      </div>
       <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
     </div>
 

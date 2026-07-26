@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell ledger-page ledger-page--pc">
     <section class="ui-page-heading ledger-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">电脑仓</div>
-        <div class="ui-page-heading__title">电脑台账</div>
-        <div class="ui-page-heading__desc">集中管理电脑资产、二维码、盘点状态与批量归档操作。</div>
-      </div>
       <div class="ledger-page-heading__meta">
         <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
         <el-tag v-if="selectedCount" type="primary" effect="plain">已选 {{ selectedCount }} 台</el-tag>

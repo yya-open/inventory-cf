@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell inventory-log-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">电脑/显示器仓</div>
-        <div class="ui-page-heading__title">显示器盘点记录</div>
-        <div class="ui-page-heading__desc">查看本轮和历史显示器盘点记录，定位异常并跳转台账处理。</div>
-      </div>
       <div class="inventory-log-meta">
         <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
         <el-tag v-if="selectedRows.length" type="primary" effect="plain">已选 {{ selectedRows.length }} 条</el-tag>

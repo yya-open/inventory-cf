@@ -1,11 +1,7 @@
 <template>
   <div class="ui-page-shell import-items-page">
   <el-card class="import-items-card ui-panel" shadow="never">
-    <div class="u-row-between u-flex-wrap u-gap-10 u-mb-12">
-      <div>
-        <span class="u-fw-700">Excel 导入配件</span>
-        <span class="u-ml-10 u-text-subtle u-fs-12">支持字段：SKU（可留空自动生成）、名称、品牌、型号、分类、单位、预警值</span>
-      </div>
+    <div class="u-row-wrap-10 u-mb-12">
       <div class="u-row-wrap-10">
         <el-button @click="downloadTemplate">
           下载模板

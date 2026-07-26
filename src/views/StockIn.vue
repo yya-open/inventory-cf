@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell stock-operation-page">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">库存操作</div>
-        <h1>配件入库</h1>
-        <p>为指定配件登记入库数量、单价、来源和备注。</p>
-      </div>
       <el-button @click="backToStock">返回库存</el-button>
     </div>
 

@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell pc-operation-page">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">电脑资产</div>
-        <h1>电脑回收/归还</h1>
-        <p>处理已领用电脑的归还或回收状态，支持 Excel 批量操作。</p>
-      </div>
       <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
     </div>
 

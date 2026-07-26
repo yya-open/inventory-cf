@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell settings-page">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <h1>系统配置</h1>
-        <p>把默认规则、可维护字典和盘点体验统一收口，修改后即时影响台账与扫码体验。</p>
-      </div>
       <div class="settings-actions">
         <el-button @click="reload" :loading="loading">刷新</el-button>
         <el-button type="primary" :loading="saving" @click="save">保存配置</el-button>

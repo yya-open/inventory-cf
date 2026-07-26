@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell ownership-page">
     <section class="ui-page-heading ownership-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">资产归属</div>
-        <div class="ui-page-heading__title">人员 / 部门资产视图</div>
-        <div class="ui-page-heading__desc">按当前领用人或部门查看电脑与显示器，并追踪单台资产的完整生命周期。</div>
-      </div>
       <div class="ownership-heading__meta">
         <el-tag type="info" effect="plain">分组 {{ overview.summary.groups }}</el-tag>
         <el-tag type="primary" effect="plain">资产 {{ overview.summary.total }}</el-tag>

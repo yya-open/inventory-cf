@@ -3,9 +3,6 @@
     <el-card class="batch-tx-card ui-panel" shadow="never">
       <template #header>
         <div class="batch-tx-header">
-          <div class="u-fw-700">
-            批量出入库
-          </div>
           <div class="batch-tx-header-actions">
             <el-button @click="downloadTemplate">
               下载模板

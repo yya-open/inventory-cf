@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell stocktake-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">配件仓</div>
-        <div class="ui-page-heading__title">库存盘点</div>
-        <div class="ui-page-heading__desc">创建盘点单、导入盘点结果、应用差异调整并保留可撤销记录。</div>
-      </div>
       <div class="stocktake-heading-actions">
         <el-button
           type="primary"

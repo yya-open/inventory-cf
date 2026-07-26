@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell tx-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">配件仓</div>
-        <div class="ui-page-heading__title">出入库明细</div>
-        <div class="ui-page-heading__desc">追溯配件入库、出库、盘点调整和撤销盘点记录。</div>
-      </div>
       <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
     </div>
 

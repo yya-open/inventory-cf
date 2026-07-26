@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell warnings-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">预警中心</div>
-        <div class="ui-page-heading__title">配件库存预警</div>
-        <div class="ui-page-heading__desc">识别库存低于预警值的配件，快速入库、追溯明细或批量调整预警阈值。</div>
-      </div>
       <div class="warning-heading-meta">
         <el-tag :type="filters.only_alert ? 'danger' : 'info'" effect="plain">
           {{ filters.only_alert ? "预警" : "列表" }} {{ total }} 条

@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell pc-operation-page">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">电脑资产</div>
-        <h1>电脑入库</h1>
-        <p>录入电脑基础信息，支持单台登记和 Excel 批量入库。</p>
-      </div>
       <el-button @click="$router.push('/pc/assets')">返回台账</el-button>
     </div>
 

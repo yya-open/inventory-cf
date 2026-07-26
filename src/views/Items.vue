@@ -1,13 +1,5 @@
 <template>
   <div class="ui-page-shell items-page">
-    <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">基础资料</div>
-        <h1>配件资料</h1>
-        <p>维护配件 SKU、名称、分类、单位和预警值，支持 Excel 导入。</p>
-      </div>
-    </div>
-
   <el-card class="items-card ui-panel" shadow="never">
     <div class="u-flex u-gap-12 u-items-center u-flex-wrap u-mb-12">
       <el-input

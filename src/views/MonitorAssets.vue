@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell ledger-page ledger-page--monitor">
     <section class="ui-page-heading ledger-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">电脑/显示器仓</div>
-        <div class="ui-page-heading__title">显示器台账</div>
-        <div class="ui-page-heading__desc">统一维护显示器资产、位置、领用信息、二维码与盘点异常处理。</div>
-      </div>
       <div class="ledger-page-heading__meta">
         <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>
         <el-tag v-if="selectedCount" type="primary" effect="plain">已选 {{ selectedCount }} 台</el-tag>

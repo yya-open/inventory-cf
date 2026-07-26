@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell pc-age-warning-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">电脑仓</div>
-        <div class="ui-page-heading__title">报废预警</div>
-        <div class="ui-page-heading__desc">筛选超过使用年限的电脑，批量生成报废单或导出清单。</div>
-      </div>
       <div class="age-warning-meta">
         <el-tag type="warning" effect="plain">超过 {{ ageYears }} 年</el-tag>
         <el-tag type="info" effect="plain">共 {{ total }} 台</el-tag>

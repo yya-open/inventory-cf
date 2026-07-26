@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell monitor-tx-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">电脑/显示器仓</div>
-        <div class="ui-page-heading__title">显示器出入库明细</div>
-        <div class="ui-page-heading__desc">追溯显示器入库、出库、归还、调拨、报废和当前生效记录。</div>
-      </div>
       <div class="tx-heading-meta">
         <el-tag type="info" effect="plain">共 {{ total }} 条</el-tag>
         <el-tag v-if="selected.length" type="primary" effect="plain">已选 {{ selected.length }} 条</el-tag>
