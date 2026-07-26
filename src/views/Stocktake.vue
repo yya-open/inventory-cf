@@ -117,7 +117,7 @@
             >
               <template #default="{ row }">
                 <el-tag
-                  :type="row.status==='DRAFT' ? 'info' : ((row.status==='APPLYING' || row.status==='ROLLING') ? 'warning' : 'success')"
+                  :type="stocktakeStatusTagType(row.status)"
                   size="small"
                 >
                   {{ row.status }}
@@ -210,7 +210,7 @@
                 </div>
                 <div class="sub">
                   <el-tag
-                    :type="detail.stocktake.status==='DRAFT' ? 'info' : ((detail.stocktake.status==='APPLYING' || detail.stocktake.status==='ROLLING') ? 'warning' : 'success')"
+                    :type="stocktakeStatusTagType(detail.stocktake.status)"
                     size="small"
                   >
                     {{ detail.stocktake.status }}
@@ -351,9 +351,9 @@
                 width="110"
               >
                 <template #default="{ row }">
-                  <el-tag v-if="row.counted_qty===null || row.counted_qty===undefined || row.counted_qty===''" size="small" type="info" effect="plain">未盘</el-tag>
-                  <el-tag v-else-if="Number(row.diff_qty || 0) > 0" size="small" type="success">+{{ Number(row.diff_qty || 0) }}</el-tag>
-                  <el-tag v-else-if="Number(row.diff_qty || 0) < 0" size="small" type="danger">{{ Number(row.diff_qty || 0) }}</el-tag>
+                  <el-tag v-if="classifyStocktakeLine(row) === 'pending'" size="small" type="info" effect="plain">未盘</el-tag>
+                  <el-tag v-else-if="classifyStocktakeLine(row) === 'increase'" size="small" type="success">+{{ Number(row.diff_qty || 0) }}</el-tag>
+                  <el-tag v-else-if="classifyStocktakeLine(row) === 'decrease'" size="small" type="danger">{{ Number(row.diff_qty || 0) }}</el-tag>
                   <el-tag v-else size="small" type="info">0</el-tag>
                 </template>
               </el-table-column>
@@ -425,10 +425,20 @@ import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { notifyDownloadStarted } from "../utils/operationFeedback";
-import { apiGet, apiPost, isApiErrorCode } from "../api/client";
+import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
 import { buildDirtyImportLines, normalizeCountedQtyValue } from '../utils/stocktakeDirtyLines';
+import {
+  classifyStocktakeLine,
+  isCountedEmpty,
+  stocktakeStatusTagType,
+  canDeleteStocktake,
+  summarizeStocktakeLines,
+  stocktakeLineMatches,
+  stocktakeErrorHint,
+  STOCKTAKE_DIFF_LABEL,
+} from '../utils/stocktakeView';
 
 const warehouseId = ref(1);
 const isAdmin = computed(() => can("admin"));
@@ -487,18 +497,7 @@ const dirty = ref<Set<number>>(new Set());
 
 const filteredLines = computed(()=>{
   if (!detail.value) return [];
-  const k = lineKeyword.value.trim().toLowerCase();
-  return detail.value.lines.filter((x:any)=>{
-    const hitKeyword = !k || String(x.sku||"").toLowerCase().includes(k) || String(x.name||"").toLowerCase().includes(k);
-    if (!hitKeyword) return false;
-    const diff = Number(x.diff_qty || 0);
-    const counted = !(x.counted_qty === null || x.counted_qty === undefined || x.counted_qty === '');
-    if (lineFilter.value === 'changed') return counted && diff !== 0;
-    if (lineFilter.value === 'increase') return counted && diff > 0;
-    if (lineFilter.value === 'decrease') return counted && diff < 0;
-    if (lineFilter.value === 'pending') return !counted;
-    return true;
-  });
+  return detail.value.lines.filter((x:any) => stocktakeLineMatches(x, lineKeyword.value, lineFilter.value));
 });
 
 const selectedRows = computed(() => {
@@ -507,18 +506,7 @@ const selectedRows = computed(() => {
   return filteredLines.value.filter((row: any) => ids.has(Number(row?.id || 0)));
 });
 
-const stocktakePreview = computed(() => {
-  const lines = detail.value?.lines || [];
-  const counted = lines.filter((line:any) => line.counted_qty !== null && line.counted_qty !== undefined && line.counted_qty !== '');
-  const changed = counted.filter((line:any) => Number(line.diff_qty || 0) !== 0);
-  return {
-    total: lines.length,
-    counted: counted.length,
-    changed: changed.length,
-    increase: changed.filter((line:any) => Number(line.diff_qty || 0) > 0).length,
-    decrease: changed.filter((line:any) => Number(line.diff_qty || 0) < 0).length,
-  };
-});
+const stocktakePreview = computed(() => summarizeStocktakeLines(detail.value?.lines || []));
 
 const stocktakeSummaryItems = computed(() => ([
   { key: 'total', label: '盘点明细', value: stocktakePreview.value.total, className: '' },
@@ -531,33 +519,10 @@ const stocktakeSummaryItems = computed(() => ([
 const applyPreviewRows = computed(() => {
   const lines = detail.value?.lines || [];
   return lines
-    .map((line: any) => {
-      const counted = !(line.counted_qty === null || line.counted_qty === undefined || line.counted_qty === '');
-      const diff = Number(line.diff_qty || 0);
-      const diffType = !counted ? 'pending' : diff > 0 ? 'increase' : diff < 0 ? 'decrease' : 'same';
-      return { ...line, diffType };
-    })
+    .map((line: any) => ({ ...line, diffType: classifyStocktakeLine(line) }))
     .filter((line: any) => line.diffType !== 'same')
     .slice(0, 20);
 });
-
-function stocktakeErrorHint(e: unknown) {
-  if (isApiErrorCode(e, 'MISSING_STOCKTAKE_ID')) return '缺少盘点单标识，请刷新后重试';
-  if (isApiErrorCode(e, 'STOCKTAKE_NOT_FOUND')) return '盘点单不存在或已删除，请刷新列表';
-  if (isApiErrorCode(e, 'STOCKTAKE_NOT_DRAFT')) return '当前盘点单不是草稿状态，无法执行该操作';
-  if (isApiErrorCode(e, 'STOCKTAKE_ALREADY_APPLIED')) return '该盘点单已被应用，请先刷新详情';
-  if (isApiErrorCode(e, 'STOCKTAKE_NOT_APPLIED')) return '仅已应用盘点单可撤销';
-  if (isApiErrorCode(e, 'STOCKTAKE_INVALID_STATUS')) return '盘点单状态异常，请刷新后重试';
-  if (isApiErrorCode(e, 'STOCKTAKE_STATUS_CHANGED')) return '盘点单状态已变化，请刷新后重试';
-  if (isApiErrorCode(e, 'STOCKTAKE_APPLY_NOT_FINALIZED')) return '盘点应用未完成，请稍后刷新核对';
-  if (isApiErrorCode(e, 'EMPTY_IMPORT_LINES')) return '导入内容为空，请检查文件后重试';
-  if (isApiErrorCode(e, 'EMPTY_SKU')) return '导入数据缺少有效 SKU，请检查模板内容';
-  return '';
-}
-
-function canDeleteStocktake(row: any) {
-  return ['DRAFT', 'APPLIED'].includes(String(row?.status || ''));
-}
 
 function onDetailSelectionChange(rows: any[]) {
   selectedIds.value = new Set((rows || []).map((row: any) => Number(row?.id || 0)).filter((id: number) => Number.isFinite(id) && id > 0));
@@ -614,10 +579,10 @@ function rowClassName({ row }: any){
 }
 
 function detailRowClassName({ row }: any) {
-  if (row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '') return 'detail-row-pending';
-  const diff = Number(row.diff_qty || 0);
-  if (diff > 0) return 'detail-row-increase';
-  if (diff < 0) return 'detail-row-decrease';
+  const type = classifyStocktakeLine(row);
+  if (type === 'pending') return 'detail-row-pending';
+  if (type === 'increase') return 'detail-row-increase';
+  if (type === 'decrease') return 'detail-row-decrease';
   return '';
 }
 
@@ -685,7 +650,7 @@ async function deleteStocktake(row:any){
 
 
 function markDirty(row:any){
-  if (row.counted_qty===null || row.counted_qty===undefined || row.counted_qty==="") {
+  if (isCountedEmpty(row.counted_qty)) {
     row.diff_qty = null;
   } else {
     row.diff_qty = Number(row.counted_qty) - Number(row.system_qty);
@@ -814,8 +779,8 @@ async function exportStocktakeReport(){
     SKU: row.sku,
     名称: row.name,
     系统数量: row.system_qty,
-    盘点数量: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : row.counted_qty,
-    差异类型: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : Number(row.diff_qty || 0) > 0 ? '盘盈' : Number(row.diff_qty || 0) < 0 ? '盘亏' : '无差异',
+    盘点数量: isCountedEmpty(row.counted_qty) ? '未盘' : row.counted_qty,
+    差异类型: STOCKTAKE_DIFF_LABEL[classifyStocktakeLine(row)],
     差异数量: row.diff_qty ?? '',
     更新时间: formatBeijingDateTime(row.updated_at),
   }));
@@ -847,8 +812,8 @@ async function exportFilteredLines(){
     ],
     rows: filteredLines.value.map((row:any) => ({
       ...row,
-      counted_qty_text: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : row.counted_qty,
-      diff_type: row.counted_qty === null || row.counted_qty === undefined || row.counted_qty === '' ? '未盘' : Number(row.diff_qty || 0) > 0 ? '盘盈' : Number(row.diff_qty || 0) < 0 ? '盘亏' : '无差异',
+      counted_qty_text: isCountedEmpty(row.counted_qty) ? '未盘' : row.counted_qty,
+      diff_type: STOCKTAKE_DIFF_LABEL[classifyStocktakeLine(row)],
       updated_at_text: formatBeijingDateTime(row.updated_at),
     })),
   });
