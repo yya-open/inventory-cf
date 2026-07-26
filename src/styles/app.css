@@ -159,7 +159,7 @@ html, body, #app {
 .el-dialog__title {
   color: var(--ink);
   font-size: 17px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.3;
 }
 
@@ -211,7 +211,7 @@ html, body, #app {
 .password-dialog .el-dialog__title {
   color: var(--ink);
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -725,7 +725,7 @@ html, body, #app {
 
 .ledger-drawer__title {
   font-size: 20px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -841,7 +841,7 @@ html, body, #app {
 
 .ledger-detail-hero__title {
   font-size: 18px;
-  font-weight: 700;
+  font-weight: 600;
   color: var(--ink);
 }
 
@@ -1250,7 +1250,7 @@ html, body, #app {
 .monitor-asset-form-dialog .el-dialog__footer{padding:14px 24px 18px;border-top:1px solid var(--border-soft)}
 .monitor-asset-form-dialog__header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
 .monitor-asset-form-dialog__eyebrow{font-size:12px;letter-spacing:.02em;color:var(--subtle);font-weight:700}
-.monitor-asset-form-dialog__title{margin-top:4px;font-size:24px;font-weight:700;color:var(--ink)}
+.monitor-asset-form-dialog__title{margin-top:4px;font-size:24px;font-weight:600;color:var(--ink)}
 .monitor-asset-form-dialog__desc{margin-top:6px;font-size:13px;line-height:1.7;color:var(--muted)}
 .monitor-asset-form-dialog__sticky-actions{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;gap:12px;padding:14px 0 10px;background:var(--surface)}
 .monitor-asset-form-dialog__footer{display:flex;align-items:center;justify-content:space-between;gap:16px}

@@ -22,6 +22,7 @@
 
 .el-table {
   font-size: 13px;
+  font-variant-numeric: tabular-nums;
 }
 
 .el-table th.el-table__cell,
@@ -58,14 +59,14 @@
 .ui-page-heading__kicker {
   color: var(--subtle);
   font-size: 12px;
-  font-weight: 800;
+  font-weight: 600;
 }
 
 .ui-page-heading__title {
   margin-top: 4px;
   color: var(--ink);
   font-size: 22px;
-  font-weight: 800;
+  font-weight: 600;
   line-height: 1.25;
 }
 
@@ -112,7 +113,8 @@
 }
 
 .ui-status-number {
-  font-weight: 800;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
 }
 
 .ui-status-number.is-warning {
@@ -164,9 +166,10 @@
 }
 
 /* ---- 台账单元格 hover 增强（皮肤本体见 ledger-table-shared.css） ---- */
+/* 文字变品牌色是“可点击链接”的语义，单元格不一定可点，改用墨色避免误导 */
 .asset-cell:hover .asset-main,
 .asset-cell:hover .cell-primary {
-  color: var(--brand);
+  color: var(--ink);
 }
 
 @media (max-width: 1100px) {

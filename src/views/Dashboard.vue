@@ -2,11 +2,7 @@
   <div class="ui-page-shell dashboard-page">
     <div class="dashboard-shell">
       <section class="dashboard-hero">
-        <div>
-          <div class="dashboard-kicker">首页</div>
-          <div class="dashboard-title">工作台</div>
-          <div class="dashboard-subtitle">查看待办、常用入口和当前仓域的基本情况。</div>
-        </div>
+        <div class="dashboard-title">工作台</div>
         <div class="dashboard-toolbar">
           <el-segmented v-if="reportModeOptions.length" v-model="reportMode" :options="reportModeOptions" size="small" />
           <el-tag v-else type="warning">当前数据范围不可用</el-tag>
@@ -39,21 +35,21 @@
                   <div class="message-item__title">待确认异常</div>
                   <div class="message-item__hint">需要先处理</div>
                 </div>
-                <strong>{{ data.stability?.active_alert_count ?? 0 }}</strong>
+                <strong>{{ formatQty(data.stability?.active_alert_count ?? 0) }}</strong>
               </div>
               <div class="message-item">
                 <div>
                   <div class="message-item__title">未闭环问题</div>
                   <div class="message-item__hint">盘点或演练</div>
                 </div>
-                <strong>{{ data.stability?.open_drill_issue_count ?? 0 }}</strong>
+                <strong>{{ formatQty(data.stability?.open_drill_issue_count ?? 0) }}</strong>
               </div>
               <div class="message-item">
                 <div>
                   <div class="message-item__title">逾期问题</div>
                   <div class="message-item__hint">优先跟进</div>
                 </div>
-                <strong>{{ data.stability?.overdue_drill_issue_count ?? 0 }}</strong>
+                <strong>{{ formatQty(data.stability?.overdue_drill_issue_count ?? 0) }}</strong>
               </div>
             </div>
           </el-card>
@@ -100,7 +96,7 @@
               <div v-for="r in seriesFilled.slice(0, 7)" :key="r.day" class="chart-row">
                 <div class="chart-row__day">{{ r.day }}</div>
                 <div class="chart-row__bar-bg"><div :style="{ width: barWidth(r.qty) }" class="chart-row__bar-fill" /></div>
-                <div class="chart-row__qty">{{ r.qty }}</div>
+                <div class="chart-row__qty">{{ formatQty(r.qty) }}</div>
               </div>
             </div>
           </el-card>
@@ -112,7 +108,7 @@
             <el-table :data="topTable" size="small" border height="240">
               <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
               <el-table-column prop="name" label="名称" min-width="140" />
-              <el-table-column prop="qty" label="数量" width="80" />
+              <el-table-column prop="qty" label="数量" width="80" :formatter="qtyCellFormatter" />
             </el-table>
           </el-card>
         </div>
@@ -120,13 +116,13 @@
         <div class="dashboard-grid dashboard-grid--secondary">
           <el-card shadow="never">
             <div class="metric-card__label">归档信息</div>
-            <div class="metric-card__value metric-card__value--mid">{{ governanceArchiveCount }}</div>
+            <div class="metric-card__value metric-card__value--mid">{{ formatQty(governanceArchiveCount) }}</div>
             <div class="metric-card__desc">当前归档资产</div>
           </el-card>
           <el-card shadow="never">
             <div class="metric-card__label">异常</div>
-            <div class="metric-card__value metric-card__value--mid">{{ data.stability?.active_alert_count ?? 0 }}</div>
-            <div class="metric-card__desc">失败任务 {{ data.stability?.failed_async_jobs ?? 0 }}</div>
+            <div class="metric-card__value metric-card__value--mid">{{ formatQty(data.stability?.active_alert_count ?? 0) }}</div>
+            <div class="metric-card__desc">失败任务 {{ formatQty(data.stability?.failed_async_jobs ?? 0) }}</div>
           </el-card>
         </div>
       </div>
@@ -134,7 +130,9 @@
       <div v-else-if="!reportModeOptions.length" class="dashboard-empty">
         <el-empty description="当前账号的数据范围不可用。请联系管理员调整仓域权限。" />
       </div>
-      <div v-else class="dashboard-loading">加载中…</div>
+      <div v-else class="dashboard-loading">
+        <el-skeleton :rows="8" animated />
+      </div>
     </div>
   </div>
 </template>
@@ -147,6 +145,7 @@ import { apiGet } from "../api/client";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
 import { dataScopeLabel, scopeModeOptions } from "../utils/dataScope";
+import { formatQty } from "../utils/format";
 import { Document, Upload, RefreshLeft, Files, Stamp, SetUp } from '@element-plus/icons-vue';
 
 const auth = useAuth();
@@ -202,9 +201,9 @@ const typeOptions = computed(() => {
 const activeTypeLabel = computed(() => ({ OUT: '出库', IN: '入库', RETURN: '归还', RECYCLE: '回收', SCRAP: '报废', TRANSFER: '调拨' } as Record<string, string>)[activeType.value] || activeType.value);
 const governanceArchiveCount = computed(() => Number(data.value?.governance?.archived_pc_count || 0) + Number(data.value?.governance?.archived_monitor_count || 0));
 const summaryCards = computed(() => [
-  { label: '入库数量', value: data.value?.summary?.in_qty ?? 0 },
-  { label: '出库数量', value: data.value?.summary?.out_qty ?? 0 },
-  { label: '异常告警', value: data.value?.stability?.active_alert_count ?? 0 },
+  { label: '入库数量', value: formatQty(data.value?.summary?.in_qty ?? 0) },
+  { label: '出库数量', value: formatQty(data.value?.summary?.out_qty ?? 0) },
+  { label: '异常告警', value: formatQty(data.value?.stability?.active_alert_count ?? 0) },
 ]);
 
 const shortcutCards = computed(() => ([
@@ -217,11 +216,13 @@ const shortcutCards = computed(() => ([
 ]));
 
 const businessMessages = computed(() => ([
-  { label: '待确认异常', value: data.value?.stability?.active_alert_count ?? 0, hint: '需要先处理' },
-  { label: '未闭环问题', value: data.value?.stability?.open_drill_issue_count ?? 0, hint: '盘点或演练' },
-  { label: '逾期问题', value: data.value?.stability?.overdue_drill_issue_count ?? 0, hint: '优先跟进' },
-  { label: '归档资产', value: governanceArchiveCount.value, hint: '当前归档数量' },
+  { label: '待确认异常', value: formatQty(data.value?.stability?.active_alert_count ?? 0), hint: '需要先处理' },
+  { label: '未闭环问题', value: formatQty(data.value?.stability?.open_drill_issue_count ?? 0), hint: '盘点或演练' },
+  { label: '逾期问题', value: formatQty(data.value?.stability?.overdue_drill_issue_count ?? 0), hint: '优先跟进' },
+  { label: '归档资产', value: formatQty(governanceArchiveCount.value), hint: '当前归档数量' },
 ]));
+
+const qtyCellFormatter = (row: any) => formatQty(row?.qty);
 
 function readDashboardPrefs() {
   if (typeof window === 'undefined') return;
@@ -548,35 +549,21 @@ onMounted(async () => {
 .dashboard-hero {
   display: flex;
   justify-content: space-between;
-  align-items: end;
+  align-items: center;
   gap: 16px;
   flex-wrap: wrap;
-  padding: 18px;
+  padding: 12px 16px;
   border: 1px solid var(--border);
   border-radius: var(--radius-lg);
   background: var(--surface);
   box-shadow: var(--shadow-xs);
 }
 
-.dashboard-kicker {
-  color: var(--subtle);
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: 0.06em;
-}
-
 .dashboard-title {
-  margin-top: 4px;
-  font-size: 24px;
-  font-weight: 700;
+  font-size: 18px;
+  font-weight: 600;
   color: var(--ink);
   line-height: 1.2;
-}
-
-.dashboard-subtitle {
-  margin-top: 6px;
-  color: var(--muted);
-  font-size: 13px;
 }
 
 .message-list {
@@ -685,7 +672,6 @@ onMounted(async () => {
 .dashboard-content {
   display: grid;
   gap: 14px;
-  min-height: 560px;
 }
 
 .dashboard-meta {
@@ -703,12 +689,7 @@ onMounted(async () => {
   background: var(--surface);
 }
 
-.dashboard-messages {
-  display: grid;
-  gap: 14px;
-  grid-template-columns: repeat(4, minmax(0, 1fr));
-}
-
+.dashboard-messages,
 .dashboard-metrics {
   display: grid;
   gap: 14px;
@@ -738,6 +719,7 @@ onMounted(async () => {
   margin-top: 6px;
   font-size: 28px;
   font-weight: 700;
+  font-variant-numeric: tabular-nums;
   color: var(--ink);
   line-height: 1.15;
 }
@@ -801,6 +783,7 @@ onMounted(async () => {
   text-align: right;
   color: var(--ink-secondary);
   font-size: 12px;
+  font-variant-numeric: tabular-nums;
 }
 
 .dashboard-subtable {
@@ -833,19 +816,13 @@ onMounted(async () => {
 
   .dashboard-hero {
     align-items: stretch;
-    padding: 14px;
-  }
-
-  .dashboard-title {
-    font-size: 22px;
+    padding: 12px 14px;
   }
 
   .dashboard-days {
     width: 132px;
   }
-}
 
-@media (max-width: 768px) {
   .shortcut-item {
     padding: 10px 12px;
   }

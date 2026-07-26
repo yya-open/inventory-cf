@@ -5,6 +5,19 @@ const buildId = new Date().toISOString().replace(/[-:.TZ]/g, '').slice(0, 14);
 
 export default defineConfig({
   plugins: [vue(), {
+    // 把 Element Plus 的官方 css 整体包进 @layer element-plus。
+    // CSS Cascade Layers 规则：未分层样式永远压过已分层样式，与源码顺序/特异性无关。
+    // 于是无论 EP 的 css 是同步、异步 chunk 还是延迟注入，我们（未分层）的样式都稳压它，
+    // 不再依赖 !important 去压 EP 官方规则。theme-chalk 无 @charset / @import，可安全整体包裹。
+    name: 'wrap-element-plus-in-layer',
+    enforce: 'pre',
+    transform(code, id) {
+      if (!id.includes('element-plus')) return null;
+      if (!/\.css(\?|$)/.test(id)) return null;
+      if (code.trimStart().startsWith('@layer element-plus')) return null;
+      return { code: `@layer element-plus {\n${code}\n}`, map: null };
+    },
+  }, {
     name: 'inject-build-id-meta',
     transformIndexHtml(html) {
       return html.replace('</head>', `  <meta name="inventory-build-id" content="${buildId}" />\n</head>`);
