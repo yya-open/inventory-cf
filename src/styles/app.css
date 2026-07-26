@@ -719,7 +719,7 @@ html, body, #app {
 .ledger-drawer__eyebrow {
   font-size: 11px;
   font-weight: 700;
-  letter-spacing: 0.12em;
+  letter-spacing: 0.02em;
   color: var(--subtle);
 }
 
@@ -1170,12 +1170,12 @@ html, body, #app {
 
 .ledger-drawer__ghost-btn {
   min-width: 88px;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
 }
 
 .ledger-drawer__primary-btn {
   min-width: 112px;
-  border-radius: 999px;
+  border-radius: var(--radius-md);
 }
 
 .ledger-drawer__footer--monitor-form {
@@ -1249,7 +1249,7 @@ html, body, #app {
 .monitor-asset-form-dialog .el-dialog__body{padding:0 24px 12px;max-height:70vh;overflow:auto}
 .monitor-asset-form-dialog .el-dialog__footer{padding:14px 24px 18px;border-top:1px solid var(--border-soft)}
 .monitor-asset-form-dialog__header{display:flex;align-items:flex-start;justify-content:space-between;gap:16px}
-.monitor-asset-form-dialog__eyebrow{font-size:12px;letter-spacing:.12em;color:var(--subtle);font-weight:700}
+.monitor-asset-form-dialog__eyebrow{font-size:12px;letter-spacing:.02em;color:var(--subtle);font-weight:700}
 .monitor-asset-form-dialog__title{margin-top:4px;font-size:24px;font-weight:700;color:var(--ink)}
 .monitor-asset-form-dialog__desc{margin-top:6px;font-size:13px;line-height:1.7;color:var(--muted)}
 .monitor-asset-form-dialog__sticky-actions{position:sticky;top:0;z-index:5;display:flex;justify-content:flex-end;gap:12px;padding:14px 0 10px;background:var(--surface)}

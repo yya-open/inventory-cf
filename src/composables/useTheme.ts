@@ -24,6 +24,9 @@ function applyTheme(next: ThemeMode) {
   mode.value = next;
   if (typeof document === 'undefined') return;
   document.documentElement.dataset.theme = next;
+  // 同步浏览器地址栏/窗口着色，与 tokens.css 的 --bg 保持一致
+  const themeColor = document.querySelector<HTMLMetaElement>('meta[name="theme-color"]');
+  if (themeColor) themeColor.content = next === 'dark' ? '#11151c' : '#f4f5f7';
   try {
     window.localStorage.setItem(THEME_STORAGE_KEY, next);
   } catch {

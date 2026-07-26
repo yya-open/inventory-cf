@@ -8,13 +8,16 @@
  * ============================================================ */
 
 :root {
-  /* ---- 品牌色 ---- */
-  --brand: #4f46e5;
-  --brand-hover: #4338ca;
-  --brand-active: #3730a3;
+  /* 让 UA 原生控件（滚动条/表单/自动填充）跟随浅色主题 */
+  color-scheme: light;
+
+  /* ---- 品牌色（Ant geekblue 色系，沉稳企业蓝） ---- */
+  --brand: #2f54eb;
+  --brand-hover: #1d39c4;
+  --brand-active: #10239e;
   --on-brand: #ffffff;
-  --brand-tint: #eef0fe;
-  --brand-soft: rgba(79, 70, 229, 0.08);
+  --brand-tint: #f0f5ff;
+  --brand-soft: rgba(47, 84, 235, 0.08);
   --skeleton-surface: rgba(244, 245, 247, 0.9);
   --skeleton-block: #e6e9ef;
 
@@ -61,8 +64,8 @@
   --radius-xs: 4px;
   --radius-sm: 6px;
   --radius-md: 8px;
-  --radius-lg: 12px;
-  --radius-xl: 16px;
+  --radius-lg: 10px;
+  --radius-xl: 12px;
 
   /* ---- 阴影 ---- */
   --shadow-xs: 0 1px 2px rgba(16, 24, 40, 0.05);
@@ -77,10 +80,10 @@
    * Element Plus 变量映射
    * ====================================================== */
   --el-color-primary: var(--brand);
-  --el-color-primary-light-3: #7a76ec;
-  --el-color-primary-light-5: #a5a2f2;
-  --el-color-primary-light-7: #cfcff8;
-  --el-color-primary-light-8: #dfdefa;
+  --el-color-primary-light-3: #597ef7;
+  --el-color-primary-light-5: #85a5ff;
+  --el-color-primary-light-7: #adc6ff;
+  --el-color-primary-light-8: #d6e4ff;
   --el-color-primary-light-9: var(--brand-tint);
   --el-color-primary-dark-2: var(--brand-hover);
   --el-color-danger: var(--danger);
@@ -112,12 +115,14 @@
 
 /* ---- 深色主题：只重映射语义令牌，组件样式不感知主题 ---- */
 :root[data-theme="dark"] {
-  --brand: #818cf8;
-  --brand-hover: #a5b4fc;
-  --brand-active: #c7d2fe;
+  color-scheme: dark;
+
+  --brand: #85a5ff;
+  --brand-hover: #adc6ff;
+  --brand-active: #d6e4ff;
   --on-brand: #161a2a;
-  --brand-tint: #252b55;
-  --brand-soft: rgba(129, 140, 248, 0.16);
+  --brand-tint: #1b2342;
+  --brand-soft: rgba(133, 165, 255, 0.16);
   --skeleton-surface: rgba(17, 21, 28, 0.92);
   --skeleton-block: #2a3340;
 
@@ -162,10 +167,10 @@
   --shadow-lg: 0 20px 48px rgba(0, 0, 0, 0.42);
 
   --el-color-primary: var(--brand);
-  --el-color-primary-light-3: #a5b4fc;
-  --el-color-primary-light-5: #818cf8;
-  --el-color-primary-light-7: #4f568c;
-  --el-color-primary-light-8: #383e6d;
+  --el-color-primary-light-3: #adc6ff;
+  --el-color-primary-light-5: #85a5ff;
+  --el-color-primary-light-7: #43538f;
+  --el-color-primary-light-8: #2e3b6e;
   --el-color-primary-light-9: var(--brand-tint);
   --el-color-primary-dark-2: var(--brand-hover);
   --el-color-danger: var(--danger);

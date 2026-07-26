@@ -412,7 +412,13 @@
 
 .app-theme-toggle {
   flex: 0 0 auto;
+  margin-left: 0;
   color: var(--ink-secondary);
+}
+
+/* 主题切换由 switch 改为图标按钮后，避免 Element 默认的相邻按钮 margin 叠加到 gap 上 */
+.app-header__actions .el-button + .el-button {
+  margin-left: 0;
 }
 
 

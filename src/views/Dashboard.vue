@@ -109,7 +109,7 @@
             <template #header>
               <div class="section-header"><b>{{ activeTypeLabel }} Top 10</b></div>
             </template>
-            <el-table :data="topTable.slice(0, 5)" size="small" border height="240">
+            <el-table :data="topTable" size="small" border height="240">
               <el-table-column prop="sku" :label="reportMode==='parts' ? 'SKU' : '型号'" width="140" />
               <el-table-column prop="name" label="名称" min-width="140" />
               <el-table-column prop="qty" label="数量" width="80" />

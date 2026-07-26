@@ -14,6 +14,7 @@
         <el-form label-position="top" @submit.prevent>
           <el-form-item label="账号">
             <el-input
+              ref="usernameInputRef"
               v-model="username"
               placeholder="请输入账号"
               autocomplete="username"
@@ -27,8 +28,10 @@
               show-password
               placeholder="请输入密码"
               autocomplete="current-password"
+              @keyup="updateCapsLockHint"
               @keyup.enter="doLogin"
             />
+            <div v-if="capsLockOn" class="login-caps-hint">大写锁定（Caps Lock）已开启</div>
           </el-form-item>
 
           <div v-show="siteKey && requireCaptcha" class="login-turnstile">
@@ -72,7 +75,7 @@
 </template>
 
 <script setup lang="ts">
-import { nextTick, onBeforeUnmount, ref } from "vue";
+import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "../utils/el-message";
 import { loginWithCaptcha, useAuth } from "../store/auth";
@@ -87,6 +90,16 @@ const auth = useAuth();
 const username = ref("");
 const password = ref("");
 const loading = ref(false);
+const usernameInputRef = ref<{ focus?: () => void } | null>(null);
+const capsLockOn = ref(false);
+
+function updateCapsLockHint(event: KeyboardEvent) {
+  capsLockOn.value = typeof event.getModifierState === "function" && event.getModifierState("CapsLock");
+}
+
+onMounted(() => {
+  usernameInputRef.value?.focus?.();
+});
 
 const siteKey = (import.meta as any).env?.VITE_TURNSTILE_SITEKEY || "";
 const requireCaptcha = ref(false);
@@ -320,10 +333,11 @@ async function changePassword() {
   min-height: 65px;
 }
 
-.password-tip {
-  color: var(--subtle);
-  font-size: 12px;
+.login-caps-hint {
   margin-top: 6px;
+  color: var(--warning);
+  font-size: 12px;
+  line-height: 1.5;
 }
 
 :deep(.login-card .el-form-item__label) {

@@ -55,7 +55,9 @@
       >
         <div class="app-mobile-drawer__header">
           <div class="app-mobile-drawer__title">导航菜单</div>
-          <el-button circle plain class="app-mobile-drawer__close" @click="closeMobileSidebar">×</el-button>
+          <el-button circle plain class="app-mobile-drawer__close" aria-label="关闭导航菜单" @click="closeMobileSidebar">
+            <el-icon><Close /></el-icon>
+          </el-button>
         </div>
         <AppSidebarMenu
           :is-system="isSystem"
@@ -85,9 +87,10 @@
               v-if="isMobile"
               class="app-header__menu"
               circle
+              aria-label="打开导航菜单"
               @click="openMobileSidebar"
             >
-              ☰
+              <el-icon><Menu /></el-icon>
             </el-button>
             <div class="app-header__title-group">
               <div class="app-header__title-row">
@@ -132,9 +135,10 @@
               circle
               plain
               :aria-expanded="mobileHeaderExpanded"
+              :aria-label="mobileHeaderExpanded ? '收起顶栏操作区' : '展开顶栏操作区'"
               @click="toggleMobileHeader"
             >
-              {{ mobileHeaderExpanded ? '⌃' : '⌄' }}
+              <el-icon><ArrowUp v-if="mobileHeaderExpanded" /><ArrowDown v-else /></el-icon>
             </el-button>
           </div>
 
@@ -149,13 +153,16 @@
             >
               {{ auth.user.username }}（{{ roleText(auth.user.role) }}）
             </div>
-            <el-switch
+            <el-button
               class="app-theme-toggle"
-              :model-value="isDark"
-              active-text="深色"
-              inactive-text="浅色"
-              @change="toggleTheme"
-            />
+              size="small"
+              circle
+              :aria-label="isDark ? '切换到浅色主题' : '切换到深色主题'"
+              :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
+              @click="toggleTheme"
+            >
+              <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
+            </el-button>
             <el-button
               size="small"
               @click="goChangePwd"
@@ -293,6 +300,7 @@ import GlobalCommandPalette from "./components/GlobalCommandPalette.vue";
 import { useRoute, useRouter } from "vue-router";
 import { ElMessage } from "./utils/el-message";
 import { apiPost } from "./api/client";
+import { validatePassword } from "./utils/password";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
 import { can, canCapability, canPerm, logout, useAuth } from "./store/auth";
 import { routePageSkeletonVisible } from "./router";
@@ -302,6 +310,7 @@ import { installGlobalTableScrollEnhancer } from "./utils/globalTableScroll";
 import { trackUiEvent } from "./utils/browserPerf";
 import { isAppMobileViewport } from "./utils/responsive";
 import { useTheme } from "./composables/useTheme";
+import { ArrowDown, ArrowUp, Close, Menu, Moon, Sunny } from "@element-plus/icons-vue";
 
 const route = useRoute();
 const router = useRouter();
@@ -635,7 +644,8 @@ function goChangePwd() {
 }
 
 async function changePwd() {
-  if (newP.value.length < 6) return ElMessage.warning("新密码至少 6 位");
+  const pv = validatePassword(newP.value);
+  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
