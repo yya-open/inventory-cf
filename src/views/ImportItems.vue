@@ -4,7 +4,7 @@
     <div class="u-row-between u-flex-wrap u-gap-10 u-mb-12">
       <div>
         <span class="u-fw-700">Excel 导入配件</span>
-        <span class="u-ml-10 u-text-subtle u-fs-12">支持字段：SKU、名称、品牌、型号、分类、单位、预警值</span>
+        <span class="u-ml-10 u-text-subtle u-fs-12">支持字段：SKU（可留空自动生成）、名称、品牌、型号、分类、单位、预警值</span>
       </div>
       <div class="u-row-wrap-10">
         <el-button @click="downloadTemplate">
@@ -49,7 +49,7 @@
       show-icon
       class="u-mb-12"
     >
-      Excel 第一行请使用表头：SKU、名称、品牌、型号、分类、单位、预警值（大小写不敏感）。
+      Excel 第一行请使用表头：SKU、名称、品牌、型号、分类、单位、预警值（大小写不敏感）。SKU 可留空，系统将自动生成。
     </el-alert>
 
     <el-table
@@ -107,7 +107,7 @@
           v-if="result?.errors?.length"
           class="u-mt-10 u-text-danger"
         >
-          有 {{ result.errors.length }} 条错误（缺少 SKU/名称），已跳过
+          有 {{ result.errors.length }} 条错误（缺少名称），已跳过
         </div>
       </div>
       <template #footer>
@@ -189,13 +189,12 @@ async function onPick(uploadFile: any) {
     const colWarn = findCol(["预警值", "warning_qty", "warning"]);
 
     const missing: string[] = [];
-    if (colSku === null) missing.push("SKU");
     if (colName === null) missing.push("名称");
     if (missing.length) {
       ElMessageBox.alert(
         `表头缺少必需列：${missing.join("、")}。
 
-请使用模板第一行表头：SKU、名称、品牌、型号、分类、单位、预警值（大小写不敏感）`,
+请使用模板第一行表头：名称、品牌、型号、分类、单位、预警值（SKU 可选，留空时自动生成；大小写不敏感）`,
         "读取失败",
         { type: "error" }
       );
@@ -208,7 +207,7 @@ async function onPick(uploadFile: any) {
 
     for (let i = 1; i < aoa.length; i++) {
       const r = aoa[i] || [];
-      const sku = String(r[colSku!] ?? "").trim();
+      const sku = colSku === null ? "" : String(r[colSku] ?? "").trim();
       const name = String(r[colName!] ?? "").trim();
       const brand = colBrand !== null ? String(r[colBrand] ?? "").trim() : "";
       const modelV = colModel !== null ? String(r[colModel] ?? "").trim() : "";
@@ -219,7 +218,6 @@ async function onPick(uploadFile: any) {
       const anyFilled = sku || name || brand || modelV || category || unit || warnRaw;
       if (!anyFilled) continue;
 
-      if (!sku) errors.push({ row: i + 1, col: "SKU", msg: "必填" });
       if (!name) errors.push({ row: i + 1, col: "名称", msg: "必填" });
 
       let warning_qty = 0;
@@ -229,7 +227,7 @@ async function onPick(uploadFile: any) {
         else warning_qty = n;
       }
 
-      if (!sku || !name) continue; // invalid row is skipped from preview/import
+      if (!name) continue; // Rows without an item name cannot be imported.
 
       mapped.push({
         sku,
@@ -245,7 +243,7 @@ async function onPick(uploadFile: any) {
     preview.value = mapped.slice(0, 2000);
 
     if (!preview.value.length) {
-      ElMessage.warning("没有读取到可导入的数据（请确认表头正确，且至少有一行 SKU/名称）");
+      ElMessage.warning("没有读取到可导入的数据（请确认表头正确，且至少有一行名称）");
       return;
     }
 

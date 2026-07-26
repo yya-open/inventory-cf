@@ -1,6 +1,6 @@
 import { json, requireAuth } from '../_auth';
 import { withErrorHandling } from '../_error';
-import { parseItemInput } from '../services/inventory';
+import { generateItemSku, generateItemSkuFromUsed, parseItemInput } from '../services/inventory';
 import { ensureItemCategorySchema, normalizeCategoryName } from '../services/item-categories';
 import { resolveItemsBySkuOrAlias } from '../services/item-sku-aliases';
 import { sqlNowStored } from '../_time';
@@ -29,14 +29,27 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
   for (let i = 0; i < items.length; i++) {
     try {
-      parsed.push({ index: i, input: parseItemInput(items[i]) });
+      parsed.push({ index: i, input: parseItemInput(items[i], { allowAutoSku: true }) });
     } catch (e: any) {
-      errors.push({ row: i + 1, message: e?.message || 'SKU/名称必填' });
+      errors.push({ row: i + 1, message: e?.message || '名称必填' });
       skipped += 1;
     }
   }
 
   if (!parsed.length) return json(true, { inserted: 0, updated: 0, skipped, errors });
+
+  // Reserve explicit values first, then generate unique SKUs for rows left blank in Excel.
+  const reservedSkus = new Set(parsed.map(({ input }) => input.sku).filter(Boolean));
+  const now = new Date();
+  for (const { input } of parsed) {
+    if (input.sku) continue;
+    let sku = await generateItemSku(env.DB, input, now);
+    while (reservedSkus.has(sku)) {
+      sku = generateItemSkuFromUsed(input, [...reservedSkus, sku], now);
+    }
+    input.sku = sku;
+    reservedSkus.add(sku);
+  }
 
   await ensureItemCategorySchema(env.DB);
 
