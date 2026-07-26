@@ -298,7 +298,7 @@ import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue"
 import AppSidebarMenu from "./components/AppSidebarMenu.vue";
 import GlobalCommandPalette from "./components/GlobalCommandPalette.vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "./utils/el-message";
+import { ElMessage } from "./utils/el-services";
 import { apiPost } from "./api/client";
 import { validatePassword } from "./utils/password";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";

@@ -66,7 +66,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from '../utils/el-message';
+import { ElMessage } from '../utils/el-services';
 import { listDataQualityCases, scanDataQualityCases, updateDataQualityCase, type DataQualityCase } from '../api/dataQuality';
 import { isAppMobileViewport } from '../utils/responsive';
 

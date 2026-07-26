@@ -140,7 +140,7 @@
 <script setup lang="ts">
 import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ref, computed, onMounted, watch } from "vue";
-import { ElMessage } from "../utils/el-message";
+import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";

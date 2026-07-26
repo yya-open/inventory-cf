@@ -116,7 +116,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeMount, onActivated } from "vue";
-import { ElMessage } from "../utils/el-message";
+import { ElMessage } from "../utils/el-services";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";

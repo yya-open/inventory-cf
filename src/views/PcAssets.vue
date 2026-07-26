@@ -181,19 +181,17 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onActivated, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage } from "../utils/el-services";
+
 import { apiDelete, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
-import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
+import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerInfo, showLedgerSuccess, showLedgerWarning } from '../utils/ledgerOperationFeedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
 import { invalidateAssetHistoryCache } from '../api/assetHistory';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
-import { fetchBulkPcAssetQrLinks } from '../api/assetQr';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
 import { useCrossPageSelection } from '../composables/useCrossPageSelection';
-import { useAssetQrDialog } from '../composables/useAssetQrDialog';
-import { useAssetQrExportActions } from '../composables/useAssetQrExportActions';
+import { usePcAssetQr } from '../composables/usePcAssetQr';
 import { useQrExportProgress } from '../composables/useQrExportProgress';
 import { useAssetSelectionSummary } from '../composables/useAssetSelectionSummary';
 import { useAssetBulkActions } from '../composables/useAssetBulkActions';
@@ -206,14 +204,11 @@ import { isLedgerMobileViewport } from '../utils/responsive';
 import { can, canCapability, canPerm } from '../store/auth';
 import PcAssetsToolbar from '../components/assets/PcAssetsToolbar.vue';
 import PcAssetsTable from '../components/assets/PcAssetsTable.vue';
-import type { QrPrintTemplate } from '../utils/qrPrintTemplate';
 import { usePcAssetViewState } from './assets/pcAssetViewState';
 import { createAssetPagePatchController, applyGenericArchivePatch, applyGenericDeletePatch, applyGenericRestorePatch } from './assets/assetLocalPatch';
 import { extractAffectedIds } from './assets/assetBulkActions';
 import { useBrowserIdleTask } from '../composables/useBrowserIdleTask';
 import { useAssetLedgerBatchRefresh } from '../composables/useAssetLedgerBatchRefresh';
-import { useAssetBulkDialogs } from '../composables/useAssetBulkDialogs';
-import { useAssetImportExport } from '../composables/useAssetImportExport';
 
 const PcAssetEditDialog = defineAsyncComponent(() => import('../components/assets/PcAssetEditDialog.vue'));
 const PcAssetInfoDialog = defineAsyncComponent(() => import('../components/assets/PcAssetInfoDialog.vue'));
@@ -237,39 +232,6 @@ const archiveReasonOptions = computed(() => systemSettings.value.asset_archive_r
 const pcBrandOptions = computed(() => systemSettings.value.dictionary_pc_brand_options || []);
 const { runSaveAction } = useAssetFormActions();
 const { qrExportProgress, startQrExportProgress, updateQrExportProgress, finishQrExportProgress } = useQrExportProgress();
-const {
-  visible: qrVisible,
-  loading: qrLoading,
-  dataUrl: qrDataUrl,
-  link: qrLink,
-  row: qrRow,
-  openQr: openAssetQr,
-  resetQr,
-  copyLink: copyQrLink,
-  openLink: openQrInNewTab,
-} = useAssetQrDialog<PcAsset>({
-  kind: 'pc',
-  size: 260,
-  canReset: canQrReset,
-  getId: (row) => Number(row.id || 0),
-  getVersion: (row) => String(row?.qr_updated_at || row?.updated_at || ''),
-  qrTokenPath: (id) => `/api/pc-asset-qr-token?id=${encodeURIComponent(String(id))}`,
-  resetQrPath: (id) => `/api/pc-assets-reset-qr?id=${encodeURIComponent(String(id))}`,
-  closeOnOpenError: true,
-  messages: {
-    noPermission: '当前账号没有重置二维码权限',
-    missingId: '缺少资产ID',
-    emptyLink: '二维码链接生成失败',
-    generateFailed: '生成二维码失败',
-    copySuccess: '已复制',
-    copyFailed: '复制失败，请手动复制',
-    resetTitle: '重置二维码',
-    resetConfirm: '确认要重置该电脑的二维码吗？重置后旧二维码将立即失效。',
-    resetConfirmButton: '重置',
-    resetSuccess: '已重置，新二维码已生成',
-    resetFailed: '重置失败',
-  },
-});
 const inventorySummary = ref<AssetInventorySummary>({ unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 });
 const { payload: inventoryBatch, refresh: refreshInventoryBatchStore, lastLoadedAt: inventoryBatchLoadedAt } = useInventoryBatchStore('pc');
 const hasActiveInventoryBatch = computed(() => Boolean(inventoryBatch.value.active?.id));
@@ -320,19 +282,19 @@ const {
 
 function handleSaveView(name: string) {
   const savedName = saveCurrentView(name);
-  if (!savedName) return ElMessage.warning('请先输入视图名称');
+  if (!savedName) return showLedgerWarning('请先输入视图名称');
   notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
 }
 
 function handleApplyView(name: string) {
-  if (!applySavedView(name)) return ElMessage.warning('视图不存在或已失效');
+  if (!applySavedView(name)) return showLedgerWarning('视图不存在或已失效');
   notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
   onSearch();
 }
 
 function handleDeleteView(name: string) {
   const deletingDefault = defaultViewName.value === String(name || '').trim();
-  if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  if (!deleteSavedView(name)) return showLedgerWarning('视图不存在或已删除');
   if (deletingDefault) {
     notifyAction('视图已删除', `已删除“${name}”视图，默认已回退到系统默认视图。`, 'warning');
     return;
@@ -341,7 +303,7 @@ function handleDeleteView(name: string) {
 }
 
 function handleSetDefaultView(name: string) {
-  if (!setDefaultSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  if (!setDefaultSavedView(name)) return showLedgerWarning('视图不存在或已删除');
   notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
@@ -518,67 +480,32 @@ const {
   loadExcelUtils,
 });
 const {
+  visible: qrVisible,
+  loading: qrLoading,
+  dataUrl: qrDataUrl,
+  link: qrLink,
+  row: qrRow,
+  openQr: openAssetQr,
+  resetQr,
+  copyLink: copyQrLink,
+  openLink: openQrInNewTab,
   qrTemplateVisible,
   qrTemplateKind,
-  openQrPrintTemplate,
   submitQrPrintTemplate,
   exportSelectedQrLinks,
   exportSelectedQrCards,
   exportSelectedQrPng,
   downloadQr,
   downloadLabel,
-} = useAssetQrExportActions<PcAsset>({
-  scope: 'pc',
+} = usePcAssetQr({
   canExport: canQrExport,
+  canReset: canQrReset,
   selectedRows,
   selectedCount,
-  singleRow: qrRow,
   exportBusy,
   batchBusy,
-  getId: (row) => Number(row.id),
-  fetchBulkLinks: fetchBulkPcAssetQrLinks,
   loadExcelUtils,
   loadQrCardUtils,
-  mapSheetRecord: buildPcQrSheetRecord,
-  mapCardRecord: buildPcQrCardRecord,
-  linkFilename: (count) => `电脑二维码链接_${count}条.xlsx`,
-  linkHeaders: [
-    { key: 'id', title: 'ID' },
-    { key: 'brand', title: '品牌' },
-    { key: 'model', title: '型号' },
-    { key: 'serial_no', title: '序列号' },
-    { key: 'status', title: '状态' },
-    { key: 'url', title: '二维码链接' },
-  ],
-  mapLinkWorkbookRow: (row, url) => ({
-    id: row.id,
-    brand: row.brand,
-    model: row.model,
-    serial_no: row.serial_no,
-    status: assetStatusText(row.status),
-    url,
-  }),
-  singleSheetLabel: (row) => `电脑二维码_${row.serial_no || row.id || 'pc'}`,
-  singleCardsLabel: (row) => `电脑标签_${row.serial_no || row.id || 'pc'}`,
-  sheetTitle: '电脑二维码',
-  cardsTitle: '电脑标签',
-  selectedSheetTitle: '电脑二维码图版',
-  selectedCardsTitle: '电脑二维码卡片',
-  messages: {
-    noPermission: '当前账号没有二维码/标签导出权限',
-    noSelection: '请先勾选电脑',
-    noSingle: '请先打开要导出的二维码',
-    selectedEmpty: '当前选中项没有可导出的二维码',
-    singleEmpty: '当前记录没有可导出的二维码',
-    sheetSuccess: '二维码打印页已导出，可直接打印',
-    cardsSuccess: '标签打印页已导出，可直接打印',
-    linksSuccess: '二维码链接已导出',
-    sheetFailed: '导出二维码图版失败',
-    cardsFailed: '导出二维码卡片失败',
-    linksFailed: '导出二维码链接失败',
-    progressSheet: '正在导出二维码图版',
-    progressCards: '正在导出二维码标签',
-  },
   startProgress: startQrExportProgress,
   updateProgress: updateQrExportProgress,
   finishProgress: finishQrExportProgress,
@@ -703,55 +630,14 @@ async function initQrKeys() {
     initQrBusy.value = true;
     const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_KEY_INIT', request_json: { batch: 200 }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
+    showLedgerSuccess({ message: jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度' });
   } catch (error: any) {
-    if (error?.message) ElMessage.error(error.message);
+    showLedgerError(error, '初始化失败');
   } finally {
     initQrBusy.value = false;
   }
 }
 
-
-function buildPcQrSheetRecord(row: PcAsset, url: string, template?: Partial<QrPrintTemplate>) {
-  if (!url) return null;
-  const mode = template?.content_mode || 'detail';
-  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `电脑 #${row.id}`;
-  const serialNo = row.serial_no || '-';
-  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
-  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${serialNo}`, meta: [], url };
-  if (mode === 'model_asset') return { title: modelText, subtitle: `编号：${row.id || '-'}`, meta: [], url };
-  return {
-    title: [row.brand, row.model].filter(Boolean).join(' · ') || `电脑 #${row.id}`,
-    subtitle: `SN：${serialNo} · 状态：${assetStatusText(row.status)}`,
-    meta: [
-      { label: '领用人', value: row.last_employee_name || '-' },
-      { label: '工号', value: row.last_employee_no || '-' },
-      { label: '部门', value: row.last_department || '-' },
-      { label: '归档', value: Number(row.archived || 0) === 1 ? '已归档' : '在用' },
-    ],
-    url,
-  };
-}
-
-function buildPcQrCardRecord(row: PcAsset, url: string, template?: Partial<QrPrintTemplate>) {
-  if (!url) return null;
-  const mode = template?.content_mode || 'detail';
-  const modelText = [row.brand, row.model].filter(Boolean).join(' ') || `电脑 #${row.id}`;
-  const serialNo = row.serial_no || '-';
-  if (mode === 'qr_only') return { title: '', subtitle: '', meta: [], url };
-  if (mode === 'model_sn') return { title: modelText, subtitle: `SN：${serialNo}`, meta: [], url };
-  if (mode === 'model_asset') return { title: modelText, subtitle: `编号：${row.id || '-'}`, meta: [], url };
-  return {
-    title: `${row.brand || '-'} ${row.model || ''}`.trim(),
-    subtitle: `SN：${serialNo}`,
-    meta: [
-      { label: '状态', value: assetStatusText(row.status) },
-      { label: '序列号', value: serialNo },
-      { label: '领用人', value: row.last_employee_name || '-' },
-    ],
-    url,
-  };
-}
 
 function openAuditHistory(row?: PcAsset | null) {
   const id = Number(row?.id || infoRow.value?.id || 0);
@@ -812,11 +698,11 @@ async function saveEdit() {
         { key: 'serial_no', label: '序列号' },
       ])) return false;
       if (payload.manufacture_date && !datePattern.test(payload.manufacture_date)) {
-        ElMessage.warning('出厂时间格式需为 YYYY-MM-DD');
+        showLedgerWarning('出厂时间格式需为 YYYY-MM-DD');
         return false;
       }
       if (payload.warranty_end && !datePattern.test(payload.warranty_end)) {
-        ElMessage.warning('保修到期格式需为 YYYY-MM-DD');
+        showLedgerWarning('保修到期格式需为 YYYY-MM-DD');
         return false;
       }
       return true;
@@ -924,21 +810,21 @@ async function restoreAsset(row: PcAsset) {
 }
 
 function openBatchStatusDialog() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   batchStatusValue.value = 'IN_STOCK';
   warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 function openBatchOwnerDialog() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
   warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
 async function submitBatchStatus() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   await runBulkAction({
     action: 'status',
     payload: { status: batchStatusValue.value },
@@ -953,8 +839,8 @@ async function submitBatchStatus() {
 
 
 async function submitBatchOwner() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
-  if (!String(batchOwnerForm.value.employee_name || '').trim()) return ElMessage.warning('请输入领用人');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showLedgerWarning('请输入领用人');
   await runBulkAction({
     action: 'owner',
     payload: {
@@ -972,9 +858,9 @@ async function submitBatchOwner() {
 }
 
 async function batchRestoreSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   const restorable = selectionSummary.value.archived;
-  if (!restorable) return ElMessage.warning('当前选中项中没有已归档电脑');
+  if (!restorable) return showLedgerWarning('当前选中项中没有已归档电脑');
   try {
     await confirmBatchRisk('批量恢复归档', `预计恢复 ${restorable} 台电脑。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
   } catch {
@@ -994,15 +880,15 @@ async function batchRestoreSelected() {
 }
 
 async function batchArchiveSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 
 async function submitBatchArchive() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
-  if (!String(batchArchiveForm.value.reason || '').trim()) return ElMessage.warning('请选择归档原因');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!String(batchArchiveForm.value.reason || '').trim()) return showLedgerWarning('请选择归档原因');
   try {
     await confirmBatchRisk('批量归档确认', `此操作会归档选中的 ${selectedCount.value} 台电脑，默认列表将不再显示，请输入“确认”继续。`);
   } catch {
@@ -1026,7 +912,7 @@ async function submitBatchArchive() {
 }
 
 async function batchDeleteSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
   await runBulkDelete({
     requestLabel: '正在批量删除电脑台账',
     errorMessage: '批量删除失败',
@@ -1035,13 +921,13 @@ async function batchDeleteSelected() {
 }
 
 async function exportSelectedRows() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的电脑');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选要导出的电脑');
   try {
     exportBusy.value = true;
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcSelectedRows({ rows: selectedRows.value, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出失败');
+    showLedgerError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1051,12 +937,12 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
+    if (Number(total.value || 0) > 1000) showLedgerInfo('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFiltersForList(), Number(total.value || 0) > 2000 ? 300 : 200);
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcAllRows({ rows: all, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出失败');
+    showLedgerError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1069,11 +955,11 @@ async function exportArchiveRecords() {
     exportBusy.value = true;
     const all = await fetchAll({ ...currentFiltersForList(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
-    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档电脑记录');
+    if (!rowsToExport.length) return showLedgerWarning('当前没有可导出的归档电脑记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出归档记录失败');
+    showLedgerError(error, '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1129,7 +1015,7 @@ async function onImportAssetsFile(uploadFile: any) {
       }))
       .filter((item) => item.brand || item.serial_no || item.model);
 
-    if (!items.length) return ElMessage.warning('Excel里没有可导入的数据');
+    if (!items.length) return showLedgerWarning('Excel里没有可导入的数据');
 
     const missingManufactureDate = items
       .map((item, index) => ({ index, value: String(item.manufacture_date || '').trim() }))
@@ -1138,20 +1024,20 @@ async function onImportAssetsFile(uploadFile: any) {
       .map((entry) => entry.index + 2);
 
     if (missingManufactureDate.length) {
-      return ElMessage.warning(`出厂时间必填，缺失行号：${missingManufactureDate.join(', ')}${missingManufactureDate.length >= 15 ? ' …' : ''}`);
+      return showLedgerWarning(`出厂时间必填，缺失行号：${missingManufactureDate.join(', ')}${missingManufactureDate.length >= 15 ? ' …' : ''}`);
     }
 
     const result: any = await apiPost('/api/pc-in-batch', { items });
     const failed = Number(result?.failed || 0);
     if (failed > 0) {
-      ElMessage.warning(`导入完成：成功 ${result.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
+      showLedgerWarning(`导入完成：成功 ${result.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
       console.warn('pc-in-batch errors', result?.errors);
     } else {
-      ElMessage.success(`导入完成：成功 ${result.success} 条`);
+      showLedgerSuccess({ message: `导入完成：成功 ${result.success} 条` });
     }
     await refreshCurrent(true, true);
   } catch (error: any) {
-    ElMessage.error(error?.message || '导入失败');
+    showLedgerError(error, '导入失败');
   } finally {
     importBusy.value = false;
   }

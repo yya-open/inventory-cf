@@ -77,7 +77,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ElMessage } from '../../utils/el-message';
+import { ElMessage } from '../../utils/el-services';
 import { apiDownload } from '../../api/client';
 import { trackUiEvent } from '../../utils/browserPerf';
 import { withExportActionFeedback } from '../../utils/operationFeedback';

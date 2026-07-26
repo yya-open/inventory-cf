@@ -240,7 +240,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox, ElNotification } from "../utils/el-services";
+import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerInfo, showLedgerSuccess, showLedgerWarning } from '../utils/ledgerOperationFeedback';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { withDestructiveActionFeedback } from '../utils/destructiveAction';
@@ -270,8 +270,6 @@ import { extractAffectedIds } from './assets/assetBulkActions';
 import { isLedgerMobileViewport } from '../utils/responsive';
 import { useBrowserIdleTask } from '../composables/useBrowserIdleTask';
 import { useAssetLedgerBatchRefresh } from '../composables/useAssetLedgerBatchRefresh';
-import { useAssetBulkDialogs } from '../composables/useAssetBulkDialogs';
-import { useAssetImportExport } from '../composables/useAssetImportExport';
 import { useQrExportProgress } from '../composables/useQrExportProgress';
 
 const MonitorAssetFormDialog = defineAsyncComponent(() => import('../components/assets/MonitorAssetFormDialog.vue'));
@@ -353,25 +351,21 @@ onMounted(() => {
 });
 
 
-function notifyAction(title: string, message: string, type: 'success' | 'warning' | 'info' | 'error' = 'success') {
-  ElNotification({ title, message, type, duration: 2600, offset: 72 });
-}
-
 function handleSaveView(name: string) {
   const savedName = saveCurrentView(name);
-  if (!savedName) return ElMessage.warning('请先输入视图名称');
+  if (!savedName) return showLedgerWarning('请先输入视图名称');
   notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
 }
 
 function handleApplyView(name: string) {
-  if (!applySavedView(name)) return ElMessage.warning('视图不存在或已失效');
+  if (!applySavedView(name)) return showLedgerWarning('视图不存在或已失效');
   notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
   reloadList();
 }
 
 function handleDeleteView(name: string) {
   const deletingDefault = defaultViewName.value === String(name || '').trim();
-  if (!deleteSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  if (!deleteSavedView(name)) return showLedgerWarning('视图不存在或已删除');
   if (deletingDefault) {
     notifyAction('视图已删除', `已删除“${name}”视图，默认已回退到系统默认视图。`, 'warning');
     return;
@@ -380,7 +374,7 @@ function handleDeleteView(name: string) {
 }
 
 function handleSetDefaultView(name: string) {
-  if (!setDefaultSavedView(name)) return ElMessage.warning('视图不存在或已删除');
+  if (!setDefaultSavedView(name)) return showLedgerWarning('视图不存在或已删除');
   notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
@@ -515,20 +509,16 @@ async function handleMaybeMissingSchema(error: any) {
     message.includes('no such table: monitor_tx');
   if (!missing) throw error;
   if (!can('admin')) {
-    ElMessage.error('显示器模块数据库表尚未初始化，请联系管理员执行初始化');
+    showLedgerError(null, '显示器模块数据库表尚未初始化，请联系管理员执行初始化');
     throw error;
   }
-  await ElMessageBox.confirm(
-    '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
-    '需要初始化',
-    {
-      type: 'warning',
-      confirmButtonText: '初始化',
-      cancelButtonText: '取消',
-    }
-  );
+  await confirmLedgerAction({
+    title: '需要初始化',
+    message: '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
+    confirmButtonText: '初始化',
+  });
   await apiPost('/api/monitor-init', { confirm: '初始化' });
-  ElMessage.success('初始化完成，请重试操作');
+  showLedgerSuccess({ message: '初始化完成，请重试操作' });
 }
 
 function currentFiltersForList(): MonitorFilters {
@@ -810,36 +800,40 @@ function handleRowMore(command: string, row: MonitorAsset) {
 
 async function restoreAsset(row: MonitorAsset) {
   try {
-    await ElMessageBox.confirm(`确认恢复显示器：${row.asset_code || '-'} ${row.brand || ''} ${row.model || ''}？恢复后将重新出现在默认台账列表中。`, '恢复归档', {
-      type: 'warning',
+    await confirmLedgerAction({
+      title: '恢复归档',
+      message: `确认恢复显示器：${row.asset_code || '-'} ${row.brand || ''} ${row.model || ''}？恢复后将重新出现在默认台账列表中。`,
       confirmButtonText: '确认恢复',
-      cancelButtonText: '取消',
     });
     batchBusy.value = true;
     const result: any = await withBlockingActionFeedback('正在恢复显示器归档', () =>
       apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] })
     );
-    ElMessage.success(result?.message || '恢复成功');
+    showLedgerSuccess({
+      message: result?.message || '恢复成功',
+      notificationTitle: '显示器已恢复',
+      notificationMessage: `已恢复 ${row.brand || ''} ${row.model || ''}`.trim() || '显示器记录已恢复。',
+      notificationType: 'info',
+    });
     applyMonitorRestorePatch(extractAffectedIds(result, [Number(row.id)]));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '恢复归档失败');
+    showLedgerError(error, '恢复归档失败');
   } finally {
     batchBusy.value = false;
   }
 }
 
 function openBatchStatusDialog() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   batchStatusValue.value = 'IN_STOCK';
   warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 async function openBatchLocationDialog() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   await ensureLocationOptionsReady();
   batchLocationValue.value = '';
   warmLazyDialog(lazyBatchLocationDialog);
@@ -847,14 +841,14 @@ async function openBatchLocationDialog() {
 }
 
 function openBatchOwnerDialog() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
   warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
 async function submitBatchStatus() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   await runBulkAction({
     action: 'status',
     payload: { status: batchStatusValue.value },
@@ -868,8 +862,8 @@ async function submitBatchStatus() {
 }
 
 async function submitBatchLocation() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (!batchLocationValue.value) return ElMessage.warning('请选择位置');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!batchLocationValue.value) return showLedgerWarning('请选择位置');
   await runBulkAction({
     action: 'location',
     payload: { location_id: batchLocationValue.value },
@@ -883,8 +877,8 @@ async function submitBatchLocation() {
 }
 
 async function submitBatchOwner() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (!String(batchOwnerForm.value.employee_name || '').trim()) return ElMessage.warning('请填写领用人');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showLedgerWarning('请填写领用人');
   await runBulkAction({
     action: 'owner',
     payload: {
@@ -902,9 +896,9 @@ async function submitBatchOwner() {
 }
 
 async function batchRestoreSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   const restorable = selectionSummary.value.archived;
-  if (!restorable) return ElMessage.warning('选中显示器中没有可恢复的归档记录');
+  if (!restorable) return showLedgerWarning('选中显示器中没有可恢复的归档记录');
   try {
     await confirmBatchRisk('批量恢复', `将恢复 ${restorable} 台已归档显示器，恢复后会重新出现在默认台账列表中。`);
   } catch {
@@ -924,15 +918,15 @@ async function batchRestoreSelected() {
 }
 
 async function batchArchiveSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 
 async function submitBatchArchive() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
-  if (!String(batchArchiveForm.value.reason || '').trim()) return ElMessage.warning('请选择归档原因');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!String(batchArchiveForm.value.reason || '').trim()) return showLedgerWarning('请选择归档原因');
   try {
     await confirmBatchRisk('批量归档', `将归档选中的 ${selectedCount.value} 台显示器，归档后默认列表不再显示。`);
   } catch {
@@ -956,7 +950,7 @@ async function submitBatchArchive() {
 }
 
 async function batchDeleteSelected() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
   await runBulkDelete({
     requestLabel: '显示器批量删除',
     errorMessage: '批量删除失败',
@@ -965,13 +959,13 @@ async function batchDeleteSelected() {
 }
 
 async function exportSelectedRows() {
-  if (!selectedCount.value) return ElMessage.warning('请先勾选要导出的显示器');
+  if (!selectedCount.value) return showLedgerWarning('请先勾选要导出的显示器');
   try {
     exportBusy.value = true;
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorSelectedRows({ rows: selectedRows.value, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出失败');
+    showLedgerError(error, '导出失败');
   } finally {
     exportBusy.value = false;
     finishQrExportProgress();
@@ -982,12 +976,12 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    if (Number(total.value || 0) > 1000) ElMessage.info('数据量较大，正在分批导出，请稍候…');
+    if (Number(total.value || 0) > 1000) showLedgerInfo('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFiltersForList(), Number(total.value || 0) > 2000 ? 300 : 200);
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorAllRows({ rows: all, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出失败');
+    showLedgerError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1000,11 +994,11 @@ async function exportArchiveRecords() {
     exportBusy.value = true;
     const all = await fetchAll({ ...currentFiltersForList(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
-    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的归档显示器记录');
+    if (!rowsToExport.length) return showLedgerWarning('当前没有可导出的归档显示器记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, locationText, formatBeijingDateTime });
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出归档记录失败');
+    showLedgerError(error, '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1045,7 +1039,7 @@ async function onImportMonitorFile(uploadFile: any) {
     importBusy.value = true;
     const { parseXlsx } = await loadExcelUtils();
     const excelRows = await parseXlsx(file);
-    if (!excelRows.length) return ElMessage.warning('Excel里没有可导入的数据');
+    if (!excelRows.length) return showLedgerWarning('Excel里没有可导入的数据');
 
     const locationMap = new Map<string, number>();
     locationOptions.value.forEach((item) => {
@@ -1080,16 +1074,16 @@ async function onImportMonitorFile(uploadFile: any) {
       }
     }
 
-    if (success === 0 && failed === 0) return ElMessage.warning('Excel里没有可导入的数据');
+    if (success === 0 && failed === 0) return showLedgerWarning('Excel里没有可导入的数据');
     if (failed > 0) {
       console.warn('monitor-assets import errors', errors);
-      ElMessage.warning(`导入完成：成功 ${success} 条，失败 ${failed} 条（详情见控制台）`);
+      showLedgerWarning(`导入完成：成功 ${success} 条，失败 ${failed} 条（详情见控制台）`);
     } else {
-      ElMessage.success(`导入完成：成功 ${success} 条`);
+      showLedgerSuccess({ message: `导入完成：成功 ${success} 条` });
     }
     await refreshCurrent(true, true);
   } catch (error: any) {
-    ElMessage.error(error?.message || '导入失败');
+    showLedgerError(error, '导入失败');
   } finally {
     importBusy.value = false;
   }
@@ -1137,7 +1131,9 @@ async function removeAsset(row: MonitorAsset) {
       : operation === 'archive'
         ? `确认删除显示器台账：${label}？预检结果：本次不会物理删除，而会自动归档。${reason}`
         : `确认删除显示器台账：${label}？预检结果：满足物理删除条件。`;
-    await ElMessageBox.confirm(message, operation === 'purge' ? '彻底删除预检' : '删除预检', {
+    await confirmLedgerAction({
+      title: operation === 'purge' ? '彻底删除预检' : '删除预检',
+      message,
       type: 'warning',
       confirmButtonText: operation === 'purge' ? '确认彻底删除' : '确认删除',
       cancelButtonText: '取消',
@@ -1151,10 +1147,9 @@ async function removeAsset(row: MonitorAsset) {
       const failure = Array.isArray(result?.failed_records) ? result.failed_records[0] : null;
       throw Object.assign(new Error(String(failure?.原因 || result?.message || '删除失败')), { status: 400 });
     }
-    ElMessage.success(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
+    showLedgerSuccess({ message: result?.message || (isArchived ? '彻底删除成功' : '删除成功') });
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || (isArchived ? '彻底删除失败' : '删除失败'));
+    showLedgerError(error, isArchived ? '彻底删除失败' : '删除失败');
   } finally {
     batchBusy.value = false;
   }
@@ -1341,18 +1336,17 @@ async function openQr(row: MonitorAsset) {
 async function initQrKeys() {
   if (initQrBusy.value) return;
   try {
-    await ElMessageBox.confirm('将把“补齐显示器二维码 Key”提交到异步任务中心后台执行。继续？', '初始化二维码Key', {
-      type: 'warning',
+    await confirmLedgerAction({
+      title: '初始化二维码Key',
+      message: '将把“补齐显示器二维码 Key”提交到异步任务中心后台执行。继续？',
       confirmButtonText: '继续',
-      cancelButtonText: '取消',
     });
     initQrBusy.value = true;
     const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_KEY_INIT', request_json: { batch_size: 50 }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    ElMessage.success(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
+    showLedgerSuccess({ message: jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度' });
   } catch (error: any) {
-    if (error === 'cancel' || error === 'close') return;
-    ElMessage.error(error?.message || '初始化失败');
+    showLedgerError(error, '初始化失败');
   } finally {
     initQrBusy.value = false;
   }
@@ -1385,15 +1379,15 @@ async function createLocation() {
   if (locationSaving.value) return;
   try {
     locationSaving.value = true;
-    if (!dlgLoc.newName.trim()) return ElMessage.warning('请输入位置名称');
+    if (!dlgLoc.newName.trim()) return showLedgerWarning('请输入位置名称');
     await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
     dlgLoc.newName = '';
     dlgLoc.parentId = '';
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    ElMessage.success('新增成功');
+    showLedgerSuccess({ message: '新增成功' });
   } catch (error: any) {
-    ElMessage.error(error.message || '新增失败');
+    showLedgerError(error, '新增失败');
   } finally {
     locationSaving.value = false;
   }
@@ -1406,9 +1400,9 @@ async function updateLocation(row: MonitorAsset) {
     await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    ElMessage.success('保存成功');
+    showLedgerSuccess({ message: '保存成功' });
   } catch (error: any) {
-    ElMessage.error(error.message || '保存失败');
+    showLedgerError(error, '保存失败');
   } finally {
     locationSaving.value = false;
   }
@@ -1418,13 +1412,13 @@ async function deleteLocation(row: MonitorAsset) {
   if (locationSaving.value) return;
   try {
     locationSaving.value = true;
-    await ElMessageBox.confirm('删除位置后无法恢复，确认继续？', '提示', { type: 'warning' });
+    await confirmLedgerAction({ title: '提示', message: '删除位置后无法恢复，确认继续？' });
     await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    ElMessage.success('删除成功');
+    showLedgerSuccess({ message: '删除成功' });
   } catch (error: any) {
-    if (error?.message) ElMessage.error(error.message);
+    showLedgerError(error, '删除失败');
   } finally {
     locationSaving.value = false;
   }

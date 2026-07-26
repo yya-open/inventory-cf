@@ -39,6 +39,14 @@ export function showLedgerError(error: unknown, fallbackMessage: string) {
   return true;
 }
 
+export function showLedgerWarning(message: string) {
+  ElMessage.warning(message);
+}
+
+export function showLedgerInfo(message: string) {
+  ElMessage.info(message);
+}
+
 export async function confirmLedgerAction(options: ConfirmOptions) {
   await ElMessageBox.confirm(options.message, options.title, {
     type: options.type || 'warning',

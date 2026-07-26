@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from '../../utils/el-message';
+import { ElMessage } from '../../utils/el-services';
 import { apiDownload } from '../../api/client';
 import { withExportActionFeedback } from '../../utils/operationFeedback';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';

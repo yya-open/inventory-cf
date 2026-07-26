@@ -34,5 +34,21 @@ export default [
       'no-console': 'off',
     },
   },
+  {
+    // 消息门面护栏：EP 的 message / message-box / notification 只允许从
+    // utils/el-services.ts 这唯一入口 re-export，禁止其它文件从 element-plus
+    // 深路径直接 import（当初 el-message.ts 分裂即源于此）。el-services 自身豁免。
+    files: ['src/**/*.{ts,tsx,vue}'],
+    ignores: ['**/utils/el-services.ts'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [
+          { name: 'element-plus/es/components/message/index', message: '请从 utils/el-services 导入 ElMessage' },
+          { name: 'element-plus/es/components/message-box/index', message: '请从 utils/el-services 导入 ElMessageBox' },
+          { name: 'element-plus/es/components/notification/index', message: '请从 utils/el-services 导入 ElNotification' },
+        ],
+      }],
+    },
+  },
   { files: ['tests/**/*.ts'], languageOptions: { globals: { ...globals.node } } },
 ];
