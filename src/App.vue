@@ -156,12 +156,12 @@
             <el-button
               class="app-theme-toggle"
               size="small"
-              circle
               :aria-label="isDark ? '切换到浅色主题' : '切换到深色主题'"
               :title="isDark ? '切换到浅色主题' : '切换到深色主题'"
               @click="toggleTheme"
             >
               <el-icon><Sunny v-if="isDark" /><Moon v-else /></el-icon>
+              <span>{{ isDark ? '浅色模式' : '深色模式' }}</span>
             </el-button>
             <el-button
               size="small"
