@@ -3,7 +3,7 @@ import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../service
 import { logAudit } from "../_audit";
 import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
 import { sqlNowStored } from "../_time";
-import { resolveItemsBySkuOrAlias } from "../services/item-sku-aliases";
+import { resolveItemsByName } from "../services/item-names";
 
 function batchNo() {
   const d = new Date();
@@ -19,7 +19,7 @@ function txNo(prefix: string) {
 }
 
 type Line = {
-  sku: string;
+  name: string;
   qty: number;
   target?: string;
   remark?: string;
@@ -50,10 +50,10 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const headerT = String(header_target ?? "").trim();
   for (let i = 0; i < lines.length; i++) {
     const l = lines[i];
-    const sku = String(l.sku ?? "").trim();
+    const name = String(l.name ?? "").trim();
     const qty = Number(l.qty);
     const tgt = String((l.target ?? "") || headerT).trim();
-    if (!sku) invalid.push({ row: i + 1, reason: "sku 不能为空" });
+    if (!name) invalid.push({ row: i + 1, reason: "名称不能为空" });
     if (!qty || qty <= 0) invalid.push({ row: i + 1, reason: "qty 必须 > 0" });
     if (!tgt) invalid.push({ row: i + 1, reason: "target 不能为空（领用人必填）" });
   }
@@ -61,48 +61,47 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     return Response.json({ ok: false, message: "明细校验失败", invalid }, { status: 400 });
   }
 
-  // normalize & aggregate by sku
-  const agg = new Map<string, { sku: string; qty: number; target?: string; remark?: string }>();
+  // Normalize and aggregate by item name before resolving each name to a unique item.
+  const agg = new Map<string, { name: string; qty: number; target?: string; remark?: string }>();
   for (const l of lines) {
-    const sku = String(l.sku ?? "").trim();
+    const name = String(l.name ?? "").trim();
     const qty = Number(l.qty);
-    const cur = agg.get(sku) ?? { sku, qty: 0 };
+    const cur = agg.get(name) ?? { name, qty: 0 };
     cur.qty += qty;
     cur.target = String((l.target ?? "") || headerT).trim();
     cur.remark = (l.remark ?? header_remark ?? cur.remark) ?? undefined;
-    agg.set(sku, cur);
+    agg.set(name, cur);
   }
-  if (!agg.size) return Response.json({ ok: false, message: "有效行为空（检查 sku/qty）" }, { status: 400 });
+  if (!agg.size) return Response.json({ ok: false, message: "有效行为空（检查名称/数量）" }, { status: 400 });
 
   const batch_no = batchNo();
 
-  const skus = Array.from(agg.keys());
-  const skuMatches = await resolveItemsBySkuOrAlias(env.DB, skus);
+  const names = Array.from(agg.keys());
+  const nameMatches = await resolveItemsByName(env.DB, names);
 
-  const missing = skus.filter((s) => !skuMatches.has(s));
-  if (missing.length) return Response.json({ ok: false, message: "以下 SKU 不存在/被禁用", missing }, { status: 400 });
+  const missing = names.filter((name) => !nameMatches.has(name));
+  if (missing.length) return Response.json({ ok: false, message: "以下名称不存在/被禁用", missing }, { status: 400 });
+  const ambiguous = names.filter((name) => (nameMatches.get(name)?.length || 0) > 1);
+  if (ambiguous.length) return Response.json({ ok: false, message: "以下名称对应多个配件，请使用唯一名称", ambiguous }, { status: 400 });
 
   const resolvedAgg = new Map<number, {
     item_id: number;
     sku: string;
-    input_skus: string[];
-    matched_by: string;
+    input_names: string[];
     qty: number;
     target?: string;
     remark?: string;
   }>();
-  for (const [sku, l] of agg) {
-    const match = skuMatches.get(sku)!;
+  for (const [name, l] of agg) {
+    const match = nameMatches.get(name)![0];
     const cur = resolvedAgg.get(match.id) ?? {
       item_id: match.id,
       sku: match.sku,
-      input_skus: [],
-      matched_by: match.matched_by,
+      input_names: [],
       qty: 0,
     };
     cur.qty += l.qty;
-    cur.input_skus.push(sku);
-    cur.matched_by = cur.matched_by === match.matched_by ? cur.matched_by : "mixed";
+    cur.input_names.push(name);
     cur.target = l.target ?? cur.target;
     cur.remark = l.remark ?? cur.remark;
     resolvedAgg.set(match.id, cur);
@@ -120,7 +119,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const insufficient: any[] = [];
   for (const l of resolvedAgg.values()) {
     const have = curQty.get(l.item_id) ?? 0;
-    if (have < l.qty) insufficient.push({ sku: l.sku, input_skus: l.input_skus, need: l.qty, have });
+    if (have < l.qty) insufficient.push({ sku: l.sku, input_names: l.input_names, need: l.qty, have });
   }
   if (insufficient.length) return Response.json({ ok: false, message: "库存不足", insufficient }, { status: 400 });
 
@@ -140,7 +139,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const no = client_request_id ? `OUT-${ridPart}-${skuPart}` : txNo("OUT");
     const ref_no = client_request_id ? `rid:${ridPart}:${skuPart}` : batch_no;
 
-    txs.push({ tx_no: no, sku: l.sku, input_skus: l.input_skus, matched_by: l.matched_by, qty: l.qty });
+    txs.push({ tx_no: no, sku: l.sku, input_names: l.input_names, qty: l.qty });
     txNos.push(no);
 
     // 1) Insert tx only if stock currently has enough; IGNORE on duplicate ref_no (idempotency)

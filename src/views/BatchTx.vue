@@ -83,13 +83,13 @@
           width="55"
         />
         <el-table-column
-          label="SKU"
+          label="名称"
           min-width="160"
         >
           <template #default="{ row }">
             <el-input
-              v-model="row.sku"
-              placeholder="例如: CPU-001"
+              v-model="row.name"
+              placeholder="请输入配件名称"
             />
           </template>
         </el-table-column>
@@ -197,7 +197,7 @@
       </div>
 
       <div class="batch-tx-tip">
-        Excel 模板列：<b>配件编码</b>、<b>数量</b>；入库可选：单价 / 来源 / 备注；出库必填：<b>领用人</b>（可在表头填默认领用人）
+        Excel 模板列：<b>名称</b>、<b>数量</b>；入库可选：单价 / 来源 / 备注；出库必填：<b>领用人</b>（可在表头填默认领用人）
       </div>
     </el-card>
   </div>
@@ -212,7 +212,7 @@ import { downloadTemplate as downloadExcelTemplate, loadXlsx } from "../utils/ex
 import { apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 
-type Row = { sku: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
+type Row = { name: string; qty: number; unit_price?: number; source?: string; target?: string; remark?: string };
 
 const mode = ref<"IN" | "OUT">("IN");
 const warehouseId = useFixedWarehouseId();
@@ -223,13 +223,13 @@ const rows = ref<Row[]>([]);
 const submitting = ref(false);
 
 function getRowIssues(r: Row) {
-  const skuMissing = !String(r.sku || "").trim();
+  const nameMissing = !String(r.name || "").trim();
   const qtyNum = Number(r.qty);
   const qtyMissing = !qtyNum || qtyNum <= 0;
   const headerT = String(headerTarget.value || "").trim();
   const targetMissing =
     mode.value === "OUT" ? !String((r.target ?? "") || headerT).trim() : false;
-  return { skuMissing, qtyMissing, targetMissing, any: skuMissing || qtyMissing || targetMissing };
+  return { nameMissing, qtyMissing, targetMissing, any: nameMissing || qtyMissing || targetMissing };
 }
 
 const invalidCount = computed(() => rows.value.filter((r) => getRowIssues(r).any).length);
@@ -247,14 +247,14 @@ function rowClass({ row }: { row: Row }) {
 function cellClass({ row, column }: any) {
   const label = String(column?.label || "");
   const issues = getRowIssues(row);
-  if (label === "SKU" && issues.skuMissing) return "cell-error";
+  if (label === "名称" && issues.nameMissing) return "cell-error";
   if (label === "数量" && issues.qtyMissing) return "cell-error";
   if (label.startsWith("领用人") && issues.targetMissing) return "cell-error";
   return "";
 }
 
 function addRow() {
-  rows.value.push({ sku: "", qty: 1 });
+  rows.value.push({ name: "", qty: 1 });
 }
 function clearRows() {
   rows.value = [];
@@ -264,18 +264,18 @@ function clearRows() {
 async function downloadTemplate() {
   const header =
     mode.value === "IN"
-      ? ["配件编码", "数量", "单价", "来源", "备注"]
-      : ["配件编码", "数量", "领用人", "备注"];
+      ? ["名称", "数量", "单价", "来源", "备注"]
+      : ["名称", "数量", "领用人", "备注"];
 
   const exampleRows =
     mode.value === "IN"
       ? [
-          ["CPU-001", 10, 299.9, "京东", "示例：批量入库"],
-          ["SSD-1T-NVME", 5, 499.0, "供应商A", "示例：可填写单价/来源/备注"],
+          ["CPU i5-12400F", 10, 299.9, "京东", "示例：批量入库"],
+          ["1TB NVMe 固态硬盘", 5, 499.0, "供应商A", "示例：可填写单价/来源/备注"],
         ]
       : [
-          ["CPU-001", 1, "张三", "示例：批量出库"],
-          ["SSD-1T-NVME", 2, "李四", "示例：领用人必填（也可用表头默认）"],
+          ["CPU i5-12400F", 1, "张三", "示例：批量出库"],
+          ["1TB NVMe 固态硬盘", 2, "李四", "示例：领用人必填（也可用表头默认）"],
         ];
 
   await downloadExcelTemplate({
@@ -313,7 +313,7 @@ function beforeUpload(file: File) {
       };
 
       // Required columns
-      const colSku = findCol(["sku", "SKU", "Sku", "配件编码", "配件", "物料", "物料编码", "物料编号", "商品编码"]);
+      const colName = findCol(["name", "名称", "配件名称", "配件名", "物料名称", "物料名", "商品名称"]);
       const colQty = findCol(["qty", "QTY", "数量", "数目"]);
       const colTarget = findCol(["target", "领用人", "去向", "领用", "使用人", "领取人"]);
       const colUnitPrice = findCol(["unit_price", "price", "单价", "价格"]);
@@ -321,7 +321,7 @@ function beforeUpload(file: File) {
       const colRemark = findCol(["remark", "备注", "说明"]);
 
       const missing: string[] = [];
-      if (colSku === null) missing.push("配件编码");
+      if (colName === null) missing.push("名称");
       if (colQty === null) missing.push("数量");
       if (mode.value === "OUT" && colTarget === null) missing.push("领用人");
 
@@ -332,11 +332,11 @@ function beforeUpload(file: File) {
 请使用模板第一行表头：
 ` +
             (mode.value === "IN"
-              ? "配件编码, 数量, 单价(可选), 来源(可选), 备注(可选)"
-              : "配件编码, 数量, 领用人(必填), 备注(可选)") +
+              ? "名称, 数量, 单价(可选), 来源(可选), 备注(可选)"
+              : "名称, 数量, 领用人(必填), 备注(可选)") +
             `
 
-（兼容旧英文列名：sku / qty / unit_price / source / target / remark）`,
+（兼容英文列名：name / qty / unit_price / source / target / remark）`,
           "导入失败",
           { type: "error" }
         );
@@ -355,7 +355,7 @@ function beforeUpload(file: File) {
 
       for (let i = 1; i < aoa.length; i++) {
         const r = aoa[i] || [];
-        const sku = String(r[colSku!] ?? "").trim();
+        const name = String(r[colName!] ?? "").trim();
         const qtyRaw = r[colQty!];
         const qtyN = toNumber(qtyRaw);
 
@@ -365,7 +365,7 @@ function beforeUpload(file: File) {
         const remark = colRemark !== null ? String(r[colRemark] ?? "").trim() : "";
 
         const anyFilled =
-          !!sku ||
+          !!name ||
           String(qtyRaw ?? "").trim() !== "" ||
           (colUnitPrice !== null && String(r[colUnitPrice] ?? "").trim() !== "") ||
           (colSource !== null && source) ||
@@ -374,10 +374,9 @@ function beforeUpload(file: File) {
 
         if (!anyFilled) continue;
 
-        const rowObj: Row = { sku, qty: 0 };
+        const rowObj: Row = { name, qty: 0 };
 
-        // sku
-        if (!sku) errors.push({ row: i + 1, col: "配件编码", msg: "必填" });
+        if (!name) errors.push({ row: i + 1, col: "名称", msg: "必填" });
 
         // qty
         if (qtyN === null) {
@@ -443,9 +442,9 @@ async function submit() {
   const invalid: Array<{ idx: number; reason: string }> = [];
   const headerT = String(headerTarget.value || "").trim();
   rows.value.forEach((r, i) => {
-    const sku = String(r.sku || "").trim();
+    const name = String(r.name || "").trim();
     const qty = Number(r.qty);
-    if (!sku) invalid.push({ idx: i + 1, reason: "配件编码必填" });
+    if (!name) invalid.push({ idx: i + 1, reason: "名称必填" });
     if (!qty || qty <= 0) invalid.push({ idx: i + 1, reason: "数量必填且>0" });
     if (mode.value === "OUT") {
       const t = String((r.target ?? "") || headerT).trim();
@@ -474,7 +473,7 @@ async function submit() {
     const r: any = await apiPost(url, payload);
 
     if (r?.ok) {
-      ElMessage.success(`成功提交 ${r.count} 条（自动合并同 SKU）`);
+      ElMessage.success(`成功提交 ${r.count} 条（自动合并同名称）`);
       rows.value = [];
     } else {
       ElMessage.error(r?.message || "提交失败");
