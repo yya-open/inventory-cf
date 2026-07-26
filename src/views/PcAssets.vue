@@ -184,7 +184,6 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
-import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerInfo, showLedgerSuccess, showLedgerWarning } from '../utils/ledgerOperationFeedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
 import { invalidateAssetHistoryCache } from '../api/assetHistory';
@@ -760,7 +759,7 @@ async function removeAsset(row: PcAsset) {
       confirmButtonText: operation === 'purge' ? '确认彻底删除' : '确认删除',
     });
     batchBusy.value = true;
-    const result: any = await withDestructiveActionFeedback('正在删除电脑台账', () => apiPost('/api/pc-assets-bulk', { action: 'delete', ids: [Number(row.id)] }));
+    const result: any = await withBlockingActionFeedback('正在删除电脑台账', () => apiPost('/api/pc-assets-bulk', { action: 'delete', ids: [Number(row.id)] }));
     if (Array.isArray(result?.success_items)) applyPcDeletePatch(result.success_items);
     clearSelection();
     await ensureLocalPatchedPageStable(true);

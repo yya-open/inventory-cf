@@ -1,6 +1,5 @@
 import { unref, type ComputedRef, type Ref } from 'vue';
 import { apiPost } from '../api/client';
-import { withDestructiveActionFeedback } from '../utils/destructiveAction';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { confirmLedgerAction, notifyLedgerAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
 import { buildBulkDeleteConfirmTip, summarizeBulkDeleteResult } from '../views/assets/assetBulkActions';
@@ -89,7 +88,7 @@ export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
     try {
       await confirmBatchRisk('批量删除确认', buildBulkDeleteConfirmTip(options.assetLabel, unref(options.selectedCount), unref(options.archivedCount)));
       options.batchBusy.value = true;
-      const result: any = await withDestructiveActionFeedback(input.requestLabel, () => apiPost(options.endpoint, {
+      const result: any = await withBlockingActionFeedback(input.requestLabel, () => apiPost(options.endpoint, {
         action: 'delete',
         ids: unref(options.selectedNumberIds),
       }));

@@ -698,14 +698,25 @@ import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElProgress } from 'element-plus/es/components/progress/index';
 import { ElRadio, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, watch, onMounted } from "vue";
-import { ElMessageBox } from "../utils/el-services";
-import { msgError, msgSuccess, msgWarn } from "../utils/msg";
+import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiPostForm, apiGet, apiPost, apiPut } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
 import { scheduleOnIdle } from '../utils/idle';
 import { saveBlobAsFile } from "../utils/operationFeedback";
 import { can } from "../store/auth";
 import LazyMountBlock from "../components/LazyMountBlock.vue";
+
+function msgSuccess(message: string, duration = 2000) {
+  return ElMessage({ type: "success", message, duration, showClose: true });
+}
+
+function msgWarn(message: string, duration = 3000) {
+  return ElMessage({ type: "warning", message, duration, showClose: true });
+}
+
+function msgError(message: string, duration = 4000) {
+  return ElMessage({ type: "error", message, duration, showClose: true });
+}
 
 const bk = ref({
   include_tx: false,
