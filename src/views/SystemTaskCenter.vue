@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell system-task-center">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <h1>批量任务中心</h1>
-        <p>集中查看异步导出、预计算、巡检和二维码批量任务，支持下载结果、重试和取消。</p>
-      </div>
       <div class="page-actions">
         <el-tag :type="hasActiveJobs ? 'warning' : 'success'">{{ hasActiveJobs ? '存在运行中任务' : '当前无运行中任务' }}</el-tag>
         <el-button v-if="canManageSystemTools" :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>

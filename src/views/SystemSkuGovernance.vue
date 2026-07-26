@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell sku-governance-page">
     <div class="ui-page-heading">
-      <div>
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <h1>SKU 治理</h1>
-        <div class="ui-page-heading__desc">扫描配件物料中不规范或旧格式 SKU，生成映射建议，预检通过后批量应用。</div>
-      </div>
       <div class="page-actions">
         <el-input v-model="keyword" clearable placeholder="搜索 SKU / 名称 / 分类" class="u-w-220" @keyup.enter="onSearch" />
         <el-select v-model="severity" class="u-w-130" @change="onSearch">

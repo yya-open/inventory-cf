@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell ops-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <div class="ui-page-heading__title">运维工具</div>
-        <div class="ui-page-heading__desc">数据库版本校验、自动巡检、修复中心、异步任务中心、性能与错误观测、健康检查。</div>
-      </div>
       <div class="ops-heading-actions">
         <el-tag :type="schema.ok ? 'success' : 'danger'">{{ schema.ok ? 'Schema 已就绪' : 'Schema 未完成' }}</el-tag>
         <el-tag type="info">自动巡检 {{ autoScanMinutes }} 分钟</el-tag>

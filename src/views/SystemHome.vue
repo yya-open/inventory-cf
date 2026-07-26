@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell sys-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <div class="ui-page-heading__title">系统首页</div>
-        <div class="ui-page-heading__desc">集中进入备份、审计、用户、配置、运维、报表和交付文档。</div>
-      </div>
       <div class="system-home-actions">
         <el-button v-if="canAccessParts" @click="go('/stock')">进入配件仓</el-button>
         <el-button v-if="canAccessPc" @click="go(preferredPcRoute(auth.user))">进入电脑/显示器仓</el-button>

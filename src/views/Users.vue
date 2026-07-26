@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell users-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <div class="ui-page-heading__title">用户管理</div>
-        <div class="ui-page-heading__desc">创建账号、分配权限、禁用账号、重置密码，并配置数据可见范围。</div>
-      </div>
       <el-button type="primary" @click="openCreate">新增用户</el-button>
     </div>
 

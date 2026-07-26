@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell system-reports-center">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">系统管理</div>
-        <div class="ui-page-heading__title">数据报表中心</div>
-        <div class="ui-page-heading__desc">集中查看系统看板、盘点报表、预警报表和台账分析入口。</div>
-      </div>
       <div class="hero-actions">
         <el-button @click="go('/system/dashboard')">打开完整看板</el-button>
         <el-button @click="go('/system/tasks')">查看任务中心</el-button>

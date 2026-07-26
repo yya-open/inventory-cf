@@ -1,11 +1,6 @@
 <template>
   <div class="ui-page-shell data-quality-page">
     <div class="ui-page-heading">
-      <div class="ui-page-heading__main">
-        <div class="ui-page-heading__kicker">系统治理</div>
-        <div class="ui-page-heading__title">数据质量中心</div>
-        <div class="ui-page-heading__desc">集中扫描数据完整性问题，并记录负责人、处理状态与闭环说明。</div>
-      </div>
       <div class="data-quality-page__actions">
         <el-tag type="danger" effect="plain">{{ errorCount }} 个错误</el-tag>
         <el-tag type="warning" effect="plain">{{ openCount }} 个待处理</el-tag>
