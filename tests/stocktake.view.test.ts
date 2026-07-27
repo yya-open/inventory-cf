@@ -8,14 +8,41 @@ import {
   stocktakeLineMatches,
   stocktakeErrorHint,
 } from '../src/utils/stocktakeView';
+import { isInvalidCountedQty, normalizeCountedQtyValue } from '../src/utils/stocktakeDirtyLines';
 
 describe('stocktake view helpers', () => {
-  it('isCountedEmpty covers null/undefined/empty-string but not 0', () => {
+  it('isCountedEmpty covers null/undefined/blank-string but not 0', () => {
     expect(isCountedEmpty(null)).toBe(true);
     expect(isCountedEmpty(undefined)).toBe(true);
     expect(isCountedEmpty('')).toBe(true);
+    expect(isCountedEmpty('   ')).toBe(true);
+    expect(isCountedEmpty('\t')).toBe(true);
     expect(isCountedEmpty(0)).toBe(false);
     expect(isCountedEmpty('0')).toBe(false);
+  });
+
+  // 空白串必须与后端 import.ts 的 raw.trim()==='' 判定一致，否则界面显示盘亏而服务端写 NULL
+  it('blank counted_qty is pending, matching backend NULL semantics', () => {
+    expect(classifyStocktakeLine({ counted_qty: '  ', diff_qty: -8 })).toBe('pending');
+    expect(normalizeCountedQtyValue('  ')).toBe('');
+    expect(summarizeStocktakeLines([{ counted_qty: ' ', diff_qty: -8 }])).toEqual({
+      total: 1,
+      counted: 0,
+      changed: 0,
+      increase: 0,
+      decrease: 0,
+    });
+  });
+
+  it('isInvalidCountedQty flags negatives only', () => {
+    expect(isInvalidCountedQty(-1)).toBe(true);
+    expect(isInvalidCountedQty('-0.5')).toBe(true);
+    expect(isInvalidCountedQty(0)).toBe(false);
+    expect(isInvalidCountedQty('12')).toBe(false);
+    expect(isInvalidCountedQty('')).toBe(false);
+    expect(isInvalidCountedQty('   ')).toBe(false);
+    expect(isInvalidCountedQty(null)).toBe(false);
+    expect(isInvalidCountedQty('abc')).toBe(false);
   });
 
   it('classifyStocktakeLine returns pending / increase / decrease / same', () => {
@@ -71,5 +98,18 @@ describe('stocktake view helpers', () => {
     expect(stocktakeErrorHint({ error_code: 'EMPTY_SKU' })).toBe('导入数据缺少有效 SKU，请检查模板内容');
     expect(stocktakeErrorHint({ error_code: 'SOMETHING_ELSE' })).toBe('');
     expect(stocktakeErrorHint(new Error('boom'))).toBe('');
+  });
+
+  // 后端 import.ts 对 n < 0 是静默 continue，前端必须先拦下来
+  it('isInvalidCountedQty rejects negatives but accepts 0 and blank', () => {
+    expect(isInvalidCountedQty(-1)).toBe(true);
+    expect(isInvalidCountedQty('-5')).toBe(true);
+    expect(isInvalidCountedQty(0)).toBe(false);
+    expect(isInvalidCountedQty('0')).toBe(false);
+    expect(isInvalidCountedQty(7)).toBe(false);
+    expect(isInvalidCountedQty('')).toBe(false);
+    expect(isInvalidCountedQty('  ')).toBe(false);
+    expect(isInvalidCountedQty(null)).toBe(false);
+    expect(isInvalidCountedQty('abc')).toBe(false);
   });
 });

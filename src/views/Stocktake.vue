@@ -334,6 +334,7 @@
                   <el-input
                     v-model="row.counted_qty"
                     type="number"
+                    min="0"
                     size="small"
                     :disabled="detail.stocktake.status!=='DRAFT'"
                     @change="markDirty(row)"
@@ -385,7 +386,7 @@
 
         <div class="apply-preview-head">
           <div class="panel-title">将受影响的明细</div>
-          <div class="muted">最多预览 20 条差异/未盘项目，确认后系统会生成 ADJUST 调整流水。</div>
+          <div class="muted">最多预览 20 条存在差异的项目（未盘明细不会被调整），确认后系统会生成 ADJUST 调整流水。</div>
         </div>
 
         <el-table :data="applyPreviewRows" max-height="360" border size="small">
@@ -395,8 +396,7 @@
           <el-table-column prop="counted_qty" label="盘点数量" width="100" />
           <el-table-column label="差异结果" min-width="140">
             <template #default="{ row }">
-              <el-tag v-if="row.diffType === 'pending'" type="info" effect="plain">未盘</el-tag>
-              <el-tag v-else-if="row.diffType === 'increase'" type="success">盘盈 {{ row.diff_qty }}</el-tag>
+              <el-tag v-if="row.diffType === 'increase'" type="success">盘盈 {{ row.diff_qty }}</el-tag>
               <el-tag v-else-if="row.diffType === 'decrease'" type="danger">盘亏 {{ row.diff_qty }}</el-tag>
               <el-tag v-else type="info">无差异</el-tag>
             </template>
@@ -423,7 +423,7 @@ import { notifyDownloadStarted } from "../utils/operationFeedback";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { can } from "../store/auth";
-import { buildDirtyImportLines, normalizeCountedQtyValue } from '../utils/stocktakeDirtyLines';
+import { buildDirtyImportLines, isInvalidCountedQty, normalizeCountedQtyValue } from '../utils/stocktakeDirtyLines';
 import {
   classifyStocktakeLine,
   isCountedEmpty,
@@ -511,11 +511,12 @@ const stocktakeSummaryItems = computed(() => ([
   { key: 'decrease', label: '盘亏', value: stocktakePreview.value.decrease, className: 'preview-list-item--decrease' },
 ]));
 
+// 后端 apply 的作用域是 counted_qty IS NOT NULL，未盘行不会被调整，预览必须同口径
 const applyPreviewRows = computed(() => {
   const lines = detail.value?.lines || [];
   return lines
     .map((line: any) => ({ ...line, diffType: classifyStocktakeLine(line) }))
-    .filter((line: any) => line.diffType !== 'same')
+    .filter((line: any) => line.diffType === 'increase' || line.diffType === 'decrease')
     .slice(0, 20);
 });
 
@@ -664,6 +665,7 @@ watch(warehouseId, async ()=>{
 
 let listAbortController: AbortController | null = null;
 let listRequestSeq = 0;
+let detailRequestSeq = 0;
 const debouncedLoadList = useDebouncedFn(() => {
   listPage.value = 1;
   loadList();
@@ -720,14 +722,18 @@ async function openStocktake(row:any){
   scrollToSelected();
 }
 
+// 与 loadList 同级的竞态保护：慢响应不得覆盖新盘点单的 detail 与基线，否则保存会按错误基线比对
 async function loadDetail(id:number){
+  const requestSeq = ++detailRequestSeq;
   try{
     const r:any = await apiGet(`/api/stocktake/detail?id=${id}`);
+    if (requestSeq !== detailRequestSeq) return;
     detail.value = r?.data || r;
     baselineCountedById.value = new Map((detail.value?.lines || []).map((line: any) => [Number(line?.id || 0), normalizeCountedQtyValue(line?.counted_qty)]));
     dirty.value = new Set();
     selectedIds.value = new Set();
   }catch(e:any){
+    if (requestSeq !== detailRequestSeq) return;
     ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点明细失败");
   }
 }
@@ -943,7 +949,14 @@ function beforeUpload(file: File){
 	    ElMessage.info("没有需要保存的修改");
 	    return;
 	  }
+  const invalidRows = (detail.value.lines || []).filter((line: any) => dirty.value.has(Number(line?.id || 0)) && isInvalidCountedQty(line?.counted_qty));
+  if (invalidRows.length) {
+    ElMessage.warning(`有 ${invalidRows.length} 行盘点数量为负数（如 ${invalidRows[0]?.sku}），请改为 0 或正数后再保存`);
+    return;
+  }
   saving.value = true;
+  // 分批写入不是原子的：任一批失败时前面的批次已落库，必须刷新详情让界面与服务端重新一致
+  let submittedAnyChunk = false;
   try{
     const lines = collectDirtyImportLines();
     if (!lines.length) {
@@ -957,6 +970,7 @@ function beforeUpload(file: File){
     for (let i = 0; i < lines.length; i += CHUNK_SIZE) {
       const chunk = lines.slice(i, i + CHUNK_SIZE).map((line: { sku: string; counted_qty: number | null }) => ({ sku: line.sku, counted_qty: line.counted_qty }));
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines: chunk });
+      submittedAnyChunk = true;
       totalUpdated += Number(r?.data?.updated || 0);
       for (const sku of Array.isArray(r?.data?.unknown) ? r.data.unknown : []) unknownSet.add(String(sku));
     }
@@ -965,6 +979,10 @@ function beforeUpload(file: File){
     await refreshDetail();
   }catch(e:any){
     ElMessage.error(stocktakeErrorHint(e) || e.message || "保存失败");
+    if (submittedAnyChunk) {
+      ElMessage.warning('部分批次已提交成功，已重新加载盘点明细以核对实际结果');
+      await refreshDetail();
+    }
   }finally{
     saving.value = false;
   }

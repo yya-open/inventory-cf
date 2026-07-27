@@ -8,8 +8,10 @@ type DiffLine = { counted_qty?: unknown; diff_qty?: unknown };
 type MatchLine = DiffLine & { sku?: unknown; name?: unknown };
 type StatusRow = { status?: unknown };
 
+// 与后端 /api/stocktake/import 的空值判定保持同一语义：null / undefined / 纯空白串都算未盘
 export function isCountedEmpty(counted: unknown): boolean {
-  return counted === null || counted === undefined || counted === '';
+  if (counted === null || counted === undefined) return true;
+  return typeof counted === 'string' && counted.trim() === '';
 }
 
 // 全组件唯一的差异语义判定入口：一行盘点明细属于哪种差异
