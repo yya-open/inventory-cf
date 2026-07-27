@@ -32,9 +32,11 @@ export function showLedgerSuccess(options: SuccessOptions) {
   }
 }
 
+// 不用 instanceof Error：apiClient 抛出的 ApiError 跨 realm 或经 Promise 包装后会判失败，
+// 那时后端 message 会被丢掉，用户只看到笼统 fallback
 export function showLedgerError(error: unknown, fallbackMessage: string) {
   if (isActionCanceled(error)) return false;
-  const message = error instanceof Error ? error.message : '';
+  const message = String((error as { message?: unknown } | null | undefined)?.message ?? '').trim();
   ElMessage.error(message || fallbackMessage);
   return true;
 }
