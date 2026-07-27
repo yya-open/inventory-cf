@@ -1,5 +1,5 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { showError, showSuccess, showWarning } from '../utils/feedback';
 import { apiGetPublic, apiGetPublicWithMeta, apiPostPublic, apiPostPublicWithMeta } from '../api/client';
 import { DEFAULT_SYSTEM_SETTINGS, fetchPublicSettings, type PublicScanMode, type SystemSettings } from '../api/systemSettings';
 import { buildPublicQuery, enqueuePendingPublicSubmission, flushPendingPublicSubmissions, getWeakNetworkText, isNetworkError, loadPendingPublicSubmissions, loadRecentPublicTargets, parsePublicTargetInput, saveRecentPublicTarget, triggerSuccessVibration, type PendingPublicSubmission } from '../utils/publicInventory';
@@ -458,7 +458,7 @@ export function usePublicInventoryPage(options: {
 
   function goNextFromInput() {
     const target = parsePublicTargetInput(nextInput.value);
-    if (!target) return ElMessage.warning('请先粘贴下一项二维码链接 / token，或使用扫码枪 / 摄像头连续扫码');
+    if (!target) return showWarning('请先粘贴下一项二维码链接 / token，或使用扫码枪 / 摄像头连续扫码');
     goNextToTarget(target, scanMode.value === 'scanner' ? 'scanner' : 'manual');
   }
 
@@ -529,7 +529,7 @@ export function usePublicInventoryPage(options: {
   async function onSubmitSuccess(message: string, payload: SubmitPayload) {
     rememberRecentResult(payload, 'success', message);
     recordSessionSummary(payload.action);
-    ElMessage.success(message);
+    showSuccess(message);
     triggerSuccessVibration(settings.value.public_inventory_auto_vibrate);
     startCooldown(settings.value.public_inventory_cooldown_seconds);
     if (!continuousMode.value) return;
@@ -558,10 +558,10 @@ export function usePublicInventoryPage(options: {
       flushingQueue.value = true;
       const result = await flushPendingPublicSubmissions(options.kind, sendInventoryPayload);
       refreshPendingQueue();
-      if (result.sent) ElMessage.success(`已补交 ${result.sent} 条待重试记录`);
-      if (result.failed) ElMessage.warning(`仍有 ${result.failed} 条待重试记录未成功提交`);
+      if (result.sent) showSuccess(`已补交 ${result.sent} 条待重试记录`);
+      if (result.failed) showWarning(`仍有 ${result.failed} 条待重试记录未成功提交`);
     } catch (err: any) {
-      ElMessage.error(err?.message || '提交待重试记录失败');
+      showError(err?.message || '提交待重试记录失败');
     } finally {
       flushingQueue.value = false;
     }
@@ -574,7 +574,7 @@ export function usePublicInventoryPage(options: {
   }
 
   function warnInventoryInactive() {
-    ElMessage.warning(inventoryDisabledReason.value);
+    showWarning(inventoryDisabledReason.value);
   }
 
   function openIssueDialog() {
@@ -604,7 +604,7 @@ export function usePublicInventoryPage(options: {
       if (Number(err?.status || 0) === 409) {
         const existing = err?.response?.data || null;
         if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
-        ElMessage.warning(err?.message || '该设备当前不可提交盘点结果，请稍后重试。');
+        showWarning(err?.message || '该设备当前不可提交盘点结果，请稍后重试。');
         return;
       }
       if (isNetworkError(err)) {
@@ -612,7 +612,7 @@ export function usePublicInventoryPage(options: {
         retryAction.value = 'ok';
         queuePending({ action: 'OK' }, '盘点通过');
       }
-      ElMessage.error(err?.message || '提交失败');
+      showError(err?.message || '提交失败');
     } finally {
       if (requestSeq === submitRequestSeq) submittingOk.value = false;
     }
@@ -640,7 +640,7 @@ export function usePublicInventoryPage(options: {
       if (Number(err?.status || 0) === 409) {
         const existing = err?.response?.data || null;
         if (existing?.action) rememberRecentResult(existing, 'duplicate', err?.message || '该设备本轮已存在盘点记录', existing?.created_at || null);
-        ElMessage.warning(err?.message || '该设备当前不可提交异常，请稍后重试。');
+        showWarning(err?.message || '该设备当前不可提交异常，请稍后重试。');
         return;
       }
       if (isNetworkError(err)) {
@@ -648,7 +648,7 @@ export function usePublicInventoryPage(options: {
         retryAction.value = 'issue';
         queuePending({ action: 'ISSUE', issue_type: issueForm.value.issue_type, remark: issueForm.value.remark }, '异常提交');
       }
-      ElMessage.error(err?.message || '提交失败');
+      showError(err?.message || '提交失败');
     } finally {
       if (requestSeq === submitRequestSeq) submittingIssue.value = false;
     }

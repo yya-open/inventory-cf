@@ -196,7 +196,7 @@
 import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
 import { useRouter } from 'vue-router';
 import { apiDownload, apiGet, apiPost, apiPut } from '../api/client';
-import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { confirmAction, showError, showPending, showSuccess, showWarning } from '../utils/feedback';
 import { canCapability } from '../store/auth';
 import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
 
@@ -297,7 +297,7 @@ function openFailedAssets(row: any) {
   const link = getAssetLink(row);
   if (!link) return;
   const keyword = link.failedAssetId > 0 ? String(link.failedAssetId) : link.failedAssetKeyword;
-  if (!keyword) return ElMessage.warning('该任务暂未定位到失败资产');
+  if (!keyword) return showWarning('该任务暂未定位到失败资产');
   void router.push({
     path: link.kind === 'monitor' ? '/pc/monitors' : '/pc/assets',
     query: {
@@ -320,7 +320,7 @@ async function downloadJob(row: any) {
   try {
     await apiDownload(buildDownloadUrl(row), row?.result_filename || undefined);
   } catch (error: any) {
-    ElMessage.error(error?.message || '下载任务结果失败');
+    showError(error?.message || '下载任务结果失败');
   }
 }
 function syncSummaryFromJobs(rows = jobs.value) {
@@ -460,7 +460,7 @@ async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?:
   } catch (error: any) {
     if (requestSeq !== jobsRequestSeq) return;
     if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
-    if (!opts.silent) ElMessage.error(error?.message || '加载任务列表失败');
+    if (!opts.silent) showError(error?.message || '加载任务列表失败');
     hasMore.value = false;
   } finally {
     if (jobsAbortController === controller) jobsAbortController = null;
@@ -479,7 +479,7 @@ async function loadMoreJobs() {
     hasMore.value = rows.length >= Number(pageSize.value || 40);
     lastSyncedAt.value = new Date().toISOString();
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载更多任务失败');
+    showError(error?.message || '加载更多任务失败');
   } finally {
     loadingMore.value = false;
   }
@@ -488,33 +488,33 @@ async function createSnapshotJob() {
   snapshotSubmitting.value = true;
   try {
     await apiPost('/api/system-tools', { action: 'dashboard_precompute' });
-    ElMessage.success('已提交看板快照任务');
+    showSuccess('已提交看板快照任务');
     await loadJobs({ force: true, includeBase: true, reset: true });
   } finally {
     snapshotSubmitting.value = false;
   }
 }
 async function retryJob(row: any) {
-  await ElMessageBox.confirm(`确定重试任务 #${row.id} 吗？`, '提示', { type: 'warning' });
+  await confirmAction({ title: '提示', message: `确定重试任务 #${row.id} 吗？`, type: 'warning' });
   await apiPut('/api/jobs', { action: 'retry', id: row.id });
-  ElMessage.success('已提交重试');
+  showSuccess('已提交重试');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function cancelJob(row: any) {
-  await ElMessageBox.confirm(`确定取消任务 #${row.id} 吗？`, '提示', { type: 'warning' });
+  await confirmAction({ title: '提示', message: `确定取消任务 #${row.id} 吗？`, type: 'warning' });
   await apiPut('/api/jobs', { action: 'cancel', id: row.id });
-  ElMessage.success('任务已取消');
+  showSuccess('任务已取消');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function cleanupJobs() {
-  await ElMessageBox.confirm('自动清理会删除较旧的成功/失败历史任务，是否继续？', '提示', { type: 'warning' });
+  await confirmAction({ title: '提示', message: '自动清理会删除较旧的成功/失败历史任务，是否继续？', type: 'warning' });
   await apiPut('/api/jobs', { action: 'cleanup' });
-  ElMessage.success('已提交清理任务');
+  showSuccess('已提交清理任务');
   await loadJobs({ force: true, includeBase: true, reset: true });
 }
 async function deleteJob(row: any) {
   if (batchDeleting.value) return;
-  await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
+  await confirmAction({ title: '提示', message: `确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, type: 'warning' });
   deletingJobId.value = Number(row?.id || 0) || null;
   try {
     await apiPut('/api/jobs', { action: 'delete', id: row.id });
@@ -522,7 +522,7 @@ async function deleteJob(row: any) {
       detailVisible.value = false;
       detailRow.value = null;
     }
-    ElMessage.success('任务已删除');
+    showSuccess('任务已删除');
     await loadJobs({ force: true, includeBase: true, reset: true });
   } finally {
     deletingJobId.value = null;
@@ -533,20 +533,22 @@ async function deleteSelectedJobs() {
   if (batchDeleting.value) return;
   const selected = new Set(selectedJobIds.value);
   const selectedRows = jobs.value.filter((row) => selected.has(Number(row?.id || 0)));
-  if (!selectedRows.length) return ElMessage.warning('请先勾选任务');
+  if (!selectedRows.length) return showWarning('请先勾选任务');
   const deletableRows = selectedRows.filter((row) => canDelete(row));
   const blocked = Math.max(0, selectedRows.length - deletableRows.length);
-  if (!deletableRows.length) return ElMessage.warning('选中任务均为运行中/排队中，无法删除');
+  if (!deletableRows.length) return showWarning('选中任务均为运行中/排队中，无法删除');
 
-  await ElMessageBox.confirm(
-    blocked
+  await confirmAction({
+    title: '批量删除任务',
+    message: blocked
       ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
       : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
-    '批量删除任务',
-    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
-  );
+    type: 'warning',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+  });
 
-  const loading = ElMessage({ type: 'info', message: '正在批量删除任务，请稍候…', duration: 0, showClose: false });
+  const loading = showPending('正在批量删除任务，请稍候…');
   batchDeleting.value = true;
   let success = 0;
   let failed = 0;
@@ -559,14 +561,14 @@ async function deleteSelectedJobs() {
       detailRow.value = null;
     }
     loading.close();
-    if (failed) ElMessage.warning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
-    else ElMessage.success(`批量删除完成：共删除 ${success} 条`);
+    if (failed) showWarning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
+    else showSuccess(`批量删除完成：共删除 ${success} 条`);
     selectedJobIds.value = [];
     jobsTableRef.value?.clearSelection?.();
     await loadJobs({ force: true, includeBase: true, reset: true });
   } catch (error: any) {
     loading.close();
-    ElMessage.error(error?.message || '批量删除任务失败');
+    showError(error?.message || '批量删除任务失败');
   } finally {
     batchDeleting.value = false;
   }

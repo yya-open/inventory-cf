@@ -133,7 +133,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeMount, onBeforeUnmount, onMounted } from 'vue';
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiGet, apiPost } from '../api/client';
 import { fetchSystemSettings, getCachedSystemSettings } from '../api/systemSettings';
 import { exportToXlsx } from '../utils/excel';
@@ -257,13 +257,15 @@ async function createScrap() {
 
   let reason = '';
   try {
-    const { value } = await ElMessageBox.prompt('请输入报废原因（可选）', '生成报废单', {
-      confirmButtonText: '生成并导出',
-      cancelButtonText: '取消',
-      inputPlaceholder: '例如：超过使用年限 / 无法维修 / 配置过低等',
-      inputType: 'textarea',
-      inputValue: '',
-    });
+      const { value } = await promptAction({
+        message: '请输入报废原因（可选）',
+        title: '生成报废单',
+        confirmButtonText: '生成并导出',
+        cancelButtonText: '取消',
+        inputPlaceholder: '例如：超过使用年限 / 无法维修 / 配置过低等',
+        inputType: 'textarea',
+        inputValue: '',
+      });
     reason = String(value || '').trim();
   } catch {
     return;
@@ -312,12 +314,12 @@ async function createScrap() {
       sheetName: '报废单',
     });
 
-    ElMessage.success(`已报废并导出报废单：${scrapNo}`);
+    showSuccess(`已报废并导出报废单：${scrapNo}`);
     selectedIds.value = [];
     clearTotalCache();
     await reload(currentFilters());
   } catch (e: any) {
-    ElMessage.error(e?.message || '生成报废单失败');
+    showError(e?.message || '生成报废单失败');
   } finally {
     scrapLoading.value = false;
   }
@@ -345,7 +347,7 @@ async function exportExcel(all: boolean) {
     loadingRef.value = true;
     const filters = currentFilters();
     const rowsToExport = all ? await fetchAllWarningRows(filters) : rows.value;
-    if (!rowsToExport.length) return ElMessage.warning('当前没有可导出的报废预警数据');
+    if (!rowsToExport.length) return showWarning('当前没有可导出的报废预警数据');
     await exportToXlsx({
       filename: `电脑报废预警_${all ? '全部' : '当前页'}_${new Date().toISOString().slice(0, 10).replace(/-/g, '')}.xlsx`,
       sheetName: '报废预警',
@@ -377,7 +379,7 @@ async function exportExcel(all: boolean) {
       })),
     });
   } catch (e: any) {
-    ElMessage.error(e?.message || '导出失败');
+    showError(e?.message || '导出失败');
   } finally {
     loadingRef.value = false;
   }

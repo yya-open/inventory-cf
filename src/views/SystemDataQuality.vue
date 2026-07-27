@@ -61,7 +61,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { showError, showSuccess } from '../utils/feedback';
 import { listDataQualityCases, scanDataQualityCases, updateDataQualityCase, type DataQualityCase } from '../api/dataQuality';
 import { isAppMobileViewport } from '../utils/responsive';
 
@@ -84,16 +84,16 @@ function statusLabel(status: string) { return ({ open: '待处理', in_progress:
 function statusType(status: string) { return ({ open: 'danger', in_progress: 'warning', ignored: 'info', resolved: 'success' } as Record<string, any>)[status] || 'info'; }
 
 async function load() {
-  try { loading.value = true; const response = await listDataQualityCases(statusFilter.value); rows.value = response.data || []; } catch (error: any) { ElMessage.error(error?.message || '加载数据质量问题失败'); } finally { loading.value = false; }
+  try { loading.value = true; const response = await listDataQualityCases(statusFilter.value); rows.value = response.data || []; } catch (error: any) { showError(error?.message || '加载数据质量问题失败'); } finally { loading.value = false; }
 }
 async function scan() {
-  try { scanning.value = true; const response = await scanDataQualityCases(); lastScanAt.value = new Date().toISOString(); ElMessage.success(`扫描完成，发现 ${Number(response.data?.issue_count || 0)} 类问题`); await load(); } catch (error: any) { ElMessage.error(error?.message || '扫描失败'); } finally { scanning.value = false; }
+  try { scanning.value = true; const response = await scanDataQualityCases(); lastScanAt.value = new Date().toISOString(); showSuccess(`扫描完成，发现 ${Number(response.data?.issue_count || 0)} 类问题`); await load(); } catch (error: any) { showError(error?.message || '扫描失败'); } finally { scanning.value = false; }
 }
 function openCase(row: DataQualityCase) { activeCase.value = row; edit.status = row.status; edit.owner = row.owner || ''; edit.due_at = row.due_at || ''; edit.note = row.note || ''; drawerVisible.value = true; }
 async function setStatus(row: DataQualityCase, status: DataQualityCase['status']) { activeCase.value = row; edit.status = status; edit.owner = row.owner || ''; edit.due_at = row.due_at || ''; edit.note = row.note || ''; await saveCase(); }
 async function saveCase() {
   if (!activeCase.value) return;
-  try { saving.value = true; await updateDataQualityCase({ id: activeCase.value.id, ...edit }); ElMessage.success('处理结果已保存'); drawerVisible.value = false; await load(); } catch (error: any) { ElMessage.error(error?.message || '保存失败'); } finally { saving.value = false; }
+  try { saving.value = true; await updateDataQualityCase({ id: activeCase.value.id, ...edit }); showSuccess('处理结果已保存'); drawerVisible.value = false; await load(); } catch (error: any) { showError(error?.message || '保存失败'); } finally { saving.value = false; }
 }
 onMounted(() => { void load(); });
 </script>

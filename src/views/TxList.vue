@@ -172,7 +172,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeMount, onActivated, computed } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, promptAction, showError, showSuccess } from "../utils/feedback";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRoute, useRouter } from "vue-router";
@@ -430,7 +430,7 @@ async function doExport() {
       })),
     });
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    showError(e?.message || "导出失败");
   } finally {
     exportLoading.value = false;
   }
@@ -506,21 +506,17 @@ async function clearTx() {
     const params = buildListParams(filters, false);
     const hasFilter = [...params.keys()].some((key) => key !== 'warehouse_id');
 
-    const action = await ElMessageBox.confirm(
-      hasFilter
-        ? "将清空【当前筛选条件】下的出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。"
-        : "当前没有筛选条件，将清空【全部】出入库明细记录。\n\n此操作不可恢复，请谨慎！",
-      "清空出入库明细",
-      {
-        type: "warning",
-        confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部",
-        cancelButtonText: hasFilter ? "清空全部" : "取消",
-        distinguishCancelAndClose: true,
-      }
-    ).then(
-      () => (hasFilter ? "filtered" : "all"),
+    const action = await confirmAction({
+      message: hasFilter ? '将清空【当前筛选条件】下的出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。': '当前没有筛选条件，将清空【全部】出入库明细记录。\n\n此操作不可恢复，请谨慎！',
+      title: '清空出入库明细',
+      type: 'warning',
+      confirmButtonText: hasFilter ? '清空当前筛选' : '确认清空全部',
+      cancelButtonText: hasFilter ? '清空全部' : '取消',
+      distinguishCancelAndClose: true,
+    }).then(
+      () => (hasFilter ? 'filtered' : 'all'),
       (reason) => {
-        if (reason === "cancel" && hasFilter) return "all";
+        if (reason === 'cancel' && hasFilter) return 'all';
         return null;
       }
     );
@@ -530,16 +526,14 @@ async function clearTx() {
     const expected = action === "all" ? "清空全部" : "清空";
     let confirmText = "";
     try {
-      const { value } = await ElMessageBox.prompt(
-        `请输入「${expected}」确认操作（区分大小写）`,
-        "二次确认",
-        {
-          confirmButtonText: "确认",
-          cancelButtonText: "取消",
-          inputPlaceholder: expected,
-          inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
-        }
-      );
+      const { value } = await promptAction({
+        message: `请输入「${expected}」确认操作（区分大小写）`,
+        title: '二次确认',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputPlaceholder: expected,
+        inputValidator: (v: string) => (String(v || '').trim() === expected ? true : `需要输入「${expected}」`),
+      });
       confirmText = value;
     } catch {
       return;
@@ -555,13 +549,13 @@ async function clearTx() {
     }
 
     const r = await apiPost<{ ok: boolean; data: { deleted: number } }>("/api/tx/clear", body);
-    ElMessage.success(`已清空 ${r.data.deleted} 条记录`);
+    showSuccess(`已清空 ${r.data.deleted} 条记录`);
     invalidateCache();
     clearTotalCache();
     await load({ keepPage: false, forceRefresh: true });
   } catch (e: any) {
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e?.message || "清空失败");
+    showError(e?.message || "清空失败");
   } finally {
     clearLoading.value = false;
   }

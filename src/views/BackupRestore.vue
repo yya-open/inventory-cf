@@ -587,24 +587,16 @@ import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElProgress } from 'element-plus/es/components/progress/index';
 import { ElRadio, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, watch } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiPostForm, apiGet, apiPost } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
 import { can } from "../store/auth";
 import BackupDrillPanel from "../components/BackupDrillPanel.vue";
 import { TABLE_LABEL, tableCn, tableGroupKey, tableGroupLabel } from "../utils/backupTableMap";
 
-function msgSuccess(message: string, duration = 2000) {
-  return ElMessage({ type: "success", message, duration, showClose: true });
-}
-
-function msgWarn(message: string, duration = 3000) {
-  return ElMessage({ type: "warning", message, duration, showClose: true });
-}
-
-function msgError(message: string, duration = 4000) {
-  return ElMessage({ type: "error", message, duration, showClose: true });
-}
+const SUCCESS_MESSAGE_OPTIONS = { duration: 2000, showClose: true } as const;
+const WARNING_MESSAGE_OPTIONS = { duration: 3000, showClose: true } as const;
+const ERROR_MESSAGE_OPTIONS = { duration: 4000, showClose: true } as const;
 
 const bk = ref({
   include_tx: false,
@@ -628,25 +620,23 @@ const initingSchema = ref(false);
 
 async function initAllSchema() {
   try {
-    const { value } = await ElMessageBox.prompt(
-      "将创建/补齐所有业务表结构（含电脑仓/显示器/盘点/限流/恢复任务等）。请输入：初始化",
-      "二次确认",
-      {
-        confirmButtonText: "开始初始化",
-        cancelButtonText: "取消",
-        inputPlaceholder: "初始化",
-      }
-    );
+    const { value } = await promptAction({
+      title: "二次确认",
+      message: "将创建/补齐所有业务表结构（含电脑仓/显示器/盘点/限流/恢复任务等）。请输入：初始化",
+      confirmButtonText: "开始初始化",
+      cancelButtonText: "取消",
+      inputPlaceholder: "初始化",
+    });
     if (String(value || "").trim() !== "初始化") {
-      msgWarn("确认文字不正确");
+      showWarning("确认文字不正确", WARNING_MESSAGE_OPTIONS);
       return;
     }
     initingSchema.value = true;
     await apiPost("/api/admin/init_schema", { confirm: "初始化" });
-    msgSuccess("初始化完成");
+    showSuccess("初始化完成", SUCCESS_MESSAGE_OPTIONS);
   } catch (e: any) {
     if (e?.message && String(e.message).includes("cancel")) return;
-    msgError(e?.message || "初始化失败");
+    showError(e?.message || "初始化失败", ERROR_MESSAGE_OPTIONS);
   } finally {
     initingSchema.value = false;
   }
@@ -693,9 +683,9 @@ async function submitBackupJob(extra?: Record<string, string>, successMessage = 
       max_retries: 1,
     });
     const jobId = Number(r?.data?.id || 0);
-    msgSuccess(jobId ? `${successMessage}（#${jobId}）` : successMessage);
+    showSuccess(jobId ? `${successMessage}（#${jobId}）` : successMessage, SUCCESS_MESSAGE_OPTIONS);
   } catch (e:any) {
-    msgError(e?.message || '创建备份任务失败');
+    showError(e?.message || '创建备份任务失败', ERROR_MESSAGE_OPTIONS);
   } finally {
     downloading.value = false;
   }
@@ -757,7 +747,7 @@ async function onPick(uploadFile: any) {
   pickedInfo.value = `${file.name}（${mb} MB）`;
   restoreValidate.value = null;
   restoreValidateAt.value = "";
-  msgSuccess("已选择备份文件");
+  showSuccess("已选择备份文件", SUCCESS_MESSAGE_OPTIONS);
 }
 
 // 有些情况下 change 回调拿不到 raw，但 v-model:file-list 能拿到，做一次兜底
@@ -906,7 +896,7 @@ watch([jobStatus, restoreDetailRows], () => {
 
 async function validateRestoreFile(opts?: { silent?: boolean }) {
   if (!pickedFile.value) {
-    if (!opts?.silent) msgWarn("请先选择备份文件");
+    if (!opts?.silent) showWarning("请先选择备份文件", WARNING_MESSAGE_OPTIONS);
     return null;
   }
   validatingRestore.value = true;
@@ -917,12 +907,12 @@ async function validateRestoreFile(opts?: { silent?: boolean }) {
     restoreValidate.value = r.data;
     restoreValidateAt.value = formatBeijingNowDateTime();
     if (!opts?.silent) {
-      if (r.data?.valid) msgSuccess("恢复前校验通过");
-      else msgWarn("恢复前校验未通过，请先处理错误项");
+      if (r.data?.valid) showSuccess("恢复前校验通过", SUCCESS_MESSAGE_OPTIONS);
+      else showWarning("恢复前校验未通过，请先处理错误项", WARNING_MESSAGE_OPTIONS);
     }
     return r.data;
   } catch (e:any) {
-    if (!opts?.silent) msgError(e?.message || "恢复前校验失败");
+    if (!opts?.silent) showError(e?.message || "恢复前校验失败", ERROR_MESSAGE_OPTIONS);
     throw e;
   } finally {
     validatingRestore.value = false;
@@ -936,30 +926,28 @@ async function createJob() {
   const v = restoreValidate.value;
   if (v && v.valid === false) {
     validateDlg.value = true;
-    msgWarn("恢复前校验未通过，请先处理错误项");
+    showWarning("恢复前校验未通过，请先处理错误项", WARNING_MESSAGE_OPTIONS);
     return;
   }
 
   const expected = mode.value === "replace" ? "清空并恢复" : (mode.value === "merge_upsert" ? "覆盖导入" : "恢复");
   try {
-    const { value: confirmText } = await ElMessageBox.prompt(
-      mode.value === "replace"
+    const { value: confirmText } = await promptAction({
+      title: "二次确认",
+      message: mode.value === "replace"
         ? "将先自动创建恢复点快照，再清空数据库恢复。请输入：清空并恢复"
         : (mode.value === "merge_upsert"
             ? "将导入备份数据并更新重复记录（覆盖同主键/唯一键）。请输入：覆盖导入"
             : "将先自动创建恢复点快照，再导入备份数据。请输入：恢复"),
-      "二次确认",
-      {
-        confirmButtonText: "创建任务",
-        cancelButtonText: "取消",
-        inputPlaceholder: expected,
-        inputValue: "",
-        type: "warning",
-      }
-    ).catch(() => ({ value: "" } as any));
+      confirmButtonText: "创建任务",
+      cancelButtonText: "取消",
+      inputPlaceholder: expected,
+      inputValue: "",
+      type: "warning",
+    }).catch(() => ({ value: "" } as any));
 
     if (String(confirmText || "").trim() !== expected) {
-      msgWarn("二次确认未通过，已取消");
+      showWarning("二次确认未通过，已取消", WARNING_MESSAGE_OPTIONS);
       return;
     }
 
@@ -971,10 +959,10 @@ async function createJob() {
 
     const r = await apiPostForm<any>("/api/admin/restore_job/create", form);
     jobId.value = r.data.id;
-    msgSuccess("任务已创建");
+    showSuccess("任务已创建", SUCCESS_MESSAGE_OPTIONS);
     await refreshStatus();
   } catch (e:any) {
-    msgError(e?.message || "创建任务失败");
+    showError(e?.message || "创建任务失败", ERROR_MESSAGE_OPTIONS);
   } finally {
     creatingJob.value = false;
   }
@@ -986,7 +974,7 @@ async function refreshStatus() {
     const r = await apiGet<any>(`/api/admin/restore_job/status?id=${encodeURIComponent(jobId.value)}`);
     applyJobSnapshot(r.data);
   } catch (e:any) {
-    msgError(e?.message || "刷新失败");
+    showError(e?.message || "刷新失败", ERROR_MESSAGE_OPTIONS);
   }
 }
 
@@ -1012,7 +1000,7 @@ function sleep(ms: number) {
 
 async function startOrResume() {
   if (!jobId.value) {
-    msgWarn("请先创建恢复任务");
+    showWarning("请先创建恢复任务", WARNING_MESSAGE_OPTIONS);
     return;
   }
   if (running.value) return;
@@ -1040,7 +1028,7 @@ async function startOrResume() {
     }
   } catch (e:any) {
     stopLoop();
-    msgError(e?.message || "运行失败");
+    showError(e?.message || "运行失败", ERROR_MESSAGE_OPTIONS);
     await refreshStatus();
   }
 }
@@ -1052,9 +1040,9 @@ async function pauseJob() {
     await apiPost("/api/admin/restore_job/cancel", { id: jobId.value });
     await refreshStatus();
     stopLoop();
-    msgSuccess("已暂停，可稍后继续");
+    showSuccess("已暂停，可稍后继续", SUCCESS_MESSAGE_OPTIONS);
   } catch (e:any) {
-    msgError(e?.message || "暂停失败");
+    showError(e?.message || "暂停失败", ERROR_MESSAGE_OPTIONS);
   } finally {
     pausing.value = false;
   }

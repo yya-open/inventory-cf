@@ -75,7 +75,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { apiGet, apiPost } from "../api/client";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { promptAction, showError, showSuccess } from "../utils/feedback";
 
 const showRetention = ref(false);
 const retentionDays = ref(180);
@@ -147,22 +147,25 @@ async function saveRetention() {
       warn_audit_bytes_mb: Number(warnAuditBytesMb.value || 128),
     };
     if (runCleanup.value) {
-      const { value } = await ElMessageBox.prompt(
-        "将删除早于保留天数的审计日志，输入“清理”确认：",
-        "确认立即清理",
-        { confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "请输入：清理", inputValue: "" }
-      );
+      const { value } = await promptAction({
+        message: '将删除早于保留天数的审计日志，输入“清理”确认：',
+        title: '确认立即清理',
+        confirmButtonText: '确认',
+        cancelButtonText: '取消',
+        inputPlaceholder: '请输入：清理',
+        inputValue: '',
+      });
       payload.run_cleanup = true;
       payload.confirm = value;
     }
     const r = await apiPost<any>("/api/admin/audit/retention", payload);
-    ElMessage.success(runCleanup.value ? "已保存并清理" : "已保存");
+    showSuccess(runCleanup.value ? "已保存并清理" : "已保存");
     applyRetentionState((r as any).data || payload);
     runCleanup.value = false;
     showRetention.value = false;
   } catch (e: any) {
     if (e === "cancel" || e?.message === "cancel") return;
-    ElMessage.error(e?.message || "保存失败");
+    showError(e?.message || "保存失败");
   } finally {
     retentionSaving.value = false;
   }
@@ -171,11 +174,14 @@ async function saveRetention() {
 async function createArchiveJob() {
   try {
     archiveSubmitting.value = true;
-    const { value } = await ElMessageBox.prompt(
-      "将生成审计归档文件，并根据策略可选删除源记录。输入“归档”确认：",
-      "确认创建归档任务",
-      { confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "请输入：归档", inputValue: "" }
-    );
+    const { value } = await promptAction({
+      message: '将生成审计归档文件，并根据策略可选删除源记录。输入“归档”确认：',
+      title: '确认创建归档任务',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputPlaceholder: '请输入：归档',
+      inputValue: '',
+    });
     const r = await apiPost<any>("/api/admin/audit/retention", {
       retention_days: Number(retentionDaysEdit.value || 180),
       archive_enabled: archiveEnabled.value,
@@ -189,11 +195,11 @@ async function createArchiveJob() {
       archive_confirm: value,
     });
     applyRetentionState((r as any).data || {});
-    ElMessage.success(`审计归档任务已创建：#${(r as any).data?.archive_job_id || ''}`);
+    showSuccess(`审计归档任务已创建：#${(r as any).data?.archive_job_id || ''}`);
     showRetention.value = false;
   } catch (e: any) {
     if (e === 'cancel' || e?.message === 'cancel') return;
-    ElMessage.error(e?.message || '创建归档任务失败');
+    showError(e?.message || '创建归档任务失败');
   } finally {
     archiveSubmitting.value = false;
   }

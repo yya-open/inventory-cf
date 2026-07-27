@@ -80,7 +80,7 @@
 
 <script setup lang="ts">
 import { ref, onMounted, computed } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiGet, apiPost, isApiErrorCode } from "../api/client";
 import { useRoute, useRouter } from "vue-router";
 import type { FormInstance, FormRules } from "element-plus";
@@ -136,7 +136,7 @@ async function submit() {
   try {
     const ok = await validateWithFriendlyMessage(
       formRef.value,
-      (msg) => ElMessage.warning(msg),
+      (msg) => showWarning(msg),
       {
         item_id: '请选择配件',
         qty: '请输入正确的入库数量',
@@ -157,7 +157,7 @@ async function submit() {
       client_request_id: rid,
     });
 
-    ElMessage.success(r?.duplicate ? "入库已处理（重复请求已忽略）" : "入库成功");
+    showSuccess(r?.duplicate ? "入库已处理（重复请求已忽略）" : "入库成功");
     pendingRid.value = "";
     form.value.qty = 1;
     form.value.unit_price = 0;
@@ -166,14 +166,14 @@ async function submit() {
     formRef.value?.clearValidate();
   } catch (e: any) {
     if (isApiErrorCode(e, 'WRITE_CONFLICT')) {
-      ElMessage.warning('检测到并发写入冲突，请稍后重试');
+      showWarning('检测到并发写入冲突，请稍后重试');
       return;
     }
     if (isApiErrorCode(e, 'INVALID_PARAMS')) {
-      ElMessage.warning('入库参数无效，请检查配件和数量');
+      showWarning('入库参数无效，请检查配件和数量');
       return;
     }
-    ElMessage.error(e?.message || "入库失败");
+    showError(e?.message || "入库失败");
   } finally {
     submitting.value = false;
   }

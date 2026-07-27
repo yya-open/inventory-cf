@@ -117,19 +117,14 @@
 
 <script setup lang="ts">
 import { ref, onMounted } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess } from "../utils/feedback";
 import { apiGet, apiPost, apiPut } from "../api/client";
 import { saveBlobAsFile } from "../utils/operationFeedback";
 import { scheduleOnIdle } from "../utils/idle";
 import LazyMountBlock from "./LazyMountBlock.vue";
 
-function msgSuccess(message: string, duration = 2000) {
-  return ElMessage({ type: "success", message, duration, showClose: true });
-}
-
-function msgError(message: string, duration = 4000) {
-  return ElMessage({ type: "error", message, duration, showClose: true });
-}
+const SUCCESS_MESSAGE_OPTIONS = { duration: 2000, showClose: true } as const;
+const ERROR_MESSAGE_OPTIONS = { duration: 4000, showClose: true } as const;
 
 type BackupDrillRow = { id:number; drill_at:string; outcome:string; scenario:string; operator_name?:string; note?:string; issue_count?: number; follow_up_status?: 'open' | 'closed' | 'not_required'; rect_owner?: string; rect_due_at?: string; rect_closed_at?: string; review_note?: string };
 
@@ -184,23 +179,23 @@ async function loadBackupDrills() {
 async function saveBackupDrill() {
   try {
     await apiPost('/api/backup-drills', drillForm.value);
-    msgSuccess('演练记录已保存');
+    showSuccess('演练记录已保存', SUCCESS_MESSAGE_OPTIONS);
     drillDialog.value = false;
     drillForm.value = { scenario: 'restore_drill', outcome: 'success', note: '', issue_count: 0, follow_up_status: 'not_required', rect_owner: '', rect_due_at: '', review_note: '' };
     await loadBackupDrills();
   } catch (e:any) {
-    msgError(e?.message || '保存演练记录失败');
+    showError(e?.message || '保存演练记录失败', ERROR_MESSAGE_OPTIONS);
   }
 }
 
 async function saveDrillClosure() {
   try {
     await apiPut('/api/backup-drills', drillClosureForm.value);
-    msgSuccess('演练闭环已更新');
+    showSuccess('演练闭环已更新', SUCCESS_MESSAGE_OPTIONS);
     drillClosureDialog.value = false;
     await loadBackupDrills();
   } catch (e:any) {
-    msgError(e?.message || '更新演练闭环失败');
+    showError(e?.message || '更新演练闭环失败', ERROR_MESSAGE_OPTIONS);
   }
 }
 

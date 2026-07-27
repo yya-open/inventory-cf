@@ -284,7 +284,7 @@
 import { computed, onMounted, ref, watch } from "vue";
 import { fetchMe, useAuth } from "../store/auth";
 import { formatBeijingDateTime } from "../utils/datetime";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiGet, apiPost, apiPut, apiDelete, isApiErrorCode } from "../api/client";
 import { validatePassword } from "../utils/password";
 import { getAccessibleRouteLabels } from "../utils/moduleAccess";
@@ -567,7 +567,7 @@ async function load() {
     rows.value = r.data || [];
     total.value = Number((r as any).meta?.total || 0);
   } catch (e:any) {
-    ElMessage.error(userErrorHint(e) || e.message || "加载失败");
+    showError(userErrorHint(e) || e.message || "加载失败");
   } finally {
     loading.value = false;
   }
@@ -615,7 +615,7 @@ async function previewScope(payload: { data_scope_type: string; data_scope_value
     previewTargetPath.value = scopePreview.value?.route_checks?.find((item:any) => item.enabled)?.path || scopePreview.value?.route_checks?.[0]?.path || '';
     showScopePreview.value = true;
   } catch (e: any) {
-    ElMessage.error(userErrorHint(e) || e.message || '预览失败');
+    showError(userErrorHint(e) || e.message || '预览失败');
   }
 }
 
@@ -641,25 +641,25 @@ function openCreate() {
 }
 
 async function createUser() {
-  if (!form.value.username.trim()) return ElMessage.warning("请输入账号");
+  if (!form.value.username.trim()) return showWarning("请输入账号");
   const pv = validatePassword(form.value.password);
-  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  if (!pv.ok) return showWarning(pv.msg || "密码不符合规则");
   const draftWarning = draftScopeWarning({ data_scope_type: form.value.data_scope_type, data_scope_value: form.value.data_scope_value, data_scope_value2: form.value.data_scope_value2 });
-  if (draftWarning) return ElMessage.warning(draftWarning);
+  if (draftWarning) return showWarning(draftWarning);
   const normalizedScope = normalizeDataScope(form.value.data_scope_type, form.value.data_scope_value, form.value.data_scope_value2);
-  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
-  if ((normalizedScope.data_scope_type === 'warehouse' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value2 && normalizedScope.data_scope_type !== 'warehouse') return ElMessage.warning('请选择仓库范围');
-  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return showWarning('请输入部门范围');
+  if ((normalizedScope.data_scope_type === 'warehouse' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value2 && normalizedScope.data_scope_type !== 'warehouse') return showWarning('请选择仓库范围');
+  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return showWarning('请选择仓库范围');
   saving.value = true;
   try {
     const r = await apiPost<any>("/api/users", { ...form.value, ...normalizedScope });
     rows.value = [r.data as any, ...rows.value].slice(0, pageSize.value);
     total.value += 1;
-    ElMessage.success("创建成功");
+    showSuccess("创建成功");
     showCreate.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(userErrorHint(e) || e.message || "创建失败");
+    showError(userErrorHint(e) || e.message || "创建失败");
   } finally {
     saving.value = false;
   }
@@ -694,22 +694,22 @@ function openEdit(row: Row) {
 async function saveEdit() {
   if (!editing.value) return;
   const draftWarning = draftScopeWarning({ data_scope_type: editDataScopeType.value, data_scope_value: editDataScopeValue.value, data_scope_value2: editDataScopeValue2.value });
-  if (draftWarning) return ElMessage.warning(draftWarning);
+  if (draftWarning) return showWarning(draftWarning);
   const normalizedScope = normalizeDataScope(editDataScopeType.value, editDataScopeValue.value, editDataScopeValue2.value);
-  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return ElMessage.warning('请输入部门范围');
-  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return ElMessage.warning('请选择仓库范围');
-  if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return ElMessage.warning('请选择仓库范围');
+  if ((normalizedScope.data_scope_type === 'department' || normalizedScope.data_scope_type === 'department_warehouse') && !normalizedScope.data_scope_value) return showWarning('请输入部门范围');
+  if (normalizedScope.data_scope_type === 'warehouse' && !normalizedScope.data_scope_value) return showWarning('请选择仓库范围');
+  if (normalizedScope.data_scope_type === 'department_warehouse' && !normalizedScope.data_scope_value2) return showWarning('请选择仓库范围');
   saving.value = true;
   try {
     const isEditingSelf = editing.value.id === auth.user?.id;
     const r = await apiPut<any>("/api/users", { id: editing.value.id, role: editRole.value, is_active: editActive.value, permission_template_code: editTemplateCode.value, permissions: editPermissions.value, ...normalizedScope });
     rows.value = rows.value.map((item) => item.id === editing.value?.id ? ({ ...(item as any), ...(r.data as any) }) : item);
     if (isEditingSelf) await fetchMe({ force: true });
-    ElMessage.success("已更新");
+    showSuccess("已更新");
     showEdit.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(userErrorHint(e) || e.message || "更新失败");
+    showError(userErrorHint(e) || e.message || "更新失败");
   } finally {
     saving.value = false;
   }
@@ -724,15 +724,15 @@ function openReset(row: Row) {
 async function doReset() {
   if (!editing.value) return;
   const pv = validatePassword(resetPwd.value);
-  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  if (!pv.ok) return showWarning(pv.msg || "密码不符合规则");
   saving.value = true;
   try {
     await apiPut<any>("/api/users", { id: editing.value.id, reset_password: resetPwd.value });
-    ElMessage.success("已重置");
+    showSuccess("已重置");
     showReset.value = false;
     await load();
   } catch (e:any) {
-    ElMessage.error(userErrorHint(e) || e.message || "重置失败");
+    showError(userErrorHint(e) || e.message || "重置失败");
   } finally {
     saving.value = false;
   }
@@ -740,18 +740,23 @@ async function doReset() {
 
 async function delUser(row: Row) {
   try {
-    await ElMessageBox.confirm(`确定要删除用户「${row.username}」吗？
-删除后无法恢复。`, "删除用户", { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" });
+    await confirmAction({
+      message: `确定要删除用户「${row.username}」吗？\n删除后无法恢复。`,
+      title: '删除用户',
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    });
   } catch {
     return;
   }
   saving.value = true;
   try {
     await apiDelete<any>("/api/users", { id: row.id });
-    ElMessage.success("已删除");
+    showSuccess("已删除");
     await load();
   } catch (e: any) {
-    ElMessage.error(userErrorHint(e) || e.message || "删除失败");
+    showError(userErrorHint(e) || e.message || "删除失败");
   } finally {
     saving.value = false;
   }

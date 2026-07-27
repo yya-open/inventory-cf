@@ -298,7 +298,7 @@ import { computed, ref, reactive, watch, onMounted, onBeforeUnmount } from "vue"
 import AppSidebarMenu from "./components/AppSidebarMenu.vue";
 import GlobalCommandPalette from "./components/GlobalCommandPalette.vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "./utils/el-services";
+import { showError, showSuccess, showWarning } from "./utils/feedback";
 import { apiPost } from "./api/client";
 import { validatePassword } from "./utils/password";
 import { getSystemHealth, getSystemSchemaStatus } from "./api/systemHealth";
@@ -645,14 +645,14 @@ function goChangePwd() {
 
 async function changePwd() {
   const pv = validatePassword(newP.value);
-  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  if (!pv.ok) return showWarning(pv.msg || "密码不符合规则");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
-    ElMessage.success("修改成功，请重新登录");
+    showSuccess("修改成功，请重新登录");
     doLogout();
   } catch (e: any) {
-    ElMessage.error(e.message || "修改失败");
+    showError(e.message || "修改失败");
   } finally {
     changing.value = false;
     showChange.value = false;

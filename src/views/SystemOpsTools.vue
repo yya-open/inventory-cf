@@ -253,7 +253,7 @@ import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/d
 import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElProgress } from 'element-plus/es/components/progress/index';
 import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue';
-import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { confirmAction, showError, showPending, showSuccess, showWarning } from '../utils/feedback';
 import { apiGet, apiPost, apiPut } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 import { confirmRiskAction } from '../utils/riskAction';
@@ -334,10 +334,10 @@ async function runSnapshotPrecompute() {
   snapshotPrecomputing.value = true;
   try {
     const r = await apiPost<any>('/api/jobs', { job_type: 'DASHBOARD_PRECOMPUTE', request_json: { days: 90, force: true }, retain_days: 7, max_retries: 1 });
-    ElMessage.success(r?.message || '已提交看板快照预计算任务');
+    showSuccess(r?.message || '已提交看板快照预计算任务');
     if (loadedTabs.jobs || tab.value === 'jobs') await loadJobs();
   } catch (e: any) {
-    ElMessage.error(e.message || '提交看板快照预计算任务失败');
+    showError(e.message || '提交看板快照预计算任务失败');
   } finally {
     snapshotPrecomputing.value = false;
   }
@@ -483,10 +483,10 @@ async function reloadCurrent() {
 async function queueDeepScan() {
   try {
     const r:any = await apiPost('/api/jobs', { job_type: 'OPS_SCAN_REFRESH', request_json: {}, retain_days: 7, max_retries: 1 });
-    ElMessage.success(r.message || '已提交深度巡检任务');
+    showSuccess(r.message || '已提交深度巡检任务');
     if (loadedTabs.jobs || tab.value === 'jobs') await loadJobs();
   } catch (e:any) {
-    ElMessage.error(e.message || '提交深度巡检任务失败');
+    showError(e.message || '提交深度巡检任务失败');
   }
 }
 
@@ -496,7 +496,7 @@ async function scanAll() {
     const r:any = await apiPost('/api/system-tools', { action: 'scan_all' });
     applyScan(r.data || {});
     dashboard.repair_problem_count = Number(r.data?.total_problem_count || 0);
-    ElMessage.success(r.message || '扫描完成');
+    showSuccess(r.message || '扫描完成');
     await loadHealth();
   } finally {
     scanning.value = false;
@@ -529,7 +529,7 @@ async function runRepair(action: string) {
     if (r.data?.after_scan || r.data?.after) applyScan(r.data.after_scan || r.data.after);
     else await scanAll();
     await Promise.all([loadRepairBase(), loadHealth(), loadedTabs.jobs ? loadJobs() : Promise.resolve(), loadedTabs.history ? loadRepairHistory() : Promise.resolve()]);
-    ElMessage.success(r.message || '修复完成');
+    showSuccess(r.message || '修复完成');
   } finally {
     running.value = '';
   }
@@ -627,7 +627,7 @@ async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {
   } catch (error: any) {
     if (requestSeq !== jobsRequestSeq) return;
     if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
-    if (!options.silent) ElMessage.error(error?.message || '加载任务列表失败');
+    if (!options.silent) showError(error?.message || '加载任务列表失败');
   } finally {
     if (jobsAbortController === controller) jobsAbortController = null;
     jobPollInFlight.value = false;
@@ -645,7 +645,7 @@ async function loadRepairHistory() {
 async function cleanupJobs() {
   await confirmRiskAction({ title: '自动清理历史任务', actionLabel: '清理异步任务历史', detail: '会清理过期结果、自动取消排队过久的任务，并删除长期无结果的旧任务。', affectedRows: jobs.value.length, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'cleanup' });
-  ElMessage.success(r.message || '已自动清理');
+  showSuccess(r.message || '已自动清理');
   await loadJobs();
 }
 
@@ -675,9 +675,9 @@ async function downloadJob(row:any) {
   if (!url) return;
   try {
     const file = await downloadJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) ElMessage.success('已从最近下载缓存读取结果');
+    if (file.fromCache) showSuccess('已从最近下载缓存读取结果');
   } catch (e:any) {
-    ElMessage.error(e?.message || '下载任务结果失败');
+    showError(e?.message || '下载任务结果失败');
   }
 }
 
@@ -686,9 +686,9 @@ async function previewJob(row:any) {
   if (!url) return;
   try {
     const file = await openJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) ElMessage.success('已从最近预览缓存打开结果');
+    if (file.fromCache) showSuccess('已从最近预览缓存打开结果');
   } catch (e:any) {
-    ElMessage.error(e?.message || '预览任务结果失败');
+    showError(e?.message || '预览任务结果失败');
   }
 }
 
@@ -697,16 +697,16 @@ async function printJob(row:any) {
   if (!url) return;
   try {
     const file = await openJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) ElMessage.success('已从最近打印缓存打开结果');
+    if (file.fromCache) showSuccess('已从最近打印缓存打开结果');
   } catch (e:any) {
-    ElMessage.error(e?.message || '打开打印页失败');
+    showError(e?.message || '打开打印页失败');
   }
 }
 
 async function retryJob(id:number) {
   await confirmRiskAction({ title: '重试异步任务', actionLabel: '重试失败任务', detail: `任务 #${id} 会重新入队执行。`, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'retry', id });
-  ElMessage.success(r.message || '已重试');
+  showSuccess(r.message || '已重试');
   await loadJobs();
 }
 async function openJobDetail(row:any) {
@@ -722,7 +722,7 @@ async function openJobDetail(row:any) {
 
 async function deleteJob(row:any) {
   if (batchDeletingJobs.value) return;
-  await ElMessageBox.confirm(`确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, '提示', { type: 'warning' });
+  await confirmAction({ title: '提示', message: `确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, type: 'warning' });
   deletingJobId.value = Number(row?.id || 0) || null;
   try {
     await apiPut('/api/jobs', { action: 'delete', id: row.id });
@@ -730,7 +730,7 @@ async function deleteJob(row:any) {
       jobDetail.visible = false;
       jobDetail.row = null;
     }
-    ElMessage.success('任务已删除');
+    showSuccess('任务已删除');
     await loadJobs();
   } finally {
     deletingJobId.value = null;
@@ -747,20 +747,22 @@ async function deleteSelectedJobs() {
   if (batchDeletingJobs.value) return;
   const selected = new Set(selectedJobIds.value);
   const selectedRows = jobs.value.filter((row: any) => selected.has(Number(row?.id || 0)));
-  if (!selectedRows.length) return ElMessage.warning('请先勾选任务');
+  if (!selectedRows.length) return showWarning('请先勾选任务');
   const deletableRows = selectedRows.filter((row: any) => canDeleteJob(row));
   const blocked = Math.max(0, selectedRows.length - deletableRows.length);
-  if (!deletableRows.length) return ElMessage.warning('选中任务均为运行中/排队中，无法删除');
+  if (!deletableRows.length) return showWarning('选中任务均为运行中/排队中，无法删除');
 
-  await ElMessageBox.confirm(
-    blocked
+  await confirmAction({
+    title: '批量删除任务',
+    message: blocked
       ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
       : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
-    '批量删除任务',
-    { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
-  );
+    type: 'warning',
+    confirmButtonText: '删除',
+    cancelButtonText: '取消',
+  });
 
-  const loading = ElMessage({ type: 'info', message: '正在批量删除任务，请稍候…', duration: 0, showClose: false });
+  const loading = showPending('正在批量删除任务，请稍候…');
   batchDeletingJobs.value = true;
   let success = 0;
   let failed = 0;
@@ -773,14 +775,14 @@ async function deleteSelectedJobs() {
       jobDetail.row = null;
     }
     loading.close();
-    if (failed) ElMessage.warning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
-    else ElMessage.success(`批量删除完成：共删除 ${success} 条`);
+    if (failed) showWarning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
+    else showSuccess(`批量删除完成：共删除 ${success} 条`);
     selectedJobIds.value = [];
     jobsTableRef.value?.clearSelection?.();
     await loadJobs();
   } catch (error: any) {
     loading.close();
-    ElMessage.error(error?.message || '批量删除任务失败');
+    showError(error?.message || '批量删除任务失败');
   } finally {
     batchDeletingJobs.value = false;
   }
@@ -789,7 +791,7 @@ async function deleteSelectedJobs() {
 async function cancelJob(id:number) {
   await confirmRiskAction({ title: '取消异步任务', actionLabel: '取消任务', detail: `任务 #${id} 将被取消或进入取消中状态。`, irreversible: false });
   const r:any = await apiPut('/api/jobs', { action: 'cancel', id });
-  ElMessage.success(r.message || '已取消');
+  showSuccess(r.message || '已取消');
   await loadJobs();
 }
 

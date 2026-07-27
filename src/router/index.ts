@@ -42,7 +42,7 @@ const PublicPcAsset = () => import("../views/PublicPcAsset.vue");
 const PublicMonitorAsset = () => import("../views/PublicMonitorAsset.vue");
 import { fetchMe, hydrateAuthFromCache, refreshAuthInBackground, shouldRefreshAuthInBackground, useAuth, can, canCapability, canPerm } from "../store/auth";
 import { useWarehouse, setWarehouse } from "../store/warehouse";
-import { ElMessage } from "../utils/el-services";
+import { showWarning } from "../utils/feedback";
 import { scheduleOnIdle } from "../utils/idle";
 import { clearPrefetchedRouteChunk, hasPrefetchedRouteChunk, markPrefetchedRouteChunk, shouldAllowRoutePrefetch } from "../utils/routePrefetch";
 import { canAccessModuleArea, canAccessPcSection, canAccessSystemArea, firstAccessibleArea, firstAccessibleRoute, isMonitorOnlyRoute, isPartsModuleRoute, isPcModuleRoute, isPcOnlyRoute, preferredPcRoute } from "../utils/moduleAccess";
@@ -210,26 +210,26 @@ function guardModuleAccess(to: any, user: any) {
   const pcModuleAllowed = canAccessModuleArea(user, 'pc');
 
   if (to.path.startsWith('/system') && !canAccessSystemArea(user)) {
-    ElMessage.warning('当前账号未授权访问系统模块');
+    showWarning('当前账号未授权访问系统模块');
     return { path: fallbackPath };
   }
   if (isPartsModuleRoute(to.path) && !partsAllowed) {
-    ElMessage.warning('当前账号未授权访问配件仓');
+    showWarning('当前账号未授权访问配件仓');
     return { path: fallbackPath };
   }
   if (isPcModuleRoute(to.path)) {
     if (!pcModuleAllowed) {
-      ElMessage.warning('当前账号未授权访问电脑/显示器仓');
+      showWarning('当前账号未授权访问电脑/显示器仓');
       return { path: fallbackPath };
     }
     const pcAllowed = canAccessPcSection(user, 'pc');
     const monitorAllowed = canAccessPcSection(user, 'monitor');
     if (isPcOnlyRoute(to.path) && !pcAllowed) {
-      ElMessage.warning('当前账号未授权访问电脑仓');
+      showWarning('当前账号未授权访问电脑仓');
       return { path: monitorAllowed ? '/pc/monitors' : fallbackPath };
     }
     if (isMonitorOnlyRoute(to.path) && !monitorAllowed) {
-      ElMessage.warning('当前账号未授权访问显示器仓');
+      showWarning('当前账号未授权访问显示器仓');
       return { path: pcAllowed ? '/pc/assets' : fallbackPath };
     }
   }
@@ -252,17 +252,17 @@ function guardMetaPermissions(to: any, user: any) {
   const fallbackPath = firstAccessibleRoute(user);
   const need = (to.meta as any)?.role as any;
   if (need && !can(need)) {
-    ElMessage.warning("权限不足");
+    showWarning("权限不足");
     return { path: fallbackPath };
   }
   const capability = (to.meta as any)?.capability as any;
   if (capability && !canCapability(capability)) {
-    ElMessage.warning('当前账号缺少对应能力授权');
+    showWarning('当前账号缺少对应能力授权');
     return { path: fallbackPath };
   }
   const permission = (to.meta as any)?.permission as any;
   if (permission && !canPerm(permission)) {
-    ElMessage.warning('当前账号缺少对应权限授权');
+    showWarning('当前账号缺少对应权限授权');
     return { path: fallbackPath };
   }
   return null;

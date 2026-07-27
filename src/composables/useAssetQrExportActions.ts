@@ -1,5 +1,5 @@
 import { ref, unref, type ComputedRef, type Ref } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { showError, showSuccess, showWarning } from '../utils/feedback';
 import { withExportActionFeedback } from '../utils/operationFeedback';
 import { buildQrExportFilename } from '../utils/exportNaming';
 import {
@@ -93,7 +93,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
         jobType: qrJobType(options.scope, optionsForPrint.mode),
         template: optionsForPrint.template,
       });
-      ElMessage.success(formatAssetQrJobCreatedMessage(result, qrJobLabel(optionsForPrint.mode)));
+      showSuccess(formatAssetQrJobCreatedMessage(result, qrJobLabel(optionsForPrint.mode)));
       return;
     }
     const result = await exportAssetQrPrintLocal({
@@ -111,14 +111,14 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
       onProgress: options.updateProgress,
     });
     if (result.empty) {
-      ElMessage.warning(optionsForPrint.emptyMessage);
+      showWarning(optionsForPrint.emptyMessage);
       return;
     }
   }
 
   async function exportSelectedQrLinks() {
     if (!unref(options.selectedCount)) {
-      ElMessage.warning(options.messages.noSelection);
+      showWarning(options.messages.noSelection);
       return;
     }
     try {
@@ -136,7 +136,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
         })
       );
     } catch (error: any) {
-      ElMessage.error(error?.message || options.messages.linksFailed);
+      showError(error?.message || options.messages.linksFailed);
     } finally {
       options.batchBusy.value = false;
     }
@@ -144,16 +144,16 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
 
   function openQrPrintTemplate(kind: QrPrintTemplateKind, action?: QrExportAction) {
     if (!unref(options.canExport)) {
-      ElMessage.warning(options.messages.noPermission);
+      showWarning(options.messages.noPermission);
       return;
     }
     const nextAction = action || (kind === 'cards' ? 'batch-cards' : 'batch-sheet');
     if (nextAction.startsWith('batch') && !unref(options.selectedCount)) {
-      ElMessage.warning(options.messages.noSelection);
+      showWarning(options.messages.noSelection);
       return;
     }
     if (nextAction.startsWith('single') && !(options.singleRow.value as any)?.id) {
-      ElMessage.warning(options.messages.noSingle);
+      showWarning(options.messages.noSingle);
       return;
     }
     qrTemplateKind.value = kind;
@@ -211,7 +211,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
       if (shouldUseAsyncQrPrintExport(rows.length)) await task();
       else await runWithProgress(options.messages.progressSheet, task);
     } catch (error: any) {
-      ElMessage.error(error?.message || options.messages.sheetFailed);
+      showError(error?.message || options.messages.sheetFailed);
     } finally {
       options.exportBusy.value = false;
     }
@@ -232,7 +232,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
       if (shouldUseAsyncQrPrintExport(rows.length)) await task();
       else await runWithProgress(options.messages.progressCards, task);
     } catch (error: any) {
-      ElMessage.error(error?.message || options.messages.cardsFailed);
+      showError(error?.message || options.messages.cardsFailed);
     } finally {
       options.exportBusy.value = false;
     }
@@ -241,7 +241,7 @@ export function useAssetQrExportActions<TAsset>(options: UseAssetQrExportActions
   async function submitQrPrintTemplate(template: QrPrintTemplate) {
     const exportCount = qrTemplateAction.value.startsWith('batch') ? unref(options.selectedRows).length : 1;
     const warnings = buildQrPrintPreflightWarnings(qrTemplateKind.value, template, exportCount);
-    if (warnings.length) ElMessage.warning(warnings.slice(0, 2).join('；'));
+    if (warnings.length) showWarning(warnings.slice(0, 2).join('；'));
     if (qrTemplateAction.value === 'single-cards') {
       await runWithProgress(options.messages.progressCards, () => exportSingleCards(template));
       return;

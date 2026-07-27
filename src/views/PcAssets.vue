@@ -171,7 +171,7 @@ import { useRoute, useRouter } from 'vue-router';
 
 import { apiDelete, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
-import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerInfo, showLedgerSuccess, showLedgerWarning } from '../utils/ledgerOperationFeedback';
+import { confirmAction, notifyAction, showApiError, showInfo, showSuccess, showWarning } from '../utils/feedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
 import { invalidateAssetHistoryCache } from '../api/assetHistory';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
@@ -268,19 +268,19 @@ const {
 
 function handleSaveView(name: string) {
   const savedName = saveCurrentView(name);
-  if (!savedName) return showLedgerWarning('请先输入视图名称');
+  if (!savedName) return showWarning('请先输入视图名称');
   notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
 }
 
 function handleApplyView(name: string) {
-  if (!applySavedView(name)) return showLedgerWarning('视图不存在或已失效');
+  if (!applySavedView(name)) return showWarning('视图不存在或已失效');
   notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
   onSearch();
 }
 
 function handleDeleteView(name: string) {
   const deletingDefault = defaultViewName.value === String(name || '').trim();
-  if (!deleteSavedView(name)) return showLedgerWarning('视图不存在或已删除');
+  if (!deleteSavedView(name)) return showWarning('视图不存在或已删除');
   if (deletingDefault) {
     notifyAction('视图已删除', `已删除“${name}”视图，默认已回退到系统默认视图。`, 'warning');
     return;
@@ -289,7 +289,7 @@ function handleDeleteView(name: string) {
 }
 
 function handleSetDefaultView(name: string) {
-  if (!setDefaultSavedView(name)) return showLedgerWarning('视图不存在或已删除');
+  if (!setDefaultSavedView(name)) return showWarning('视图不存在或已删除');
   notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
@@ -608,17 +608,19 @@ const reset = () => {
 async function initQrKeys() {
   if (initQrBusy.value) return;
   try {
-    await confirmLedgerAction({
+    await confirmAction({
       title: '初始化二维码Key',
       message: '将把“补齐电脑二维码 Key”提交到异步任务中心后台执行。继续？',
+      type: 'warning',
       confirmButtonText: '确认提交',
+      cancelButtonText: '取消',
     });
     initQrBusy.value = true;
     const result: any = await apiPost('/api/jobs', { job_type: 'PC_QR_KEY_INIT', request_json: { batch: 200 }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    showLedgerSuccess({ message: jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度' });
+    showSuccess(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
   } catch (error: any) {
-    showLedgerError(error, '初始化失败');
+    showApiError(error, '初始化失败');
   } finally {
     initQrBusy.value = false;
   }
@@ -684,11 +686,11 @@ async function saveEdit() {
         { key: 'serial_no', label: '序列号' },
       ])) return false;
       if (payload.manufacture_date && !datePattern.test(payload.manufacture_date)) {
-        showLedgerWarning('出厂时间格式需为 YYYY-MM-DD');
+        showWarning('出厂时间格式需为 YYYY-MM-DD');
         return false;
       }
       if (payload.warranty_end && !datePattern.test(payload.warranty_end)) {
-        showLedgerWarning('保修到期格式需为 YYYY-MM-DD');
+        showWarning('保修到期格式需为 YYYY-MM-DD');
         return false;
       }
       return true;
@@ -740,10 +742,12 @@ async function removeAsset(row: PcAsset) {
       : operation === 'archive'
         ? `确认删除电脑台账：${label}（SN: ${row.serial_no || '-'}）？预检结果：本次不会物理删除，而会自动归档。${reason}`
         : `确认删除电脑台账：${label}（SN: ${row.serial_no || '-'}）？预检结果：满足物理删除条件。`;
-    await confirmLedgerAction({
+    await confirmAction({
       title: operation === 'purge' ? '彻底删除预检' : '删除预检',
       message,
+      type: 'warning',
       confirmButtonText: operation === 'purge' ? '确认彻底删除' : '确认删除',
+      cancelButtonText: '取消',
     });
     batchBusy.value = true;
     const result: any = await withBlockingActionFeedback('正在删除电脑台账', () => apiPost('/api/pc-assets-bulk', { action: 'delete', ids: [Number(row.id)] }));
@@ -754,14 +758,14 @@ async function removeAsset(row: PcAsset) {
       const failure = Array.isArray(result?.failed_records) ? result.failed_records[0] : null;
       throw Object.assign(new Error(String(failure?.原因 || result?.message || '删除失败')), { status: 400 });
     }
-    showLedgerSuccess({
-      message: result?.message || (isArchived ? '彻底删除成功' : '删除成功'),
-      notificationTitle: isArchived ? '电脑已彻底删除' : '电脑删除已处理',
-      notificationMessage: isArchived ? `已清理 ${label || '电脑记录'}。` : `已处理 ${label || '电脑记录'}，有历史记录的资产会转入归档。`,
-      notificationType: isArchived ? 'warning' : 'success',
-    });
+    showSuccess(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
+    notifyAction(
+      isArchived ? '电脑已彻底删除' : '电脑删除已处理',
+      isArchived ? `已清理 ${label || '电脑记录'}。` : `已处理 ${label || '电脑记录'}，有历史记录的资产会转入归档。`,
+      isArchived ? 'warning' : 'success',
+    );
   } catch (error: any) {
-    showLedgerError(error, isArchived ? '彻底删除失败' : '删除失败');
+    showApiError(error, isArchived ? '彻底删除失败' : '删除失败');
   } finally {
     batchBusy.value = false;
   }
@@ -770,47 +774,49 @@ async function removeAsset(row: PcAsset) {
 
 async function restoreAsset(row: PcAsset) {
   try {
-    await confirmLedgerAction({
+    await confirmAction({
       title: '恢复归档',
       message: `确认恢复电脑：${row.brand || ''} ${row.model || ''}（SN: ${row.serial_no || '-'}）？恢复后将重新出现在默认台账列表中。`,
+      type: 'warning',
       confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
     });
     batchBusy.value = true;
     const result: any = await withBlockingActionFeedback('正在恢复电脑归档', () =>
       apiPost('/api/pc-assets-bulk', { action: 'restore', ids: [Number(row.id)] })
     );
-    showLedgerSuccess({
-      message: result?.message || '恢复成功',
-      notificationTitle: '电脑已恢复',
-      notificationMessage: `已恢复 ${row.brand || ''} ${row.model || ''}`.trim() || '电脑记录已恢复。',
-      notificationType: 'info',
-    });
+    showSuccess(result?.message || '恢复成功');
+    notifyAction(
+      '电脑已恢复',
+      `已恢复 ${row.brand || ''} ${row.model || ''}`.trim() || '电脑记录已恢复。',
+      'info',
+    );
     applyPcRestorePatch(extractAffectedIds(result, [Number(row.id)]));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
-    showLedgerError(error, '恢复归档失败');
+    showApiError(error, '恢复归档失败');
   } finally {
     batchBusy.value = false;
   }
 }
 
 function openBatchStatusDialog() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   batchStatusValue.value = 'IN_STOCK';
   warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 function openBatchOwnerDialog() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
   warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
 async function submitBatchStatus() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   await runBulkAction({
     action: 'status',
     payload: { status: batchStatusValue.value },
@@ -825,8 +831,8 @@ async function submitBatchStatus() {
 
 
 async function submitBatchOwner() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
-  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showLedgerWarning('请输入领用人');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showWarning('请输入领用人');
   await runBulkAction({
     action: 'owner',
     payload: {
@@ -844,9 +850,9 @@ async function submitBatchOwner() {
 }
 
 async function batchRestoreSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   const restorable = selectionSummary.value.archived;
-  if (!restorable) return showLedgerWarning('当前选中项中没有已归档电脑');
+  if (!restorable) return showWarning('当前选中项中没有已归档电脑');
   try {
     await confirmBatchRisk('批量恢复归档', `预计恢复 ${restorable} 台电脑。恢复后将重新出现在默认台账列表中，请输入“确认”继续。`);
   } catch {
@@ -866,15 +872,15 @@ async function batchRestoreSelected() {
 }
 
 async function batchArchiveSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 
 async function submitBatchArchive() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
-  if (!String(batchArchiveForm.value.reason || '').trim()) return showLedgerWarning('请选择归档原因');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
+  if (!String(batchArchiveForm.value.reason || '').trim()) return showWarning('请选择归档原因');
   try {
     await confirmBatchRisk('批量归档确认', `此操作会归档选中的 ${selectedCount.value} 台电脑，默认列表将不再显示，请输入“确认”继续。`);
   } catch {
@@ -898,7 +904,7 @@ async function submitBatchArchive() {
 }
 
 async function batchDeleteSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选电脑');
+  if (!selectedCount.value) return showWarning('请先勾选电脑');
   await runBulkDelete({
     requestLabel: '正在批量删除电脑台账',
     errorMessage: '批量删除失败',
@@ -907,13 +913,13 @@ async function batchDeleteSelected() {
 }
 
 async function exportSelectedRows() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选要导出的电脑');
+  if (!selectedCount.value) return showWarning('请先勾选要导出的电脑');
   try {
     exportBusy.value = true;
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcSelectedRows({ rows: selectedRows.value, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    showLedgerError(error, '导出失败');
+    showApiError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -923,12 +929,12 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    if (Number(total.value || 0) > 1000) showLedgerInfo('数据量较大，正在分批导出，请稍候…');
+    if (Number(total.value || 0) > 1000) showInfo('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFiltersForList(), Number(total.value || 0) > 2000 ? 300 : 200);
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcAllRows({ rows: all, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    showLedgerError(error, '导出失败');
+    showApiError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -941,11 +947,11 @@ async function exportArchiveRecords() {
     exportBusy.value = true;
     const all = await fetchAll({ ...currentFiltersForList(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
-    if (!rowsToExport.length) return showLedgerWarning('当前没有可导出的归档电脑记录');
+    if (!rowsToExport.length) return showWarning('当前没有可导出的归档电脑记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportPcArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, formatBeijingDateTime });
   } catch (error: any) {
-    showLedgerError(error, '导出归档记录失败');
+    showApiError(error, '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1001,7 +1007,7 @@ async function onImportAssetsFile(uploadFile: any) {
       }))
       .filter((item) => item.brand || item.serial_no || item.model);
 
-    if (!items.length) return showLedgerWarning('Excel里没有可导入的数据');
+    if (!items.length) return showWarning('Excel里没有可导入的数据');
 
     const missingManufactureDate = items
       .map((item, index) => ({ index, value: String(item.manufacture_date || '').trim() }))
@@ -1010,20 +1016,20 @@ async function onImportAssetsFile(uploadFile: any) {
       .map((entry) => entry.index + 2);
 
     if (missingManufactureDate.length) {
-      return showLedgerWarning(`出厂时间必填，缺失行号：${missingManufactureDate.join(', ')}${missingManufactureDate.length >= 15 ? ' …' : ''}`);
+      return showWarning(`出厂时间必填，缺失行号：${missingManufactureDate.join(', ')}${missingManufactureDate.length >= 15 ? ' …' : ''}`);
     }
 
     const result: any = await apiPost('/api/pc-in-batch', { items });
     const failed = Number(result?.failed || 0);
     if (failed > 0) {
-      showLedgerWarning(`导入完成：成功 ${result.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
+      showWarning(`导入完成：成功 ${result.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
       console.warn('pc-in-batch errors', result?.errors);
     } else {
-      showLedgerSuccess({ message: `导入完成：成功 ${result.success} 条` });
+      showSuccess(`导入完成：成功 ${result.success} 条`);
     }
     await refreshCurrent(true, true);
   } catch (error: any) {
-    showLedgerError(error, '导入失败');
+    showApiError(error, '导入失败');
   } finally {
     importBusy.value = false;
   }

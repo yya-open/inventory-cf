@@ -140,7 +140,7 @@
 <script setup lang="ts">
 import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ref, computed, onMounted, watch } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showWarning } from "../utils/feedback";
 import { apiGet } from "../api/client";
 import { addDaysYmd } from "../utils/datetime";
 import { useAuth } from "../store/auth";
@@ -426,7 +426,7 @@ async function loadDetail(mode = reportMode.value, dayCount = days.value, force 
     return detail;
   } catch (e: any) {
     if (e?.name === 'AbortError') return null;
-    if (!silent && currentSelection) ElMessage.warning(normalizeErrorMessage(e.message || '看板明细补载失败'));
+    if (!silent && currentSelection) showWarning(normalizeErrorMessage(e.message || '看板明细补载失败'));
     return null;
   } finally {
     if (currentSelection && requestId === activeDetailRequestId) detailRefreshing.value = false;
@@ -465,7 +465,7 @@ async function refresh(force = false) {
     void loadDetail(mode, dayCount, force, true);
   } catch (e: any) {
     if (e?.name === 'AbortError') return;
-    ElMessage.error(normalizeErrorMessage(e.message));
+    showError(normalizeErrorMessage(e.message));
   } finally {
     if (requestId === activeSummaryRequestId) summaryRefreshing.value = false;
     void prefetchOtherModes();

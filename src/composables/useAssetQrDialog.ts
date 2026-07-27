@@ -1,7 +1,7 @@
 import { ref, unref, type MaybeRef } from 'vue';
 import { apiGet, apiPost } from '../api/client';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr, type AssetQrCacheKind } from '../utils/assetQrCache';
-import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { confirmAction, showError, showSuccess, showWarning } from '../utils/feedback';
 
 type QrImage = {
   dataUrl: string;
@@ -113,7 +113,7 @@ export function useAssetQrDialog<TAsset extends Record<string, any>>(options: Us
       setQrData(nextLink, image);
       setCachedAssetQr(options.kind, id, version, { link: nextLink, dataUrl: image.dataUrl, svgMarkup: image.svgMarkup });
     } catch (error: any) {
-      ElMessage.error(error?.message || options.messages.generateFailed);
+      showError(error?.message || options.messages.generateFailed);
       if (options.closeOnOpenError) visible.value = false;
     } finally {
       loading.value = false;
@@ -122,13 +122,15 @@ export function useAssetQrDialog<TAsset extends Record<string, any>>(options: Us
 
   async function resetQr() {
     if (!unref(options.canReset)) {
-      ElMessage.warning(options.messages.noPermission);
+      showWarning(options.messages.noPermission);
       return;
     }
     try {
       const id = Number(row.value ? options.getId(row.value) : 0);
       if (!id) return;
-      await ElMessageBox.confirm(options.messages.resetConfirm, options.messages.resetTitle, {
+      await confirmAction({
+        message: options.messages.resetConfirm,
+        title: options.messages.resetTitle,
         type: 'warning',
         confirmButtonText: options.messages.resetConfirmButton || '重置',
         cancelButtonText: '取消',
@@ -145,10 +147,10 @@ export function useAssetQrDialog<TAsset extends Record<string, any>>(options: Us
         row.value = row.value ? { ...row.value, qr_updated_at: version } : row.value;
         setCachedAssetQr(options.kind, id, version, { link: nextLink, dataUrl: image.dataUrl, svgMarkup: image.svgMarkup });
       }
-      ElMessage.success(options.messages.resetSuccess);
+      showSuccess(options.messages.resetSuccess);
     } catch (error: any) {
       if (error === 'cancel' || error === 'close') return;
-      ElMessage.error(error?.message || options.messages.resetFailed);
+      showError(error?.message || options.messages.resetFailed);
     } finally {
       loading.value = false;
     }
@@ -157,10 +159,10 @@ export function useAssetQrDialog<TAsset extends Record<string, any>>(options: Us
   async function copyLink() {
     const copied = await copyTextWithFallback(link.value);
     if (copied) {
-      ElMessage.success(options.messages.copySuccess);
+      showSuccess(options.messages.copySuccess);
       return;
     }
-    ElMessage.warning(options.messages.copyFailed);
+    showWarning(options.messages.copyFailed);
   }
 
   function openLink() {

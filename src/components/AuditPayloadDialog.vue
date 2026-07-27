@@ -90,7 +90,7 @@ import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/d
 import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElScrollbar } from 'element-plus/es/components/scrollbar/index';
 import { ref, computed } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess } from "../utils/feedback";
 import {
   HIDDEN_PAYLOAD_KEYS,
   fieldLabel,
@@ -204,7 +204,7 @@ async function copyPayload(){
   if (!txt) return;
   try{
     await navigator.clipboard.writeText(txt);
-    ElMessage.success("已复制");
+    showSuccess("已复制");
   }catch{
     const ta = document.createElement("textarea");
     ta.value = txt;
@@ -216,9 +216,9 @@ async function copyPayload(){
     ta.select();
     try{
       document.execCommand("copy");
-      ElMessage.success("已复制");
+      showSuccess("已复制");
     }catch{
-      ElMessage.error("复制失败");
+      showError("复制失败");
     }finally{
       document.body.removeChild(ta);
     }

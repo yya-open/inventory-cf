@@ -129,7 +129,7 @@
 <script setup lang="ts">
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, computed, onMounted } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { alertAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
@@ -237,7 +237,7 @@ async function onImportFile(uploadFile: any) {
       .filter((x) => x.brand || x.serial_no || x.model);
 
     if (!items.length) {
-      ElMessage.warning("Excel里没有可导入的数据");
+      showWarning("Excel里没有可导入的数据");
       return;
     }
 
@@ -245,7 +245,7 @@ async function onImportFile(uploadFile: any) {
       const errs = [validateDateText(it.manufacture_date, "出厂时间"), validateDateText(it.warranty_end, "保修到期")].filter(Boolean);
       return errs.length ? `第${idx+2}行：${errs.join("；")}` : "";
     }).filter(Boolean);
-    if (invalidRows.length) { ElMessage.warning(summarizeValidationErrors(invalidRows, 3)); return; }
+    if (invalidRows.length) { showWarning(summarizeValidationErrors(invalidRows, 3)); return; }
 
     // 出厂时间必填：优先在前端拦截，提示缺失行号
     const missing = items
@@ -254,39 +254,44 @@ async function onImportFile(uploadFile: any) {
       .slice(0, 15)
       .map((x) => x.idx + 2); // +2：表头行 + 1-based
     if (missing.length) {
-      ElMessage.warning(`出厂时间必填，缺失行号：${missing.join(", ")}${missing.length >= 15 ? " …" : ""}`);
+      showWarning(`出厂时间必填，缺失行号：${missing.join(", ")}${missing.length >= 15 ? " …" : ""}`);
       return;
     }
 
     const res: any = await apiPost("/api/pc-in-batch", { items });
     const failed = Number(res?.failed || 0);
     if (failed > 0) {
-      ElMessage.warning(`导入完成：成功 ${res.success} 条，失败 ${failed} 条`);
+      showWarning(`导入完成：成功 ${res.success} 条，失败 ${failed} 条`);
       const errors: any[] = Array.isArray(res?.errors) ? res.errors : [];
       if (errors.length) {
         const lines = errors.slice(0, 20).map((e: any) => `第 ${e.row} 行：${e.message || "错误"}`);
         const more = errors.length > 20 ? `\n... 还有 ${errors.length - 20} 条错误` : "";
-        await ElMessageBox.alert(lines.join("\n") + more, "导入失败明细", { type: "warning", confirmButtonText: "我知道了" });
+        await alertAction({
+          message: lines.join('\n') + more,
+          title: '导入失败明细',
+          type: 'warning',
+          confirmButtonText: '我知道了',
+        });
       }
       console.warn("pc-in-batch errors", errors);
     } else {
 
-      ElMessage.success(`导入完成：成功 ${res.success} 条`);
+      showSuccess(`导入完成：成功 ${res.success} 条`);
     }
     if (Number(res?.success || 0) > 0) notifyPcAssetsChanged();
 
   } catch (e: any) {
-    ElMessage.error(e?.message || "导入失败");
+    showError(e?.message || "导入失败");
   }
 }
 
 async function submit() {
   normalizeForm();
   const softErrors = [validateDateText(form.value.manufacture_date, "出厂时间"), validateDateText(form.value.warranty_end, "保修到期")].filter(Boolean);
-  if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
+  if (softErrors.length) { showWarning(summarizeValidationErrors(softErrors)); return; }
   const ok = await validateWithFriendlyMessage(
     formRef.value,
-    (msg) => ElMessage.warning(msg),
+    (msg) => showWarning(msg),
     {
       serial_no: "请输入序列号",
       brand: "请输入品牌",
@@ -298,7 +303,7 @@ async function submit() {
   submitting.value = true;
   try {
     const r: any = await apiPost("/api/pc-in", { ...form.value });
-    ElMessage.success(r?.created ? "入库成功（已新增资产）" : "入库成功（已更新资产）");
+    showSuccess(r?.created ? "入库成功（已新增资产）" : "入库成功（已更新资产）");
     notifyPcAssetsChanged();
     // keep brand/model for convenience; clear serial and optional fields
     form.value.serial_no = "";
@@ -309,7 +314,7 @@ async function submit() {
     form.value.remark = "";
     formRef.value?.clearValidate();
   } catch (e: any) {
-    ElMessage.error(e?.message || "入库失败");
+    showError(e?.message || "入库失败");
   } finally {
     submitting.value = false;
   }

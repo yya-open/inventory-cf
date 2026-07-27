@@ -77,7 +77,7 @@
 <script setup lang="ts">
 import { nextTick, onBeforeUnmount, onMounted, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess, showWarning } from "../utils/feedback";
 import { loginWithCaptcha, useAuth } from "../store/auth";
 import { firstAccessibleRoute } from "../utils/moduleAccess";
 import { apiPost } from "../api/client";
@@ -182,7 +182,7 @@ async function doLogin() {
       showChange.value = true;
       return;
     }
-    ElMessage.success("登录成功");
+    showSuccess("登录成功");
     const redirect = (route.query.redirect as string) || firstAccessibleRoute(auth.user);
     router.replace(redirect);
   } catch (e: any) {
@@ -190,18 +190,18 @@ async function doLogin() {
       const dt = new Date(Number(e.locked_until_ms));
       const pad = (n: number) => String(n).padStart(2, "0");
       const s = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
-      ElMessage.error(`尝试次数过多，请稍后再试（锁定至 ${s}）`);
+      showError(`尝试次数过多，请稍后再试（锁定至 ${s}）`);
       return;
     }
     if (e?.require_captcha) {
       requireCaptcha.value = true;
       turnstileToken.value = "";
       await renderTurnstile();
-      if (!siteKey) ElMessage.error("需要验证码登录，但未配置 VITE_TURNSTILE_SITEKEY");
-      else ElMessage.warning("请先完成验证码验证");
+      if (!siteKey) showError("需要验证码登录，但未配置 VITE_TURNSTILE_SITEKEY");
+      else showWarning("请先完成验证码验证");
       return;
     }
-    ElMessage.error(e.message || "登录失败");
+    showError(e.message || "登录失败");
   } finally {
     loading.value = false;
   }
@@ -209,17 +209,17 @@ async function doLogin() {
 
 async function changePassword() {
   const pv = validatePassword(newP.value);
-  if (!pv.ok) return ElMessage.warning(pv.msg || "密码不符合规则");
+  if (!pv.ok) return showWarning(pv.msg || "密码不符合规则");
   changing.value = true;
   try {
     await apiPost<any>("/api/auth/change-password", { old_password: oldP.value, new_password: newP.value });
     showChange.value = false;
-    ElMessage.success("密码已更新，请重新登录");
+    showSuccess("密码已更新，请重新登录");
     auth.user = null;
     await apiPost("/api/auth/logout", {}).catch(() => {});
     router.replace("/login");
   } catch (e: any) {
-    ElMessage.error(e.message || "修改失败");
+    showError(e.message || "修改失败");
   } finally {
     changing.value = false;
   }

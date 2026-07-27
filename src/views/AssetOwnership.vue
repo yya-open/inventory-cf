@@ -146,7 +146,7 @@ import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { getAssetLifecycle, getAssetOwnershipOverview, type AssetLifecycleEvent, type AssetLifecyclePayload, type AssetOwnershipAsset, type AssetOwnershipGroup, type AssetOwnershipGroupBy, type AssetOwnershipKind, type AssetOwnershipOverview } from '../api/assetOwnership';
 import { assetStatusText } from '../types/assets';
 import { assetStatusClass } from '../composables/useAssetTableShared';
-import { ElMessage } from '../utils/el-services';
+import { showError } from '../utils/feedback';
 
 const router = useRouter();
 const groupBy = ref<AssetOwnershipGroupBy>('person');
@@ -273,7 +273,7 @@ async function reload() {
     selectedGroupKey.value = next.groups[0]?.key || '';
     selectedAssetKey.value = next.groups[0]?.assets?.[0] ? assetKey(next.groups[0].assets[0]) : '';
   } catch (error: any) {
-    if (error?.name !== 'AbortError') ElMessage.error(error?.message || '加载资产归属视图失败');
+    if (error?.name !== 'AbortError') showError(error?.message || '加载资产归属视图失败');
   } finally {
     if (overviewController === controller) overviewController = null;
     loading.value = false;
@@ -292,7 +292,7 @@ async function loadLifecycle(asset: AssetOwnershipAsset | null) {
   try {
     timeline.value = await getAssetLifecycle(asset.kind, asset.id, controller.signal);
   } catch (error: any) {
-    if (error?.name !== 'AbortError') ElMessage.error(error?.message || '加载资产生命周期失败');
+    if (error?.name !== 'AbortError') showError(error?.message || '加载资产生命周期失败');
   } finally {
     if (lifecycleController === controller) lifecycleController = null;
     timelineLoading.value = false;

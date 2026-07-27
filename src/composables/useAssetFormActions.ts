@@ -1,6 +1,5 @@
 import type { Ref } from 'vue';
-import { ElMessage } from '../utils/el-services';
-import { showLedgerError, showLedgerSuccess, type LedgerFeedbackType } from '../utils/ledgerOperationFeedback';
+import { notifyAction, showApiError, showSuccess, showWarning, type FeedbackType } from '../utils/feedback';
 
 type FieldRule<TPayload> = {
   key: keyof TPayload;
@@ -18,7 +17,7 @@ type SaveActionInput<TPayload> = {
   successMessage: string;
   notificationTitle?: string;
   notificationMessage?: string | ((payload: TPayload) => string);
-  notificationType?: LedgerFeedbackType;
+  notificationType?: FeedbackType;
   errorMessage: string;
 };
 
@@ -35,7 +34,7 @@ export function validateRequiredFields<TPayload extends Record<string, any>>(pay
     if (!isBlank(payload[field.key])) {
       continue;
     }
-    ElMessage.warning(field.message || `${field.label}必填`);
+    showWarning(field.message || `${field.label}必填`);
     return false;
   }
   return true;
@@ -54,14 +53,13 @@ export function useAssetFormActions() {
 
     async function submitAndComplete() {
       await input.submit(nextPayload);
-      showLedgerSuccess({
-        message: input.successMessage,
-        notificationTitle: input.notificationTitle,
-        notificationMessage: typeof input.notificationMessage === 'function'
-          ? input.notificationMessage(nextPayload)
-          : input.notificationMessage,
-        notificationType: input.notificationType,
-      });
+      showSuccess(input.successMessage);
+      const notificationMessage = typeof input.notificationMessage === 'function'
+        ? input.notificationMessage(nextPayload)
+        : input.notificationMessage;
+      if (input.notificationTitle && notificationMessage) {
+        notifyAction(input.notificationTitle, notificationMessage, input.notificationType || 'success');
+      }
       await input.onSuccess?.(nextPayload);
     }
 
@@ -71,7 +69,7 @@ export function useAssetFormActions() {
       return true;
     } catch (error) {
       if (!input.recoverBeforeRetry) {
-        showLedgerError(error, input.errorMessage);
+        showApiError(error, input.errorMessage);
         return false;
       }
       try {
@@ -79,7 +77,7 @@ export function useAssetFormActions() {
         await submitAndComplete();
         return true;
       } catch (nextError) {
-        showLedgerError(nextError, input.errorMessage);
+        showApiError(nextError, input.errorMessage);
         return false;
       }
     } finally {

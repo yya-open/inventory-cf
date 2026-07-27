@@ -122,7 +122,8 @@
 <script setup lang="ts">
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { alertAction, alertHtml, showError, showSuccess, showWarning } from "../utils/feedback";
+import { formatImportErrorHtml } from "../utils/importErrorReport";
 import { exportTemplateItems, loadXlsx } from "../utils/excel";
 import { apiPost } from "../api/client";
 
@@ -187,13 +188,13 @@ async function onPick(uploadFile: any) {
     const missing: string[] = [];
     if (colName === null) missing.push("名称");
     if (missing.length) {
-      ElMessageBox.alert(
-        `表头缺少必需列：${missing.join("、")}。
+      alertAction({
+        title: "读取失败",
+        message: `表头缺少必需列：${missing.join("、")}。
 
 请使用模板第一行表头：名称、品牌、型号、分类、单位、预警值（SKU 可选，留空时自动生成；大小写不敏感）`,
-        "读取失败",
-        { type: "error" }
-      );
+        type: "error",
+      });
       preview.value = [];
       return;
     }
@@ -239,27 +240,22 @@ async function onPick(uploadFile: any) {
     preview.value = mapped.slice(0, 2000);
 
     if (!preview.value.length) {
-      ElMessage.warning("没有读取到可导入的数据（请确认表头正确，且至少有一行名称）");
+      showWarning("没有读取到可导入的数据（请确认表头正确，且至少有一行名称）");
       return;
     }
 
     if (errors.length) {
-      const previewErr = errors
-        .slice(0, 12)
-        .map((x) => `第${x.row}行【${x.col}】${x.msg}${x.val !== undefined ? `（当前：${String(x.val)}）` : ""}`)
-        .join("<br/>");
-      ElMessageBox.alert(
-        `<div style="line-height:1.8">已读取 ${preview.value.length} 行（最多预览 2000）。发现 <b>${errors.length}</b> 处问题：<br/>${previewErr}${
-          errors.length > 12 ? "<br/>…（仅展示前 12 条）" : ""
-        }<br/><br/>缺少必填字段/格式不正确的行已跳过，请修正 Excel 后重新导入。</div>`,
-        "导入提示",
-        { type: "warning", dangerouslyUseHTMLString: true }
-      );
+      const previewErr = formatImportErrorHtml(errors);
+      alertHtml({
+        title: "导入提示",
+        html: `<div style="line-height:1.8">已读取 ${preview.value.length} 行（最多预览 2000）。发现 <b>${errors.length}</b> 处问题：<br/>${previewErr}<br/><br/>缺少必填字段/格式不正确的行已跳过，请修正 Excel 后重新导入。</div>`,
+        type: "warning",
+      });
     } else {
-      ElMessage.success(`已读取 ${preview.value.length} 行（最多预览 2000）`);
+      showSuccess(`已读取 ${preview.value.length} 行（最多预览 2000）`);
     }
   } catch (e:any) {
-    ElMessage.error("读取失败：" + (e.message || ""));
+    showError("读取失败：" + (e.message || ""));
   }
 }
 
@@ -274,9 +270,9 @@ async function submit() {
     const r = await apiPost<{ ok:boolean; data:any }>("/api/import/items", { items: preview.value, mode: mode.value });
     result.value = r.data;
     showResult.value = true;
-    ElMessage.success("导入完成");
+    showSuccess("导入完成");
   } catch (e:any) {
-    ElMessage.error(e.message || "导入失败");
+    showError(e.message || "导入失败");
   } finally {
     uploading.value = false;
   }

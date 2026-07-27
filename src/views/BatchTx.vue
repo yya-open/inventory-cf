@@ -204,7 +204,8 @@
 import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, onMounted, computed } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { alertAction, alertHtml, showError, showSuccess, showWarning } from "../utils/feedback";
+import { formatImportErrorHtml } from "../utils/importErrorReport";
 import { downloadTemplate as downloadExcelTemplate, loadXlsx } from "../utils/excel";
 import { apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
@@ -234,7 +235,7 @@ const invalidCount = computed(() => rows.value.filter((r) => getRowIssues(r).any
 function keepValidOnly() {
   const before = rows.value.length;
   rows.value = rows.value.filter((r) => !getRowIssues(r).any);
-  ElMessage.success(`已保留有效行：${rows.value.length} / ${before}`);
+  showSuccess(`已保留有效行：${rows.value.length} / ${before}`);
 }
 
 function rowClass({ row }: { row: Row }) {
@@ -323,8 +324,10 @@ function beforeUpload(file: File) {
       if (mode.value === "OUT" && colTarget === null) missing.push("领用人");
 
       if (missing.length) {
-        ElMessageBox.alert(
-          `表头缺少必需列：${missing.join("、")}。
+        alertAction({
+          title: "导入失败",
+          message:
+            `表头缺少必需列：${missing.join("、")}。
 
 请使用模板第一行表头：
 ` +
@@ -334,9 +337,8 @@ function beforeUpload(file: File) {
             `
 
 （兼容英文列名：name / qty / unit_price / source / target / remark）`,
-          "导入失败",
-          { type: "error" }
-        );
+          type: "error",
+        });
         return;
       }
 
@@ -403,29 +405,24 @@ function beforeUpload(file: File) {
       }
 
       if (!parsed.length) {
-        ElMessage.warning("没有读取到有效数据（请确认第一行是表头，且后续有数据行）");
+        showWarning("没有读取到有效数据（请确认第一行是表头，且后续有数据行）");
         return;
       }
 
       rows.value = rows.value.concat(parsed);
 
       if (errors.length) {
-        const preview = errors
-          .slice(0, 12)
-          .map((x) => `第${x.row}行【${x.col}】${x.msg}${x.val !== undefined ? `（当前：${String(x.val)}）` : ""}`)
-          .join("<br/>");
-        ElMessageBox.alert(
-          `<div style="line-height:1.8">导入 ${parsed.length} 行，发现 <b>${errors.length}</b> 处问题：<br/>${preview}${
-            errors.length > 12 ? "<br/>…（仅展示前 12 条）" : ""
-          }<br/><br/>已保留数据并在表格中标红，你可以直接补全/修正后再提交。</div>`,
-          "导入提示",
-          { type: "warning", dangerouslyUseHTMLString: true }
-        );
+        const preview = formatImportErrorHtml(errors);
+        alertHtml({
+          title: "导入提示",
+          html: `<div style="line-height:1.8">导入 ${parsed.length} 行，发现 <b>${errors.length}</b> 处问题：<br/>${preview}<br/><br/>已保留数据并在表格中标红，你可以直接补全/修正后再提交。</div>`,
+          type: "warning",
+        });
       } else {
-        ElMessage.success(`导入 ${parsed.length} 行`);
+        showSuccess(`导入 ${parsed.length} 行`);
       }
     } catch (err: any) {
-      ElMessage.error(err?.message || "读取失败");
+      showError(err?.message || "读取失败");
     }
   };
   reader.readAsArrayBuffer(file);
@@ -433,7 +430,7 @@ function beforeUpload(file: File) {
 }
 
 async function submit() {
-  if (!rows.value.length) return ElMessage.warning("请先添加或导入明细");
+  if (!rows.value.length) return showWarning("请先添加或导入明细");
 
   // Strict client-side validation
   const invalid: Array<{ idx: number; reason: string }> = [];
@@ -453,7 +450,7 @@ async function submit() {
   }
   if (invalid.length) {
     const preview = invalid.slice(0, 6).map((x) => `第${x.idx}行：${x.reason}`).join("；");
-    return ElMessage.error(invalid.length > 6 ? `${preview}…（共${invalid.length}处）` : preview);
+    return showError(invalid.length > 6 ? `${preview}…（共${invalid.length}处）` : preview);
   }
 
   submitting.value = true;
@@ -470,14 +467,14 @@ async function submit() {
     const r: any = await apiPost(url, payload);
 
     if (r?.ok) {
-      ElMessage.success(`成功提交 ${r.count} 条（自动合并同名称）`);
+      showSuccess(`成功提交 ${r.count} 条（自动合并同名称）`);
       rows.value = [];
     } else {
-      ElMessage.error(r?.message || "提交失败");
+      showError(r?.message || "提交失败");
     }
   } catch (e) {
     const err: any = e;
-    ElMessage.error(err?.message || "提交失败");
+    showError(err?.message || "提交失败");
   } finally {
     submitting.value = false;
   }

@@ -82,7 +82,7 @@
 </template>
 
 <script setup lang="ts">
-import { ElMessage } from '../../utils/el-services';
+import { showError } from '../../utils/feedback';
 import { apiDownload } from '../../api/client';
 import { withExportActionFeedback } from '../../utils/operationFeedback';
 import { getInventoryBatchSnapshotDownloadUrl, inventoryBatchSnapshotStatusText, type InventoryBatchPayload, type InventoryBatchRow } from '../../api/inventoryBatches';
@@ -156,7 +156,7 @@ async function downloadSnapshot(item: InventoryBatchRow) {
       apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined)
     );
   } catch (error: any) {
-    ElMessage.error(error?.message || '下载结果快照失败');
+    showError(error?.message || '下载结果快照失败');
   }
 }
 </script>

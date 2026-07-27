@@ -2,7 +2,7 @@ import { reactive, ref, type Ref } from 'vue';
 import type { MonitorAsset } from '../types/assets';
 import { apiPost, apiPut } from '../api/client';
 import { trimText, useAssetFormActions, validateRequiredFields } from './useAssetFormActions';
-import { ElMessage } from '../utils/el-services';
+import { showWarning } from '../utils/feedback';
 
 export type MonitorAssetFormState = {
   id: number;
@@ -100,7 +100,7 @@ export function useMonitorAssetForm(options: UseMonitorAssetFormOptions) {
           { key: 'model', label: '型号' },
         ])) return false;
         if (payload.size_inch && !SIZE_PATTERN.test(payload.size_inch)) {
-          ElMessage.warning('尺寸请填写数字或“27寸”这类格式');
+          showWarning('尺寸请填写数字或“27寸”这类格式');
           return false;
         }
         return true;

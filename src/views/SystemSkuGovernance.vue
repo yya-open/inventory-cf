@@ -142,7 +142,7 @@
 import { computed, onMounted, ref } from 'vue';
 import type { ElTable } from 'element-plus';
 import { apiGet, apiPost } from '../api/client';
-import { ElMessage } from '../utils/el-services';
+import { showError, showSuccess, showWarning } from '../utils/feedback';
 
 type Severity = 'all' | 'risk' | 'legacy';
 type IssueType = 'all' | 'lowercase' | 'special' | 'short' | 'no_dash' | 'legacy_format';
@@ -241,7 +241,7 @@ async function load() {
     selectedRows.value = [];
     tableRef.value?.clearSelection();
   } catch (e: any) {
-    ElMessage.error(e?.message || '扫描 SKU 失败');
+    showError(e?.message || '扫描 SKU 失败');
   } finally {
     loading.value = false;
   }
@@ -285,7 +285,7 @@ function buildPayload() {
 async function precheckSelected() {
   if (!selectedRows.value.length) return;
   if (selectedInvalidCount.value > 0) {
-    ElMessage.warning('已选行里有新 SKU 格式不合法，请先修正');
+    showWarning('已选行里有新 SKU 格式不合法，请先修正');
     return;
   }
   prechecking.value = true;
@@ -295,7 +295,7 @@ async function precheckSelected() {
     precheckReport.value = result?.data || null;
     precheckDialogVisible.value = true;
   } catch (e: any) {
-    ElMessage.error(e?.message || 'SKU 治理预检失败');
+    showError(e?.message || 'SKU 治理预检失败');
   } finally {
     prechecking.value = false;
   }
@@ -306,11 +306,11 @@ async function applyAfterPrecheck() {
   applying.value = true;
   try {
     const result: any = await apiPost('/api/items/sku-governance', { items: precheckPayload.value });
-    ElMessage.success(`已更新 ${Number(result?.updated || precheckPayload.value.length)} 个 SKU，创建 ${Number(result?.alias_created || 0)} 个旧 SKU 别名`);
+    showSuccess(`已更新 ${Number(result?.updated || precheckPayload.value.length)} 个 SKU，创建 ${Number(result?.alias_created || 0)} 个旧 SKU 别名`);
     precheckDialogVisible.value = false;
     await load();
   } catch (e: any) {
-    ElMessage.error(e?.message || '应用 SKU 治理失败');
+    showError(e?.message || '应用 SKU 治理失败');
   } finally {
     applying.value = false;
   }

@@ -262,7 +262,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, computed, onBeforeUnmount, onMounted } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiGet, apiPost, apiDelete } from "../api/client";
 import { useRouter } from "vue-router";
 import { useAuth } from "../store/auth";
@@ -336,21 +336,23 @@ function goTx(itemId: number) {
 
 async function onDelete(row: any) {
   try {
-    await ElMessageBox.confirm(
-      `确认删除配件：${row?.name || row?.sku || row?.id}？\n删除后该配件将不再出现在列表中（历史出入库明细不受影响）。`,
-      "删除确认",
-      { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
-    );
+    await confirmAction({
+      message: `确认删除配件：${row?.name || row?.sku || row?.id}？\n删除后该配件将不再出现在列表中（历史出入库明细不受影响）。`,
+      title: '删除确认',
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    });
   } catch {
     return;
   }
 
   try {
     await apiDelete<any>("/api/items", { id: row.id });
-    ElMessage.success("删除成功");
+    showSuccess("删除成功");
     await load();
   } catch (e: any) {
-    ElMessage.error(e?.message || "删除失败");
+    showError(e?.message || "删除失败");
   }
 }
 
@@ -397,16 +399,18 @@ async function onDeleteCategory(name: string) {
     );
     usageCount = Number(usage?.data?.usage_count || 0);
   } catch (e: any) {
-    ElMessage.error(e?.message || '读取分类使用数量失败');
+    showError(e?.message || '读取分类使用数量失败');
     return;
   }
 
   try {
-    await ElMessageBox.confirm(
-      `确认删除分类：${category}？\n当前分类下配件数量：${usageCount}。\n删除后不可恢复。若数量大于 0，系统将阻止删除。`,
-      '删除分类确认',
-      { type: 'warning', confirmButtonText: '删除', cancelButtonText: '取消' }
-    );
+    await confirmAction({
+      message: `确认删除分类：${category}？\n当前分类下配件数量：${usageCount}。\n删除后不可恢复。若数量大于 0，系统将阻止删除。`,
+      title: '删除分类确认',
+      type: 'warning',
+      confirmButtonText: '删除',
+      cancelButtonText: '取消',
+    });
   } catch {
     return;
   }
@@ -416,9 +420,9 @@ async function onDeleteCategory(name: string) {
     await apiDelete('/api/meta/categories', { name: category });
     if (String(form.category || '').trim() === category) form.category = '';
     await loadCategories(true);
-    ElMessage.success('分类已删除');
+    showSuccess('分类已删除');
   } catch (e: any) {
-    ElMessage.error(e?.message || '删除分类失败');
+    showError(e?.message || '删除分类失败');
   } finally {
     deletingCategory.value = '';
   }
@@ -452,7 +456,7 @@ async function load() {
   } catch (e: any) {
     if (requestSeq !== listRequestSeq) return;
     if (controller?.signal?.aborted || String(e?.name || '') === 'AbortError') return;
-    ElMessage.error(e?.message || "加载失败");
+    showError(e?.message || "加载失败");
   } finally {
     if (listAbortController === controller) listAbortController = null;
     if (requestSeq === listRequestSeq) loading.value = false;
@@ -461,11 +465,11 @@ async function load() {
 
 async function save() {
   if (!form.name?.trim()) {
-    ElMessage.warning("名称 为必填");
+    showWarning("名称 为必填");
     return;
   }
   if (form.id && !form.sku?.trim()) {
-    ElMessage.warning("编辑时 SKU 不能为空");
+    showWarning("编辑时 SKU 不能为空");
     return;
   }
   try {
@@ -480,11 +484,11 @@ async function save() {
       unit: form.unit?.trim() || "个",
       warning_qty: Number(form.warning_qty || 0),
     });
-    ElMessage.success(result?.sku ? `保存成功：SKU ${result.sku}` : "保存成功");
+    showSuccess(result?.sku ? `保存成功：SKU ${result.sku}` : "保存成功");
     dlgVisible.value = false;
     await Promise.all([load(), loadCategories(true)]);
   } catch (e: any) {
-    ElMessage.error(e?.message || "保存失败");
+    showError(e?.message || "保存失败");
   } finally {
     saving.value = false;
   }

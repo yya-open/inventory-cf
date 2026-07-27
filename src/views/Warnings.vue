@@ -182,7 +182,7 @@
 
 <script setup lang="ts">
 import { ref, reactive, onBeforeMount, onActivated, computed } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess } from "../utils/feedback";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRouter } from "vue-router";
@@ -361,12 +361,12 @@ async function applyBulkWarning() {
       payload.warehouse_id = Number(warehouseId.value || 1);
     }
     await apiPost<{ ok: boolean; updated: number }>(`/api/items/bulk-warning`, payload);
-    ElMessage.success("已更新预警值");
+    showSuccess("已更新预警值");
     clearSelection();
     invalidateCache(currentFilters.value);
     await loadView({ forceRefresh: true });
   } catch (e: any) {
-    ElMessage.error(e?.message || "批量更新失败");
+    showError(e?.message || "批量更新失败");
   } finally {
     bulkSaving.value = false;
   }
@@ -455,7 +455,7 @@ async function exportCsv() {
 
     await apiDownload(`/api/warnings/export?${qs.toString()}`, `配件库存预警_${beijingTodayCompact()}.csv`);
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    showError(e?.message || "导出失败");
   } finally {
     exportingCsv.value = false;
   }
@@ -488,7 +488,7 @@ async function exportXlsx() {
     XLSX.writeFile(wb, filename);
     notifyDownloadStarted(filename, '导出');
   } catch (e: any) {
-    ElMessage.error((e as any)?.message || "导出失败");
+    showError((e as any)?.message || "导出失败");
   } finally {
     exportingXlsx.value = false;
   }

@@ -342,7 +342,7 @@
 import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { onMounted, ref } from 'vue';
 import { scheduleOnIdle } from '../utils/idle';
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { DEFAULT_SYSTEM_SETTINGS, fetchSystemSettings, saveSystemSettings, markMonitorBrandDictionaryChanged, type SystemSettings } from '../api/systemSettings';
 import {
   createSystemDictionaryItem,
@@ -558,7 +558,7 @@ async function reload(options: { force?: boolean } = {}) {
   try {
     form.value = await fetchSystemSettings({ force: options.force });
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载配置失败');
+    showError(e?.message || '加载配置失败');
   } finally {
     loading.value = false;
   }
@@ -570,7 +570,7 @@ async function reload(options: { force?: boolean } = {}) {
       resetReorderState();
       syncFormDictionaryOptions();
     } catch (e: any) {
-      ElMessage.error(e?.message || '加载字典失败');
+      showError(e?.message || '加载字典失败');
     } finally {
       dictionariesLoading.value = false;
     }
@@ -582,9 +582,9 @@ async function save() {
   saving.value = true;
   try {
     form.value = await saveSystemSettings(form.value);
-    ElMessage.success('配置已保存');
+    showSuccess('配置已保存');
   } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败');
+    showError(e?.message || '保存失败');
   } finally {
     saving.value = false;
   }
@@ -602,7 +602,7 @@ function openCreateDialog(key: SystemDictionaryKey) {
 
 async function submitCreate() {
   const label = String(createForm.value.label || '').trim();
-  if (!label) return ElMessage.warning('请输入字典值');
+  if (!label) return showWarning('请输入字典值');
   creating.value = true;
   try {
     const created = await createSystemDictionaryItem({
@@ -614,9 +614,9 @@ async function submitCreate() {
     upsertDictionaryRow(created);
     if (created?.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     createDialogVisible.value = false;
-    ElMessage.success('字典项已新增');
+    showSuccess('字典项已新增');
   } catch (e: any) {
-    ElMessage.error(e?.message || '新增失败');
+    showError(e?.message || '新增失败');
   } finally {
     creating.value = false;
   }
@@ -630,10 +630,10 @@ async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
     replaceDictionaryRows(key, response?.grouped?.[key] || dictionaryRows(key), false);
     if (key === 'monitor_brand') markMonitorBrandDictionaryChanged();
     markReorderDirty(key, false);
-    if (!quiet) ElMessage.success('排序已保存');
+    if (!quiet) showSuccess('排序已保存');
     return true;
   } catch (e: any) {
-    ElMessage.error(e?.message || '排序保存失败');
+    showError(e?.message || '排序保存失败');
     return false;
   } finally {
     reorderLoadingMap.value = { ...reorderLoadingMap.value, [key]: false };
@@ -642,7 +642,7 @@ async function saveDictionaryOrder(key: SystemDictionaryKey, quiet = false) {
 
 async function saveDictionary(row: SystemDictionaryItem) {
   const label = String(row.label || '').trim();
-  if (!label) return ElMessage.warning('字典值不能为空');
+  if (!label) return showWarning('字典值不能为空');
   if (hasPendingReorder(row.dictionary_key)) {
     const ok = await saveDictionaryOrder(row.dictionary_key, true);
     if (!ok) return;
@@ -659,9 +659,9 @@ async function saveDictionary(row: SystemDictionaryItem) {
     });
     upsertDictionaryRow(saved);
     if (saved?.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
-    ElMessage.success('字典项已保存');
+    showSuccess('字典项已保存');
   } catch (e: any) {
-    ElMessage.error(e?.message || '保存失败');
+    showError(e?.message || '保存失败');
   } finally {
     rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: false };
   }
@@ -693,7 +693,9 @@ function clearDictionaryDrag() {
 }
 
 async function removeDictionary(row: SystemDictionaryItem) {
-  await ElMessageBox.confirm(`确认删除字典项“${row.label}”？删除后不可恢复。`, '删除字典项', {
+  await confirmAction({
+    message: `确认删除字典项“${row.label}”？删除后不可恢复。`,
+    title: '删除字典项',
     type: 'warning',
     confirmButtonText: '删除',
     cancelButtonText: '取消',
@@ -703,9 +705,9 @@ async function removeDictionary(row: SystemDictionaryItem) {
     await deleteSystemDictionaryItem(row.id, row.updated_at);
     removeLocalDictionaryRow(row);
     if (row.dictionary_key === 'monitor_brand') markMonitorBrandDictionaryChanged();
-    ElMessage.success('字典项已删除');
+    showSuccess('字典项已删除');
   } catch (e: any) {
-    ElMessage.error(e?.message || '删除失败');
+    showError(e?.message || '删除失败');
   } finally {
     rowLoadingMap.value = { ...rowLoadingMap.value, [row.id]: false };
   }

@@ -50,5 +50,21 @@ export default [
       }],
     },
   },
+  {
+    // 业务视图和组件只能通过 feedback 门面发消息，避免反馈调用重新散落。
+    files: ['src/views/**/*.{ts,tsx,vue}', 'src/components/**/*.{ts,tsx,vue}'],
+    rules: {
+      'no-restricted-imports': ['error', {
+        paths: [
+          { name: 'src/utils/el-services', message: '请从 utils/feedback 使用消息门面' },
+          { name: '../utils/el-services', message: '请从 utils/feedback 使用消息门面' },
+          { name: '../../utils/el-services', message: '请从 utils/feedback 使用消息门面' },
+        ],
+        patterns: [
+          { group: ['**/utils/el-services'], message: '请从 utils/feedback 使用消息门面' },
+        ],
+      }],
+    },
+  },
   { files: ['tests/**/*.ts'], languageOptions: { globals: { ...globals.node } } },
 ];

@@ -190,7 +190,7 @@ import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElRadioButton, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, onMounted } from "vue";
 import { useDebouncedFn } from "../composables/useDebouncedFn";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess, showWarning } from "../utils/feedback";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
@@ -358,7 +358,7 @@ async function onImportOutFile(uploadFile: any) {
       .filter((x) => x.serial_no && x.employee_no && x.department && x.employee_name);
 
     if (!items.length) {
-      ElMessage.warning("Excel里没有可导入的数据");
+      showWarning("Excel里没有可导入的数据");
       return;
     }
 
@@ -366,7 +366,7 @@ async function onImportOutFile(uploadFile: any) {
       const errs = [validateEmployeeNo(it.employee_no, settings.value.validation_employee_no_pattern), validateDateText(it.config_date, "配置日期")].filter(Boolean);
       return errs.length ? `第${idx+2}行：${errs.join("；")}` : "";
     }).filter(Boolean);
-    if (frontErrors.length) { ElMessage.warning(summarizeValidationErrors(frontErrors, 3)); return; }
+    if (frontErrors.length) { showWarning(summarizeValidationErrors(frontErrors, 3)); return; }
 
     const res: any = await apiPost("/api/pc-out-batch", { items });
     const okSum = Number(res?.success || 0);
@@ -374,9 +374,9 @@ async function onImportOutFile(uploadFile: any) {
     if (okSum > 0) notifyPcAssetsChanged();
     if (failSum > 0) {
       console.warn("pc-out-batch errors", res?.errors);
-      ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
+      showWarning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
     } else {
-      ElMessage.success(`导入完成：成功 ${okSum} 条`);
+      showSuccess(`导入完成：成功 ${okSum} 条`);
     }
 
     if (settings.value.ui_write_local_refresh && items.length && assetOptions.value.length) {
@@ -386,17 +386,17 @@ async function onImportOutFile(uploadFile: any) {
       await loadAssets(lastLoadedKeyword, true);
     }
   } catch (e: any) {
-    ElMessage.error(e?.message || "导入失败");
+    showError(e?.message || "导入失败");
   }
 }
 
 async function submit() {
   normalizeForm();
   const softErrors = [validateEmployeeNo(form.value.employee_no, settings.value.validation_employee_no_pattern), validateDateText(form.value.config_date, "配置日期")].filter(Boolean);
-  if (softErrors.length) { ElMessage.warning(summarizeValidationErrors(softErrors)); return; }
+  if (softErrors.length) { showWarning(summarizeValidationErrors(softErrors)); return; }
   const ok = await validateWithFriendlyMessage(
     formRef.value,
-    (msg) => ElMessage.warning(msg),
+    (msg) => showWarning(msg),
     { asset_id: "请先选择要出库的电脑" },
   );
   if (!ok) return;
@@ -406,7 +406,7 @@ async function submit() {
     const usedAssetId = form.value.asset_id;
     const r: any = await apiPost("/api/pc-out", { ...form.value });
     notifyPcAssetsChanged();
-    ElMessage.success("出库成功");
+    showSuccess("出库成功");
 
     // 清理员工信息，保留是否在职默认值
     form.value.asset_id = undefined;
@@ -422,7 +422,7 @@ async function submit() {
     if (settings.value.ui_write_local_refresh) removeAssetOption(usedAssetId);
     else await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
-    ElMessage.error(e?.message || "出库失败");
+    showError(e?.message || "出库失败");
   } finally {
     submitting.value = false;
   }

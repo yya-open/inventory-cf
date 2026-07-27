@@ -227,7 +227,7 @@
 <script setup lang="ts">
 import { computed, defineAsyncComponent, onBeforeMount, onBeforeUnmount, onMounted, onActivated, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { confirmLedgerAction, notifyLedgerAction as notifyAction, showLedgerError, showLedgerInfo, showLedgerSuccess, showLedgerWarning } from '../utils/ledgerOperationFeedback';
+import { confirmAction, notifyAction, showApiError, showInfo, showSuccess, showWarning } from '../utils/feedback';
 import { apiDelete, apiGet, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { countMonitorAssets, getMonitorAssetInventorySummary, invalidateAssetInventorySummaryCache, listMonitorAssets } from '../api/assetLedgers';
@@ -339,19 +339,19 @@ onMounted(() => {
 
 function handleSaveView(name: string) {
   const savedName = saveCurrentView(name);
-  if (!savedName) return showLedgerWarning('请先输入视图名称');
+  if (!savedName) return showWarning('请先输入视图名称');
   notifyAction('视图已保存', `已保存为“${savedName}”，下次进入页面会继续保留。`);
 }
 
 function handleApplyView(name: string) {
-  if (!applySavedView(name)) return showLedgerWarning('视图不存在或已失效');
+  if (!applySavedView(name)) return showWarning('视图不存在或已失效');
   notifyAction('视图已应用', `当前已切换到“${name}”。`, 'info');
   reloadList();
 }
 
 function handleDeleteView(name: string) {
   const deletingDefault = defaultViewName.value === String(name || '').trim();
-  if (!deleteSavedView(name)) return showLedgerWarning('视图不存在或已删除');
+  if (!deleteSavedView(name)) return showWarning('视图不存在或已删除');
   if (deletingDefault) {
     notifyAction('视图已删除', `已删除“${name}”视图，默认已回退到系统默认视图。`, 'warning');
     return;
@@ -360,7 +360,7 @@ function handleDeleteView(name: string) {
 }
 
 function handleSetDefaultView(name: string) {
-  if (!setDefaultSavedView(name)) return showLedgerWarning('视图不存在或已删除');
+  if (!setDefaultSavedView(name)) return showWarning('视图不存在或已删除');
   notifyAction('默认视图已更新', `“${name}” 已设置为默认视图。`, 'info');
 }
 
@@ -495,16 +495,18 @@ async function handleMaybeMissingSchema(error: any) {
     message.includes('no such table: monitor_tx');
   if (!missing) throw error;
   if (!can('admin')) {
-    showLedgerError(null, '显示器模块数据库表尚未初始化，请联系管理员执行初始化');
+    showApiError(null, '显示器模块数据库表尚未初始化，请联系管理员执行初始化');
     throw error;
   }
-  await confirmLedgerAction({
+  await confirmAction({
     title: '需要初始化',
     message: '检测到显示器模块数据库表尚未创建（monitor_assets/monitor_tx/pc_locations）。\n\n是否现在初始化？（仅需执行一次）',
+    type: 'warning',
     confirmButtonText: '初始化',
+    cancelButtonText: '取消',
   });
   await apiPost('/api/monitor-init', { confirm: '初始化' });
-  showLedgerSuccess({ message: '初始化完成，请重试操作' });
+  showSuccess('初始化完成，请重试操作');
 }
 
 function currentFiltersForList(): MonitorFilters {
@@ -786,40 +788,42 @@ function handleRowMore(command: string, row: MonitorAsset) {
 
 async function restoreAsset(row: MonitorAsset) {
   try {
-    await confirmLedgerAction({
+    await confirmAction({
       title: '恢复归档',
       message: `确认恢复显示器：${row.asset_code || '-'} ${row.brand || ''} ${row.model || ''}？恢复后将重新出现在默认台账列表中。`,
+      type: 'warning',
       confirmButtonText: '确认恢复',
+      cancelButtonText: '取消',
     });
     batchBusy.value = true;
     const result: any = await withBlockingActionFeedback('正在恢复显示器归档', () =>
       apiPost('/api/monitor-assets-bulk', { action: 'restore', ids: [Number(row.id)] })
     );
-    showLedgerSuccess({
-      message: result?.message || '恢复成功',
-      notificationTitle: '显示器已恢复',
-      notificationMessage: `已恢复 ${row.brand || ''} ${row.model || ''}`.trim() || '显示器记录已恢复。',
-      notificationType: 'info',
-    });
+    showSuccess(result?.message || '恢复成功');
+    notifyAction(
+      '显示器已恢复',
+      `已恢复 ${row.brand || ''} ${row.model || ''}`.trim() || '显示器记录已恢复。',
+      'info',
+    );
     applyMonitorRestorePatch(extractAffectedIds(result, [Number(row.id)]));
     clearSelection();
     await ensureLocalPatchedPageStable(true);
   } catch (error: any) {
-    showLedgerError(error, '恢复归档失败');
+    showApiError(error, '恢复归档失败');
   } finally {
     batchBusy.value = false;
   }
 }
 
 function openBatchStatusDialog() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   batchStatusValue.value = 'IN_STOCK';
   warmLazyDialog(lazyBatchStatusDialog);
   batchStatusVisible.value = true;
 }
 
 async function openBatchLocationDialog() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   await ensureLocationOptionsReady();
   batchLocationValue.value = '';
   warmLazyDialog(lazyBatchLocationDialog);
@@ -827,14 +831,14 @@ async function openBatchLocationDialog() {
 }
 
 function openBatchOwnerDialog() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   batchOwnerForm.value = { employee_name: '', employee_no: '', department: '' };
   warmLazyDialog(lazyBatchOwnerDialog);
   batchOwnerVisible.value = true;
 }
 
 async function submitBatchStatus() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   await runBulkAction({
     action: 'status',
     payload: { status: batchStatusValue.value },
@@ -848,8 +852,8 @@ async function submitBatchStatus() {
 }
 
 async function submitBatchLocation() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
-  if (!batchLocationValue.value) return showLedgerWarning('请选择位置');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
+  if (!batchLocationValue.value) return showWarning('请选择位置');
   await runBulkAction({
     action: 'location',
     payload: { location_id: batchLocationValue.value },
@@ -863,8 +867,8 @@ async function submitBatchLocation() {
 }
 
 async function submitBatchOwner() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
-  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showLedgerWarning('请填写领用人');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
+  if (!String(batchOwnerForm.value.employee_name || '').trim()) return showWarning('请填写领用人');
   await runBulkAction({
     action: 'owner',
     payload: {
@@ -882,9 +886,9 @@ async function submitBatchOwner() {
 }
 
 async function batchRestoreSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   const restorable = selectionSummary.value.archived;
-  if (!restorable) return showLedgerWarning('选中显示器中没有可恢复的归档记录');
+  if (!restorable) return showWarning('选中显示器中没有可恢复的归档记录');
   try {
     await confirmBatchRisk('批量恢复', `将恢复 ${restorable} 台已归档显示器，恢复后会重新出现在默认台账列表中。`);
   } catch {
@@ -904,15 +908,15 @@ async function batchRestoreSelected() {
 }
 
 async function batchArchiveSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   batchArchiveForm.value = { reason: systemSettings.value.warehouse_default_archive_reason || archiveReasonOptions.value[0] || '停用归档', note: '' };
   warmLazyDialog(lazyBatchArchiveDialog);
   batchArchiveVisible.value = true;
 }
 
 async function submitBatchArchive() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
-  if (!String(batchArchiveForm.value.reason || '').trim()) return showLedgerWarning('请选择归档原因');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
+  if (!String(batchArchiveForm.value.reason || '').trim()) return showWarning('请选择归档原因');
   try {
     await confirmBatchRisk('批量归档', `将归档选中的 ${selectedCount.value} 台显示器，归档后默认列表不再显示。`);
   } catch {
@@ -936,7 +940,7 @@ async function submitBatchArchive() {
 }
 
 async function batchDeleteSelected() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选显示器');
+  if (!selectedCount.value) return showWarning('请先勾选显示器');
   await runBulkDelete({
     requestLabel: '显示器批量删除',
     errorMessage: '批量删除失败',
@@ -945,13 +949,13 @@ async function batchDeleteSelected() {
 }
 
 async function exportSelectedRows() {
-  if (!selectedCount.value) return showLedgerWarning('请先勾选要导出的显示器');
+  if (!selectedCount.value) return showWarning('请先勾选要导出的显示器');
   try {
     exportBusy.value = true;
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorSelectedRows({ rows: selectedRows.value, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
-    showLedgerError(error, '导出失败');
+    showApiError(error, '导出失败');
   } finally {
     exportBusy.value = false;
     finishQrExportProgress();
@@ -962,12 +966,12 @@ async function exportExcel() {
   if (exportBusy.value) return;
   try {
     exportBusy.value = true;
-    if (Number(total.value || 0) > 1000) showLedgerInfo('数据量较大，正在分批导出，请稍候…');
+    if (Number(total.value || 0) > 1000) showInfo('数据量较大，正在分批导出，请稍候…');
     const all = await fetchAll(currentFiltersForList(), Number(total.value || 0) > 2000 ? 300 : 200);
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorAllRows({ rows: all, loadExcelUtils, assetStatusText, locationText });
   } catch (error: any) {
-    showLedgerError(error, '导出失败');
+    showApiError(error, '导出失败');
   } finally {
     exportBusy.value = false;
   }
@@ -980,11 +984,11 @@ async function exportArchiveRecords() {
     exportBusy.value = true;
     const all = await fetchAll({ ...currentFiltersForList(), showArchived: true }, 200);
     const rowsToExport = all.filter((row) => Number(row.archived || 0) === 1);
-    if (!rowsToExport.length) return showLedgerWarning('当前没有可导出的归档显示器记录');
+    if (!rowsToExport.length) return showWarning('当前没有可导出的归档显示器记录');
     const actions = await loadAssetLedgerExportActions();
     await actions.exportMonitorArchiveRows({ rows: rowsToExport, loadExcelUtils, assetStatusText, locationText, formatBeijingDateTime });
   } catch (error: any) {
-    showLedgerError(error, '导出归档记录失败');
+    showApiError(error, '导出归档记录失败');
   } finally {
     exportBusy.value = false;
   }
@@ -1025,7 +1029,7 @@ async function onImportMonitorFile(uploadFile: any) {
     importBusy.value = true;
     const { parseXlsx } = await loadExcelUtils();
     const excelRows = await parseXlsx(file);
-    if (!excelRows.length) return showLedgerWarning('Excel里没有可导入的数据');
+    if (!excelRows.length) return showWarning('Excel里没有可导入的数据');
 
     const locationMap = new Map<string, number>();
     locationOptions.value.forEach((item) => {
@@ -1060,16 +1064,16 @@ async function onImportMonitorFile(uploadFile: any) {
       }
     }
 
-    if (success === 0 && failed === 0) return showLedgerWarning('Excel里没有可导入的数据');
+    if (success === 0 && failed === 0) return showWarning('Excel里没有可导入的数据');
     if (failed > 0) {
       console.warn('monitor-assets import errors', errors);
-      showLedgerWarning(`导入完成：成功 ${success} 条，失败 ${failed} 条（详情见控制台）`);
+      showWarning(`导入完成：成功 ${success} 条，失败 ${failed} 条（详情见控制台）`);
     } else {
-      showLedgerSuccess({ message: `导入完成：成功 ${success} 条` });
+      showSuccess(`导入完成：成功 ${success} 条`);
     }
     await refreshCurrent(true, true);
   } catch (error: any) {
-    showLedgerError(error, '导入失败');
+    showApiError(error, '导入失败');
   } finally {
     importBusy.value = false;
   }
@@ -1117,7 +1121,7 @@ async function removeAsset(row: MonitorAsset) {
       : operation === 'archive'
         ? `确认删除显示器台账：${label}？预检结果：本次不会物理删除，而会自动归档。${reason}`
         : `确认删除显示器台账：${label}？预检结果：满足物理删除条件。`;
-    await confirmLedgerAction({
+    await confirmAction({
       title: operation === 'purge' ? '彻底删除预检' : '删除预检',
       message,
       type: 'warning',
@@ -1133,9 +1137,9 @@ async function removeAsset(row: MonitorAsset) {
       const failure = Array.isArray(result?.failed_records) ? result.failed_records[0] : null;
       throw Object.assign(new Error(String(failure?.原因 || result?.message || '删除失败')), { status: 400 });
     }
-    showLedgerSuccess({ message: result?.message || (isArchived ? '彻底删除成功' : '删除成功') });
+    showSuccess(result?.message || (isArchived ? '彻底删除成功' : '删除成功'));
   } catch (error: any) {
-    showLedgerError(error, isArchived ? '彻底删除失败' : '删除失败');
+    showApiError(error, isArchived ? '彻底删除失败' : '删除失败');
   } finally {
     batchBusy.value = false;
   }
@@ -1322,17 +1326,19 @@ async function openQr(row: MonitorAsset) {
 async function initQrKeys() {
   if (initQrBusy.value) return;
   try {
-    await confirmLedgerAction({
+    await confirmAction({
       title: '初始化二维码Key',
       message: '将把“补齐显示器二维码 Key”提交到异步任务中心后台执行。继续？',
+      type: 'warning',
       confirmButtonText: '继续',
+      cancelButtonText: '取消',
     });
     initQrBusy.value = true;
     const result: any = await apiPost('/api/jobs', { job_type: 'MONITOR_QR_KEY_INIT', request_json: { batch_size: 50 }, retain_days: 7, max_retries: 1 });
     const jobId = Number(result?.data?.id || result?.id || 0);
-    showLedgerSuccess({ message: jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度' });
+    showSuccess(jobId ? `任务已创建（#${jobId}），可在“系统工具 / 异步任务”查看进度` : '任务已创建，可在“系统工具 / 异步任务”查看进度');
   } catch (error: any) {
-    showLedgerError(error, '初始化失败');
+    showApiError(error, '初始化失败');
   } finally {
     initQrBusy.value = false;
   }
@@ -1365,15 +1371,15 @@ async function createLocation() {
   if (locationSaving.value) return;
   try {
     locationSaving.value = true;
-    if (!dlgLoc.newName.trim()) return showLedgerWarning('请输入位置名称');
+    if (!dlgLoc.newName.trim()) return showWarning('请输入位置名称');
     await apiPost('/api/pc-locations', { name: dlgLoc.newName.trim(), parent_id: dlgLoc.parentId || null });
     dlgLoc.newName = '';
     dlgLoc.parentId = '';
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    showLedgerSuccess({ message: '新增成功' });
+    showSuccess('新增成功');
   } catch (error: any) {
-    showLedgerError(error, '新增失败');
+    showApiError(error, '新增失败');
   } finally {
     locationSaving.value = false;
   }
@@ -1386,9 +1392,9 @@ async function updateLocation(row: MonitorAsset) {
     await apiPut('/api/pc-locations', { id: row.id, name: row.name, parent_id: row.parent_id, enabled: row.enabled });
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    showLedgerSuccess({ message: '保存成功' });
+    showSuccess('保存成功');
   } catch (error: any) {
-    showLedgerError(error, '保存失败');
+    showApiError(error, '保存失败');
   } finally {
     locationSaving.value = false;
   }
@@ -1398,13 +1404,19 @@ async function deleteLocation(row: MonitorAsset) {
   if (locationSaving.value) return;
   try {
     locationSaving.value = true;
-    await confirmLedgerAction({ title: '提示', message: '删除位置后无法恢复，确认继续？' });
+    await confirmAction({
+      title: '提示',
+      message: '删除位置后无法恢复，确认继续？',
+      type: 'warning',
+      confirmButtonText: '确认继续',
+      cancelButtonText: '取消',
+    });
     await apiDelete('/api/pc-locations', { id: row.id, confirm: '删除' });
     invalidateLocationCatalog();
     await refreshLocationMgr(true);
-    showLedgerSuccess({ message: '删除成功' });
+    showSuccess('删除成功');
   } catch (error: any) {
-    showLedgerError(error, '删除失败');
+    showApiError(error, '删除失败');
   } finally {
     locationSaving.value = false;
   }

@@ -200,7 +200,7 @@ import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElRadioButton, ElRadioGroup } from 'element-plus/es/components/radio/index';
 import { ref, computed, onMounted } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError, showSuccess, showWarning } from "../utils/feedback";
 import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
@@ -334,7 +334,7 @@ async function onImportRecycleFile(uploadFile: any) {
       .filter((x) => x.serial_no && x.recycle_date);
 
     if (!items.length) {
-      ElMessage.warning("Excel里没有可导入的数据");
+      showWarning("Excel里没有可导入的数据");
       return;
     }
 
@@ -344,21 +344,21 @@ async function onImportRecycleFile(uploadFile: any) {
     if (okSum > 0) notifyPcAssetsChanged();
     if (failSum > 0) {
       console.warn("pc-recycle-batch errors", res?.errors);
-      ElMessage.warning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
+      showWarning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
     } else {
-      ElMessage.success(`导入完成：成功 ${okSum} 条`);
+      showSuccess(`导入完成：成功 ${okSum} 条`);
     }
 
     await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
-    ElMessage.error(e?.message || "导入失败");
+    showError(e?.message || "导入失败");
   }
 }
 
 async function submit() {
   const ok = await validateWithFriendlyMessage(
     formRef.value,
-    (msg) => ElMessage.warning(msg),
+    (msg) => showWarning(msg),
     {
       asset_id: "请先选择要操作的电脑",
       action: "请选择操作类型",
@@ -371,7 +371,7 @@ async function submit() {
   try {
     await apiPost("/api/pc-recycle", { ...form.value });
     notifyPcAssetsChanged();
-    ElMessage.success("操作成功");
+    showSuccess("操作成功");
 
     form.value.asset_id = undefined;
     pickedAsset.value = null;
@@ -382,7 +382,7 @@ async function submit() {
 
     await loadAssets(lastLoadedKeyword, true);
   } catch (e: any) {
-    ElMessage.error(e?.message || "操作失败");
+    showError(e?.message || "操作失败");
   } finally {
     submitting.value = false;
   }

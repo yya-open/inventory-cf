@@ -416,7 +416,8 @@ import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue";
 import { useDebouncedFn } from "../composables/useDebouncedFn";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { alertAction, alertHtml, confirmAction, promptAction, showError, showInfo, showSuccess, showWarning } from "../utils/feedback";
+import { formatImportErrorHtml } from "../utils/importErrorReport";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
 import { notifyDownloadStarted } from "../utils/operationFeedback";
@@ -528,7 +529,7 @@ function resolveWorkbenchRows() {
   if (workbenchScope.value === 'filtered') return filteredLines.value;
   const rows = selectedRows.value;
   if (!rows.length) {
-    ElMessage.warning('请先勾选要处理的盘点明细');
+    showWarning('请先勾选要处理的盘点明细');
     return null;
   }
   return rows;
@@ -545,10 +546,10 @@ function applyBatchCountedQty(rows: any[], updater: (row: any) => any) {
     changed += 1;
   }
   if (!changed) {
-    ElMessage.info('没有需要更新的行');
+    showInfo('没有需要更新的行');
     return;
   }
-  ElMessage.success(`已批量更新 ${changed} 行`);
+  showSuccess(`已批量更新 ${changed} 行`);
 }
 
 function collectDirtyImportLines() {
@@ -602,43 +603,43 @@ async function deleteStocktake(row:any){
   if (!row?.id) return;
   const status = String(row.status || '');
   if (!canDeleteStocktake(row)){
-    ElMessage.warning("仅草稿或已应用完成的盘点单可删除");
+    showWarning("仅草稿或已应用完成的盘点单可删除");
     return;
   }
   try{
     if (status === 'APPLIED') {
-      const { value } = await ElMessageBox.prompt(
-        `盘点单 ${row.st_no || row.id} 已应用。删除只会移除盘点单和明细记录，不会撤销已经产生的库存调整；如需恢复库存，请先点“撤销盘点”。请输入「删除」确认。`,
-        "删除已应用盘点单",
-        {
-          type: "warning",
-          confirmButtonText: "确认删除",
-          cancelButtonText: "取消",
-          inputPlaceholder: "删除",
-          inputValidator: (value: string) => String(value || '').trim() === '删除' || "需要输入「删除」",
-        }
-      );
+      const { value } = await promptAction({
+        message: `盘点单 ${row.st_no || row.id} 已应用。删除只会移除盘点单和明细记录，不会撤销已经产生的库存调整；如需恢复库存，请先点“撤销盘点”。请输入「删除」确认。`,
+        title: "删除已应用盘点单",
+        type: "warning",
+        confirmButtonText: "确认删除",
+        cancelButtonText: "取消",
+        inputPlaceholder: "删除",
+        inputValidator: (value: string) => String(value || '').trim() === '删除' || "需要输入「删除」",
+      });
       if (String(value || '').trim() !== '删除') return;
     } else {
-      await ElMessageBox.confirm(
-        `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
-        "删除确认",
-        { type: "warning", confirmButtonText: "删除", cancelButtonText: "取消" }
-      );
+      await confirmAction({
+        message: `确认删除盘点单 ${row.st_no || row.id}？此操作不可恢复。`,
+        title: "删除确认",
+        type: "warning",
+        confirmButtonText: "删除",
+        cancelButtonText: "取消",
+      });
     }
   }catch{
     return;
   }
   try{
     await apiPost("/api/stocktake/delete", { id: Number(row.id), confirm: "删除" });
-    ElMessage.success("删除成功");
+    showSuccess("删除成功");
     if (Number(selectedId.value) === Number(row.id)){
       selectedId.value = null;
       detail.value = null;
     }
     await loadList();
   }catch(e:any){
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "删除失败");
+    showError(stocktakeErrorHint(e) || e.message || "删除失败");
   }
 }
 
@@ -708,7 +709,7 @@ async function loadList(){
   }catch(e:any){
     if (requestSeq !== listRequestSeq) return;
     if (controller?.signal?.aborted || String(e?.name || '') === 'AbortError') return;
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点单失败");
+    showError(stocktakeErrorHint(e) || e.message || "加载盘点单失败");
   }finally{
     if (listAbortController === controller) listAbortController = null;
   }
@@ -734,7 +735,7 @@ async function loadDetail(id:number){
     selectedIds.value = new Set();
   }catch(e:any){
     if (requestSeq !== detailRequestSeq) return;
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "加载盘点明细失败");
+    showError(stocktakeErrorHint(e) || e.message || "加载盘点明细失败");
   }
 }
 
@@ -749,14 +750,14 @@ async function createStocktake(){
     const r:any = await apiPost("/api/stocktake/create", { warehouse_id: warehouseId.value });
     const createdId = Number(r?.data?.id || 0);
     if (!createdId) throw new Error('创建返回缺少盘点单 id');
-    ElMessage.success("盘点单已创建");
+    showSuccess("盘点单已创建");
     await loadList();
 	    selectedId.value = createdId;
 	    await loadDetail(createdId);
 	    await nextTick();
 	    scrollToSelected();
   }catch(e:any){
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "创建失败");
+    showError(stocktakeErrorHint(e) || e.message || "创建失败");
   }finally{
     creating.value = false;
   }
@@ -764,7 +765,7 @@ async function createStocktake(){
 
 
 async function exportStocktakeReport(){
-  if (!detail.value) return ElMessage.warning('请先选择盘点单');
+  if (!detail.value) return showWarning('请先选择盘点单');
   const summaryRows = [
     ['盘点单号', detail.value.stocktake?.st_no || ''],
     ['仓库', detail.value.stocktake?.warehouse_name || ''],
@@ -797,7 +798,7 @@ async function exportStocktakeReport(){
 }
 
 async function exportFilteredLines(){
-  if (!detail.value || !filteredLines.value.length) return ElMessage.warning('当前没有可导出的盘点明细');
+  if (!detail.value || !filteredLines.value.length) return showWarning('当前没有可导出的盘点明细');
   const filterLabel = { all: '全部', changed: '差异', increase: '盘盈', decrease: '盘亏', pending: '未盘' }[lineFilter.value] || '全部';
   await exportToXlsx({
     filename: `盘点明细_${detail.value.stocktake?.st_no || detail.value.stocktake?.id}_${filterLabel}.xlsx`,
@@ -864,13 +865,13 @@ function beforeUpload(file: File){
       if (colSku === null) missing.push("sku");
       if (colCount === null) missing.push("counted_qty");
       if (missing.length) {
-        ElMessageBox.alert(
-          `表头缺少必需列：${missing.join("、")}。
+        alertAction({
+          message: `表头缺少必需列：${missing.join("、")}。
 
 请使用模板表头：sku, 名称, counted_qty（也支持：盘点数量/数量）`,
-          "导入失败",
-          { type: "error" }
-        );
+          title: "导入失败",
+          type: "error",
+        });
         return;
       }
 
@@ -905,19 +906,14 @@ function beforeUpload(file: File){
 
       if (!lines.length) {
         if (errors.length) {
-          const preview = errors
-            .slice(0, 12)
-            .map((x) => `第${x.row}行【${x.col}】${x.msg}${x.val !== undefined ? `（当前：${String(x.val)}）` : ""}`)
-            .join("<br/>");
-          ElMessageBox.alert(
-            `<div style="line-height:1.8">没有可导入的有效行。发现 <b>${errors.length}</b> 处问题：<br/>${preview}${
-              errors.length > 12 ? "<br/>…（仅展示前 12 条）" : ""
-            }</div>`,
-            "导入提示",
-            { type: "warning", dangerouslyUseHTMLString: true }
-          );
+          const preview = formatImportErrorHtml(errors);
+          alertHtml({
+            title: "导入提示",
+            html: `<div style="line-height:1.8">没有可导入的有效行。发现 <b>${errors.length}</b> 处问题：<br/>${preview}</div>`,
+            type: "warning",
+          });
         } else {
-          ElMessage.warning("没有读取到有效数据（请确认第一行是表头，且至少有一行盘点数量）");
+          showWarning("没有读取到有效数据（请确认第一行是表头，且至少有一行盘点数量）");
         }
         return;
       }
@@ -925,17 +921,17 @@ function beforeUpload(file: File){
       const r:any = await apiPost("/api/stocktake/import", { id: detail.value.stocktake.id, lines });
       const updated = Number(r?.data?.updated || 0);
       const unknown = Array.isArray(r?.data?.unknown) ? r.data.unknown : [];
-      ElMessage.success(`导入完成：更新 ${updated} 行`);
-      if (unknown.length) ElMessage.warning(`有 ${unknown.length} 个 SKU 未识别（已跳过）`);
+      showSuccess(`导入完成：更新 ${updated} 行`);
+      if (unknown.length) showWarning(`有 ${unknown.length} 个 SKU 未识别（已跳过）`);
 
       if (errors.length) {
         const preview = errors.slice(0, 8).map((x) => `第${x.row}行【${x.col}】${x.msg}`).join("；");
-        ElMessage.warning(errors.length > 8 ? `${preview}…（共${errors.length}处，已跳过）` : `${preview}（已跳过）`);
+        showWarning(errors.length > 8 ? `${preview}…（共${errors.length}处，已跳过）` : `${preview}（已跳过）`);
       }
 
       await refreshDetail();
     }catch(err:any){
-      ElMessage.error(stocktakeErrorHint(err) || err.message || "导入失败");
+      showError(stocktakeErrorHint(err) || err.message || "导入失败");
     }
   };
   reader.readAsArrayBuffer(file);
@@ -946,12 +942,12 @@ function beforeUpload(file: File){
 	async function saveLines(){
 	  if (!detail.value) return;
 	  if (!dirty.value.size){
-	    ElMessage.info("没有需要保存的修改");
+	    showInfo("没有需要保存的修改");
 	    return;
 	  }
   const invalidRows = (detail.value.lines || []).filter((line: any) => dirty.value.has(Number(line?.id || 0)) && isInvalidCountedQty(line?.counted_qty));
   if (invalidRows.length) {
-    ElMessage.warning(`有 ${invalidRows.length} 行盘点数量为负数（如 ${invalidRows[0]?.sku}），请改为 0 或正数后再保存`);
+    showWarning(`有 ${invalidRows.length} 行盘点数量为负数（如 ${invalidRows[0]?.sku}），请改为 0 或正数后再保存`);
     return;
   }
   saving.value = true;
@@ -960,7 +956,7 @@ function beforeUpload(file: File){
   try{
     const lines = collectDirtyImportLines();
     if (!lines.length) {
-      ElMessage.info('没有需要提交的变更');
+      showInfo('没有需要提交的变更');
       dirty.value = new Set();
       return;
     }
@@ -974,13 +970,13 @@ function beforeUpload(file: File){
       totalUpdated += Number(r?.data?.updated || 0);
       for (const sku of Array.isArray(r?.data?.unknown) ? r.data.unknown : []) unknownSet.add(String(sku));
     }
-    ElMessage.success(`已保存：${totalUpdated} 行（共 ${lines.length} 条变更，分 ${Math.ceil(lines.length / CHUNK_SIZE)} 批）`);
-    if (unknownSet.size) ElMessage.warning(`有 ${unknownSet.size} 个 SKU 未识别（已跳过）`);
+    showSuccess(`已保存：${totalUpdated} 行（共 ${lines.length} 条变更，分 ${Math.ceil(lines.length / CHUNK_SIZE)} 批）`);
+    if (unknownSet.size) showWarning(`有 ${unknownSet.size} 个 SKU 未识别（已跳过）`);
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "保存失败");
+    showError(stocktakeErrorHint(e) || e.message || "保存失败");
     if (submittedAnyChunk) {
-      ElMessage.warning('部分批次已提交成功，已重新加载盘点明细以核对实际结果');
+      showWarning('部分批次已提交成功，已重新加载盘点明细以核对实际结果');
       await refreshDetail();
     }
   }finally{
@@ -991,7 +987,7 @@ function beforeUpload(file: File){
 function openApplyPreview() {
   if (!detail.value) return;
   if (dirty.value.size) {
-    ElMessage.warning('检测到未保存的盘点数据，请先点击“保存”后再应用盘点。本次不会执行应用。');
+    showWarning('检测到未保存的盘点数据，请先点击“保存”后再应用盘点。本次不会执行应用。');
     return;
   }
   applyPreviewVisible.value = true;
@@ -1000,21 +996,27 @@ function openApplyPreview() {
 async function confirmApplyStocktake(){
   if (!detail.value) return;
   if (dirty.value.size) {
-    ElMessage.warning('检测到未保存的盘点数据，请先保存后再应用盘点。');
+    showWarning('检测到未保存的盘点数据，请先保存后再应用盘点。');
     return;
   }
   applying.value = true;
   try{
     const preview:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id, preview_only: true });
     const info = preview?.data || {};
-    await ElMessageBox.confirm(`将应用盘点单 ${info.st_no || detail.value.stocktake.st_no}。预检结果：已录入 ${info.counted_rows || 0} 行，其中需调整 ${info.adjusted_rows || 0} 行，盘盈 ${info.increase_rows || 0} 行，盘亏 ${info.decrease_rows || 0} 行。确认继续？`, '应用盘点预检', { type: 'warning', confirmButtonText: '确认应用', cancelButtonText: '取消' });
+    await confirmAction({
+      title: '应用盘点预检',
+      message: `将应用盘点单 ${info.st_no || detail.value.stocktake.st_no}。预检结果：已录入 ${info.counted_rows || 0} 行，其中需调整 ${info.adjusted_rows || 0} 行，盘盈 ${info.increase_rows || 0} 行，盘亏 ${info.decrease_rows || 0} 行。确认继续？`,
+      type: 'warning',
+      confirmButtonText: '确认应用',
+      cancelButtonText: '取消',
+    });
     const r:any = await apiPost("/api/stocktake/apply", { id: detail.value.stocktake.id });
-    ElMessage.success(`已应用：生成 ${Number(r?.data?.adjusted || 0)} 条调整记录`);
+    showSuccess(`已应用：生成 ${Number(r?.data?.adjusted || 0)} 条调整记录`);
     applyPreviewVisible.value = false;
     await refreshDetail();
   }catch(e:any){
     if (e === 'cancel' || e === 'close') return;
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "应用失败");
+    showError(stocktakeErrorHint(e) || e.message || "应用失败");
   }finally{
     applying.value = false;
   }
@@ -1025,23 +1027,25 @@ async function rollbackStocktake(){
   const stStatus = String(detail.value.stocktake.status || "");
   if (!['APPLIED','ROLLING'].includes(stStatus)) return;
   try{
-    await ElMessageBox.confirm(
-      stStatus === 'ROLLING'
+    await confirmAction({
+      title: stStatus === 'ROLLING' ? "继续撤销盘点" : "确认撤销盘点",
+      message: stStatus === 'ROLLING'
         ? "盘点单正处于撤销中（上次撤销可能中断）。点击“继续”将尝试补齐未完成的撤销流水与库存恢复（幂等，不会重复写入已存在的撤销流水）。"
         : "撤销后将把库存恢复为盘点前的系统数量，并生成撤销流水（REVERSAL）。确认继续？",
-      stStatus === 'ROLLING' ? "继续撤销盘点" : "确认撤销盘点",
-      { type: "warning", confirmButtonText: "撤销", cancelButtonText: "取消" }
-    );
+      type: "warning",
+      confirmButtonText: "撤销",
+      cancelButtonText: "取消",
+    });
   }catch{ return; }
 
   rolling.value = true;
   try{
     const r:any = await apiPost("/api/stocktake/rollback", { id: detail.value.stocktake.id });
-    ElMessage.success(`撤销成功：恢复 ${Number(r?.data?.reversed || 0)} 条差异库存`);
+    showSuccess(`撤销成功：恢复 ${Number(r?.data?.reversed || 0)} 条差异库存`);
     await loadList();
     await refreshDetail();
   }catch(e:any){
-    ElMessage.error(stocktakeErrorHint(e) || e.message || "撤销失败");
+    showError(stocktakeErrorHint(e) || e.message || "撤销失败");
   }finally{
     rolling.value = false;
   }

@@ -214,7 +214,7 @@
 import { onBeforeMount, onActivated, reactive, ref } from "vue";
 import { usePagedAssetList } from "../composables/usePagedAssetList";
 import LedgerTableSkeleton from "../components/assets/LedgerTableSkeleton.vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, promptAction, showError, showSuccess } from "../utils/feedback";
 import { apiDownload, apiGet, apiPost } from "../api/client";
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { can } from "../store/auth";
@@ -341,22 +341,30 @@ async function doExport() {
     const fn = `显示器出入库明细_${new Date().toISOString().slice(0, 10)}.csv`;
     await apiDownload(`/api/monitor-tx/export?${p.toString()}`, fn);
   } catch (e: any) {
-    ElMessage.error(e.message || "导出失败");
+    showError(e.message || "导出失败");
   }
 }
 
 async function doDelete() {
   try {
-    await ElMessageBox.confirm("删除后无法恢复，确认继续？需要输入二次确认。", "提示", { type: "warning" });
-    const { value } = await ElMessageBox.prompt("请输入 删除 以确认", "二次确认", { inputPlaceholder: "删除" });
+    await confirmAction({
+      message: '删除后无法恢复，确认继续？需要输入二次确认。',
+      title: '提示',
+      type: 'warning',
+    });
+    const { value } = await promptAction({
+      message: '请输入 删除 以确认',
+      title: '二次确认',
+      inputPlaceholder: '删除',
+    });
     await withBlockingActionFeedback("正在删除显示器出入库明细", () => apiPost<any>(`/api/monitor-tx/delete`, { entries: selected.value.map((x) => ({ id: x.id })), confirm: value }));
-    ElMessage.success("删除成功");
+    showSuccess("删除成功");
     selected.value = [];
     invalidateCache();
     clearTotalCache();
     await loadList({ forceRefresh: true });
   } catch (e: any) {
-    if (e?.message) ElMessage.error(e.message);
+    if (e?.message) showError(e.message);
   } finally {
     actionLoading.value = false;
   }

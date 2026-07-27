@@ -163,7 +163,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { ElMessage, ElMessageBox } from '../utils/el-services';
+import { promptAction, showError, showSuccess, showWarning } from '../utils/feedback';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { apiDownload, apiGet, apiPost } from '../api/client';
 import { can } from '../store/auth';
@@ -350,7 +350,7 @@ async function load(options: { keepPage?: boolean; silent?: boolean; forceRefres
     });
     lastRefreshAt = Date.now();
   } catch (e: any) {
-    ElMessage.error(e?.message || '加载失败');
+    showError(e?.message || '加载失败');
   }
 }
 
@@ -429,16 +429,18 @@ function buildIds(list: any[]) {
 async function deleteSelected() {
   if (!isAdmin.value) return;
   const ids = buildIds(selectedRows.value);
-  if (!ids.length) return ElMessage.warning('请先勾选要删除的记录');
+  if (!ids.length) return showWarning('请先勾选要删除的记录');
   try {
-    await ElMessageBox.prompt(`请输入「删除」确认操作（将删除选中的 ${ids.length} 条记录）`, '删除确认', {
+    await promptAction({
+      message: `请输入「删除」确认操作（将删除选中的 ${ids.length} 条记录）`,
+      title: '删除确认',
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       inputPlaceholder: '删除',
       inputValidator: (v: string) => (String(v || '').trim() === '删除' ? true : '需要输入「删除」'),
     });
     const r: any = await withBlockingActionFeedback('正在批量删除电脑盘点记录', () => apiPost('/api/pc-inventory-log/delete', { ids, confirm: '删除' }));
-    ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
+    showSuccess(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
     invalidateCache();
     clearTotalCache();
@@ -446,7 +448,7 @@ async function deleteSelected() {
     await refreshInventoryBatchAndSummary();
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') return;
-    ElMessage.error(e?.message || '删除失败');
+    showError(e?.message || '删除失败');
   } finally {
     loading.value = false;
   }
@@ -457,7 +459,9 @@ async function deleteOne(row: any) {
   const id = Number(row?.id || 0);
   if (!id) return;
   try {
-    await ElMessageBox.prompt(`请输入「删除」确认操作（将删除该条盘点记录，SN: ${row?.serial_no || '-'}）`, '删除确认', {
+    await promptAction({
+      message: `请输入「删除」确认操作（将删除该条盘点记录，SN: ${row?.serial_no || '-'}）`,
+      title: '删除确认',
       confirmButtonText: '确认',
       cancelButtonText: '取消',
       inputPlaceholder: '删除',
@@ -465,14 +469,14 @@ async function deleteOne(row: any) {
     });
     loading.value = true;
     const r: any = await apiPost('/api/pc-inventory-log/delete', { ids: [id], confirm: '删除' });
-    ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
+    showSuccess(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     invalidateCache();
     clearTotalCache();
     await load({ forceRefresh: true });
     await refreshInventoryBatchAndSummary();
   } catch (e: any) {
     if (e === 'cancel' || e === 'close') return;
-    ElMessage.error(e?.message || '删除失败');
+    showError(e?.message || '删除失败');
   } finally {
     loading.value = false;
   }
@@ -488,7 +492,7 @@ async function exportCsv() {
     const d = String(stamp.getDate()).padStart(2, '0');
     await apiDownload(`/api/pc-inventory-log/export?${p.toString()}`, `pc_inventory_log_${y}${m}${d}.csv`);
   } catch (e: any) {
-    ElMessage.error(e?.message || '导出失败');
+    showError(e?.message || '导出失败');
   }
 }
 
@@ -504,7 +508,7 @@ async function openStartBatch() {
     startBatchSuggestedName.value = suggestInventoryBatchName('pc', inventoryBatch.value);
     startBatchVisible.value = true;
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载开启盘点预览失败');
+    showError(error?.message || '加载开启盘点预览失败');
   } finally {
     batchBusy.value = false;
   }
@@ -523,20 +527,20 @@ async function confirmStartBatch(name: string) {
     const successMessage = cleared > 0
       ? `已自动清空 ${cleared} 条电脑盘点记录，${result?.message || '已开启新一轮盘点'}`
       : (result?.message || '已开启新一轮盘点');
-    ElMessage.success(successMessage);
+    showSuccess(successMessage);
     invalidateCache();
     clearTotalCache();
     await load({ forceRefresh: true });
     await refreshInventoryBatchAndSummary();
   } catch (error: any) {
-    ElMessage.error(error?.message || '开启盘点批次失败');
+    showError(error?.message || '开启盘点批次失败');
   } finally {
     batchBusy.value = false;
   }
 }
 
 function openExecutionMode() {
-  if (!inventoryBatch.value.active?.id) return ElMessage.warning('当前还没有进行中的电脑盘点批次，请先开启一轮盘点。');
+  if (!inventoryBatch.value.active?.id) return showWarning('当前还没有进行中的电脑盘点批次，请先开启一轮盘点。');
   if (typeof window === 'undefined') return;
   window.open(new URL('/public/pc-asset', window.location.origin).toString(), '_blank', 'noopener');
 }
@@ -561,7 +565,7 @@ async function loadPcBatchClosingSummary() {
 
 async function closeActiveBatch() {
   const active = inventoryBatch.value.active;
-  if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
+  if (!active?.id) return showWarning('当前没有进行中的电脑盘点批次');
   try {
     batchBusy.value = true;
     const [summary, issueBreakdown] = await Promise.all([loadPcBatchClosingSummary(), loadPcIssueBreakdown()]);
@@ -569,7 +573,7 @@ async function closeActiveBatch() {
     batchClosingIssueBreakdown.value = issueBreakdown;
     closeBatchVisible.value = true;
   } catch (error: any) {
-    ElMessage.error(error?.message || '加载结案预览失败');
+    showError(error?.message || '加载结案预览失败');
   } finally {
     batchBusy.value = false;
   }
@@ -577,7 +581,7 @@ async function closeActiveBatch() {
 
 async function confirmCloseActiveBatch() {
   const active = inventoryBatch.value.active;
-  if (!active?.id) return ElMessage.warning('当前没有进行中的电脑盘点批次');
+  if (!active?.id) return showWarning('当前没有进行中的电脑盘点批次');
   try {
     batchBusy.value = true;
     const result: any = await executeInventoryBatchClose('pc', active.id);
@@ -586,10 +590,10 @@ async function confirmCloseActiveBatch() {
       applyInventoryBatchPayload({ active: null, latest: batch, recent: inventoryBatch.value.active?.id ? [inventoryBatch.value.active, ...(inventoryBatch.value.recent || [])] : (inventoryBatch.value.recent || []) });
     }
     closeBatchVisible.value = false;
-    ElMessage.success(snapshotTaskMessage('电脑'));
+    showSuccess(snapshotTaskMessage('电脑'));
     await refreshInventoryBatchAndSummary();
   } catch (error: any) {
-    ElMessage.error(error?.message || '结束盘点批次失败');
+    showError(error?.message || '结束盘点批次失败');
   } finally {
     batchBusy.value = false;
   }

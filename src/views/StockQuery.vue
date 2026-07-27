@@ -107,7 +107,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeMount, onActivated } from "vue";
-import { ElMessage } from "../utils/el-services";
+import { showError } from "../utils/feedback";
 import { apiGet } from "../api/client";
 import { loadXlsx } from "../utils/excel";
 import { beijingTodayYmd } from "../utils/datetime";
@@ -234,7 +234,7 @@ async function doExport() {
     XLSX.writeFile(wb, filename);
     notifyDownloadStarted(filename, '导出');
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    showError(e?.message || "导出失败");
   } finally {
     exportLoading.value = false;
   }

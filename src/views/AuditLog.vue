@@ -290,7 +290,7 @@ import { useDebouncedFn } from "../composables/useDebouncedFn";
 import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";
 import { can, canCapability } from "../store/auth";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { exportToXlsx } from "../utils/excel";
 import { readJsonStorage, writeJsonStorage } from "../utils/storage";
 import { getCachedSystemSettings } from "../api/systemSettings";
@@ -552,14 +552,14 @@ async function exportFilteredRows() {
   try {
     if (canAsyncJobManage.value) {
       await createAuditExportJob('all');
-      ElMessage.success('已创建审计导出任务，请前往 系统 > 批量任务中心 下载');
+      showSuccess('已创建审计导出任务，请前往 系统 > 批量任务中心 下载');
       return;
     }
     const result: any = await fetchAuditExportRows('all');
     await exportAuditRows(result?.data || [], buildAuditExportFilename('all'));
-    if (result?.limited) ElMessage.warning(`导出达到上限：${result?.exported || 0} 条`);
+    if (result?.limited) showWarning(`导出达到上限：${result?.exported || 0} 条`);
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出筛选结果失败');
+    showError(error?.message || '导出筛选结果失败');
   }
 }
 
@@ -567,13 +567,13 @@ async function exportCurrentRows() {
   try {
     if (canAsyncJobManage.value) {
       await createAuditExportJob('current');
-      ElMessage.success('已创建当前页审计导出任务，请前往 系统 > 批量任务中心 下载');
+      showSuccess('已创建当前页审计导出任务，请前往 系统 > 批量任务中心 下载');
       return;
     }
     const result: any = await fetchAuditExportRows('current');
     await exportAuditRows(result?.data || [], buildAuditExportFilename('current'));
   } catch (error: any) {
-    ElMessage.error(error?.message || '导出当前页失败');
+    showError(error?.message || '导出当前页失败');
   }
 }
 
@@ -591,24 +591,22 @@ async function load(){
     total.value = Number(j.total || 0);
   }catch(e:any){
     if (currentSeq !== loadSeq || isAbortError(e)) return;
-    ElMessage.error(e.message || "加载失败");
+    showError(e.message || "加载失败");
   }finally{
     if (currentSeq === loadSeq) loading.value = false;
   }
 }
 
 async function hardConfirm(expected: string, title: string) {
-  const { value } = await ElMessageBox.prompt(
-    `请输入「${expected}」确认操作（区分大小写）`,
+  const { value } = await promptAction({
+    message: `请输入「${expected}」确认操作（区分大小写）`,
     title,
-    {
-      type: "warning",
-      confirmButtonText: "确认",
-      cancelButtonText: "取消",
-      inputPlaceholder: expected,
-      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
-    }
-  );
+    type: 'warning',
+    confirmButtonText: '确认',
+    cancelButtonText: '取消',
+    inputPlaceholder: expected,
+    inputValidator: (v: string) => (String(v || '').trim() === expected ? true : `需要输入「${expected}」`),
+  });
   return String(value || "").trim();
 }
 
@@ -616,13 +614,13 @@ async function deleteOne(id: number){
   try{
     await hardConfirm("删除", "二次确认");
     await apiPost(`/api/audit/delete`, { id, confirm: "删除" });
-    ElMessage.success("已删除");
+    showSuccess("已删除");
     // if delete makes current page empty, go back one page.
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e.message || "删除失败");
+    showError(e.message || "删除失败");
   }
 }
 
@@ -630,17 +628,21 @@ async function deleteSelected(){
   const ids = selectedIds.value.slice();
   if (!ids.length) return;
   try{
-    await ElMessageBox.confirm(`确认删除选中的 ${ids.length} 条审计日志？`, "删除确认", { type: "warning" });
+    await confirmAction({
+      message: `确认删除选中的 ${ids.length} 条审计日志？`,
+      title: '删除确认',
+      type: 'warning',
+    });
     await hardConfirm("删除", "二次确认");
     await apiPost(`/api/audit/delete`, { ids, confirm: "删除" });
-    ElMessage.success("已删除");
+    showSuccess("已删除");
     selectedIds.value = [];
     // adjust page if needed
     if (rows.value.length <= ids.length && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e.message || "删除失败");
+    showError(e.message || "删除失败");
   }
 }
 

@@ -206,7 +206,7 @@
 <script setup lang="ts">
 import { ElSkeleton } from 'element-plus/es/components/skeleton/index';
 import { computed, onMounted, ref } from 'vue';
-import { ElMessage } from '../utils/el-services';
+import { showError } from '../utils/feedback';
 import { getSystemPerformance } from '../api/systemPerformance';
 import { useSystemPageLoader } from '../composables/useSystemPageLoader';
 
@@ -309,7 +309,7 @@ async function load(force = false) {
     await loader.load({ force });
   } catch (e: any) {
     console.error('system-performance load failed', e);
-    ElMessage.error(e?.message || '加载性能面板失败');
+    showError(e?.message || '加载性能面板失败');
   }
 }
 

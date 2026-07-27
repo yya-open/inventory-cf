@@ -1,10 +1,9 @@
 import { unref, type ComputedRef, type Ref } from 'vue';
 import { apiPost } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
-import { confirmLedgerAction, notifyLedgerAction, showLedgerError, showLedgerSuccess } from '../utils/ledgerOperationFeedback';
+import { confirmAction, notifyAction, showApiError, showSuccess, showWarning } from '../utils/feedback';
 import { buildBulkDeleteConfirmTip, summarizeBulkDeleteResult } from '../views/assets/assetBulkActions';
 import type { ExcelUtilsModule } from '../utils/assetQrExport';
-import { ElMessage } from '../utils/el-services';
 
 type BulkActionRunOptions = {
   action: string;
@@ -40,7 +39,13 @@ type UseAssetBulkActionsOptions = {
 
 export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
   async function confirmBatchRisk(title: string, message: string) {
-    await confirmLedgerAction({ title, message, confirmButtonText: '确认继续' });
+    await confirmAction({
+      title,
+      message,
+      type: 'warning',
+      confirmButtonText: '确认继续',
+      cancelButtonText: '取消',
+    });
   }
 
   async function exportBatchFailures(filename: string, rows: Array<Record<string, any>>) {
@@ -65,19 +70,15 @@ export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
       const result: any = input.requestLabel
         ? await withBlockingActionFeedback(input.requestLabel, request)
         : await request();
-      showLedgerSuccess({
-        message: result?.message || input.successMessage,
-        notificationTitle: input.notificationTitle,
-        notificationMessage: input.notificationMessage,
-        notificationType: input.notificationType,
-      });
+      showSuccess(result?.message || input.successMessage);
+      notifyAction(input.notificationTitle, input.notificationMessage, input.notificationType || 'success');
       input.closeDialog?.();
       input.applyResult?.(result);
       options.clearSelection();
       await options.ensureLocalPatchedPageStable(Boolean(input.stable));
       return result;
     } catch (error) {
-      showLedgerError(error, input.errorMessage);
+      showApiError(error, input.errorMessage);
       return null;
     } finally {
       options.batchBusy.value = false;
@@ -95,22 +96,18 @@ export function useAssetBulkActions(options: UseAssetBulkActionsOptions) {
       const summary = summarizeBulkDeleteResult(options.assetLabel, result);
       if (summary.processed) options.clearSelection();
       if (summary.level === 'success') {
-        showLedgerSuccess({
-          message: summary.message,
-          notificationTitle: '批量删除完成',
-          notificationMessage: summary.message,
-          notificationType: 'warning',
-        });
+        showSuccess(summary.message);
+        notifyAction('批量删除完成', summary.message, 'warning');
       } else if (summary.level === 'warning') {
-        ElMessage.warning(summary.message);
-        notifyLedgerAction('批量删除部分完成', summary.message, 'warning');
+        showWarning(summary.message);
+        notifyAction('批量删除部分完成', summary.message, 'warning');
       }
       if (Array.isArray(result?.success_items)) input.applyDeletePatch(result.success_items);
       if (summary.failedRecords.length) await exportBatchFailures(`${options.assetLabel}批量删除失败明细_${summary.failedRecords.length}条.xlsx`, summary.failedRecords);
       await options.ensureLocalPatchedPageStable(true);
       return result;
     } catch (error) {
-      showLedgerError(error, input.errorMessage);
+      showApiError(error, input.errorMessage);
       return null;
     } finally {
       options.batchBusy.value = false;

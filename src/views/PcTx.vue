@@ -266,7 +266,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeMount, onActivated } from "vue";
-import { ElMessage, ElMessageBox } from "../utils/el-services";
+import { confirmAction, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { exportToXlsx } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
@@ -455,7 +455,7 @@ async function exportExcel() {
       rows: all,
     });
   } catch (e: any) {
-    ElMessage.error(e?.message || "导出失败");
+    showError(e?.message || "导出失败");
   } finally {
     actionLoading.value = false;
   }
@@ -473,21 +473,25 @@ function buildDeleteEntries(list: any[]) {
 async function deleteSelected() {
   if (!isAdmin.value) return;
   const entries = buildDeleteEntries(selectedRows.value);
-  if (!entries.length) return ElMessage.warning("请先勾选要删除的记录");
+  if (!entries.length) return showWarning("请先勾选要删除的记录");
   try {
-    await ElMessageBox.prompt(`请输入「删除」确认操作（将删除选中的 ${entries.length} 条记录）`, "删除确认", {
-      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: "删除",
-      inputValidator: (v: string) => (String(v || "").trim() === "删除" ? true : "需要输入「删除」"),
+    await promptAction({
+      message: `请输入「删除」确认操作（将删除选中的 ${entries.length} 条记录）`,
+      title: '删除确认',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputPlaceholder: '删除',
+      inputValidator: (v: string) => (String(v || '').trim() === '删除' ? true : '需要输入「删除」'),
     });
     const r:any = await withBlockingActionFeedback("正在删除电脑出入库明细", () => apiPost("/api/pc-tx/delete", { entries, confirm: "删除" }));
-    ElMessage.success(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
+    showSuccess(`已删除 ${Number(r?.data?.deleted || 0)} 条记录`);
     selectedRows.value = [];
     invalidateCache();
     clearTotalCache();
     await load({ forceRefresh: true });
   } catch (e:any) {
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e?.message || "删除失败");
+    showError(e?.message || "删除失败");
   } finally { actionLoading.value = false; }
 }
 
@@ -495,34 +499,41 @@ async function clearPcTx() {
   if (!isAdmin.value) return;
   try {
     const hasFilter = !!(type.value || keyword.value || dateRange.value?.[0] || dateRange.value?.[1] || effectiveFilter.value);
-    const action = await ElMessageBox.confirm(
-      hasFilter ? "将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。" : "当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！",
-      "清空电脑出入库明细",
-      { type: "warning", confirmButtonText: hasFilter ? "清空当前筛选" : "确认清空全部", cancelButtonText: hasFilter ? "清空全部" : "取消", distinguishCancelAndClose: true }
-    ).then(() => (hasFilter ? "filtered" : "all"), (reason) => { if (reason === "cancel" && hasFilter) return "all"; return null; });
+    const action = await confirmAction({
+      message: hasFilter ? '将清空【当前筛选条件】下的电脑出入库明细记录。\n\n如果你要清空全部记录，请点『清空全部』。' : '当前没有筛选条件，将清空【全部】电脑出入库明细记录。\n\n此操作不可恢复，请谨慎！',
+      title: '清空电脑出入库明细',
+      type: 'warning',
+      confirmButtonText: hasFilter ? '清空当前筛选' : '确认清空全部',
+      cancelButtonText: hasFilter ? '清空全部' : '取消',
+      distinguishCancelAndClose: true,
+    }).then(() => (hasFilter ? 'filtered' : 'all'), (reason) => { if (reason === 'cancel' && hasFilter) return 'all'; return null; });
     if (!action) return;
     const expected = action === "all" ? "清空全部" : "清空";
-    await ElMessageBox.prompt(`请输入「${expected}」确认操作（区分大小写）`, "二次确认", {
-      confirmButtonText: "确认", cancelButtonText: "取消", inputPlaceholder: expected,
-      inputValidator: (v: string) => (String(v || "").trim() === expected ? true : `需要输入「${expected}」`),
+    await promptAction({
+      message: `请输入「${expected}」确认操作（区分大小写）`,
+      title: '二次确认',
+      confirmButtonText: '确认',
+      cancelButtonText: '取消',
+      inputPlaceholder: expected,
+      inputValidator: (v: string) => (String(v || '').trim() === expected ? true : `需要输入「${expected}」`),
     });
     const all = await fetchAll();
     const entries = buildDeleteEntries(all);
-    if (!entries.length) { ElMessage.warning("没有可清空的记录"); return; }
+    if (!entries.length) { showWarning("没有可清空的记录"); return; }
     let deleted = 0;
     for (let i = 0; i < entries.length; i += 200) {
       const chunk = entries.slice(i, i + 200);
       const r:any = await withBlockingActionFeedback("正在批量清空电脑出入库明细", () => apiPost("/api/pc-tx/delete", { entries: chunk, confirm: "删除" }));
       deleted += Number(r?.data?.deleted || 0);
     }
-    ElMessage.success(`已清空 ${deleted} 条记录`);
+    showSuccess(`已清空 ${deleted} 条记录`);
     selectedRows.value = [];
     invalidateCache();
     clearTotalCache();
     await load({ forceRefresh: true });
   } catch (e:any) {
     if (e === "cancel" || e === "close") return;
-    ElMessage.error(e?.message || "清空失败");
+    showError(e?.message || "清空失败");
   } finally { actionLoading.value = false; }
 }
 

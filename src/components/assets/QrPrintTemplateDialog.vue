@@ -193,7 +193,7 @@
 <script setup lang="ts">
 import { computed, onBeforeUnmount, ref, watch } from 'vue';
 import { useDebouncedFn } from '../../composables/useDebouncedFn';
-import { ElMessage, ElMessageBox } from '../../utils/el-services';
+import { confirmAction, showError, showSuccess } from '../../utils/feedback';
 import { getCachedSystemSettings } from '../../api/systemSettings';
 import { buildSystemDefaultQrTemplate } from '../../utils/systemQrConfig';
 import { saveBlobAsFile } from '../../utils/operationFeedback';
@@ -301,9 +301,9 @@ async function handleImportFile(event: Event) {
     const messages = ['模板已导入'];
     if (result.importedDefault) messages.push('默认模板已更新');
     if (result.importedPresetCount) messages.push(`已导入 ${result.importedPresetCount} 个预设`);
-    ElMessage.success(messages.join('，'));
+    showSuccess(messages.join('，'));
   } catch (error: any) {
-    ElMessage.error(error?.message || '导入模板失败');
+    showError(error?.message || '导入模板失败');
   } finally {
     if (input) input.value = '';
   }
@@ -381,30 +381,34 @@ async function removeSelectedPreset() {
   const preset = presets.value.find((item) => item.id === selectedPresetId.value);
   if (!preset) return;
   try {
-    await ElMessageBox.confirm(`确定删除预设“${preset.name}”吗？`, '删除预设', { type: 'warning' });
+    await confirmAction({
+      message: `确定删除预设“${preset.name}”吗？`,
+      title: '删除预设',
+      type: 'warning',
+    });
   } catch {
     return;
   }
   deleteQrPrintPreset(props.kind, preset.id, props.scope);
-  ElMessage.success('预设已删除');
+  showSuccess('预设已删除');
   refreshState();
 }
 
 function saveCurrentPreset() {
   try {
     const entry = saveQrPrintPreset(props.kind, presetName.value, form.value, props.scope);
-    ElMessage.success(`已保存预设：${entry.name}`);
+    showSuccess(`已保存预设：${entry.name}`);
     presets.value = listSavedQrPrintPresets(props.kind, props.scope);
     selectedPresetId.value = entry.id;
     presetName.value = '';
   } catch (error: any) {
-    ElMessage.error(error?.message || '保存预设失败');
+    showError(error?.message || '保存预设失败');
   }
 }
 
 function setAsDefaultOnly() {
   setDefaultQrPrintTemplate(props.kind, form.value, props.scope);
-  ElMessage.success('已设为默认模板');
+  showSuccess('已设为默认模板');
 }
 
 function submit(setDefault: boolean) {

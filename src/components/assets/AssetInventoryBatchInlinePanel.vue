@@ -77,7 +77,7 @@
 
 <script setup lang="ts">
 import { computed, ref } from 'vue';
-import { ElMessage } from '../../utils/el-services';
+import { showError } from '../../utils/feedback';
 import { apiDownload } from '../../api/client';
 import { trackUiEvent } from '../../utils/browserPerf';
 import { withExportActionFeedback } from '../../utils/operationFeedback';
@@ -176,7 +176,7 @@ async function downloadSnapshot(item: InventoryBatchRow) {
       apiDownload(getInventoryBatchSnapshotDownloadUrl(item.kind, item.id), item.snapshot_filename || undefined)
     );
   } catch (error: any) {
-    ElMessage.error(error?.message || '下载结果快照失败');
+    showError(error?.message || '下载结果快照失败');
   }
 }
 </script>
