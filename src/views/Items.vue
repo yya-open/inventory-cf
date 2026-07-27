@@ -261,7 +261,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, reactive, computed, onMounted } from "vue";
+import { ref, reactive, computed, onBeforeUnmount, onMounted } from "vue";
 import { ElMessage, ElMessageBox } from "../utils/el-services";
 import { apiGet, apiPost, apiDelete } from "../api/client";
 import { useRouter } from "vue-router";
@@ -281,6 +281,10 @@ const deletingCategory = ref<string>("");
 const page = ref(1);
 const pageSize = ref(50);
 const total = ref(0);
+
+// 四个触发入口（搜索/重置/翻页/改页长）可并发，慢响应不得回写 rows/total/page/pageSize
+let listRequestSeq = 0;
+let listAbortController: AbortController | null = null;
 
 const dlgVisible = ref(false);
 const saving = ref(false);
@@ -421,6 +425,12 @@ async function onDeleteCategory(name: string) {
 }
 
 async function load() {
+  const requestSeq = ++listRequestSeq;
+  if (listAbortController) {
+    try { listAbortController.abort(); } catch {}
+  }
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  listAbortController = controller;
   try {
     loading.value = true;
     const qs = new URLSearchParams();
@@ -429,8 +439,10 @@ async function load() {
     qs.set("page_size", String(pageSize.value));
 
     const j = await apiGet<{ ok: boolean; data: any[]; total: number; page: number; pageSize: number }>(
-      `/api/items?${qs.toString()}`
+      `/api/items?${qs.toString()}`,
+      controller ? { signal: controller.signal } : {}
     );
+    if (requestSeq !== listRequestSeq) return;
     rows.value = Array.isArray(j.data) ? j.data : [];
     total.value = Number(j.total || 0);
 
@@ -438,9 +450,12 @@ async function load() {
     if (typeof j.page === "number") page.value = j.page;
     if (typeof j.pageSize === "number") pageSize.value = j.pageSize;
   } catch (e: any) {
+    if (requestSeq !== listRequestSeq) return;
+    if (controller?.signal?.aborted || String(e?.name || '') === 'AbortError') return;
     ElMessage.error(e?.message || "加载失败");
   } finally {
-    loading.value = false;
+    if (listAbortController === controller) listAbortController = null;
+    if (requestSeq === listRequestSeq) loading.value = false;
   }
 }
 
@@ -477,6 +492,13 @@ async function save() {
 
 onMounted(async () => {
   await Promise.all([load(), loadCategories(true)]);
+});
+
+onBeforeUnmount(() => {
+  if (listAbortController) {
+    try { listAbortController.abort(); } catch {}
+    listAbortController = null;
+  }
 });
 </script>
 
