@@ -290,7 +290,7 @@ import { useDebouncedFn } from "../composables/useDebouncedFn";
 import { useRoute } from "vue-router";
 import { apiGet, apiPost } from "../api/client";
 import { can, canCapability } from "../store/auth";
-import { confirmAction, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
+import { confirmAction, isActionCanceled, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { exportToXlsx } from "../utils/excel";
 import { readJsonStorage, writeJsonStorage } from "../utils/storage";
 import { getCachedSystemSettings } from "../api/systemSettings";
@@ -619,7 +619,7 @@ async function deleteOne(id: number){
     if (rows.value.length === 1 && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
-    if (e === "cancel" || e === "close") return;
+    if (isActionCanceled(e)) return;
     showError(e.message || "删除失败");
   }
 }
@@ -641,7 +641,7 @@ async function deleteSelected(){
     if (rows.value.length <= ids.length && page.value > 1) page.value -= 1;
     await load();
   }catch(e:any){
-    if (e === "cancel" || e === "close") return;
+    if (isActionCanceled(e)) return;
     showError(e.message || "删除失败");
   }
 }

@@ -266,7 +266,7 @@
 
 <script setup lang="ts">
 import { ref, computed, onBeforeMount, onActivated } from "vue";
-import { confirmAction, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
+import { confirmAction, isActionCanceled, promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { exportToXlsx } from "../utils/excel";
 import { apiGet, apiPost } from "../api/client";
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
@@ -490,7 +490,7 @@ async function deleteSelected() {
     clearTotalCache();
     await load({ forceRefresh: true });
   } catch (e:any) {
-    if (e === "cancel" || e === "close") return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || "删除失败");
   } finally { actionLoading.value = false; }
 }
@@ -532,7 +532,7 @@ async function clearPcTx() {
     clearTotalCache();
     await load({ forceRefresh: true });
   } catch (e:any) {
-    if (e === "cancel" || e === "close") return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || "清空失败");
   } finally { actionLoading.value = false; }
 }

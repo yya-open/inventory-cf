@@ -58,6 +58,8 @@ describe('feedback facade', () => {
     feedback.showApiError({ message: '   ' }, '导入失败');
     expect(feedback.showApiError('cancel', '删除失败')).toBe(false);
     expect(feedback.showApiError('close', '删除失败')).toBe(false);
+    expect(feedback.showApiError({ message: 'cancel' }, '删除失败')).toBe(false);
+    expect(feedback.showApiError({ message: 'close' }, '删除失败')).toBe(false);
     expect(calls.messages).toEqual([
       { type: 'error', message: '初始化失败' },
       { type: 'error', message: '导入失败' },

@@ -43,6 +43,7 @@ export default [
     rules: {
       'no-restricted-imports': ['error', {
         paths: [
+          { name: 'element-plus', importNames: ['ElMessage', 'ElMessageBox', 'ElNotification'], message: '请从 utils/el-services 导入反馈服务' },
           { name: 'element-plus/es/components/message/index', message: '请从 utils/el-services 导入 ElMessage' },
           { name: 'element-plus/es/components/message-box/index', message: '请从 utils/el-services 导入 ElMessageBox' },
           { name: 'element-plus/es/components/notification/index', message: '请从 utils/el-services 导入 ElNotification' },
@@ -51,11 +52,21 @@ export default [
     },
   },
   {
-    // 业务视图和组件只能通过 feedback 门面发消息，避免反馈调用重新散落。
-    files: ['src/views/**/*.{ts,tsx,vue}', 'src/components/**/*.{ts,tsx,vue}'],
+    // 业务代码只能通过反馈门面访问消息服务，基础反馈编排模块保留直接依赖。
+    files: ['src/**/*.{ts,tsx,vue}'],
+    ignores: [
+      '**/utils/el-services.ts',
+      '**/utils/feedback.ts',
+      '**/utils/operationFeedback.ts',
+      '**/utils/riskAction.ts',
+    ],
     rules: {
       'no-restricted-imports': ['error', {
         paths: [
+          { name: 'element-plus', importNames: ['ElMessage', 'ElMessageBox', 'ElNotification'], message: '请从 utils/feedback 使用消息门面' },
+          { name: 'element-plus/es/components/message/index', message: '请从 utils/feedback 使用消息门面' },
+          { name: 'element-plus/es/components/message-box/index', message: '请从 utils/feedback 使用消息门面' },
+          { name: 'element-plus/es/components/notification/index', message: '请从 utils/feedback 使用消息门面' },
           { name: 'src/utils/el-services', message: '请从 utils/feedback 使用消息门面' },
           { name: '../utils/el-services', message: '请从 utils/feedback 使用消息门面' },
           { name: '../../utils/el-services', message: '请从 utils/feedback 使用消息门面' },

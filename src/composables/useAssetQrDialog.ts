@@ -1,7 +1,7 @@
 import { ref, unref, type MaybeRef } from 'vue';
 import { apiGet, apiPost } from '../api/client';
 import { getCachedAssetQr, invalidateAssetQr, setCachedAssetQr, type AssetQrCacheKind } from '../utils/assetQrCache';
-import { confirmAction, showError, showSuccess, showWarning } from '../utils/feedback';
+import { confirmAction, isActionCanceled, showError, showSuccess, showWarning } from '../utils/feedback';
 
 type QrImage = {
   dataUrl: string;
@@ -149,7 +149,7 @@ export function useAssetQrDialog<TAsset extends Record<string, any>>(options: Us
       }
       showSuccess(options.messages.resetSuccess);
     } catch (error: any) {
-      if (error === 'cancel' || error === 'close') return;
+      if (isActionCanceled(error)) return;
       showError(error?.message || options.messages.resetFailed);
     } finally {
       loading.value = false;

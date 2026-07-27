@@ -172,7 +172,7 @@
 
 <script setup lang="ts">
 import { ref, onBeforeMount, onActivated, computed } from "vue";
-import { confirmAction, promptAction, showError, showSuccess } from "../utils/feedback";
+import { confirmAction, isActionCanceled, promptAction, showError, showSuccess } from "../utils/feedback";
 import { apiGet, apiPost } from "../api/client";
 import { useFixedWarehouseId } from "../utils/warehouse";
 import { useRoute, useRouter } from "vue-router";
@@ -554,7 +554,7 @@ async function clearTx() {
     clearTotalCache();
     await load({ keepPage: false, forceRefresh: true });
   } catch (e: any) {
-    if (e === "cancel" || e === "close") return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || "清空失败");
   } finally {
     clearLoading.value = false;

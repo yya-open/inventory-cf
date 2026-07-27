@@ -416,7 +416,7 @@ import { ElSegmented } from 'element-plus/es/components/segmented/index';
 import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ref, computed, onBeforeUnmount, onMounted, nextTick, watch } from "vue";
 import { useDebouncedFn } from "../composables/useDebouncedFn";
-import { alertAction, alertHtml, confirmAction, promptAction, showError, showInfo, showSuccess, showWarning } from "../utils/feedback";
+import { alertAction, alertHtml, confirmAction, isActionCanceled, promptAction, showError, showInfo, showSuccess, showWarning } from "../utils/feedback";
 import { formatImportErrorHtml } from "../utils/importErrorReport";
 import { exportToXlsx, loadXlsx } from "../utils/excel";
 import { formatBeijingDateTime } from "../utils/datetime";
@@ -1015,7 +1015,7 @@ async function confirmApplyStocktake(){
     applyPreviewVisible.value = false;
     await refreshDetail();
   }catch(e:any){
-    if (e === 'cancel' || e === 'close') return;
+    if (isActionCanceled(e)) return;
     showError(stocktakeErrorHint(e) || e.message || "应用失败");
   }finally{
     applying.value = false;

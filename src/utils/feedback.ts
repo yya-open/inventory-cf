@@ -41,7 +41,10 @@ function showMessage(type: FeedbackType, message: string, options: MessageOption
 }
 
 export function isActionCanceled(error: unknown) {
-  return error === 'cancel' || error === 'close';
+  const reason = typeof error === 'string'
+    ? error
+    : (error as { message?: unknown } | null | undefined)?.message;
+  return reason === 'cancel' || reason === 'close';
 }
 
 export function showSuccess(message: string, options?: MessageOptions) {

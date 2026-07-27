@@ -162,7 +162,7 @@
 <script setup lang="ts">
 import { computed, nextTick, onBeforeMount, onMounted, onUnmounted, onActivated, onDeactivated, ref, watch } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
-import { promptAction, showError, showSuccess, showWarning } from '../utils/feedback';
+import { isActionCanceled, promptAction, showError, showSuccess, showWarning } from '../utils/feedback';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { apiDownload, apiGet, apiPost } from '../api/client';
 import { can } from '../store/auth';
@@ -446,7 +446,7 @@ async function deleteSelected() {
     await load({ forceRefresh: true });
     await refreshInventoryBatchAndSummary();
   } catch (e: any) {
-    if (e === 'cancel' || e === 'close') return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || '删除失败');
   } finally {
     loading.value = false;
@@ -474,7 +474,7 @@ async function deleteOne(row: any) {
     await load({ forceRefresh: true });
     await refreshInventoryBatchAndSummary();
   } catch (e: any) {
-    if (e === 'cancel' || e === 'close') return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || '删除失败');
   } finally {
     loading.value = false;

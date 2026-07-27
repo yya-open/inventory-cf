@@ -75,7 +75,7 @@
 <script setup lang="ts">
 import { ref } from "vue";
 import { apiGet, apiPost } from "../api/client";
-import { promptAction, showError, showSuccess } from "../utils/feedback";
+import { promptAction, showError, showSuccess, isActionCanceled } from "../utils/feedback";
 
 const showRetention = ref(false);
 const retentionDays = ref(180);
@@ -164,7 +164,7 @@ async function saveRetention() {
     runCleanup.value = false;
     showRetention.value = false;
   } catch (e: any) {
-    if (e === "cancel" || e?.message === "cancel") return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || "保存失败");
   } finally {
     retentionSaving.value = false;
@@ -198,7 +198,7 @@ async function createArchiveJob() {
     showSuccess(`审计归档任务已创建：#${(r as any).data?.archive_job_id || ''}`);
     showRetention.value = false;
   } catch (e: any) {
-    if (e === 'cancel' || e?.message === 'cancel') return;
+    if (isActionCanceled(e)) return;
     showError(e?.message || '创建归档任务失败');
   } finally {
     archiveSubmitting.value = false;
