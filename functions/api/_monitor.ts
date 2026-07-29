@@ -1,7 +1,4 @@
-import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
-import { invalidateSchemaStatusCache } from './services/schema-status';
-import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
 
 /**
  * Monitor warehouse (仓库2：显示器) - optional runtime schema helper
@@ -10,19 +7,9 @@ import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
 
 let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
-let __monitorGuardEnsuredAt = 0;
-let __monitorColumnsEnsuredAt = 0;
-let __monitorColumnsReady = false;
-let __monitorGuardTriggersReady = false;
 let __monitorSchemaProbeAt = 0;
 let __monitorReadFastGuardsReady = false;
 let __monitorReadFastGuardsInit: Promise<void> | null = null;
-let __monitorRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
-let __monitorQrColumnsReady = false;
-let __monitorQrColumnsInit: Promise<void> | null = null;
-const MONITOR_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
-const MONITOR_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
-const MONITOR_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
 const MONITOR_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
 
 const MONITOR_REQUIRED_QUERY_COLUMNS = [
@@ -50,65 +37,17 @@ async function probeMonitorReadFastGuards(db: D1Database) {
   ]);
   const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_QUERY_COLUMNS.length;
   const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_TRIGGER_NAMES.length;
-  if (columnsReady) __monitorColumnsReady = true;
-  if (triggersReady) __monitorGuardTriggersReady = true;
   return columnsReady && triggersReady;
 }
 
-const MONITOR_DDL_MAP: Record<string, string> = {
-  search_text_norm: "ALTER TABLE monitor_assets ADD COLUMN search_text_norm TEXT",
-  archived: "ALTER TABLE monitor_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-  archived_at: "ALTER TABLE monitor_assets ADD COLUMN archived_at TEXT",
-  archived_reason: "ALTER TABLE monitor_assets ADD COLUMN archived_reason TEXT",
-  archived_note: "ALTER TABLE monitor_assets ADD COLUMN archived_note TEXT",
-  archived_by: "ALTER TABLE monitor_assets ADD COLUMN archived_by TEXT",
-  inventory_status: "ALTER TABLE monitor_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
-  inventory_at: "ALTER TABLE monitor_assets ADD COLUMN inventory_at TEXT",
-  inventory_issue_type: "ALTER TABLE monitor_assets ADD COLUMN inventory_issue_type TEXT",
-};
-
-const MONITOR_TRIGGER_SQLS = [
-  `CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_insert BEFORE INSERT ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`,
-  `CREATE TRIGGER IF NOT EXISTS trg_monitor_assets_code_non_blank_update BEFORE UPDATE OF asset_code ON monitor_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.asset_code, '')) = '' BEGIN SELECT RAISE(ABORT, '显示器资产编码不能为空'); END`,
-];
-
-async function ensureMonitorQueryColumns(db: D1Database) {
-  if (__monitorColumnsReady) return;
-  if (Date.now() - __monitorColumnsEnsuredAt < MONITOR_GUARD_COLUMNS_TTL_MS) return;
-  __monitorColumnsEnsuredAt = Date.now();
-  try {
-    __monitorColumnsReady = await ensureTableColumns(db, { table: 'monitor_assets', requiredColumns: MONITOR_REQUIRED_QUERY_COLUMNS, ddlMap: MONITOR_DDL_MAP });
-    if (__monitorColumnsReady) invalidateSchemaStatusCache();
-  } catch {}
-}
-
-async function ensureMonitorGuardTriggers(db: D1Database) {
-  if (__monitorGuardTriggersReady) return;
-  if (Date.now() - __monitorGuardEnsuredAt < MONITOR_GUARD_TRIGGER_TTL_MS) return;
-  __monitorGuardEnsuredAt = Date.now();
-  try {
-    __monitorGuardTriggersReady = await ensureTableTriggers(db, { table: 'monitor_assets', triggerNames: MONITOR_REQUIRED_TRIGGER_NAMES, triggerSqls: MONITOR_TRIGGER_SQLS });
-    if (__monitorGuardTriggersReady) invalidateSchemaStatusCache();
-  } catch {}
-}
 
 export async function ensureMonitorReadFastGuards(db: D1Database) {
   if (__monitorReadFastGuardsReady) return;
   if (__monitorReadFastGuardsInit) return __monitorReadFastGuardsInit;
 
   __monitorReadFastGuardsInit = (async () => {
-    if (__monitorColumnsReady && __monitorGuardTriggersReady) {
-      __monitorReadFastGuardsReady = true;
-      return;
-    }
     const ready = await probeMonitorReadFastGuards(db).catch(() => false);
-    if (ready) {
-      __monitorReadFastGuardsReady = true;
-      return;
-    }
-    await ensureMonitorQueryColumns(db);
-    await ensureMonitorGuardTriggers(db);
-    if (__monitorColumnsReady && __monitorGuardTriggersReady) __monitorReadFastGuardsReady = true;
+    __monitorReadFastGuardsReady = ready;
   })().finally(() => {
     __monitorReadFastGuardsInit = null;
   });
@@ -133,37 +72,13 @@ async function probeMonitorSchemaReady(db: D1Database) {
   }
 }
 
-export function shouldHealMonitorSchema(env: any, url: URL) {
-  const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
-  if (!allow) return false;
-  const disabled = String(env?.DISABLE_SCHEMA_HEALING || "").trim() === "1";
-  const force = (url.searchParams.get("init") || "").trim() === "1";
-  return !disabled || force;
-}
-
-export async function ensureMonitorSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+export async function ensureMonitorSchemaIfAllowed(db: D1Database, _env: unknown, _url: URL) {
   await ensureMonitorReadFastGuards(db);
   if (__monitorSchemaReady) return;
   if (Date.now() - __monitorSchemaProbeAt >= MONITOR_SCHEMA_PROBE_TTL_MS) {
     __monitorSchemaProbeAt = Date.now();
-    const alreadyReady = await probeMonitorSchemaReady(db);
-    if (alreadyReady) {
-      __monitorSchemaReady = true;
-      return;
-    }
+    if (await probeMonitorSchemaReady(db)) __monitorSchemaReady = true;
   }
-  const runtimeHealAllowed = shouldHealMonitorSchema(env, url);
-  let allowBySettings = false;
-  const cached = __monitorRuntimeDdlAllowedCache;
-  if (cached && cached.expiresAt > Date.now()) {
-    allowBySettings = cached.value;
-  } else {
-    const settings = await getSystemSettings(db).catch(() => null as any);
-    allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
-    __monitorRuntimeDdlAllowedCache = { expiresAt: Date.now() + MONITOR_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
-  }
-  if (!(allowBySettings || runtimeHealAllowed)) return;
-  return ensureMonitorSchema(db);
 }
 
 export async function ensureMonitorSchema(db: D1Database) {
@@ -336,32 +251,4 @@ export async function ensureMonitorSchema(db: D1Database) {
 
 export function monitorTxNo(prefix = "MONTX") {
   return `${prefix}-${crypto.randomUUID()}`;
-}
-
-// Only ensure qr_key columns exist (safe no-op if already present).
-// Used by QR-related endpoints so they can work even when migrations were not applied.
-export async function ensureMonitorQrColumns(db: D1Database) {
-  if (__monitorQrColumnsReady) return;
-  if (__monitorQrColumnsInit) return __monitorQrColumnsInit;
-  __monitorQrColumnsInit = (async () => {
-    for (const ddl of [
-      "ALTER TABLE monitor_assets ADD COLUMN qr_key TEXT",
-      "ALTER TABLE monitor_assets ADD COLUMN qr_updated_at TEXT",
-    ]) {
-      try {
-        await db.prepare(ddl).run();
-      } catch {
-        // ignore
-      }
-    }
-    try {
-      await db.prepare("CREATE INDEX IF NOT EXISTS idx_monitor_assets_qr_key ON monitor_assets(qr_key)").run();
-    } catch {
-      // ignore
-    }
-    __monitorQrColumnsReady = true;
-  })().finally(() => {
-    __monitorQrColumnsInit = null;
-  });
-  return __monitorQrColumnsInit;
 }

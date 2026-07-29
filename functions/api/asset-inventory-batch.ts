@@ -4,7 +4,7 @@ import { logAudit } from './_audit';
 import { requireCapability } from '../_capabilities';
 import { type AssetInventoryKind } from './services/asset-inventory-batches';
 import { closeInventoryBatchWorkflow, getInventoryBatchDomainSnapshot, startInventoryBatchWorkflow } from './services/asset-inventory-domain';
-import { dispatchAsyncJobIds } from './services/async-job-queue';
+import { dispatchAsyncJobIds, isAsyncQueueRequired } from './services/async-job-queue';
 
 function parseKind(input: any): AssetInventoryKind {
   const kind = String(input || '').trim().toLowerCase();
@@ -12,7 +12,7 @@ function parseKind(input: any): AssetInventoryKind {
   throw Object.assign(new Error('kind 参数无效'), { status: 400 });
 }
 
-type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any };
+type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null };
 
 const INVENTORY_BATCH_CACHE_TTL_MS = 5 * 60_000;
 const inventoryBatchGetCache = new Map<string, { expiresAt: number; data: any }>();
@@ -103,7 +103,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
         });
       }
       invalidateInventoryBatchCache(kind);
-      await dispatchAsyncJobIds({ db: env.DB, ids: [workflow.existingJobId], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
+      await dispatchAsyncJobIds({ db: env.DB, ids: [workflow.existingJobId], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
       await logAudit(env.DB, request, actor, 'ASSET_INVENTORY_BATCH_CLOSE', 'asset_inventory_batch', workflow.targetBatchId, {
         kind,
         batch_id: workflow.targetBatchId,

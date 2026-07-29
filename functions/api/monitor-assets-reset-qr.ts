@@ -1,7 +1,7 @@
 import { withErrorHandling } from './_error';
 import { requirePermission } from "../_permissions";
 import { assertMonitorAssetDataScopeAccess, getAuthUserDataScope } from "./services/data-scope";
-import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { resetAssetQr } from "./services/asset-qr";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env, request }) => {
@@ -13,8 +13,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env,
   const t = (env as any).__timing;
   if (t?.measure) await t.measure("schema", () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
   else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
-
-  await ensureMonitorQrColumns(env.DB);
   const id = Number(url.searchParams.get("id") || 0);
   const asset = await env.DB.prepare('SELECT id, department FROM monitor_assets WHERE id=?').bind(id).first<any>();
   if (asset) assertMonitorAssetDataScopeAccess(user, asset.department, '显示器二维码');

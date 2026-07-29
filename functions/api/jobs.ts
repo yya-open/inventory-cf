@@ -2,7 +2,7 @@ import { json, type AuthUser } from '../_auth';
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, createAsyncJobs, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
-import { dispatchAsyncJobIds } from './services/async-job-queue';
+import { dispatchAsyncJobIds, isAsyncQueueRequired } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getAuthUserDataScope } from './services/data-scope';
 import { logAudit } from './_audit';
@@ -60,7 +60,7 @@ async function assertQrExportDataScope(db: D1Database, actor: AuthUser, jobType:
   }
 }
 
-export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }>(async ({ env, request }) => {
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null }>(async ({ env, request }) => {
   const timing = (env as any).__timing;
   const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
   const url = new URL(request.url);
@@ -83,7 +83,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   return json(true, data);
 });
 
-export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }>(async (context) => {
+export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null }>(async (context) => {
   const { env, request, waitUntil } = context as any;
   const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json();
   const jobType = String(job_type || '');
@@ -107,19 +107,19 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         max_retries,
       })));
       if (createdIds.length) {
-        await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
+        await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
       }
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', `batch:${batchKey}`, { job_type, retain_days, max_retries, batch_key: batchKey, split_count: createdIds.length, total_ids: ids.length });
       return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length, chunk_size: chunkSize }, `已按每 ${chunkSize} 条自动拆分为 ${createdIds.length} 个异步任务，后台将继续处理`);
     }
   }
   const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries });
-  await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
+  await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
   await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', id, { job_type, retain_days, max_retries });
   return json(true, { id, job_type, status: 'queued' }, '任务已创建，后台将继续处理');
 });
 
-export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any }>(async (context) => {
+export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null }>(async (context) => {
   const { env, request, waitUntil } = context as any;
   const timing = (env as any).__timing;
   const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
@@ -140,7 +140,7 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     if (action === 'retry') {
       if (!id) return json(false, null, '缺少任务 id', 400);
       await retryAsyncJob(env.DB, id, env.BACKUP_BUCKET);
-      await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
+      await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
       await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
       return json(true, { id }, '任务已重试，后台将继续处理');
     }

@@ -550,7 +550,8 @@ export async function listWarningsRows(db: D1Database, query: WarningsListQuery)
   return result.results || [];
 }
 
-export async function listWarningsExportRows(db: D1Database, query: WarningsListQuery) {
+export async function listWarningsExportRows(db: D1Database, query: WarningsListQuery, options?: { limit?: number; offset?: number }) {
+  const paged = options && Number.isFinite(options.limit);
   const sql = `
     WITH latest_tx AS (
       SELECT
@@ -571,9 +572,11 @@ export async function listWarningsExportRows(db: D1Database, query: WarningsList
     LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
     LEFT JOIN latest_tx lt ON lt.item_id=i.id AND lt.rn=1
     WHERE ${query.whereSql}
-    ORDER BY ${query.orderBy}
+    ORDER BY ${query.orderBy}${paged ? ' LIMIT ? OFFSET ?' : ''}
   `;
-  const result = await db.prepare(sql).bind(query.warehouse_id, query.warehouse_id, ...query.binds).all<any>();
+  const binds = [query.warehouse_id, query.warehouse_id, ...query.binds];
+  if (paged) binds.push(Math.max(0, Number(options!.limit)), Math.max(0, Number(options?.offset || 0)));
+  const result = await db.prepare(sql).bind(...binds).all<any>();
   return result.results || [];
 }
 

@@ -1,7 +1,4 @@
-import { getSystemSettings } from './services/system-settings';
 import { SQL_STORED_NOW_DEFAULT } from './_time';
-import { invalidateSchemaStatusCache } from './services/schema-status';
-import { ensureTableColumns, ensureTableTriggers } from './_schema-guard';
 import { ensureSearchFtsTables } from './services/search-fts';
 
 /**
@@ -11,19 +8,9 @@ import { ensureSearchFtsTables } from './services/search-fts';
 
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
-let __pcGuardEnsuredAt = 0;
-let __pcColumnsEnsuredAt = 0;
-let __pcColumnsReady = false;
-let __pcGuardTriggersReady = false;
 let __pcSchemaProbeAt = 0;
 let __pcReadFastGuardsReady = false;
 let __pcReadFastGuardsInit: Promise<void> | null = null;
-let __pcRuntimeDdlAllowedCache: { expiresAt: number; value: boolean } | null = null;
-let __pcQrColumnsReady = false;
-let __pcQrColumnsInit: Promise<void> | null = null;
-const PC_RUNTIME_DDL_CACHE_TTL_MS = 60_000;
-const PC_GUARD_TRIGGER_TTL_MS = 30 * 60_000;
-const PC_GUARD_COLUMNS_TTL_MS = 30 * 60_000;
 const PC_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
 
 const PC_REQUIRED_QUERY_COLUMNS = [
@@ -53,67 +40,17 @@ async function probePcReadFastGuards(db: D1Database) {
   ]);
   const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_QUERY_COLUMNS.length;
   const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_TRIGGER_NAMES.length;
-  if (columnsReady) __pcColumnsReady = true;
-  if (triggersReady) __pcGuardTriggersReady = true;
   return columnsReady && triggersReady;
 }
 
-const PC_DDL_MAP: Record<string, string> = {
-  search_text_norm: "ALTER TABLE pc_assets ADD COLUMN search_text_norm TEXT",
-  archived: "ALTER TABLE pc_assets ADD COLUMN archived INTEGER NOT NULL DEFAULT 0",
-  archived_at: "ALTER TABLE pc_assets ADD COLUMN archived_at TEXT",
-  archived_reason: "ALTER TABLE pc_assets ADD COLUMN archived_reason TEXT",
-  archived_note: "ALTER TABLE pc_assets ADD COLUMN archived_note TEXT",
-  archived_by: "ALTER TABLE pc_assets ADD COLUMN archived_by TEXT",
-  inventory_status: "ALTER TABLE pc_assets ADD COLUMN inventory_status TEXT NOT NULL DEFAULT 'UNCHECKED'",
-  inventory_at: "ALTER TABLE pc_assets ADD COLUMN inventory_at TEXT",
-  inventory_issue_type: "ALTER TABLE pc_assets ADD COLUMN inventory_issue_type TEXT",
-  manufacture_ts: "ALTER TABLE pc_assets ADD COLUMN manufacture_ts INTEGER",
-  warranty_end_ts: "ALTER TABLE pc_assets ADD COLUMN warranty_end_ts INTEGER",
-};
-
-const PC_TRIGGER_SQLS = [
-  `CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_insert BEFORE INSERT ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`,
-  `CREATE TRIGGER IF NOT EXISTS trg_pc_assets_serial_non_blank_update BEFORE UPDATE OF serial_no ON pc_assets FOR EACH ROW WHEN TRIM(COALESCE(NEW.serial_no, '')) = '' BEGIN SELECT RAISE(ABORT, '电脑序列号不能为空'); END`,
-];
-
-async function ensurePcQueryColumns(db: D1Database) {
-  if (__pcColumnsReady) return;
-  if (Date.now() - __pcColumnsEnsuredAt < PC_GUARD_COLUMNS_TTL_MS) return;
-  __pcColumnsEnsuredAt = Date.now();
-  try {
-    __pcColumnsReady = await ensureTableColumns(db, { table: 'pc_assets', requiredColumns: PC_REQUIRED_QUERY_COLUMNS, ddlMap: PC_DDL_MAP });
-    if (__pcColumnsReady) invalidateSchemaStatusCache();
-  } catch {}
-}
-
-async function ensurePcGuardTriggers(db: D1Database) {
-  if (__pcGuardTriggersReady) return;
-  if (Date.now() - __pcGuardEnsuredAt < PC_GUARD_TRIGGER_TTL_MS) return;
-  __pcGuardEnsuredAt = Date.now();
-  try {
-    __pcGuardTriggersReady = await ensureTableTriggers(db, { table: 'pc_assets', triggerNames: PC_REQUIRED_TRIGGER_NAMES, triggerSqls: PC_TRIGGER_SQLS });
-    if (__pcGuardTriggersReady) invalidateSchemaStatusCache();
-  } catch {}
-}
 
 export async function ensurePcReadFastGuards(db: D1Database) {
   if (__pcReadFastGuardsReady) return;
   if (__pcReadFastGuardsInit) return __pcReadFastGuardsInit;
 
   __pcReadFastGuardsInit = (async () => {
-    if (__pcColumnsReady && __pcGuardTriggersReady) {
-      __pcReadFastGuardsReady = true;
-      return;
-    }
     const ready = await probePcReadFastGuards(db).catch(() => false);
-    if (ready) {
-      __pcReadFastGuardsReady = true;
-      return;
-    }
-    await ensurePcQueryColumns(db);
-    await ensurePcGuardTriggers(db);
-    if (__pcColumnsReady && __pcGuardTriggersReady) __pcReadFastGuardsReady = true;
+    __pcReadFastGuardsReady = ready;
   })().finally(() => {
     __pcReadFastGuardsInit = null;
   });
@@ -137,44 +74,13 @@ async function probePcSchemaReady(db: D1Database) {
   }
 }
 
-/**
- * Runtime schema self-healing performs DDL and can slow down cold starts.
- * This project now prefers *explicit migrations*.
- *
- * To fully disable runtime DDL (recommended for production), keep ENABLE_RUNTIME_DDL unset.
- * If you really need emergency self-healing, set ENABLE_RUNTIME_DDL=1 temporarily.
- */
-export function shouldHealPcSchema(env: any, url: URL) {
-  const allow = String(env?.ENABLE_RUNTIME_DDL || "").trim() === "1";
-  if (!allow) return false;
-  const disabled = String(env?.DISABLE_SCHEMA_HEALING || "").trim() === "1";
-  const force = (url.searchParams.get("init") || "").trim() === "1";
-  return !disabled || force;
-}
-
-export async function ensurePcSchemaIfAllowed(db: D1Database, env: any, url: URL) {
+export async function ensurePcSchemaIfAllowed(db: D1Database, _env: unknown, _url: URL) {
   await ensurePcReadFastGuards(db);
   if (__pcSchemaReady) return;
   if (Date.now() - __pcSchemaProbeAt >= PC_SCHEMA_PROBE_TTL_MS) {
     __pcSchemaProbeAt = Date.now();
-    const alreadyReady = await probePcSchemaReady(db);
-    if (alreadyReady) {
-      __pcSchemaReady = true;
-      return;
-    }
+    if (await probePcSchemaReady(db)) __pcSchemaReady = true;
   }
-  const runtimeHealAllowed = shouldHealPcSchema(env, url);
-  let allowBySettings = false;
-  const cached = __pcRuntimeDdlAllowedCache;
-  if (cached && cached.expiresAt > Date.now()) {
-    allowBySettings = cached.value;
-  } else {
-    const settings = await getSystemSettings(db).catch(() => null as any);
-    allowBySettings = Boolean(settings?.ops_enable_runtime_ddl);
-    __pcRuntimeDdlAllowedCache = { expiresAt: Date.now() + PC_RUNTIME_DDL_CACHE_TTL_MS, value: allowBySettings };
-  }
-  if (!(allowBySettings || runtimeHealAllowed)) return;
-  return ensurePcSchema(db);
 }
 
 export async function ensurePcSchema(db: D1Database) {
@@ -534,31 +440,4 @@ export function isInStockStatus(s: any) {
 export function toAssetStatusAfterOut(_recycle_date: any) {
   // 兼容旧逻辑：现在出库固定为“已领用”，回收/归还请走独立动作。
   return "ASSIGNED" as const;
-}
-
-
-export async function ensurePcQrColumns(db: D1Database) {
-  if (__pcQrColumnsReady) return;
-  if (__pcQrColumnsInit) return __pcQrColumnsInit;
-  __pcQrColumnsInit = (async () => {
-    for (const ddl of [
-      "ALTER TABLE pc_assets ADD COLUMN qr_key TEXT",
-      "ALTER TABLE pc_assets ADD COLUMN qr_updated_at TEXT",
-    ]) {
-      try {
-        await db.prepare(ddl).run();
-      } catch {
-        // ignore
-      }
-    }
-    try {
-      await db.prepare("CREATE INDEX IF NOT EXISTS idx_pc_assets_qr_key ON pc_assets(qr_key)").run();
-    } catch {
-      // ignore
-    }
-    __pcQrColumnsReady = true;
-  })().finally(() => {
-    __pcQrColumnsInit = null;
-  });
-  return __pcQrColumnsInit;
 }

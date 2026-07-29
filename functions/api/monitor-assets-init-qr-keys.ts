@@ -1,6 +1,6 @@
 import { requireAuth } from "../_auth";
 import { withErrorHandling } from './_error';
-import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { initMissingAssetQrKeys } from "./services/asset-qr";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env, request }) => {
@@ -11,8 +11,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env,
   const t = (env as any).__timing;
   if (t?.measure) await t.measure("schema", () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
   else await ensureMonitorSchemaIfAllowed(env.DB, env, url);
-
-  await ensureMonitorQrColumns(env.DB);
   const body = await request.json().catch(() => ({} as any));
   const batchSize = Math.min(200, Math.max(10, Number(body?.batch_size || 50)));
   const result = await initMissingAssetQrKeys(env.DB, {

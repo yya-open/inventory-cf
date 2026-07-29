@@ -2,9 +2,9 @@ import { requireAuth, json } from "../../../_auth";
 import { withErrorHandling } from "../../_error";
 import { getAuditLifecycle, runAuditCleanup, setAuditLifecycle } from "../../_audit";
 import { createAuditArchiveJob, getAuditArchiveAdminSummary } from "../../services/audit-archive";
-import { dispatchAsyncJobIds } from '../../services/async-job-queue';
+import { dispatchAsyncJobIds, isAsyncQueueRequired } from '../../services/async-job-queue';
 
-type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any };
+type Env = { DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null };
 
 export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
   await requireAuth(env, request, "admin");
@@ -53,7 +53,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
       retain_days: Number(body?.retain_days || 30) || 30,
       reason: 'manual_audit_archive',
     }, env.BACKUP_BUCKET);
-    await dispatchAsyncJobIds({ db: env.DB, ids: [created.id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
+    await dispatchAsyncJobIds({ db: env.DB, ids: [created.id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
     return json(true, { ...st, archive_job_id: created.id, archive_request: created.request_json }, '审计归档任务已创建，后台将继续处理');
   }
 

@@ -1,6 +1,6 @@
 import { withErrorHandling } from './_error';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
-import { ensurePcQrColumns, ensurePcSchemaIfAllowed } from "./_pc";
+import { ensurePcSchemaIfAllowed } from "./_pc";
 import { getOrCreateAssetQr } from "./services/asset-qr";
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database }>(async ({ env, request }) => {
@@ -11,8 +11,6 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database }>(async ({ env, 
   const t = (env as any).__timing;
   if (t?.measure) await t.measure("schema", () => ensurePcSchemaIfAllowed(env.DB, env, url));
   else await ensurePcSchemaIfAllowed(env.DB, env, url);
-
-  await ensurePcQrColumns(env.DB);
 
   const id = Number(url.searchParams.get("id") || 0);
   await assertPcAssetDataScopeAccess(env.DB, user, id, "电脑二维码");

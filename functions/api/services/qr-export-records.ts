@@ -1,5 +1,3 @@
-import { ensureMonitorQrColumns } from '../_monitor';
-import { ensurePcQrColumns } from '../_pc';
 import { getOrCreateAssetQrBulk, type AssetQrConfig } from './asset-qr';
 import type { QrPrintContentMode, QrPrintTemplate } from './qr-print-template';
 
@@ -11,7 +9,6 @@ export type QrCardRecord = {
 };
 
 type AssetQrRecordConfig<Row = any> = {
-  ensureColumns: (db: D1Database) => Promise<void>;
   listByIds: (db: D1Database, ids: number[]) => Promise<Row[]>;
   qrConfig: AssetQrConfig;
   mapRecord: (row: Row) => Omit<QrCardRecord, 'url'>;
@@ -50,7 +47,6 @@ async function listMonitorAssetsByIds(db: D1Database, ids: number[]) {
 }
 
 async function buildAssetQrRecords<Row>(db: D1Database, origin: string, ids: number[], config: AssetQrRecordConfig<Row>) {
-  await config.ensureColumns(db);
   const rows = await config.listByIds(db, ids);
   const links = await getOrCreateAssetQrBulk(db, config.qrConfig, ids, origin);
   const rowMap = new Map<number, Row>();
@@ -74,7 +70,6 @@ function normalizeContentMode(input?: Partial<QrPrintTemplate> | null): QrPrintC
 export async function buildPcQrRecords(db: D1Database, origin: string, ids: number[], template?: Partial<QrPrintTemplate> | null) {
   const mode = normalizeContentMode(template);
   return buildAssetQrRecords(db, origin, ids, {
-    ensureColumns: ensurePcQrColumns,
     listByIds: listPcAssetsByIds,
     qrConfig: {
       assetTable: 'pc_assets',
@@ -104,7 +99,6 @@ export async function buildPcQrRecords(db: D1Database, origin: string, ids: numb
 export async function buildMonitorQrRecords(db: D1Database, origin: string, ids: number[], template?: Partial<QrPrintTemplate> | null) {
   const mode = normalizeContentMode(template);
   return buildAssetQrRecords(db, origin, ids, {
-    ensureColumns: ensureMonitorQrColumns,
     listByIds: listMonitorAssetsByIds,
     qrConfig: {
       assetTable: 'monitor_assets',

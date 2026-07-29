@@ -8,7 +8,7 @@ vi.mock('../functions/api/services/schema-status', () => ({
   getSchemaStatus: vi.fn(async () => ({ ok: true })),
 }));
 
-vi.mock('../functions/api/services/async-job-queue', () => ({ dispatchAsyncJobIds: vi.fn(async () => {}) }));
+vi.mock('../functions/api/services/async-job-queue', () => ({ dispatchAsyncJobIds: vi.fn(async () => {}), isAsyncQueueRequired: vi.fn(() => false) }));
 vi.mock('../functions/api/_audit', () => ({ logAudit: vi.fn(async () => {}) }));
 
 import { onRequestGet as jobsGetHandler } from '../functions/api/jobs';

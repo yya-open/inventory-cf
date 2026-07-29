@@ -46,17 +46,22 @@ class FakeDB {
   }
   first(sql: string, _params: any[]) {
     const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (normalized.includes("from pc_assets")) return { c: 100 };
-    if (normalized.includes("from pc_asset_latest_state") && !normalized.includes('left join')) return { c: 95 };
-    if (normalized.includes('from dictionary_usage_counters')) return { c: 20 };
-    if (normalized.includes("from async_jobs where status='failed'")) return { c: 12 };
-    if (normalized.includes('from request_error_log') && normalized.includes('status >= 500')) return { c: 7 };
-    if (normalized.includes('from auth_login_throttle')) return { c: 16 };
+    // Consolidated health aggregate: one round trip returning every scalar metric as a named column.
+    if (normalized.includes('as pc_asset_count')) {
+      return {
+        pc_asset_count: 100,
+        pc_latest_state_count: 95,
+        dictionary_counter_rows: 20,
+        failed_async_jobs: 12,
+        error_5xx_last_24h: 7,
+        login_failures_last_24h: 16,
+        open_backup_drill_issue_count: 0,
+        overdue_backup_drill_issue_count: 0,
+        pc_latest_state_missing: 5,
+      };
+    }
     if (normalized.includes('from admin_repair_history')) return null;
     if (normalized.includes('from backup_drill_runs order by')) return null;
-    if (normalized.includes("from backup_drill_runs where follow_up_status='open' and")) return { c: 0 };
-    if (normalized.includes("from backup_drill_runs where follow_up_status='open'")) return { c: 0 };
-    if (normalized.includes('left join pc_asset_latest_state')) return { c: 5 };
     throw new Error(`Unhandled SQL: ${sql}`);
   }
 }
@@ -78,5 +83,67 @@ describe('system-health thresholds', () => {
       error_5xx_last_24h: true,
       login_failures_last_24h: true,
     });
+  });
+});
+
+class FallbackFakeStmt {
+  private params: any[] = [];
+  constructor(private db: FallbackFakeDB, private sql: string) {}
+  bind(...params: any[]) {
+    this.params = params;
+    return this;
+  }
+  async first<T = any>() {
+    return this.db.first(this.sql, this.params) as T;
+  }
+}
+
+// Models a partially-migrated database: the consolidated aggregate query fails (a referenced table
+// is missing), forcing the handler to fall back to per-metric queries. One missing table must not
+// zero out the others.
+class FallbackFakeDB {
+  prepare(sql: string) {
+    return new FallbackFakeStmt(this, sql);
+  }
+  first(sql: string, _params: any[]) {
+    const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
+    if (normalized.includes('as pc_asset_count')) {
+      throw new Error('no such table: pc_asset_latest_state');
+    }
+    if (normalized.includes("from pc_assets where") || normalized.includes('left join pc_asset_latest_state')) {
+      throw new Error('no such table: pc_asset_latest_state');
+    }
+    if (normalized.includes('from pc_asset_latest_state')) {
+      throw new Error('no such table: pc_asset_latest_state');
+    }
+    if (normalized.includes('from pc_assets')) return { v: 100 };
+    if (normalized.includes('from dictionary_usage_counters')) return { v: 20 };
+    if (normalized.includes("from async_jobs where status='failed'")) return { v: 12 };
+    if (normalized.includes('from request_error_log') && normalized.includes('status >= 500')) return { v: 7 };
+    if (normalized.includes('from auth_login_throttle')) return { v: 16 };
+    if (normalized.includes('from backup_drill_runs where follow_up_status=\'open\' and')) return { v: 0 };
+    if (normalized.includes("from backup_drill_runs where follow_up_status='open'")) return { v: 0 };
+    if (normalized.includes('from admin_repair_history')) return null;
+    if (normalized.includes('from backup_drill_runs order by')) return null;
+    throw new Error(`Unhandled SQL: ${sql}`);
+  }
+}
+
+describe('system-health aggregate fallback', () => {
+  it('falls back to per-metric queries when the consolidated query fails', async () => {
+    const env = { DB: new FallbackFakeDB(), JWT_SECRET: 'test' } as any;
+    const response = await healthHandler({ env, request: new Request('https://example.com/api/system-health?force=1') } as any);
+    expect(response.status).toBe(200);
+    const body = await response.json();
+    expect(body.ok).toBe(true);
+    // Surviving tables still report real counts.
+    expect(body.data.metrics.pc_asset_count).toBe(100);
+    expect(body.data.metrics.dictionary_counter_rows).toBe(20);
+    expect(body.data.metrics.failed_async_jobs).toBe(12);
+    expect(body.data.metrics.error_5xx_last_24h).toBe(7);
+    expect(body.data.metrics.login_failures_last_24h).toBe(16);
+    // The missing table zeroes only its own metrics, not the rest.
+    expect(body.data.metrics.pc_latest_state_count).toBe(0);
+    expect(body.data.metrics.pc_latest_state_missing).toBe(0);
   });
 });

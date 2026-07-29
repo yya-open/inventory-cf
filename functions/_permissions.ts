@@ -162,11 +162,14 @@ export function getPermissionTemplateMap(role: string | null | undefined, templa
 }
 
 export async function getUserPermissionMap(db: D1Database, userId: number, role: string | null | undefined, templateCode?: string | null) {
-  await ensureUserPermissionsTable(db);
-  await ensureUserPermissionTemplateColumn(db);
   const template = getPermissionTemplateMap(role, templateCode);
   const map: Record<string, boolean> = {};
   for (const code of ALL_PERMISSION_CODES) map[code] = !!template.permissions[code];
+  // admin_full grants everything and ignores per-user overrides (see requirePermission);
+  // skip the user_permissions read so it stays consistent and off the /api/auth/me hot path.
+  if (template.code === 'admin_full') return map as Record<PermissionCode, boolean>;
+  await ensureUserPermissionsTable(db);
+  await ensureUserPermissionTemplateColumn(db);
   const { results } = await db.prepare(
     `SELECT permission_code, allowed FROM user_permissions WHERE user_id=?`
   ).bind(userId).all<any>();

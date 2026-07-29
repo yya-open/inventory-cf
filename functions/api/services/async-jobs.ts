@@ -1,8 +1,6 @@
 import { sqlNowStored } from '../_time';
 import { throwHttpError } from '../_error';
 import { parseJsonSafe } from '../_json';
-import { ensurePcQrColumns } from '../_pc';
-import { ensureMonitorQrColumns } from '../_monitor';
 import { initMissingAssetQrKeys } from './asset-qr';
 import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
@@ -385,6 +383,9 @@ type AsyncJobResultBucket = {
 
 const INLINE_BACKUP_EXPORT_ROW_LIMIT = 5000;
 const INVENTORY_SNAPSHOT_EXPORT_ROW_LIMIT = 20000;
+const INLINE_AUDIT_EXPORT_ROW_LIMIT = 10000;
+const STREAM_AUDIT_EXPORT_ROW_LIMIT = 200000;
+const AUDIT_EXPORT_PAGE_SIZE = 1000;
 const STREAM_UPLOAD_PART_BYTES = 5 * 1024 * 1024;
 const STREAM_UPLOAD_FALLBACK_MAX_BYTES = 50 * 1024 * 1024;
 
@@ -956,9 +957,71 @@ async function syncInventoryBatchSnapshotJobState(db: D1Database, jobType: Async
     exportedAt: state.exportedAt ?? null,
   });
 }
+const AUDIT_EXPORT_HEADER = ['时间','用户','模块','动作','实体','实体ID','对象名称','摘要'].join(',');
+
+function auditExportLine(row: any) {
+  return [
+    csvEscape(row.created_at),
+    csvEscape(row.username),
+    csvEscape(row.module_code),
+    csvEscape(row.action),
+    csvEscape(row.entity),
+    csvEscape(row.entity_id),
+    csvEscape(row.target_name || row.target_code || ''),
+    csvEscape(row.summary_text || ''),
+  ].join(',');
+}
+
+export async function buildAuditExportCsvResult(db: D1Database, requestJson: any, bucket?: AsyncJobResultBucket): Promise<AsyncJobBuiltResult> {
+  const url = new URL('https://local/export');
+  for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
+  const filters = parseAuditListFilters(url);
+  const scope = String(requestJson?.scope || 'all');
+  const total = await countAuditRows(db, filters);
+  const cap = scope === 'current'
+    ? filters.pageSize
+    : Math.min(total, Math.max(0, Number(requestJson?.max_rows || (bucket ? STREAM_AUDIT_EXPORT_ROW_LIMIT : INLINE_AUDIT_EXPORT_ROW_LIMIT))));
+  const baseOffset = scope === 'current' ? filters.offset : 0;
+  const expected = Math.max(0, Math.min(cap, total - baseOffset));
+  const filename = `audit_export_${Date.now()}.csv`;
+
+  if (bucket) {
+    const encoder = new TextEncoder();
+    let emitted = 0;
+    let offset = baseOffset;
+    const stream = new ReadableStream<Uint8Array>({
+      start(controller) {
+        controller.enqueue(encoder.encode('\ufeff' + AUDIT_EXPORT_HEADER + '\n'));
+      },
+      async pull(controller) {
+        if (emitted >= cap) return controller.close();
+        const pageLimit = Math.min(AUDIT_EXPORT_PAGE_SIZE, cap - emitted);
+        const rows = pageLimit > 0 ? await listAuditRows(db, filters, { limit: pageLimit, offset }) : [];
+        if (!rows.length) return controller.close();
+        for (const row of rows) {
+          controller.enqueue(encoder.encode(auditExportLine(row) + '\n'));
+          emitted += 1;
+        }
+        offset += rows.length;
+        if (rows.length < pageLimit) controller.close();
+      },
+    });
+    return {
+      stream,
+      filename,
+      contentType: 'text/csv; charset=utf-8',
+      message: `已生成 ${expected} 条审计导出`,
+    };
+  }
+
+  const rows = cap > 0 ? await listAuditRows(db, filters, { limit: cap, offset: baseOffset }) : [];
+  const lines = [AUDIT_EXPORT_HEADER];
+  for (const row of rows) lines.push(auditExportLine(row));
+  return { text: '\ufeff' + lines.join('\n'), filename, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
+}
+
 async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: any, bucket?: AsyncJobResultBucket): Promise<AsyncJobBuiltResult> {
   if (type === 'PC_QR_KEY_INIT') {
-    await ensurePcQrColumns(db);
     const batchSize = Math.max(20, Math.min(500, Number(requestJson?.batch || requestJson?.batch_size || 200)));
     const maxRounds = Math.max(1, Math.min(400, Number(requestJson?.max_rounds || 200)));
     const result = await runInitMissingQrKeysJob(db, {
@@ -973,7 +1036,6 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
   }
 
   if (type === 'MONITOR_QR_KEY_INIT') {
-    await ensureMonitorQrColumns(db);
     const batchSize = Math.max(10, Math.min(300, Number(requestJson?.batch || requestJson?.batch_size || 50)));
     const maxRounds = Math.max(1, Math.min(400, Number(requestJson?.max_rounds || 200)));
     const result = await runInitMissingQrKeysJob(db, {
@@ -1072,28 +1134,7 @@ async function buildJobResult(db: D1Database, type: AsyncJobType, requestJson: a
   }
 
   if (type === 'AUDIT_EXPORT') {
-    const url = new URL('https://local/export');
-    for (const [k, v] of Object.entries(requestJson || {})) if (v != null) url.searchParams.set(k, String(v));
-    const filters = parseAuditListFilters(url);
-    const scope = String(requestJson?.scope || 'all');
-    const total = await countAuditRows(db, filters);
-    const limit = scope === 'current' ? filters.pageSize : Math.min(total, Number(requestJson?.max_rows || 10000));
-    const offset = scope === 'current' ? filters.offset : 0;
-    const rows = limit > 0 ? await listAuditRows(db, filters, { limit, offset }) : [];
-    const lines = [['时间','用户','模块','动作','实体','实体ID','对象名称','摘要'].join(',')];
-    for (const row of rows) {
-      lines.push([
-        csvEscape((row as any).created_at),
-        csvEscape((row as any).username),
-        csvEscape((row as any).module_code),
-        csvEscape((row as any).action),
-        csvEscape((row as any).entity),
-        csvEscape((row as any).entity_id),
-        csvEscape((row as any).target_name || (row as any).target_code || ''),
-        csvEscape((row as any).summary_text || ''),
-      ].join(','));
-    }
-    return { text: '﻿' + lines.join('\n'), filename: `audit_export_${Date.now()}.csv`, contentType: 'text/csv; charset=utf-8', message: `已生成 ${rows.length} 条审计导出` };
+    return buildAuditExportCsvResult(db, requestJson, bucket);
   }
 
   if (type === 'AUDIT_ARCHIVE_EXPORT') {

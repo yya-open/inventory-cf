@@ -1,6 +1,6 @@
 import { assertMonitorAssetIdsDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
 import { withErrorHandling } from "./_error";
-import { ensureMonitorQrColumns, ensureMonitorSchemaIfAllowed } from "./_monitor";
+import { ensureMonitorSchemaIfAllowed } from "./_monitor";
 import { getOrCreateAssetQrBulk } from "./services/asset-qr";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env, request }) => {
@@ -9,7 +9,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env,
 
   const url = new URL(request.url);
   await ensureMonitorSchemaIfAllowed(env.DB, env, url);
-  await ensureMonitorQrColumns(env.DB);
 
   const body = await request.json().catch(() => ({} as any));
   await assertMonitorAssetIdsDataScopeAccess(env.DB, user, Array.isArray(body?.ids) ? body.ids : [], '显示器二维码');

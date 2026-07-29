@@ -18,6 +18,7 @@ vi.mock('../functions/api/services/data-scope', () => ({
 
 vi.mock('../functions/api/services/async-job-queue', () => ({
   dispatchAsyncJobIds: vi.fn(async () => ({ enqueued: 1, mode: 'inline' })),
+  isAsyncQueueRequired: vi.fn(() => false),
 }));
 
 vi.mock('../functions/api/_audit', () => ({

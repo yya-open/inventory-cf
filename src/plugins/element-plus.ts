@@ -100,6 +100,8 @@ const asyncComponents: Record<string, () => Promise<Component>> = {
   ElOptionGroup: () => import('element-plus/es/components/select/index').then((module) => module.ElOptionGroup),
   ElPagination: () => import('element-plus/es/components/pagination/index').then((module) => module.ElPagination),
   ElProgress: () => import('element-plus/es/components/progress/index').then((module) => module.ElProgress),
+  ElRadioButton: () => import('element-plus/es/components/radio/index').then((module) => module.ElRadioButton),
+  ElRadioGroup: () => import('element-plus/es/components/radio/index').then((module) => module.ElRadioGroup),
   ElRow: () => import('element-plus/es/components/row/index').then((module) => module.ElRow),
   ElSelect: () => import('element-plus/es/components/select/index').then((module) => module.ElSelect),
   ElSkeleton: () => import('element-plus/es/components/skeleton/index').then((module) => module.ElSkeleton),

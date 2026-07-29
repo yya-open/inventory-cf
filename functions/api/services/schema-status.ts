@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202607210010_inventory_log_unique_data_quality";
+export const REQUIRED_SCHEMA_VERSION = "202607220010_public_api_throttle_index";
 
 type SchemaStatus = {
   ok: boolean;
@@ -67,6 +67,7 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'idx_asset_inventory_batch_kind_status_closed', label: '盘点历史批次索引', ok: indexes.has('idx_asset_inventory_batch_kind_status_closed'), need: 'idx_asset_inventory_batch_kind_status_closed' },
     { key: 'item_sku_aliases', label: 'SKU 别名表', ok: tables.has('item_sku_aliases'), need: 'item_sku_aliases' },
     { key: 'idx_item_sku_aliases_alias_active', label: 'SKU 别名唯一索引', ok: indexes.has('idx_item_sku_aliases_alias_active'), need: 'idx_item_sku_aliases_alias_active' },
+    { key: 'idx_public_api_throttle_updated_at', label: '公共接口限流清理索引', ok: indexes.has('idx_public_api_throttle_updated_at'), need: 'idx_public_api_throttle_updated_at' },
   ];
 
   checks.push(

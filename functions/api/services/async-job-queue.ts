@@ -15,7 +15,13 @@ type DispatchOptions = {
   queue?: AsyncJobQueueBinding | null;
   waitUntil?: ((promise: Promise<unknown>) => void) | null;
   bucket?: any;
+  requireQueue?: boolean;
 };
+
+export function isAsyncQueueRequired(env?: { ASYNC_JOB_QUEUE_REQUIRED?: string | number | null }) {
+  const raw = String(env?.ASYNC_JOB_QUEUE_REQUIRED ?? '').trim().toLowerCase();
+  return raw === '1' || raw === 'true';
+}
 
 function normalizeIds(ids: number[]) {
   return Array.from(new Set((Array.isArray(ids) ? ids : [])
@@ -46,6 +52,12 @@ export async function dispatchAsyncJobIds(options: DispatchOptions) {
   const normalized = normalizeIds(options.ids);
   if (!normalized.length) return { enqueued: 0, mode: 'none' as const };
   if (options.queue) return enqueueAsyncJobIds(options.queue, normalized);
+  if (options.requireQueue) {
+    throw Object.assign(
+      new Error('异步任务队列未绑定(ASYNC_JOB_QUEUE),无法在生产环境创建后台任务'),
+      { status: 503 }
+    );
+  }
   const runner = processAsyncJobIds(options.db, normalized, options.bucket);
   if (typeof options.waitUntil === 'function') options.waitUntil(runner);
   else void runner;
