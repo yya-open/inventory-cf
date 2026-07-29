@@ -1,9 +1,8 @@
-import { json, requireAuth, signJwt, getJwtTtlSeconds, invalidateCachedAuthUser } from "../../_auth";
+import { json, requireAuth, signJwt, getJwtTtlSeconds } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { verifyPassword, hashPassword } from "../../_password";
 import { validatePassword } from "../../_password_policy";
 import { invalidateCachedMe } from "./me";
-import { invalidateUserDataScopeCache } from "../services/data-scope";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const user = await requireAuth(env, request, "viewer");
@@ -26,9 +25,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     .bind(ph, user.id)
     .run();
 
-  invalidateCachedAuthUser(user.id);
   await invalidateCachedMe(env.DB, user.id, 'auth_change_password', (env as any).__timing);
-  invalidateUserDataScopeCache(user.id);
 
   const tvRow = await env.DB.prepare("SELECT token_version, username, role FROM users WHERE id=?").bind(user.id).first<any>();
   const tv = Number(tvRow?.token_version || 0);

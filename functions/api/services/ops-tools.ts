@@ -5,7 +5,7 @@ import { rebuildSearchFtsTables } from './search-fts';
 import { materializeAuditFields, normalizeAuditAction, resolveAuditModuleCode, isAuditHighRisk } from '../_audit';
 import { normalizeSearchText } from '../_search';
 import { getSchemaStatus } from './schema-status';
-import { getRequiredWarehouses, invalidateUserDataScopeCache, isPermissionWarehouseScopeValue, normalizeUserDataScope } from './data-scope';
+import { getRequiredWarehouses, isPermissionWarehouseScopeValue, normalizeUserDataScope } from './data-scope';
 
 export type RepairScanExample = Record<string, any>;
 export type RepairScanItem = {
@@ -404,7 +404,7 @@ export async function repairUserScopeFormat(db: D1Database) {
         continue;
       }
       if (diff.canonical) continue;
-      statements.push(db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(
+      statements.push(db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=?, acl_version=COALESCE(acl_version,0)+1 WHERE id=?`).bind(
         diff.normalized.data_scope_type,
         diff.normalized.data_scope_value,
         diff.normalized.data_scope_value2,
@@ -417,7 +417,6 @@ export async function repairUserScopeFormat(db: D1Database) {
     if (rows.length < OPS_REPAIR_PAGE_SIZE) break;
   }
   if (statements.length) await db.batch(statements);
-  if (repaired > 0) invalidateUserDataScopeCache();
   return { repaired, skipped_invalid };
 }
 

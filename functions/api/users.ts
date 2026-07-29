@@ -1,4 +1,4 @@
-import { requireAuth, invalidateCachedAuthUser } from "../_auth";
+import { requireAuth } from "../_auth";
 import { withErrorHandling } from './_error';
 import { apiFail, apiOk } from "./_response";
 import { logAudit } from "./_audit";
@@ -8,7 +8,7 @@ import { validatePassword } from "../_password_policy";
 import { invalidateCachedMe } from "./auth/me";
 import { buildKeywordWhere } from "./_search";
 import { ALL_PERMISSION_CODES, ALL_PERMISSION_TEMPLATE_CODES, getUserPermissionMap, normalizePermissionTemplateCode, setUserPermissionTemplate, setUserPermissions, ensureUserPermissionTemplateColumn, ensureUserPermissionsTable, getPermissionTemplateMap } from "../_permissions";
-import { getUserDataScope, getRequiredWarehouses, invalidateUserDataScopeCache, isPermissionWarehouseScopeValue, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
+import { getUserDataScope, getRequiredWarehouses, isPermissionWarehouseScopeValue, normalizeUserDataScope, setUserDataScope } from './services/data-scope';
 import { assertDepartmentDictionaryValue } from './services/master-data';
 
 type Env = { DB: D1Database; JWT_SECRET: string };
@@ -243,9 +243,7 @@ export const onRequestPut = withErrorHandling<Env>(async ({ env, request }) => {
       changes.acl_version_bumped = true;
     }
 
-    invalidateCachedAuthUser(uid);
     await invalidateCachedMe(env.DB, uid, 'users_update', (env as any).__timing);
-    invalidateUserDataScopeCache(uid);
 
     const after = await env.DB
       .prepare("SELECT id, username, role, is_active, must_change_password, created_at, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?")
@@ -292,9 +290,7 @@ export const onRequestDelete = withErrorHandling<Env>(async ({ env, request }) =
     }
 
     await env.DB.prepare("DELETE FROM users WHERE id=?").bind(uid).run();
-    invalidateCachedAuthUser(uid);
     await invalidateCachedMe(env.DB, uid, 'users_delete', (env as any).__timing);
-    invalidateUserDataScopeCache(uid);
     await logAudit(env.DB, request, actor, "USER_DELETE", "users", uid, { before: target });
 
     return apiOk({});

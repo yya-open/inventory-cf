@@ -1,12 +1,12 @@
 import { withErrorHandling } from './_error';
 import { requirePermission } from "../_permissions";
-import { assertPcAssetDataScopeAccess, getUserDataScope } from "./services/data-scope";
+import { assertPcAssetDataScopeAccess, getAuthUserDataScope } from "./services/data-scope";
 import { ensurePcSchemaIfAllowed } from "./_pc";
 import { resetAssetQr } from "./services/asset-qr";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database }>(async ({ env, request }) => {
   const actor = await requirePermission(env, request, 'qr_reset', 'viewer');
-  const user = Object.assign(actor, await getUserDataScope(env.DB, actor.id));
+  const user = Object.assign(actor, getAuthUserDataScope(actor));
   if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
 
   const url = new URL(request.url);

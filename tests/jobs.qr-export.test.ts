@@ -11,7 +11,7 @@ vi.mock('../functions/api/services/schema-status', () => ({
 }));
 
 vi.mock('../functions/api/services/data-scope', () => ({
-  getUserDataScope: vi.fn(async () => ({ data_scope_type: 'all', data_scope_value: null, data_scope_value2: null })),
+  getAuthUserDataScope: vi.fn(() => ({ data_scope_type: 'all', data_scope_value: null, data_scope_value2: null })),
   assertPcAssetIdsDataScopeAccess: vi.fn(async () => {}),
   assertMonitorAssetIdsDataScopeAccess: vi.fn(async () => {}),
 }));

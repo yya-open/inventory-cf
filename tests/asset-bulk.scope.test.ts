@@ -4,7 +4,7 @@ const bulkUpdatePcStatus = vi.fn(async () => ({ changed: 1, skipped: 0, ids: [10
 const bulkUpdateMonitorStatus = vi.fn(async () => ({ changed: 1, skipped: 0, ids: [200], skippedIds: [] }));
 
 vi.mock('../functions/_permissions', () => ({
-  requirePermission: vi.fn(async () => ({ id: 7, username: 'limited', role: 'operator' })),
+  requirePermission: vi.fn(async () => ({ id: 7, username: 'limited', role: 'operator', data_scope_type: 'department', data_scope_value: 'Finance', data_scope_value2: null })),
 }));
 
 vi.mock('../functions/api/services/asset-bulk', () => ({
@@ -50,11 +50,7 @@ class FakeDB {
   }
 
   first(sql: string, params: any[]) {
-    const normalized = sql.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (normalized.startsWith('select data_scope_type, data_scope_value, data_scope_value2 from users where id=')) {
-      return { data_scope_type: 'department', data_scope_value: 'Finance', data_scope_value2: null };
-    }
-    throw new Error(`Unhandled first SQL: ${sql} / ${JSON.stringify(params)}`);
+    throw new Error(`Unexpected first SQL: ${sql} / ${JSON.stringify(params)}`);
   }
 
   all(sql: string, _params: any[]) {

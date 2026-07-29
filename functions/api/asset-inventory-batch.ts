@@ -92,7 +92,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request, waitU
     if (action === 'close') {
       invalidateInventoryBatchCache(kind);
       if (!env.BACKUP_BUCKET) return apiFail('未绑定 R2：BACKUP_BUCKET。请先在 Cloudflare 里绑定 R2 Bucket。', { status: 500 });
-      const workflow = await closeInventoryBatchWorkflow(env.DB, kind, { id: actor.id, username: actor.username }, env.BACKUP_BUCKET, { batchId: Number(body?.id || body?.batch_id || 0) || null });
+      const workflow = await closeInventoryBatchWorkflow(env.DB, kind, { id: actor.id, username: actor.username }, { batchId: Number(body?.id || body?.batch_id || 0) || null });
       invalidateInventoryBatchCache(kind);
       if (workflow.reused) {
         return apiOk(workflow.batch, {

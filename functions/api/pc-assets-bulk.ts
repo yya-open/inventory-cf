@@ -10,7 +10,7 @@ import { batchGetRelatedRecordCounts, hasRelatedHistory } from './services/asset
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 import { invalidateAssetListCache } from './services/asset-list-cache';
-import { assertDepartmentScopeAccess, assertPcAssetIdsDataScopeAccess, getUserDataScope } from './services/data-scope';
+import { assertDepartmentScopeAccess, assertPcAssetIdsDataScopeAccess, getAuthUserDataScope } from './services/data-scope';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -19,7 +19,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const actor = timing?.measure
       ? await timing.measure('permission', () => requirePermission(env, request, 'bulk_operation', 'viewer'))
       : await requirePermission(env, request, 'bulk_operation', 'viewer');
-    const user = Object.assign(actor, await getUserDataScope(env.DB, actor.id));
+    const user = Object.assign(actor, getAuthUserDataScope(actor));
     const body = timing?.measure
       ? await timing.measure('parse', () => request.json().catch(() => ({} as any)))
       : await request.json().catch(() => ({} as any));

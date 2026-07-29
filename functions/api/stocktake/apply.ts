@@ -3,12 +3,12 @@ import { requirePermission } from '../../_permissions';
 import { logAudit } from '../_audit';
 import { sqlNowStored } from '../_time';
 import { getStocktakeById, stocktakeAdjustTxNo } from '../services/stocktake';
-import { assertPartsStocktakeAccess, getUserDataScope } from '../services/data-scope';
+import { assertPartsStocktakeAccess, getAuthUserDataScope } from '../services/data-scope';
 import { apiFail, apiOk } from '../_response';
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const user = await requirePermission(env, request, 'stocktake_apply', 'viewer');
-  const scopedUser = Object.assign({}, user, await getUserDataScope(env.DB, user.id));
+  const scopedUser = Object.assign({}, user, getAuthUserDataScope(user));
   const body = await request.json().catch(() => ({} as any));
   const previewOnly = Boolean((body as any).preview_only);
   const st_id = Number((body as any).id);

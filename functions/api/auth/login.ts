@@ -1,4 +1,4 @@
-import { buildAuthCookie, json, signJwt, getJwtTtlSeconds, invalidateCachedAuthUser, primeCachedAuthUser } from '../../_auth';
+import { buildAuthCookie, json, signJwt, getJwtTtlSeconds } from '../../_auth';
 import { withErrorHandling } from '../_error';
 import { verifyPassword } from '../../_password';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
@@ -107,7 +107,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
     await clearAuthFail(env.DB, ip, u);
 
-    invalidateCachedAuthUser(Number(row.id));
     await invalidateCachedMe(env.DB, Number(row.id), 'auth_login', (env as any).__timing);
 
     const ttlSeconds = getJwtTtlSeconds(env as any);
@@ -118,15 +117,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const mePayload = {
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, acl_version: Number((row as any)?.acl_version || 0), permission_template_code, permissions, ...dataScope },
     };
-    primeCachedAuthUser({
-      id: row.id,
-      username: row.username,
-      role: row.role,
-      is_active: 1,
-      must_change_password: row.must_change_password,
-      token_version: Number(row.token_version || 0),
-      acl_version: Number((row as any)?.acl_version || 0),
-    });
     primeCachedMe(env.DB, row.id, mePayload, Number((row as any)?.acl_version || 0));
     const res = json(true, {
       user: { id: row.id, username: row.username, role: row.role, must_change_password: row.must_change_password, permission_template_code, permissions, ...dataScope },

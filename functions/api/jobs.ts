@@ -1,10 +1,10 @@
-import { json } from '../_auth';
+import { json, type AuthUser } from '../_auth';
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, createAsyncJobs, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
 import { dispatchAsyncJobIds } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
-import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getUserDataScope } from './services/data-scope';
+import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getAuthUserDataScope } from './services/data-scope';
 import { logAudit } from './_audit';
 
 const QR_EXPORT_TYPES = new Set(['PC_QR_CARDS_EXPORT', 'PC_QR_SHEET_EXPORT', 'MONITOR_QR_CARDS_EXPORT', 'MONITOR_QR_SHEET_EXPORT']);
@@ -48,9 +48,9 @@ function resolveQrExportChunkSize(hasBucket: boolean) {
   return hasBucket ? QR_EXPORT_CHUNK_SIZE : QR_EXPORT_NO_BUCKET_CHUNK_SIZE;
 }
 
-async function assertQrExportDataScope(db: D1Database, actor: { id: number }, jobType: string, ids: number[]) {
+async function assertQrExportDataScope(db: D1Database, actor: AuthUser, jobType: string, ids: number[]) {
   if (!QR_EXPORT_TYPES.has(jobType) || !ids.length) return;
-  const scope = await getUserDataScope(db, actor.id);
+  const scope = getAuthUserDataScope(actor);
   if (jobType.startsWith('PC_QR_')) {
     await assertPcAssetIdsDataScopeAccess(db, scope, ids, '二维码导出');
     return;
@@ -76,7 +76,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     .map((value) => Math.trunc(Number(value || 0)))
     .filter((value, index, arr) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index)
     .slice(0, 200);
-  const assetScope = await getUserDataScope(env.DB, actor.id);
+  const assetScope = getAuthUserDataScope(actor);
   const data = timing?.measure
     ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET))
     : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET);
@@ -105,7 +105,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         request_json: { ...(request_json || {}), ids: chunk, export_batch_key: batchKey, export_batch_index: index + 1, export_batch_total: chunks.length, export_total_ids: ids.length },
         retain_days,
         max_retries,
-      })), env.BACKUP_BUCKET);
+      })));
       if (createdIds.length) {
         await dispatchAsyncJobIds({ db: env.DB, ids: createdIds, queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
       }
@@ -113,7 +113,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       return json(true, { batch: true, batch_key: batchKey, job_ids: createdIds, job_type, status: 'queued', split_count: createdIds.length, total_ids: ids.length, chunk_size: chunkSize }, `已按每 ${chunkSize} 条自动拆分为 ${createdIds.length} 个异步任务，后台将继续处理`);
     }
   }
-  const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries }, env.BACKUP_BUCKET);
+  const id = await createAsyncJob(env.DB, { job_type, created_by: actor.id, created_by_name: actor.username, permission_scope: permission_scope || null, request_json: request_json || {}, retain_days, max_retries });
   await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET });
   await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CREATE', 'async_jobs', id, { job_type, retain_days, max_retries });
   return json(true, { id, job_type, status: 'queued' }, '任务已创建，后台将继续处理');

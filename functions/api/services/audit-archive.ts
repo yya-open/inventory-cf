@@ -58,7 +58,7 @@ export async function createAuditArchiveJob(
     request_json,
     retain_days: clampInt(input.retain_days, 30, 7, 90),
     max_retries: 1,
-  }, bucket);
+  });
   return { id, request_json, lifecycle };
 }
 

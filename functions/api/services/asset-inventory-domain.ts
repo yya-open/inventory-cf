@@ -20,7 +20,7 @@ export async function startInventoryBatchWorkflow(db: D1Database, kind: AssetInv
   return { batch, deletedLogs };
 }
 
-export async function closeInventoryBatchWorkflow(db: D1Database, kind: AssetInventoryKind, actor: { id: number; username: string }, bucket: any, options?: { batchId?: number | null }) {
+export async function closeInventoryBatchWorkflow(db: D1Database, kind: AssetInventoryKind, actor: { id: number; username: string }, options?: { batchId?: number | null }) {
   const batchId = Number(options?.batchId || 0) || null;
   const before = batchId ? null : await getActiveInventoryBatch(db, kind);
   const batch = await closeInventoryBatch(db, kind, actor.username || null, batchId);
@@ -39,7 +39,7 @@ export async function closeInventoryBatchWorkflow(db: D1Database, kind: AssetInv
     retain_days: 30,
     max_retries: 2,
     request_json: { kind, batch_id: targetBatchId },
-  }, bucket);
+  });
   const attached = await attachInventoryBatchSnapshotJob(db, kind, targetBatchId, jobId);
   return { batch: attached, targetBatchId, existingJobId: jobId, existingStatus: 'queued', reused: false as const };
 }

@@ -1,5 +1,5 @@
 import { requireAuth, type AuthUser } from './_auth';
-import { getUserPermissionMap, getUserTemplateCode, type PermissionCode } from './_permissions';
+import { getUserPermissionMap, normalizePermissionTemplateCode, type PermissionCode } from './_permissions';
 
 export type CapabilityCode =
   | 'inventory.view'
@@ -24,7 +24,7 @@ export async function requireCapability(env: { DB: D1Database; JWT_SECRET?: stri
   const rule = CAPABILITY_RULES[capability];
   const user = await requireAuth(env as any, request, rule.minRole);
   if (!rule.permission) return user;
-  const templateCode = await getUserTemplateCode(env.DB, user.id, user.role).catch(() => null);
+  const templateCode = normalizePermissionTemplateCode(user.role, user.permission_template_code);
   const permissions = await getUserPermissionMap(env.DB, user.id, user.role, templateCode || undefined);
   if (!permissions[rule.permission]) throw Object.assign(new Error('权限不足'), { status: 403 });
   return Object.assign(user, { permissions, permission_template_code: templateCode }) as AuthUser & { permissions: Record<string, boolean>; permission_template_code?: string | null };

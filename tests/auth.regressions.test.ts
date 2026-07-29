@@ -73,13 +73,12 @@ vi.mock('../functions/_permissions', () => {
   };
 });
 
-import { buildAuthCookie, invalidateCachedAuthUser, requireAuth, signJwt } from '../functions/_auth';
+import { buildAuthCookie, requireAuth, signJwt } from '../functions/_auth';
 import { hashPassword } from '../functions/_password';
 import { invalidateCachedMe, onRequestGet as meHandler } from '../functions/api/auth/me';
 import { onRequestPost as changePasswordHandler } from '../functions/api/auth/change-password';
 import { onRequestPost as logoutHandler } from '../functions/api/auth/logout';
 import { onRequestPut as updateUserHandler } from '../functions/api/users';
-import { invalidateUserDataScopeCache } from '../functions/api/services/data-scope';
 
 type UserRow = {
   id: number;
@@ -154,6 +153,10 @@ class FakeDB {
       normalized.startsWith("update users set data_scope_value=null")
     ) {
       return mode === 'all' ? [] : null;
+    }
+
+    if (normalized === 'select id, username, role, is_active, must_change_password, token_version, acl_version, permission_template_code, data_scope_type, data_scope_value, data_scope_value2 from users where id=?') {
+      return cloneUser(getUser(params[0]));
     }
 
     if (normalized === 'select id, username, role, is_active, must_change_password, token_version, acl_version from users where id=?') {
@@ -348,9 +351,7 @@ function makeRequest(url: string, token: string, method = 'GET', body?: unknown)
 }
 
 beforeEach(() => {
-  invalidateCachedAuthUser();
   invalidateCachedMe();
-  invalidateUserDataScopeCache();
 });
 
 describe('auth regression fixes', () => {
@@ -358,7 +359,6 @@ describe('auth regression fixes', () => {
     const env = await makeEnv();
     const token = await issueToken(env, 2);
     env.DB.__getUser(2)!.must_change_password = 1;
-    invalidateCachedAuthUser(2);
 
     await expect(requireAuth(env as any, makeRequest('https://example.com/api/items', token), 'viewer'))
       .rejects.toMatchObject({ status: 403, code: 'PASSWORD_CHANGE_REQUIRED' });
@@ -444,6 +444,7 @@ describe('auth regression fixes', () => {
         role: 'operator',
         data_scope_type: 'department',
         data_scope_value: 'IT',
+        permission_template_code: 'operator_plus',
       }),
     } as any);
     const updateBody = await updateResponse.json();
@@ -455,6 +456,7 @@ describe('auth regression fixes', () => {
     expect(afterBody.ok).toBe(true);
     expect(afterBody.data.user.role).toBe('operator');
     expect(afterBody.data.user.data_scope_type).toBe('department');
+    expect(afterBody.data.user.permission_template_code).toBe('operator_plus');
     expect(afterBody.data.user.data_scope_value).toBe('IT');
     expect(env.DB.__getUser(2)?.acl_version).toBeGreaterThan(0);
   });

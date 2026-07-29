@@ -1,11 +1,10 @@
-import { buildClearAuthCookie, json, requireAuth, invalidateCachedAuthUser } from "../../_auth";
+import { buildClearAuthCookie, json, requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { invalidateCachedMe } from "./me";
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const user = await requireAuth(env, request, "viewer");
   await env.DB.prepare("UPDATE users SET token_version=token_version+1 WHERE id=?").bind(user.id).run();
-  invalidateCachedAuthUser(user.id);
   await invalidateCachedMe(env.DB, user.id, 'auth_logout', (env as any).__timing);
   (env as any).__refresh_token = null;
   (env as any).__clear_auth_cookie = true;

@@ -1240,10 +1240,9 @@ function buildCreateAsyncJobStatement(db: D1Database, input: AsyncJobCreateInput
   ).bind(input.job_type, input.created_by ?? null, input.created_by_name ?? null, input.permission_scope ?? null, JSON.stringify(input.request_json || {}), `+${retainDays} day`, maxRetries);
 }
 
-export async function createAsyncJobs(db: D1Database, inputs: AsyncJobCreateInput[], bucket?: AsyncJobResultBucket) {
+export async function createAsyncJobs(db: D1Database, inputs: AsyncJobCreateInput[]) {
   const normalized = (Array.isArray(inputs) ? inputs : []).filter((input) => input?.job_type);
   if (!normalized.length) return [] as number[];
-  await cleanupAsyncJobHousekeeping(db, bucket);
   const ids: number[] = [];
   const chunkSize = 100;
   for (let index = 0; index < normalized.length; index += chunkSize) {
@@ -1257,8 +1256,7 @@ export async function createAsyncJobs(db: D1Database, inputs: AsyncJobCreateInpu
   return ids;
 }
 
-export async function createAsyncJob(db: D1Database, input: AsyncJobCreateInput, bucket?: AsyncJobResultBucket) {
-  await cleanupAsyncJobHousekeeping(db, bucket);
+export async function createAsyncJob(db: D1Database, input: AsyncJobCreateInput) {
   const res = await buildCreateAsyncJobStatement(db, input).run();
   return Number((res as any)?.meta?.last_row_id || 0);
 }

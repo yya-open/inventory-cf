@@ -15,7 +15,18 @@ export function getJwtRefreshThresholdSeconds(env?: { JWT_REFRESH_THRESHOLD_SECO
 }
 export const AUTH_COOKIE_NAME = "inventory_cf_session";
 
-export type AuthUser = { id: number; username: string; role: Role; must_change_password?: number; acl_version?: number; permissions?: Record<string, boolean>; data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse'; data_scope_value?: string | null; data_scope_value2?: string | null };
+export type AuthUser = {
+  id: number;
+  username: string;
+  role: Role;
+  must_change_password?: number;
+  acl_version?: number;
+  permission_template_code?: string | null;
+  permissions?: Record<string, boolean>;
+  data_scope_type?: 'all' | 'department' | 'warehouse' | 'department_warehouse';
+  data_scope_value?: string | null;
+  data_scope_value2?: string | null;
+};
 
 const authRequestCache = new WeakMap<Request, {
   token?: string;
@@ -23,36 +34,6 @@ const authRequestCache = new WeakMap<Request, {
   role_level?: number;
 }>();
 
-const AUTH_USER_CACHE_TTL_MS = 30_000;
-type CachedAuthUserRow = { id: number; username: string; role: Role; is_active: number; must_change_password?: number; token_version?: number; acl_version?: number; expiresAt: number };
-const authUserCache = new Map<number, CachedAuthUserRow>();
-
-function readCachedAuthUserRow(userId: number) {
-  const hit = authUserCache.get(userId);
-  if (!hit) return null;
-  if (hit.expiresAt <= Date.now()) {
-    authUserCache.delete(userId);
-    return null;
-  }
-  return hit;
-}
-
-function writeCachedAuthUserRow(row: Omit<CachedAuthUserRow, 'expiresAt'>) {
-  authUserCache.set(Number(row.id), { ...row, expiresAt: Date.now() + AUTH_USER_CACHE_TTL_MS });
-  return row;
-}
-
-export function primeCachedAuthUser(row: Omit<CachedAuthUserRow, 'expiresAt'>) {
-  return writeCachedAuthUserRow(row);
-}
-
-export function invalidateCachedAuthUser(userId?: number | null) {
-  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
-    authUserCache.delete(userId);
-    return;
-  }
-  authUserCache.clear();
-}
 
 function b64uEncode(bytes: Uint8Array) {
   let s = "";
@@ -217,8 +198,65 @@ export async function requireAuth(
   return await load();
 }
 
+type AuthUserRow = {
+  id: number;
+  username: string;
+  role: Role;
+  is_active: number;
+  must_change_password?: number;
+  token_version?: number;
+  acl_version?: number;
+  permission_template_code?: string | null;
+  data_scope_type?: string | null;
+  data_scope_value?: string | null;
+  data_scope_value2?: string | null;
+};
+
+const AUTH_USER_COLUMNS = [
+  'id',
+  'username',
+  'role',
+  'is_active',
+  'must_change_password',
+  'token_version',
+  'acl_version',
+  'permission_template_code',
+  'data_scope_type',
+  'data_scope_value',
+  'data_scope_value2',
+] as const;
+
+function authDataScopeType(value: unknown): AuthUser['data_scope_type'] {
+  const normalized = String(value || '').trim();
+  if (normalized === 'department' || normalized === 'warehouse' || normalized === 'department_warehouse') return normalized;
+  return 'all';
+}
+
+async function loadAuthUserRow(db: D1Database, userId: number): Promise<AuthUserRow | null> {
+  try {
+    return await db
+      .prepare(`SELECT ${AUTH_USER_COLUMNS.join(', ')} FROM users WHERE id=?`)
+      .bind(userId)
+      .first<AuthUserRow>();
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : String(error || '');
+    if (!message.includes('no such column')) throw error;
+
+    const { results } = await db
+      .prepare("SELECT name FROM pragma_table_info('users')")
+      .all<{ name?: string | null }>();
+    const available = new Set((results || []).map((row) => String(row?.name || '').trim()).filter(Boolean));
+    if (!['id', 'username', 'role', 'is_active'].every((column) => available.has(column))) throw error;
+    const columns = AUTH_USER_COLUMNS.filter((column) => available.has(column));
+    return await db
+      .prepare(`SELECT ${columns.join(', ')} FROM users WHERE id=?`)
+      .bind(userId)
+      .first<AuthUserRow>();
+  }
+}
+
 async function requireAuthInternal(
-  env: { DB: D1Database; JWT_SECRET?: string },
+  env: { DB: D1Database; JWT_SECRET?: string; JWT_TTL_SECONDS?: string | number | null; JWT_REFRESH_THRESHOLD_SECONDS?: string | number | null; __refresh_token?: string | null },
   request: Request,
   minRole: Role
 ): Promise<AuthUser> {
@@ -231,74 +269,43 @@ async function requireAuthInternal(
   if (!payload?.sub) throw Object.assign(new Error("登录已过期"), { status: 401 });
 
   const userId = Number(payload.sub);
-  let u: any = readCachedAuthUserRow(userId);
-  if (!u) {
-    try {
-      u = await env.DB
-        .prepare("SELECT id, username, role, is_active, must_change_password, token_version, acl_version FROM users WHERE id=?")
-        .bind(userId)
-        .first<any>();
-    } catch (e: any) {
-      const msg = String(e?.message || "");
-      const noSuchColumn = msg.includes("no such column");
-      if (!noSuchColumn) throw e;
-      try {
-        u = await env.DB
-          .prepare("SELECT id, username, role, is_active, must_change_password, token_version FROM users WHERE id=?")
-          .bind(userId)
-          .first<any>();
-        if (u) u.acl_version = 0;
-      } catch (e2: any) {
-        const msg2 = String(e2?.message || "");
-        if (!(msg2.includes("no such column") && msg2.includes("token_version"))) throw e2;
-        u = await env.DB
-          .prepare("SELECT id, username, role, is_active, must_change_password FROM users WHERE id=?")
-          .bind(userId)
-          .first<any>();
-        if (u) {
-          u.token_version = 0;
-          u.acl_version = 0;
-        }
-      }
-    }
-    if (u) {
-      writeCachedAuthUserRow({
-        id: Number(u.id),
-        username: String(u.username || ''),
-        role: u.role as Role,
-        is_active: Number(u.is_active || 0),
-        must_change_password: Number(u.must_change_password || 0),
-        token_version: Number((u as any).token_version || 0),
-        acl_version: Number((u as any).acl_version || 0),
-      });
-    }
-  }
-  if (!u || Number(u.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });
+  const row = await loadAuthUserRow(env.DB, userId);
+  if (!row || Number(row.is_active) !== 1) throw Object.assign(new Error("账号已禁用"), { status: 403 });
 
-  const user: AuthUser = { id: u.id, username: u.username, role: u.role as Role, must_change_password: u.must_change_password, acl_version: Number((u as any).acl_version || 0) };
-  const tv = Number((payload as any)?.tv || 0);
-  const dbTv = Number((u as any).token_version || 0);
-  if (tv !== dbTv) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });
+  const user: AuthUser = {
+    id: Number(row.id),
+    username: String(row.username || ''),
+    role: row.role,
+    must_change_password: Number(row.must_change_password || 0),
+    acl_version: Number(row.acl_version || 0),
+    permission_template_code: row.permission_template_code == null ? null : String(row.permission_template_code),
+    data_scope_type: authDataScopeType(row.data_scope_type),
+    data_scope_value: row.data_scope_value == null ? null : String(row.data_scope_value),
+    data_scope_value2: row.data_scope_value2 == null ? null : String(row.data_scope_value2),
+  };
+  const tokenVersion = Number(payload.tv || 0);
+  const storedTokenVersion = Number(row.token_version || 0);
+  if (tokenVersion !== storedTokenVersion) throw Object.assign(new Error("登录已失效，请重新登录"), { status: 401 });
 
   if (roleLevel(user.role) < roleLevel(minRole)) throw Object.assign(new Error("权限不足"), { status: 403 });
   assertPasswordChangePolicy(request, user);
 
   try {
     const nowSec = Math.floor(Date.now() / 1000);
-    const exp = Number(payload?.exp || 0);
+    const exp = Number(payload.exp || 0);
     const remaining = exp ? exp - nowSec : 0;
     const path = (() => {
       try { return new URL(request.url).pathname; } catch { return ''; }
     })();
     const isMeEndpoint = path === '/api/auth/me';
-    const eagerRefresh = !exp || remaining < getJwtRefreshThresholdSeconds(env as any);
+    const eagerRefresh = !exp || remaining < getJwtRefreshThresholdSeconds(env);
     const nearExpiryRefresh = !exp || remaining < 5 * 60;
     const shouldRefresh = isMeEndpoint ? nearExpiryRefresh : eagerRefresh;
     if (shouldRefresh) {
-      (env as any).__refresh_token = await signJwt(
-        { sub: user.id, u: user.username, r: user.role, tv: dbTv },
+      env.__refresh_token = await signJwt(
+        { sub: user.id, u: user.username, r: user.role, tv: storedTokenVersion },
         secret,
-        getJwtTtlSeconds(env as any)
+        getJwtTtlSeconds(env)
       );
     }
   } catch {}

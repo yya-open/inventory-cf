@@ -1,7 +1,7 @@
 import { json, requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
-import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
-import { getUserDataScope } from '../services/data-scope';
+import { getUserPermissionMap, normalizePermissionTemplateCode } from '../../_permissions';
+import { getAuthUserDataScope } from '../services/data-scope';
 import { SQL_STORED_NOW_DEFAULT, sqlNowStored } from '../_time';
 
 type MePayload = { user: any };
@@ -217,9 +217,9 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   }
   markTiming(timing, `auth_me_hot_cache_miss_${hot.reason || 'not_found'}`);
 
-  const permission_template_code = await getUserTemplateCode(env.DB, user.id, user.role);
+  const permission_template_code = normalizePermissionTemplateCode(user.role, user.permission_template_code);
   const permissions = await getUserPermissionMap(env.DB, user.id, user.role, permission_template_code);
-  const dataScope = await getUserDataScope(env.DB, user.id);
+  const dataScope = getAuthUserDataScope(user);
   const payload = writeCachedMe(user.id, { user: { ...user, acl_version: expectedAclVersion, permission_template_code, permissions, ...dataScope } });
   markTiming(timing, 'auth_me_cache_rebuild');
   queueMeHotCacheWrite(env.DB, user.id, payload, expectedAclVersion);

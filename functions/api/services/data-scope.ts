@@ -40,36 +40,15 @@ export function normalizeUserDataScope(type: string | null | undefined, value: s
   return { data_scope_type: 'all', data_scope_value: null, data_scope_value2: null };
 }
 
+export function getAuthUserDataScope(user: Pick<AuthUser, 'data_scope_type' | 'data_scope_value' | 'data_scope_value2'>): UserDataScope {
+  return normalizeUserDataScope(user.data_scope_type, user.data_scope_value, user.data_scope_value2);
+}
+
 let ensureUserDataScopeColumnsPromise: Promise<void> | null = null;
 let userDataScopeColumnsReady = false;
-const USER_DATA_SCOPE_CACHE_TTL_MS = 30_000;
 const USER_DATA_SCOPE_COLUMNS = ['data_scope_type', 'data_scope_value', 'data_scope_value2'];
 const USER_DATA_SCOPE_COLUMN_LIST = USER_DATA_SCOPE_COLUMNS.map((column) => `'${column}'`).join(',');
 const USER_DATA_SCOPE_INDEX_NAME = 'idx_users_data_scope_type_value_v2';
-const userDataScopeCache = new Map<number, UserDataScope & { expiresAt: number }>();
-
-function readCachedUserDataScope(userId: number) {
-  const hit = userDataScopeCache.get(userId);
-  if (!hit) return null;
-  if (hit.expiresAt <= Date.now()) {
-    userDataScopeCache.delete(userId);
-    return null;
-  }
-  return { data_scope_type: hit.data_scope_type, data_scope_value: hit.data_scope_value, data_scope_value2: hit.data_scope_value2 } as UserDataScope;
-}
-
-function writeCachedUserDataScope(userId: number, scope: UserDataScope) {
-  userDataScopeCache.set(userId, { ...scope, expiresAt: Date.now() + USER_DATA_SCOPE_CACHE_TTL_MS });
-  return scope;
-}
-
-export function invalidateUserDataScopeCache(userId?: number | null) {
-  if (typeof userId === 'number' && Number.isFinite(userId) && userId > 0) {
-    userDataScopeCache.delete(userId);
-    return;
-  }
-  userDataScopeCache.clear();
-}
 
 export async function ensureUserDataScopeColumns(db: D1Database) {
   if (userDataScopeColumnsReady) return;
@@ -106,26 +85,21 @@ export async function ensureUserDataScopeColumns(db: D1Database) {
 }
 
 export async function getUserDataScope(db: D1Database, userId: number) {
-  const cached = readCachedUserDataScope(userId);
-  if (cached) return cached;
   await ensureUserDataScopeColumns(db);
-  const row = await db.prepare(`SELECT data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?`).bind(userId).first<any>();
-  return writeCachedUserDataScope(userId, normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2));
+  const row = await db.prepare(`SELECT data_scope_type, data_scope_value, data_scope_value2 FROM users WHERE id=?`).bind(userId).first<{ data_scope_type?: string | null; data_scope_value?: string | null; data_scope_value2?: string | null }>();
+  return normalizeUserDataScope(row?.data_scope_type, row?.data_scope_value, row?.data_scope_value2);
 }
 
 export async function setUserDataScope(db: D1Database, userId: number, type: string | null | undefined, value: string | null | undefined, value2?: string | null | undefined) {
   await ensureUserDataScopeColumns(db);
   const normalized = normalizeUserDataScope(type, value, value2);
   await db.prepare(`UPDATE users SET data_scope_type=?, data_scope_value=?, data_scope_value2=? WHERE id=?`).bind(normalized.data_scope_type, normalized.data_scope_value, normalized.data_scope_value2, userId).run();
-  writeCachedUserDataScope(userId, normalized);
   return normalized;
 }
 
 export async function requireAuthWithDataScope(env: { DB: D1Database; JWT_SECRET?: string }, request: Request, minRole: 'viewer' | 'operator' | 'admin' = 'viewer') {
   const user = await requireAuth(env as any, request, minRole);
-  const loadScope = () => getUserDataScope(env.DB, user.id);
-  const timing = (env as any)?.__timing;
-  const scope = timing?.measure ? await timing.measure('data_scope', loadScope) : await loadScope();
+  const scope = getAuthUserDataScope(user);
   return Object.assign(user, scope) as ScopedUser;
 }
 
