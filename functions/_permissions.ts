@@ -1,4 +1,5 @@
 import { requireAuth, type AuthUser } from './_auth';
+import { sqlNowStored } from './api/_time';
 
 export type PermissionCode =
   | 'system_settings_write'
@@ -95,9 +96,6 @@ export const PERMISSION_TEMPLATES: Record<PermissionTemplateCode, { label: strin
 
 export const ALL_PERMISSION_TEMPLATE_CODES = Object.keys(PERMISSION_TEMPLATES) as PermissionTemplateCode[];
 
-function nowSql() {
-  return "datetime('now','+8 hours')";
-}
 
 let ensureUserPermissionsTablePromise: Promise<void> | null = null;
 let ensureUserPermissionTemplateColumnPromise: Promise<void> | null = null;
@@ -121,7 +119,7 @@ export async function ensureUserPermissionsTable(db: D1Database) {
           user_id INTEGER NOT NULL,
           permission_code TEXT NOT NULL,
           allowed INTEGER NOT NULL DEFAULT 1,
-          updated_at TEXT NOT NULL DEFAULT (${nowSql()}),
+          updated_at TEXT NOT NULL DEFAULT (${sqlNowStored()}),
           updated_by TEXT,
           PRIMARY KEY (user_id, permission_code),
           FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
@@ -213,10 +211,10 @@ export async function setUserPermissions(db: D1Database, userId: number, permiss
     if (current === allowed) continue;
     statements.push(db.prepare(
       `INSERT INTO user_permissions (user_id, permission_code, allowed, updated_at, updated_by)
-       VALUES (?, ?, ?, ${nowSql()}, ?)
+       VALUES (?, ?, ?, ${sqlNowStored()}, ?)
        ON CONFLICT(user_id, permission_code) DO UPDATE SET
          allowed=excluded.allowed,
-         updated_at=${nowSql()},
+         updated_at=${sqlNowStored()},
          updated_by=excluded.updated_by`
     ).bind(userId, code, allowed, updatedBy));
   }

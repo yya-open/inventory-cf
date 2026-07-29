@@ -2,6 +2,7 @@ import { json, requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { getUserPermissionMap, getUserTemplateCode } from '../../_permissions';
 import { getUserDataScope } from '../services/data-scope';
+import { SQL_STORED_NOW_DEFAULT, sqlNowStored } from '../_time';
 
 type MePayload = { user: any };
 const ME_CACHE_TTL_MS = 30 * 60_000;
@@ -35,7 +36,7 @@ async function ensureMeHotCacheTable(db: D1Database) {
       user_id INTEGER PRIMARY KEY,
       payload_json TEXT NOT NULL,
       acl_version INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
     )`
   ).run().then(async () => {
     try {
@@ -102,11 +103,11 @@ async function writeMeHotCache(db: D1Database, userId: number, payload: MePayloa
     await ensureMeHotCacheTable(db);
     await db.prepare(
       `INSERT INTO me_hot_cache (user_id, payload_json, acl_version, updated_at)
-       VALUES (?, ?, ?, datetime('now','+8 hours'))
+       VALUES (?, ?, ?, ${sqlNowStored()})
        ON CONFLICT(user_id) DO UPDATE SET
           payload_json=excluded.payload_json,
           acl_version=excluded.acl_version,
-          updated_at=datetime('now','+8 hours')`
+         updated_at=${sqlNowStored()}`
     ).bind(userId, JSON.stringify(payload), aclVersion).run();
     meHotReadCache.set(userId, { expiresAt: Date.now() + ME_HOT_READ_CACHE_TTL_MS, aclVersion, payload });
   } catch {

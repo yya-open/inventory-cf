@@ -136,7 +136,7 @@ export async function bulkUpdatePcStatus(
   const statements = targetIds.map((id) => db.prepare(pcAssetBulkStatusSql()).bind(status, id));
   await runBatchStatements(db, statements);
   if (targetIds.length && status !== 'ASSIGNED') {
-    const clearStatements = targetIds.map((id) => db.prepare(`UPDATE pc_asset_latest_state SET current_employee_no=NULL, current_employee_name=NULL, current_department=NULL, updated_at=datetime('now','+8 hours') WHERE asset_id=?`).bind(id));
+    const clearStatements = targetIds.map((id) => db.prepare(`UPDATE pc_asset_latest_state SET current_employee_no=NULL, current_employee_name=NULL, current_department=NULL, updated_at=${sqlNowStored()} WHERE asset_id=?`).bind(id));
     await runBatchStatements(db, clearStatements);
   }
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
@@ -161,7 +161,7 @@ export async function bulkUpdateMonitorStatus(
            employee_name=CASE WHEN ?='ASSIGNED' THEN employee_name ELSE NULL END,
            is_employed=CASE WHEN ?='ASSIGNED' THEN is_employed ELSE NULL END,
            search_text_norm=?,
-           updated_at=datetime('now','+8 hours')
+           updated_at=${sqlNowStored()}
        WHERE id=?`
     ).bind(
       status,
@@ -186,7 +186,7 @@ export async function bulkUpdateMonitorLocation(
   const targetIds = rows.map((row) => row.id);
   const skippedIds = missingRequestedIds(ids, targetIds);
   const rowsById = new Map(rows.map((row: any) => [row.id, row]));
-  const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(locationId, buildMonitorAssetSearchText(row, { employee_no: row.employee_no, employee_name: row.employee_name, department: row.department }), id); });
+  const statements = targetIds.map((id) => { const row: any = rowsById.get(id) || {}; return db.prepare(`UPDATE monitor_assets SET location_id=?, search_text_norm=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(locationId, buildMonitorAssetSearchText(row, { employee_no: row.employee_no, employee_name: row.employee_name, department: row.department }), id); });
   await runBatchStatements(db, statements);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
@@ -238,7 +238,7 @@ export async function bulkUpdateMonitorOwner(
         options.ip || '',
         options.ua || '',
       ),
-      db.prepare(`UPDATE monitor_assets SET status='ASSIGNED', employee_no=?, department=COALESCE(?, department), employee_name=?, is_employed='Y', search_text_norm=?, updated_at=datetime('now','+8 hours') WHERE id=?`).bind(owner.employee_no, owner.department, owner.employee_name, buildMonitorAssetSearchText(row, { employee_no: owner.employee_no, employee_name: owner.employee_name, department }), id),
+      db.prepare(`UPDATE monitor_assets SET status='ASSIGNED', employee_no=?, department=COALESCE(?, department), employee_name=?, is_employed='Y', search_text_norm=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(owner.employee_no, owner.department, owner.employee_name, buildMonitorAssetSearchText(row, { employee_no: owner.employee_no, employee_name: owner.employee_name, department }), id),
     ];
   });
   await runBatchStatements(db, statements);
