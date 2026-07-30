@@ -3,7 +3,13 @@ import path from 'node:path';
 import crypto from 'node:crypto';
 import os from 'node:os';
 import { fileURLToPath } from 'node:url';
-import { spawnSync } from 'node:child_process';
+import {
+  defaultWranglerBin,
+  extractResultsRows,
+  parseWranglerJson,
+  runWrangler as runWranglerArgv,
+  runWranglerD1,
+} from './lib/wrangler.mjs';
 
 const scriptPath = fileURLToPath(import.meta.url);
 const root = path.resolve(path.dirname(scriptPath), '..');
@@ -22,11 +28,8 @@ const manifest = JSON.parse(fs.readFileSync(manifestPath, 'utf8'));
 
 function sha256(text) { return crypto.createHash('sha256').update(text).digest('hex'); }
 function sqlEscape(text) { return String(text).replace(/'/g, "''"); }
-function defaultWranglerBin() {
-  return 'wrangler';
-}
 function parseArgs(argv) {
-  const out = { action: 'plan', db: '', remote: false, local: false, wrangler: process.env.WRANGLER_BIN || defaultWranglerBin() };
+  const out = { action: 'plan', db: '', remote: false, local: false, wrangler: defaultWranglerBin() };
   const args = [...argv];
   if (args[0] && !args[0].startsWith('--')) out.action = args.shift();
   while (args.length) {
@@ -50,96 +53,11 @@ function verifyManifest() {
   }
 }
 function runWrangler({ wrangler, db, command, file, remote, local, json = false }) {
-  const args = ['d1', 'execute', db];
-  let tempCommandFile = null;
-  if (remote) args.push('--remote');
-  if (local) args.push('--local');
-  if (json) args.push('--json');
-  if (command && file) throw new Error('runWrangler received both command and file; choose one');
-  if (command) {
-    const commandText = String(command);
-    const useCommandFile = process.platform === 'win32' && /\r|\n/.test(commandText);
-    if (useCommandFile) {
-      const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'inventory-migration-command-'));
-      tempCommandFile = path.join(dir, 'command.sql');
-      fs.writeFileSync(tempCommandFile, commandText);
-      args.push('--file', tempCommandFile);
-    } else {
-      args.push('--command', commandText);
-    }
-  }
-  if (file) args.push('--file', file);
-
-  let result;
-  if (process.platform === 'win32') {
-    const quoteArg = (value) => {
-      const s = String(value ?? '');
-      return `"${s.replace(/"/g, '""')}"`;
-    };
-    const cmdline = [wrangler, ...args].map(quoteArg).join(' ');
-    result = spawnSync(cmdline, { cwd: root, encoding: 'utf8', shell: true });
-  } else {
-    result = spawnSync(wrangler, args, { cwd: root, encoding: 'utf8' });
-  }
-
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
-  return result.stdout.trim();
+  return runWranglerD1({ wrangler, db, command, file, remote, local, json, cwd: root });
 }
 
 function runWranglerRaw({ wrangler, argv }) {
-  let result;
-  if (process.platform === 'win32') {
-    const quoteArg = (value) => {
-      const s = String(value ?? '');
-      return `"${s.replace(/"/g, '""')}"`;
-    };
-    const cmdline = [wrangler, ...argv].map(quoteArg).join(' ');
-    result = spawnSync(cmdline, { cwd: root, encoding: 'utf8', shell: true });
-  } else {
-    result = spawnSync(wrangler, argv, { cwd: root, encoding: 'utf8' });
-  }
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
-  return result.stdout.trim();
-}
-
-function parseWranglerJson(text) {
-  const raw = String(text || '').trim();
-  if (!raw) return [];
-  try {
-    return JSON.parse(raw);
-  } catch {}
-
-  let parsed = null;
-  for (let i = 0; i < raw.length; i++) {
-    const ch = raw[i];
-    if (ch !== '[' && ch !== '{') continue;
-    const candidate = raw.slice(i).trim();
-    try {
-      parsed = JSON.parse(candidate);
-    } catch {}
-  }
-  if (parsed != null) return parsed;
-  throw new Error(`Unable to parse wrangler JSON output:\n${raw.slice(0, 500)}`);
-}
-
-function extractResultsRows(payload) {
-  const queue = [payload];
-  while (queue.length) {
-    const current = queue.shift();
-    if (Array.isArray(current)) {
-      if (current.length && current.every((row) => row && typeof row === 'object' && !Array.isArray(row) && !('results' in row))) {
-        return current;
-      }
-      for (const item of current) queue.push(item);
-      continue;
-    }
-    if (!current || typeof current !== 'object') continue;
-    if (Array.isArray(current.results)) return current.results;
-    for (const value of Object.values(current)) queue.push(value);
-  }
-  return [];
+  return runWranglerArgv({ wrangler, argv, cwd: root });
 }
 
 function ensureRegistry(args) { runWrangler({ ...args, command: registrySql }); }

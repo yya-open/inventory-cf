@@ -1,7 +1,7 @@
-import { spawnSync } from 'node:child_process';
+import { defaultWranglerBin, queryWranglerD1 } from './lib/wrangler.mjs';
 
 function parseArgs(argv) {
-  const out = { db: '', remote: false, local: false, json: false, wrangler: process.env.WRANGLER_BIN || 'wrangler' };
+  const out = { db: '', remote: false, local: false, json: false, wrangler: defaultWranglerBin() };
   const args = [...argv];
   while (args.length) {
     const cur = args.shift();
@@ -25,17 +25,7 @@ const checks = [
 ];
 
 function runWrangler(args, sql) {
-  const wranglerArgs = ['d1', 'execute', args.db];
-  if (args.remote) wranglerArgs.push('--remote');
-  if (args.local) wranglerArgs.push('--local');
-  wranglerArgs.push('--json', '--command', sql);
-  const result = spawnSync(args.wrangler, wranglerArgs, { encoding: 'utf8' });
-  if (result.status !== 0) {
-    throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
-  }
-  const parsed = JSON.parse(result.stdout || '[]');
-  const rows = Array.isArray(parsed) ? parsed : [parsed];
-  return Array.isArray(rows[0]?.results) ? rows[0].results : [];
+  return queryWranglerD1({ wrangler: args.wrangler, db: args.db, command: sql, remote: args.remote, local: args.local });
 }
 
 function readCount(rows) {

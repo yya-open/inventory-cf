@@ -1,11 +1,11 @@
-import { spawnSync } from 'node:child_process';
+import { defaultWranglerBin, runWranglerD1 } from './lib/wrangler.mjs';
 
 function parseArgs(argv) {
   const out = {
     db: '',
     remote: false,
     local: false,
-    wrangler: process.env.WRANGLER_BIN || 'wrangler',
+    wrangler: defaultWranglerBin(),
     slowDays: 30,
     errorDays: 30,
     perfDays: 14,
@@ -84,9 +84,4 @@ SELECT COUNT(*) AS browser_perf_rows FROM browser_perf_log;
 SELECT COUNT(*) AS browser_event_rows FROM browser_event_log;
 `;
 
-const cmd = [args.wrangler, 'd1', 'execute', args.db];
-if (args.remote) cmd.push('--remote');
-if (args.local) cmd.push('--local');
-cmd.push('--command', sql);
-const result = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
-if (result.status !== 0) process.exit(result.status || 1);
+runWranglerD1({ wrangler: args.wrangler, db: args.db, command: sql, remote: args.remote, local: args.local, stdio: 'inherit' });

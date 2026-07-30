@@ -1,13 +1,13 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { spawnSync } from 'node:child_process';
+import { defaultWranglerBin, queryWranglerD1 } from './lib/wrangler.mjs';
 
 const root = process.cwd();
 const schemaStatusPath = path.join(root, 'functions', 'api', 'services', 'schema-status.ts');
 const manifestPath = path.join(root, 'sql', 'migrations.manifest.json');
 
 function parseArgs(argv) {
-  const out = { db: '', remote: false, local: false, json: false, wrangler: process.env.WRANGLER_BIN || 'wrangler' };
+  const out = { db: '', remote: false, local: false, json: false, wrangler: defaultWranglerBin() };
   const args = [...argv];
   while (args.length) {
     const cur = args.shift();
@@ -35,37 +35,8 @@ function readManifestVersion() {
   return String((last && typeof last === 'object' ? last.id : last) || '').trim();
 }
 
-function extractJson(text) {
-  const raw = String(text || '').trim();
-  const start = raw.search(/[[{]/);
-  if (start < 0) return [];
-  try {
-    return JSON.parse(raw.slice(start));
-  } catch {
-    return [];
-  }
-}
-
-function spawnWrangler(args, wranglerArgs) {
-  if (process.platform === 'win32') {
-    const quote = (value) => `"${String(value ?? '').replace(/"/g, '""')}"`;
-    const cmdline = [args.wrangler, ...wranglerArgs].map(quote).join(' ');
-    return spawnSync(cmdline, { cwd: root, encoding: 'utf8', shell: true });
-  }
-  return spawnSync(args.wrangler, wranglerArgs, { cwd: root, encoding: 'utf8' });
-}
-
 function query(args, sql) {
-  const wranglerArgs = ['d1', 'execute', args.db];
-  if (args.remote) wranglerArgs.push('--remote');
-  if (args.local) wranglerArgs.push('--local');
-  wranglerArgs.push('--json', '--command', sql);
-  const result = spawnWrangler(args, wranglerArgs);
-  if (result.error) throw result.error;
-  if (result.status !== 0) throw new Error(result.stderr || result.stdout || `wrangler exited with ${result.status}`);
-  const parsed = extractJson(result.stdout);
-  const rows = Array.isArray(parsed) ? parsed : [parsed];
-  return Array.isArray(rows[0]?.results) ? rows[0].results : [];
+  return queryWranglerD1({ wrangler: args.wrangler, db: args.db, command: sql, remote: args.remote, local: args.local });
 }
 
 const args = parseArgs(process.argv.slice(2));

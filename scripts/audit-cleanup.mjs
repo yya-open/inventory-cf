@@ -1,11 +1,11 @@
-import { spawnSync } from 'node:child_process';
+import { defaultWranglerBin, runWranglerD1 } from './lib/wrangler.mjs';
 
 function parseArgs(argv) {
   const out = {
     db: '',
     remote: false,
     local: false,
-    wrangler: process.env.WRANGLER_BIN || 'wrangler',
+    wrangler: defaultWranglerBin(),
     days: 180,
   };
   const args = [...argv];
@@ -27,9 +27,4 @@ DELETE FROM audit_log WHERE created_at < datetime('now','+8 hours','-${Math.trun
 UPDATE audit_retention_state SET last_cleanup_at = datetime('now','+8 hours') WHERE id = 1;
 SELECT COUNT(*) AS audit_rows FROM audit_log;
 `;
-const cmd = [args.wrangler, 'd1', 'execute', args.db];
-if (args.remote) cmd.push('--remote');
-if (args.local) cmd.push('--local');
-cmd.push('--command', sql);
-const result = spawnSync(cmd[0], cmd.slice(1), { stdio: 'inherit' });
-if (result.status !== 0) process.exit(result.status || 1);
+runWranglerD1({ wrangler: args.wrangler, db: args.db, command: sql, remote: args.remote, local: args.local, stdio: 'inherit' });
