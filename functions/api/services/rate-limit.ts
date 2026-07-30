@@ -50,12 +50,6 @@ export async function ensureAuthLoginThrottleTable(db: D1Database) {
   return authLoginThrottlePending;
 }
 
-export async function ensurePublicThrottleTable(db: D1Database) {
-  // The table is created by the public-QR migration and the index is guaranteed
-  // by the follow-up migration. Do not issue DDL from public request paths.
-  return;
-}
-
 export async function cleanupPublicThrottleBuckets(db: D1Database, maxAgeHours = 2) {
   await db.prepare(`DELETE FROM public_api_throttle WHERE updated_at < ${sqlStoredHoursAgo(maxAgeHours)}`).run();
 }

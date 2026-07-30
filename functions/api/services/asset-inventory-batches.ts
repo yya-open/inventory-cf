@@ -118,18 +118,11 @@ export async function clearInventoryLogsForNewBatch(
   db: D1Database,
   kind: AssetInventoryKind,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
   const cfg = KIND_CONFIG[kind];
   const result = await db.prepare(`DELETE FROM ${cfg.logTable}`).run();
   return Number(
     (result as any)?.meta?.changes ?? (result as any)?.changes ?? 0,
   );
-}
-
-// Kept for callers deployed alongside older bundles. Schema changes are applied by
-// D1 migrations, never by a request path.
-export async function ensureAssetInventoryBatchSchema(_db: D1Database) {
-  return;
 }
 
 function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
@@ -168,7 +161,6 @@ function normalizeBatchRow(row: any): AssetInventoryBatchRow | null {
 }
 
 async function firstBatchRow(db: D1Database, sql: string, binds: any[]) {
-  await ensureAssetInventoryBatchSchema(db);
   const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
   const normalizedBinds = Array.isArray(binds) ? binds : [];
   try {
@@ -181,7 +173,6 @@ async function firstBatchRow(db: D1Database, sql: string, binds: any[]) {
 }
 
 async function allBatchRows(db: D1Database, sql: string, binds: any[]) {
-  await ensureAssetInventoryBatchSchema(db);
   const selectWithJob = sql.replace('SELECT *', `SELECT b.*, j.message AS snapshot_job_message, j.started_at AS snapshot_job_started_at, j.finished_at AS snapshot_job_finished_at, j.retry_count AS snapshot_job_retry_count, j.max_retries AS snapshot_job_max_retries`).replace('FROM asset_inventory_batch', 'FROM asset_inventory_batch b LEFT JOIN async_jobs j ON j.id = b.snapshot_job_id');
   const normalizedBinds = Array.isArray(binds) ? binds : [];
   try {
@@ -321,7 +312,6 @@ export async function startInventoryBatch(
   name: string | null | undefined,
   createdBy: string | null,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
   const cfg = KIND_CONFIG[kind];
   const normalizedName = String(name || '').trim() || await buildDefaultBatchName(db, kind);
   const existingActive = await getActiveInventoryBatch(db, kind);
@@ -365,7 +355,6 @@ export async function closeInventoryBatch(
   closedBy: string | null,
   batchId?: number | null,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
   const target =
     batchId && Number(batchId) > 0
       ? await db
@@ -425,7 +414,6 @@ export async function attachInventoryBatchSnapshotJob(
   batchId: number,
   jobId: number,
 ) {
-  await ensureAssetInventoryBatchSchema(db);
   await db
     .prepare(
       `UPDATE asset_inventory_batch
@@ -456,7 +444,6 @@ export async function updateInventoryBatchSnapshotJobState(
     exportedAt?: string | null;
   },
 ) {
-  await ensureAssetInventoryBatchSchema(db);
   const status = payload.status ?? null;
   const exportedAt = payload.exportedAt ?? null;
   await db

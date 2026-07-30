@@ -153,11 +153,16 @@ function makeEnv(user: FakeUser) {
   return { fake, env };
 }
 
-async function callMe(env: MeEnv, token: string) {
+function makeWaitUntilSpy() {
+  return vi.fn((_promise: Promise<unknown>) => {});
+}
+
+async function callMe(env: MeEnv, token: string, waitUntil?: (promise: Promise<unknown>) => void) {
   const request = new Request('https://example.test/api/auth/me', {
     headers: { cookie: buildAuthCookie(token, 3600) },
   });
-  const response = await meHandler({ env, request } as unknown as MeContext);
+  const context = waitUntil ? { env, request, waitUntil } : { env, request };
+  const response = await meHandler(context as unknown as MeContext);
   const body: MeBody = await response.json();
   return { status: response.status, body };
 }
@@ -310,6 +315,100 @@ describe('/api/auth/me me_hot_cache path', () => {
 
     expect(fake.hotCacheWrites).toHaveLength(1);
     expect(fake.hotCacheWrites[0]).toMatchObject({ userId: user.id, aclVersion: 9 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('hands the debounced write to waitUntil so it stays inside the request lifetime', async () => {
+    const user = makeUser(107, 'wait-until-rebuild', 3);
+    const { fake, env } = makeEnv(user);
+    const waitUntil = makeWaitUntilSpy();
+    const token = await signJwt({ sub: user.id, u: user.username, r: user.role, tv: 0 }, SECRET, 3600);
+
+    const { status, body } = await callMe(env, token, waitUntil);
+
+    expect(status).toBe(200);
+    expect(body.ok).toBe(true);
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    const pending = waitUntil.mock.calls[0][0];
+    expect(typeof pending?.then).toBe('function');
+
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+
+    await vi.advanceTimersByTimeAsync(WRITE_DEBOUNCE_MS - 1);
+    expect(settled).toBe(false);
+    expect(fake.hotCacheWrites).toEqual([]);
+
+    await vi.advanceTimersByTimeAsync(1);
+    await pending;
+
+    expect(settled).toBe(true);
+    expect(fake.hotCacheWrites).toHaveLength(1);
+    expect(fake.hotCacheWrites[0]).toMatchObject({ userId: user.id, aclVersion: 3 });
+    expect(vi.getTimerCount()).toBe(0);
+  });
+
+  it('settles the waitUntil promise without writing when the queued write is cancelled', async () => {
+    const user = makeUser(108, 'wait-until-cancelled', 2);
+    const { fake, env } = makeEnv(user);
+    const waitUntil = makeWaitUntilSpy();
+    const token = await signJwt({ sub: user.id, u: user.username, r: user.role, tv: 0 }, SECRET, 3600);
+
+    await callMe(env, token, waitUntil);
+
+    expect(waitUntil).toHaveBeenCalledTimes(1);
+    const pending = waitUntil.mock.calls[0][0];
+    let settled = false;
+    void pending.then(() => {
+      settled = true;
+    });
+
+    // No db argument: cancelling must not depend on the best-effort DELETE.
+    await invalidateCachedMe(user.id);
+    await Promise.resolve();
+
+    expect(settled).toBe(true);
+    expect(vi.getTimerCount()).toBe(0);
+
+    await vi.advanceTimersByTimeAsync(WRITE_DEBOUNCE_MS * 2);
+    expect(fake.hotCacheWrites).toEqual([]);
+  });
+
+  it('resolves the superseded waitUntil promise and writes once with the newest payload', async () => {
+    const user = makeUser(109, 'wait-until-superseded', 4);
+    const { fake, env } = makeEnv(user);
+    const firstWaitUntil = makeWaitUntilSpy();
+    const secondWaitUntil = makeWaitUntilSpy();
+    const token = await signJwt({ sub: user.id, u: user.username, r: user.role, tv: 0 }, SECRET, 3600);
+
+    await callMe(env, token, firstWaitUntil);
+    expect(firstWaitUntil).toHaveBeenCalledTimes(1);
+    const firstPending = firstWaitUntil.mock.calls[0][0];
+    let firstSettled = false;
+    void firstPending.then(() => {
+      firstSettled = true;
+    });
+
+    // A bumped acl_version invalidates the in-memory payload, forcing a second rebuild + queue entry.
+    user.acl_version = 5;
+    await callMe(env, token, secondWaitUntil);
+    await Promise.resolve();
+
+    expect(secondWaitUntil).toHaveBeenCalledTimes(1);
+    expect(firstSettled).toBe(true);
+    expect(fake.hotCacheWrites).toEqual([]);
+
+    const secondPending = secondWaitUntil.mock.calls[0][0];
+    await vi.advanceTimersByTimeAsync(WRITE_DEBOUNCE_MS);
+    await secondPending;
+
+    expect(fake.hotCacheWrites).toHaveLength(1);
+    const write = fake.hotCacheWrites[0];
+    expect(write).toMatchObject({ userId: user.id, aclVersion: 5 });
+    const persisted: { user: MeUser } = JSON.parse(write.payloadJson);
+    expect(persisted.user.acl_version).toBe(5);
     expect(vi.getTimerCount()).toBe(0);
   });
 });

@@ -170,7 +170,7 @@ npm run audit:stats
 npm run audit:cleanup
 ```
 
-观测数据清理：
+观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)由 `workers/async-jobs-consumer.ts` 的 cron 自动执行,按 `observability_retention_policy` 的保留天数删除;下面的命令用于手动补跑:
 
 ```bash
 npm run obs:cleanup

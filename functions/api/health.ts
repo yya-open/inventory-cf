@@ -12,8 +12,9 @@ export const onRequestGet: PagesFunction<{ DB: D1Database }> = async ({ env }) =
     const resp = Response.json({ ok: true, ts: Date.now() });
     resp.headers.set("Cache-Control", "no-store");
     return resp;
-  } catch (e: any) {
-    const resp = Response.json({ ok: false, message: String(e?.message || e || "error") }, { status: 500 });
+  } catch (e) {
+    console.error('health check failed', String(e));
+    const resp = Response.json({ ok: false, message: "服务异常" }, { status: 500 });
     resp.headers.set("Cache-Control", "no-store");
     return resp;
   }

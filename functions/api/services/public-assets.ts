@@ -2,7 +2,7 @@ import { verifyJwt } from '../_auth';
 import { sqlNowStored } from '../_time';
 import { throwHttpError } from '../_error';
 import { resolveInventoryBatchIdForWrite } from './asset-inventory-batches';
-import { cleanupPublicThrottleBuckets, ensurePublicThrottleTable, getClientIp, incrementPublicThrottleBucket } from './rate-limit';
+import { cleanupPublicThrottleBuckets, getClientIp, incrementPublicThrottleBucket } from './rate-limit';
 
 export type PublicAssetKind = 'pc' | 'monitor';
 
@@ -42,7 +42,7 @@ const ASSET_CONFIG: Record<PublicAssetKind, {
   },
 };
 
-export { ensurePublicThrottleTable, getClientIp };
+export { getClientIp };
 
 export async function rateLimitPublic(
   db: D1Database,
@@ -52,8 +52,6 @@ export async function rateLimitPublic(
   limitPerMinute: number,
   options?: { sourceLimitPerMinute?: number },
 ) {
-  await ensurePublicThrottleTable(db);
-
   const ip = getClientIp(request) || 'unknown';
   const minuteBucket = Math.floor(Date.now() / 60000);
   const subjectKey = `${route}|subject|${subject}|${ip}|${minuteBucket}`;

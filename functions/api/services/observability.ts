@@ -56,51 +56,31 @@ export function summarizeRouteDurations(rows: Array<{ duration_ms?: number | nul
 }
 
 let browserObservabilityReady = false;
-let browserObservabilityPending: Promise<void> | null = null;
+let browserObservabilityProbeAt = 0;
+const BROWSER_OBSERVABILITY_PROBE_TTL_MS = 10 * 60_000;
 let observabilityRetentionReady = false;
 let observabilityRetentionPending: Promise<void> | null = null;
 
+// 读路径只探测不建表：browser_perf_log / browser_event_log 及其索引由 sql/ 迁移负责创建。
+async function probeBrowserObservabilityReady(db: D1Database) {
+  try {
+    const checks = await db.batch<{ ok?: number }>([
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='browser_perf_log'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='table' AND name='browser_event_log'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_browser_perf_log_path_duration_created'"),
+      db.prepare("SELECT 1 AS ok FROM sqlite_master WHERE type='index' AND name='idx_browser_event_log_path_event_created'"),
+    ]);
+    return checks.every((item) => Number(item?.results?.[0]?.ok || 0) === 1);
+  } catch {
+    return false;
+  }
+}
+
 export async function ensureBrowserObservabilityTables(db: D1Database) {
   if (browserObservabilityReady) return;
-  if (browserObservabilityPending) return browserObservabilityPending;
-  browserObservabilityPending = (async () => {
-    await db.prepare(
-      `CREATE TABLE IF NOT EXISTS browser_perf_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        kind TEXT NOT NULL DEFAULT 'route',
-        path TEXT NOT NULL,
-        full_path TEXT,
-        duration_ms INTEGER NOT NULL,
-        username TEXT,
-        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-      )`
-    ).run();
-    await db.prepare(
-      `CREATE TABLE IF NOT EXISTS browser_event_log (
-        id INTEGER PRIMARY KEY AUTOINCREMENT,
-        event_name TEXT NOT NULL,
-        path TEXT NOT NULL,
-        full_path TEXT,
-        metadata_json TEXT,
-        username TEXT,
-        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
-      )`
-    ).run();
-    await db.batch([
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_created_at ON browser_perf_log(created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_created_at ON browser_perf_log(path, created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_duration_created_at ON browser_perf_log(duration_ms DESC, created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_duration_created ON browser_perf_log(path, duration_ms DESC, created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_created_at ON browser_event_log(created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_event_created_at ON browser_event_log(event_name, created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_created_at ON browser_event_log(path, created_at DESC)`),
-      db.prepare(`CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_event_created ON browser_event_log(path, event_name, created_at DESC)`),
-    ]);
-    browserObservabilityReady = true;
-  })().finally(() => {
-    browserObservabilityPending = null;
-  });
-  return browserObservabilityPending;
+  if (Date.now() - browserObservabilityProbeAt < BROWSER_OBSERVABILITY_PROBE_TTL_MS) return;
+  browserObservabilityProbeAt = Date.now();
+  if (await probeBrowserObservabilityReady(db)) browserObservabilityReady = true;
 }
 
 export async function ensureObservabilityRetentionTables(db: D1Database) {
@@ -110,7 +90,28 @@ export async function ensureObservabilityRetentionTables(db: D1Database) {
     await Promise.all([
       ensureSlowRequestLogTable(db),
       ensureRequestErrorLogTable(db),
-      ensureBrowserObservabilityTables(db),
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS browser_perf_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        kind TEXT NOT NULL DEFAULT 'route',
+        path TEXT NOT NULL,
+        full_path TEXT,
+        duration_ms INTEGER NOT NULL,
+        username TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+      ).run(),
+      db.prepare(
+        `CREATE TABLE IF NOT EXISTS browser_event_log (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        event_name TEXT NOT NULL,
+        path TEXT NOT NULL,
+        full_path TEXT,
+        metadata_json TEXT,
+        username TEXT,
+        created_at TEXT NOT NULL DEFAULT (${sqlNowStored()})
+      )`
+      ).run(),
     ]);
     await db.prepare(
       `CREATE TABLE IF NOT EXISTS observability_retention_policy (

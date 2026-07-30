@@ -210,6 +210,11 @@
     "description": "audit log archive policy, storage stats cache, and archive run history for d1 capacity control"
   },
   {
+    "id": "202604080005_browser_observability_tables",
+    "file": "sql/migrate_browser_observability_tables.sql",
+    "description": "browser performance and interaction log tables without runtime DDL"
+  },
+  {
     "id": "202604080010_observability_retention_indexes",
     "file": "sql/migrate_observability_retention_indexes.sql",
     "description": "observability retention policy, cleanup history, and composite indexes for browser and inventory log queries"
@@ -248,5 +253,15 @@
     "id": "202607230010_me_hot_cache",
     "file": "sql/migrate_me_hot_cache.sql",
     "description": "me hot cache table without runtime DDL"
+  },
+  {
+    "id": "202607300010_monitor_assets_location_index",
+    "file": "sql/migrate_monitor_assets_location_index.sql",
+    "description": "monitor assets archived+location index required by the monitor schema readiness probe"
+  },
+  {
+    "id": "202607300020_async_jobs_lease",
+    "file": "sql/migrate_async_jobs_lease.sql",
+    "description": "async job lease/claim columns and job_type indexes required by the async jobs readiness probe"
   }
 ]

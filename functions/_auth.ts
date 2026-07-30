@@ -316,9 +316,43 @@ export function json(ok: boolean, data?: any, message?: string, status = 200, er
   return Response.json({ ok, data, message, error_code: errorCode }, { status });
 }
 
-export function errorResponse(e: any) {
-  const status = Number(e?.status || 500);
-  const msg = e?.message || "服务异常";
-  const errorCode = String(e?.error_code || e?.code || '').trim() || undefined;
-  return json(false, null, msg, status, errorCode);
+export const GENERIC_SERVER_ERROR_MESSAGE = "服务异常";
+
+// Driver/runtime text that must never reach a client: it exposes table, column and
+// query shape. App-level throws (validation messages) stay verbatim.
+const INTERNAL_ERROR_SIGNATURES = [
+  'd1_error',
+  'sqlite',
+  'no such table',
+  'no such column',
+  'no such function',
+  'syntax error',
+  'constraint failed',
+  'json path error',
+  'network connection lost',
+  'cannot read properties',
+  'is not a function',
+  'is not defined',
+];
+
+type HttpErrorLike = { status?: unknown; message?: unknown; error_code?: unknown; code?: unknown };
+
+export function isInternalErrorMessage(message: string) {
+  const probe = message.toLowerCase();
+  return INTERNAL_ERROR_SIGNATURES.some((signature) => probe.includes(signature));
+}
+
+export function errorResponse(e: unknown) {
+  const fields: HttpErrorLike = e && typeof e === 'object' ? e : {};
+  const declaredStatus = Number(fields.status || 0);
+  const message = typeof fields.message === 'string' ? fields.message.trim() : '';
+  const explicitCode = typeof fields.error_code === 'string' || typeof fields.error_code === 'number' ? String(fields.error_code).trim() : '';
+  const driverCode = typeof fields.code === 'string' || typeof fields.code === 'number' ? String(fields.code).trim() : '';
+  const status = declaredStatus > 0 ? declaredStatus : 500;
+  const errorCode = explicitCode || (declaredStatus > 0 ? driverCode : '') || undefined;
+  if (!message || isInternalErrorMessage(message)) {
+    if (message) console.error('unhandled route error', message);
+    return json(false, null, GENERIC_SERVER_ERROR_MESSAGE, status, errorCode);
+  }
+  return json(false, null, message, status, errorCode);
 }

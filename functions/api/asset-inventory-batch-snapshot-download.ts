@@ -1,7 +1,6 @@
 import { json } from './_auth';
 import { withErrorHandling } from './_error';
 import { buildAsyncJobDownloadResponse, assertAsyncJobDownloadAccess, getAsyncJob } from './services/async-jobs';
-import { ensureAssetInventoryBatchSchema } from './services/asset-inventory-batches';
 import { requireAuthWithDataScope } from './services/data-scope';
 
 function parseKind(input: any) {
@@ -12,7 +11,6 @@ function parseKind(input: any) {
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
   const actor = await requireAuthWithDataScope(env, request, 'viewer');
-  await ensureAssetInventoryBatchSchema(env.DB);
   const url = new URL(request.url);
   const kind = parseKind(url.searchParams.get('kind'));
   const batchId = Number(url.searchParams.get('id') || url.searchParams.get('batch_id') || 0);

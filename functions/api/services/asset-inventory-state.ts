@@ -1,6 +1,6 @@
 import type { QueryParts } from './asset-ledger';
 import { sqlNowStored } from '../_time';
-import { ensureAssetInventoryBatchSchema, getEffectiveInventoryBatch, type AssetInventoryKind as InventoryBatchKind } from './asset-inventory-batches';
+import { getEffectiveInventoryBatch, type AssetInventoryKind as InventoryBatchKind } from './asset-inventory-batches';
 import { invalidateInventorySummaryCache } from './asset-inventory-summary-cache';
 import { D1_SAFE_ID_BATCH_SIZE } from './sql-batch';
 
@@ -62,7 +62,6 @@ async function loadLatestInventoryLogs(
 }
 
 export async function syncAssetInventoryState(db: D1Database, kind: AssetInventoryKind, assetIds: number[]) {
-  await ensureAssetInventoryBatchSchema(db);
   const cfg = KIND_CONFIG[kind];
   const ids = Array.from(new Set((assetIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)));
   if (!ids.length) return;

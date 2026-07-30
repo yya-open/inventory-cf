@@ -17,6 +17,7 @@ const meHotWriteQueue = new Map<number, {
   payload: MePayload;
   aclVersion: number;
   timer: ReturnType<typeof setTimeout>;
+  settle: () => void;
 }>();
 
 type MeCacheMissReason = 'not_found' | 'expired' | 'version_mismatch' | 'invalid' | 'db_error';
@@ -105,21 +106,36 @@ export function primeCachedMe(db: D1Database | null | undefined, userId: number,
   return payload;
 }
 
-function queueMeHotCacheWrite(db: D1Database, userId: number, payload: MePayload, aclVersion: number) {
+function queueMeHotCacheWrite(
+  db: D1Database,
+  userId: number,
+  payload: MePayload,
+  aclVersion: number,
+  waitUntil?: ((promise: Promise<unknown>) => void) | undefined,
+) {
+  let settle: () => void = () => {};
+  // Resolves when this entry's write settles, is cancelled, or is superseded, so waitUntil never hangs.
+  const settled = new Promise<void>((resolve) => {
+    settle = () => resolve();
+  });
   const queued = meHotWriteQueue.get(userId);
   if (queued) {
+    const supersededSettle = queued.settle;
     queued.db = db;
     queued.payload = payload;
     queued.aclVersion = aclVersion;
-    return;
+    queued.settle = settle;
+    supersededSettle();
+  } else {
+    const timer = setTimeout(() => {
+      const current = meHotWriteQueue.get(userId);
+      if (!current) return;
+      meHotWriteQueue.delete(userId);
+      void writeMeHotCache(current.db, userId, current.payload, current.aclVersion).then(current.settle, current.settle);
+    }, ME_HOT_CACHE_WRITE_DEBOUNCE_MS);
+    meHotWriteQueue.set(userId, { db, payload, aclVersion, timer, settle });
   }
-  const timer = setTimeout(async () => {
-    const current = meHotWriteQueue.get(userId);
-    if (!current) return;
-    meHotWriteQueue.delete(userId);
-    await writeMeHotCache(current.db, userId, current.payload, current.aclVersion);
-  }, ME_HOT_CACHE_WRITE_DEBOUNCE_MS);
-  meHotWriteQueue.set(userId, { db, payload, aclVersion, timer });
+  if (waitUntil) waitUntil(settled);
 }
 
 export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null, maybeUserId?: number | null, reason?: string, timing?: any) {
@@ -134,11 +150,15 @@ export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null
     if (queued) {
       clearTimeout(queued.timer);
       meHotWriteQueue.delete(userId);
+      queued.settle();
     }
   } else {
     meCache.clear();
     meHotReadCache.clear();
-    for (const queued of meHotWriteQueue.values()) clearTimeout(queued.timer);
+    for (const queued of meHotWriteQueue.values()) {
+      clearTimeout(queued.timer);
+      queued.settle();
+    }
     meHotWriteQueue.clear();
   }
 
@@ -154,7 +174,7 @@ export async function invalidateCachedMe(dbOrUserId?: D1Database | number | null
   }
 }
 
-export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
+export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const timing = (env as any).__timing;
   const user = await requireAuth(env, request, "viewer");
   const expectedAclVersion = Number((user as any)?.acl_version || 0);
@@ -183,7 +203,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const dataScope = getAuthUserDataScope(user);
   const payload = writeCachedMe(user.id, { user: { ...user, acl_version: expectedAclVersion, permission_template_code, permissions, ...dataScope } });
   markTiming(timing, 'auth_me_cache_rebuild');
-  queueMeHotCacheWrite(env.DB, user.id, payload, expectedAclVersion);
+  queueMeHotCacheWrite(env.DB, user.id, payload, expectedAclVersion, waitUntil);
   markTiming(timing, 'auth_me_hot_cache_write_queued');
   return json(true, payload);
 });

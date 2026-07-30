@@ -177,6 +177,30 @@ CREATE TABLE IF NOT EXISTS request_error_log (
 );
 CREATE INDEX IF NOT EXISTS idx_request_error_log_created_status ON request_error_log(created_at DESC, status, path);
 
+CREATE TABLE IF NOT EXISTS browser_perf_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  kind TEXT NOT NULL DEFAULT 'route',
+  path TEXT NOT NULL,
+  full_path TEXT,
+  duration_ms INTEGER NOT NULL,
+  username TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_browser_perf_log_created_at ON browser_perf_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_browser_perf_log_path_duration_created ON browser_perf_log(path, duration_ms DESC, created_at DESC);
+
+CREATE TABLE IF NOT EXISTS browser_event_log (
+  id INTEGER PRIMARY KEY AUTOINCREMENT,
+  event_name TEXT NOT NULL,
+  path TEXT NOT NULL,
+  full_path TEXT,
+  metadata_json TEXT,
+  username TEXT,
+  created_at TEXT NOT NULL DEFAULT (datetime('now','+8 hours'))
+);
+CREATE INDEX IF NOT EXISTS idx_browser_event_log_created_at ON browser_event_log(created_at DESC);
+CREATE INDEX IF NOT EXISTS idx_browser_event_log_path_event_created ON browser_event_log(path, event_name, created_at DESC);
+
 -- =========================
 -- 仓库2：电脑仓（资产化管理）
 -- =========================
@@ -339,6 +363,7 @@ CREATE INDEX IF NOT EXISTS idx_monitor_assets_status_location_id ON monitor_asse
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_status ON monitor_assets(archived, status, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_id ON monitor_assets(archived, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_inventory_status_id ON monitor_assets(archived, inventory_status, id);
+CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_location_id ON monitor_assets(archived, location_id, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_inventory_status_id ON monitor_assets(inventory_status, id);
 CREATE INDEX IF NOT EXISTS idx_monitor_assets_archived_reason_id ON monitor_assets(archived, archived_reason, id);
 

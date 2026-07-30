@@ -2,6 +2,7 @@ import { cleanupAsyncJobHousekeeping, processAsyncJob } from '../functions/api/s
 import { runAuditCleanupIfDue, refreshAuditStorageStats } from '../functions/api/_audit';
 import { maybeRunAuditArchiveMaintenance } from '../functions/api/services/audit-archive';
 import { refreshDirtySystemDictionaryUsageCounters } from '../functions/api/services/system-dictionaries';
+import { runObservabilityCleanup } from '../functions/api/services/observability';
 
 type QueueMessage<T> = {
   id?: string;
@@ -51,5 +52,6 @@ export default {
     ctx.waitUntil(refreshAuditStorageStats(env.DB));
     ctx.waitUntil(maybeRunAuditArchiveMaintenance(env.DB, env.BACKUP_BUCKET));
     ctx.waitUntil(refreshDirtySystemDictionaryUsageCounters(env.DB));
+    ctx.waitUntil(runObservabilityCleanup(env.DB, { reason: 'cron' }));
   },
 };

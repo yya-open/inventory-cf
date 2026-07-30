@@ -2,6 +2,7 @@ import { sqlNowStored } from "./api/_time";
 import { createTiming } from "./api/_timing";
 import { buildAuthCookie, buildClearAuthCookie, getJwtTtlSeconds } from "./_auth";
 import { clampFloat } from "./utils/numeric";
+import { buildLogPath } from "./utils/log-path";
 
 type Timing = ReturnType<typeof createTiming>;
 type WrappedStmt = D1PreparedStatement;
@@ -103,7 +104,7 @@ async function logErrorRequest(context: MiddlewareContext, t: Timing, res: Respo
        VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
     ).bind(
       context.request.method,
-      url.pathname + (url.search || ''),
+      buildLogPath(url),
       res.status,
       Math.round(t.total() || 0),
       Math.round(t.get('sql') || 0),
@@ -127,7 +128,7 @@ async function logSlowRequest(context: MiddlewareContext, t: Timing, res: Respon
        VALUES (?, ?, ?, ?, ?, ?, ${sqlNowStored()})`
     ).bind(
       context.request.method,
-      url.pathname + (url.search || ''),
+      buildLogPath(url),
       res.status,
       Math.round(total),
       Math.round(t.get('sql') || 0),

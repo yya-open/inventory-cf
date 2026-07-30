@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202607230010_me_hot_cache";
+export const REQUIRED_SCHEMA_VERSION = "202607300020_async_jobs_lease";
 
 type SchemaStatus = {
   ok: boolean;
@@ -69,6 +69,13 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'idx_item_sku_aliases_alias_active', label: 'SKU 别名唯一索引', ok: indexes.has('idx_item_sku_aliases_alias_active'), need: 'idx_item_sku_aliases_alias_active' },
     { key: 'idx_public_api_throttle_updated_at', label: '公共接口限流清理索引', ok: indexes.has('idx_public_api_throttle_updated_at'), need: 'idx_public_api_throttle_updated_at' },
     { key: 'me_hot_cache', label: '登录态热缓存表', ok: tables.has('me_hot_cache'), need: 'me_hot_cache' },
+    { key: 'browser_perf_log', label: '浏览器路由性能表', ok: tables.has('browser_perf_log'), need: 'browser_perf_log' },
+    { key: 'browser_event_log', label: '浏览器交互埋点表', ok: tables.has('browser_event_log'), need: 'browser_event_log' },
+    { key: 'idx_monitor_assets_archived_location_id', label: '显示器位置组合索引', ok: indexes.has('idx_monitor_assets_archived_location_id'), need: 'idx_monitor_assets_archived_location_id' },
+    { key: 'async_jobs.worker_token', label: '异步任务租约令牌字段', ok: asyncJobColumns.has('worker_token'), need: 'async_jobs.worker_token' },
+    { key: 'async_jobs.lease_until', label: '异步任务租约到期字段', ok: asyncJobColumns.has('lease_until'), need: 'async_jobs.lease_until' },
+    { key: 'idx_async_jobs_job_type_status_created_at', label: '异步任务类型状态索引', ok: indexes.has('idx_async_jobs_job_type_status_created_at'), need: 'idx_async_jobs_job_type_status_created_at' },
+    { key: 'idx_async_jobs_created_by_job_type_status', label: '异步任务创建人类型索引', ok: indexes.has('idx_async_jobs_created_by_job_type_status'), need: 'idx_async_jobs_created_by_job_type_status' },
   ];
 
   checks.push(
