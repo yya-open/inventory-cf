@@ -170,7 +170,7 @@ npm run audit:stats
 npm run audit:cleanup
 ```
 
-观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)由 `workers/async-jobs-consumer.ts` 的 cron 自动执行,按 `observability_retention_policy` 的保留天数删除;下面的命令用于手动补跑:
+观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)按 `observability_retention_policy` 的保留天数删除。自动清理挂在 `workers/async-jobs-consumer.ts` 的 cron(`*/15 * * * *`)上,只有部署了该 Worker(`wrangler deploy -c wrangler.async-jobs-consumer.jsonc`,需先把配置里的 D1 database_id 与 R2 bucket 占位符替换为真实值)才会生效;未部署时用下面的命令手动清理:
 
 ```bash
 npm run obs:cleanup
