@@ -35,6 +35,7 @@
     "test:guards": "vitest run tests/auth.regressions.test.ts tests/backup.stream.test.ts tests/data-integrity.test.ts --pool=threads --maxWorkers=1",
     "check:backup-restore-guards": "node scripts/check-backup-restore-guards.mjs",
     "db:integrity": "node scripts/db-integrity-check.mjs",
+    "db:schema-check": "node scripts/schema-state-check.mjs",
     "verify:release:strict": "npm run check:release && npm run check:backup-restore-guards && npm run check:runtime-sources && npm run check:source-encoding && npm run check:element-usage && npm run typecheck && npm run typecheck:functions && npm run build && npm run check:perf-budget && npm run build:functions && npm run test:smoke && npm run test:guards"
   },
   "dependencies": {

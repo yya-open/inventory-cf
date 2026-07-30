@@ -151,27 +151,37 @@ wrangler d1 execute inventory_db --remote --file=sql/migrate_auth_token_version.
 
 ## 常见维护命令
 
-数据库完整性检查：
+所有维护脚本都需要显式指定数据库和目标环境(`--remote` 或 `--local`),缺少 `--db` 会直接报错。
+
+数据库结构检查(比对 `schema-status.ts` 声明的结构要求、迁移清单版本和库内实际对象):
 
 ```bash
-npm run db:integrity
+npm run db:schema-check -- --db inventory_db --remote
 ```
 
-清理数据库冗余数据：
+结构不一致时会逐条列出缺失的表/列/索引/触发器并以非 0 退出。
+
+数据库完整性检查:
 
 ```bash
-npm run db:clean
+npm run db:integrity -- --db inventory_db --remote
 ```
 
-审计数据统计与清理：
+清理数据库冗余数据:
 
 ```bash
-npm run audit:stats
-npm run audit:cleanup
+npm run db:clean -- --db inventory_db --remote
+```
+
+审计数据统计与清理:
+
+```bash
+npm run audit:stats -- --db inventory_db --remote
+npm run audit:cleanup -- --db inventory_db --remote
 ```
 
 观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)按 `observability_retention_policy` 的保留天数删除。自动清理挂在 `workers/async-jobs-consumer.ts` 的 cron(`*/15 * * * *`)上,只有部署了该 Worker(`wrangler deploy -c wrangler.async-jobs-consumer.jsonc`,需先把配置里的 D1 database_id 与 R2 bucket 占位符替换为真实值)才会生效;未部署时用下面的命令手动清理:
 
 ```bash
-npm run obs:cleanup
+npm run obs:cleanup -- --db inventory_db --remote
 ```
