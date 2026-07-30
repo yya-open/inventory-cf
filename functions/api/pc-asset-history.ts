@@ -1,6 +1,5 @@
 import { json } from "../_auth";
 import { withErrorHandling } from './_error';
-import { ensurePcReadFastGuards } from './_pc';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from "./services/data-scope";
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
@@ -8,7 +7,6 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const url = new URL(request.url);
   const assetId = Number(url.searchParams.get('id') || 0);
   if (!assetId) return Response.json({ ok: false, message: '缺少资产 ID' }, { status: 400 });
-  await ensurePcReadFastGuards(env.DB);
   await assertPcAssetDataScopeAccess(env.DB, user, assetId, '电脑资产历史');
   const row = await env.DB.prepare(`
     WITH ordered_pc_out AS (

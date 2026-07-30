@@ -2,7 +2,7 @@ import { requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
-import { ensurePcSchema } from "../_pc";
+import { ensurePcSchemaIfAllowed } from "../_pc";
 import { recalcPcAssetStatuses } from "./_recalc";
 import { syncSystemDictionaryUsageCounters } from '../services/system-dictionaries';
 import { D1_REPEATED_ID_BATCH_SIZE, chunkValues, deleteRowsByIdChunks, selectDistinctNumberColumnByIdChunks } from '../services/sql-batch';
@@ -125,7 +125,7 @@ async function listPcLatestEvents(db: D1Database, assetIds: number[]) {
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const actor = await requireAuth(env, request, "admin");
   if (!env.DB) return Response.json({ ok: false, message: "未绑定 D1 数据库(DB)" }, { status: 500 });
-  await ensurePcSchema(env.DB);
+  await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
 
   const body = await request.json().catch(() => ({} as any));
   requireConfirm(body, "删除", "二次确认不通过");

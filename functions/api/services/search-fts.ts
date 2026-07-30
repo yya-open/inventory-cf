@@ -68,11 +68,42 @@ async function maybeBootstrapFtsTable(db: D1Database, key: FtsTableKey, table: s
   if (Number(sourceRow?.c || 0) > 0 && Number(ftsRow?.c || 0) === 0) await refillFtsTable(db, key);
 }
 
+type FtsProbeResult = { ftsRows: number; sourceRows: number };
+
+// 读路径只探测不建表：FTS 虚表与同步触发器由 sql/ 迁移负责创建。
+// 单次 batch 同时取回「对象是否齐备」与两侧行数，避免多次串行往返。
+async function probeSearchFtsReady(db: D1Database, key: FtsTableKey): Promise<FtsProbeResult | null> {
+  const cfg = FTS_CONFIGS[key];
+  const triggerList = ['ai', 'au', 'ad'].map((suffix) => `'${cfg.fts}_${suffix}'`).join(', ');
+  try {
+    const checks = await db.batch([
+      // fts5 虚表在 sqlite_master 里 type 同样是 'table'
+      db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='table' AND name='${cfg.fts}'`),
+      db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN (${triggerList})`),
+      db.prepare(`SELECT COUNT(*) AS c FROM ${cfg.fts}`),
+      db.prepare(`SELECT COUNT(*) AS c FROM ${cfg.source}`),
+    ]);
+    const countAt = (index: number) => Number((checks[index] as any)?.results?.[0]?.c || 0);
+    if (countAt(0) < 1 || countAt(1) < 3) return null;
+    return { ftsRows: countAt(2), sourceRows: countAt(3) };
+  } catch {
+    return null;
+  }
+}
+
 async function ensureSearchFtsTable(db: D1Database, key: FtsTableKey) {
   if (ensuredKeys.has(key)) return;
   const pending = ensurePromises.get(key);
   if (pending) return pending;
   const task = (async () => {
+    const probe = await probeSearchFtsReady(db, key);
+    if (probe) {
+      // 对象齐备推不出历史数据的回填状态，仍保留「源表有数据而 FTS 为空则回填」语义；
+      // 计数已并入探测 batch，命中时不产生额外查询，也完全跳过 DDL。
+      if (probe.sourceRows > 0 && probe.ftsRows === 0) await refillFtsTable(db, key);
+      ensuredKeys.add(key);
+      return;
+    }
     await runSqlList(db, CREATE_SQL[key]);
     await maybeBootstrapFtsTable(db, key, FTS_CONFIGS[key].fts, FTS_CONFIGS[key].source);
     ensuredKeys.add(key);
@@ -90,9 +121,11 @@ export async function ensureSearchFtsTables(db: D1Database, keys: FtsTableKey[] 
 
 export async function rebuildSearchFtsTables(db: D1Database, keys: FtsTableKey[] = ['pc', 'monitor', 'audit']) {
   const wanted = Array.from(new Set(keys));
-  await ensureSearchFtsTables(db, wanted);
   for (const key of wanted) {
+    // ops 显式重建：绕过读路径的探测缓存，真正重建虚表与同步触发器后全量回填。
+    await runSqlList(db, CREATE_SQL[key]);
     await refillFtsTable(db, key);
+    ensuredKeys.add(key);
   }
 }
 

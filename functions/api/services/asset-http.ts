@@ -2,10 +2,6 @@ import { countByWhere, type QueryParts } from './asset-ledger';
 
 type TimedEnv = { __timing?: { measure?: <T>(label: string, fn: () => Promise<T>) => Promise<T> } };
 
-export async function ensureSchemaTimed(env: TimedEnv, label: string, fn: () => Promise<void>) {
-  const measure = env?.__timing?.measure;
-  return measure ? measure(label, fn) : fn();
-}
 
 function withPrefix(prefix: string | undefined, name: string) {
   const safe = String(prefix || '').trim();

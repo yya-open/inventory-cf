@@ -8,52 +8,7 @@ import { SQL_STORED_NOW_DEFAULT } from './_time';
 let __monitorSchemaReady = false;
 let __monitorSchemaInit: Promise<void> | null = null;
 let __monitorSchemaProbeAt = 0;
-let __monitorReadFastGuardsReady = false;
-let __monitorReadFastGuardsInit: Promise<void> | null = null;
 const MONITOR_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
-
-const MONITOR_REQUIRED_QUERY_COLUMNS = [
-  'search_text_norm',
-  'archived',
-  'archived_at',
-  'archived_reason',
-  'archived_note',
-  'archived_by',
-  'inventory_status',
-  'inventory_at',
-  'inventory_issue_type',
-];
-const MONITOR_REQUIRED_QUERY_COLUMN_LIST = MONITOR_REQUIRED_QUERY_COLUMNS.map((column) => `'${column}'`).join(',');
-const MONITOR_REQUIRED_TRIGGER_NAMES = [
-  'trg_monitor_assets_code_non_blank_insert',
-  'trg_monitor_assets_code_non_blank_update',
-];
-const MONITOR_REQUIRED_TRIGGER_LIST = MONITOR_REQUIRED_TRIGGER_NAMES.map((name) => `'${name}'`).join(',');
-
-async function probeMonitorReadFastGuards(db: D1Database) {
-  const checks = await db.batch([
-    db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('monitor_assets') WHERE name IN (${MONITOR_REQUIRED_QUERY_COLUMN_LIST})`),
-    db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN (${MONITOR_REQUIRED_TRIGGER_LIST})`),
-  ]);
-  const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_QUERY_COLUMNS.length;
-  const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= MONITOR_REQUIRED_TRIGGER_NAMES.length;
-  return columnsReady && triggersReady;
-}
-
-
-export async function ensureMonitorReadFastGuards(db: D1Database) {
-  if (__monitorReadFastGuardsReady) return;
-  if (__monitorReadFastGuardsInit) return __monitorReadFastGuardsInit;
-
-  __monitorReadFastGuardsInit = (async () => {
-    const ready = await probeMonitorReadFastGuards(db).catch(() => false);
-    __monitorReadFastGuardsReady = ready;
-  })().finally(() => {
-    __monitorReadFastGuardsInit = null;
-  });
-
-  return __monitorReadFastGuardsInit;
-}
 
 async function probeMonitorSchemaReady(db: D1Database) {
   try {
@@ -73,7 +28,6 @@ async function probeMonitorSchemaReady(db: D1Database) {
 }
 
 export async function ensureMonitorSchemaIfAllowed(db: D1Database, _env: unknown, _url: URL) {
-  await ensureMonitorReadFastGuards(db);
   if (__monitorSchemaReady) return;
   if (Date.now() - __monitorSchemaProbeAt >= MONITOR_SCHEMA_PROBE_TTL_MS) {
     __monitorSchemaProbeAt = Date.now();

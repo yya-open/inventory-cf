@@ -2,7 +2,7 @@ import { json, requireAuth } from "../../_auth";
 import { withErrorHandling } from '../_error';
 import { getUserPermissionMap, normalizePermissionTemplateCode } from '../../_permissions';
 import { getAuthUserDataScope } from '../services/data-scope';
-import { SQL_STORED_NOW_DEFAULT, sqlNowStored } from '../_time';
+import { sqlNowStored } from '../_time';
 
 type MePayload = { user: any };
 const ME_CACHE_TTL_MS = 30 * 60_000;
@@ -18,44 +18,12 @@ const meHotWriteQueue = new Map<number, {
   aclVersion: number;
   timer: ReturnType<typeof setTimeout>;
 }>();
-let meTableEnsured = false;
-let meTableEnsuring: Promise<void> | null = null;
 
 type MeCacheMissReason = 'not_found' | 'expired' | 'version_mismatch' | 'invalid' | 'db_error';
 
 function markTiming(timing: any, name: string) {
   if (!timing?.add) return;
   timing.add(name, 1);
-}
-
-async function ensureMeHotCacheTable(db: D1Database) {
-  if (meTableEnsured) return;
-  if (meTableEnsuring) return meTableEnsuring;
-  meTableEnsuring = db.prepare(
-    `CREATE TABLE IF NOT EXISTS me_hot_cache (
-      user_id INTEGER PRIMARY KEY,
-      payload_json TEXT NOT NULL,
-      acl_version INTEGER NOT NULL DEFAULT 0,
-      updated_at TEXT NOT NULL DEFAULT ${SQL_STORED_NOW_DEFAULT}
-    )`
-  ).run().then(async () => {
-    try {
-      await db.prepare(`ALTER TABLE me_hot_cache ADD COLUMN acl_version INTEGER NOT NULL DEFAULT 0`).run();
-    } catch {
-      // column already exists
-    }
-    meTableEnsured = true;
-  }).catch(() => {
-    // best effort
-  }).finally(() => {
-    meTableEnsuring = null;
-  });
-  return meTableEnsuring;
-}
-
-function ensureMeHotCacheTableBackground(db: D1Database) {
-  if (meTableEnsured || meTableEnsuring) return;
-  void ensureMeHotCacheTable(db);
 }
 
 async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion: number) {
@@ -74,11 +42,7 @@ async function readMeHotCache(db: D1Database, userId: number, expectedAclVersion
     if (!parsed?.user || typeof parsed.user !== 'object') return { payload: null, reason: 'invalid' as MeCacheMissReason };
     meHotReadCache.set(userId, { expiresAt: Date.now() + ME_HOT_READ_CACHE_TTL_MS, aclVersion: expectedAclVersion, payload: parsed as MePayload });
     return { payload: parsed as MePayload, reason: null };
-  } catch (error: any) {
-    const message = String(error?.message || '').toLowerCase();
-    if (message.includes('no such table') || message.includes('no such column')) {
-      ensureMeHotCacheTableBackground(db);
-    }
+  } catch {
     return { payload: null, reason: 'db_error' as MeCacheMissReason };
   }
 }
@@ -100,7 +64,6 @@ async function readMeHotCacheWithSoftTimeout(db: D1Database, userId: number, exp
 
 async function writeMeHotCache(db: D1Database, userId: number, payload: MePayload, aclVersion: number) {
   try {
-    await ensureMeHotCacheTable(db);
     await db.prepare(
       `INSERT INTO me_hot_cache (user_id, payload_json, acl_version, updated_at)
        VALUES (?, ?, ?, ${sqlNowStored()})
@@ -201,8 +164,6 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     return json(true, memory.payload);
   }
   markTiming(timing, `auth_me_cache_miss_${memory.reason || 'not_found'}`);
-
-  ensureMeHotCacheTableBackground(env.DB);
 
   const hotReadStarted = Date.now();
   const hot = timing?.measure

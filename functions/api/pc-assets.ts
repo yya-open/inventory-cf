@@ -2,7 +2,7 @@ import { throwHttpError, withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit } from './_audit';
 import { getSystemSettings } from './services/system-settings';
-import { ensurePcReadFastGuards, ensurePcSchemaIfAllowed } from './_pc';
+import { ensurePcSchemaIfAllowed } from './_pc';
 import {
   assertUnique,
   buildPcAssetQuery,
@@ -23,7 +23,7 @@ import {
 import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { assertPcBrandDictionaryValue } from './services/master-data';
-import { ensureSchemaTimed, listAssetPage } from './services/asset-http';
+import { listAssetPage } from './services/asset-http';
 import {
   buildAssetListCacheKey,
   clearPendingAssetListRequest,
@@ -42,7 +42,6 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
   const url = new URL(request.url);
-  await ensureSchemaTimed(env as any, 'schema', () => ensurePcReadFastGuards(env.DB));
   const query = buildPcAssetQuery(url, user);
   const noCache = url.searchParams.has('no_cache');
   const cacheable = query.fast && !query.usesFts && !noCache;

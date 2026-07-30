@@ -1,4 +1,3 @@
-import { ensureMonitorReadFastGuards } from './_monitor';
 import { withErrorHandling } from './_error';
 import { buildMonitorAssetQuery } from './services/asset-ledger';
 import { queryInventorySummaryByWhere } from './services/asset-inventory-state';
@@ -10,7 +9,6 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
 
   const url = new URL(request.url);
-  await ensureMonitorReadFastGuards(env.DB);
 
   if (isDefaultInventorySummaryRequest(url, 'monitor')) {
     const data = await readDefaultInventorySummaryCache(env.DB, 'monitor', user);

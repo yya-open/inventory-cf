@@ -243,5 +243,10 @@
     "id": "202607220010_public_api_throttle_index",
     "file": "sql/migrate_public_api_throttle_index.sql",
     "description": "restore public API throttle cleanup index without runtime DDL"
+  },
+  {
+    "id": "202607230010_me_hot_cache",
+    "file": "sql/migrate_me_hot_cache.sql",
+    "description": "me hot cache table without runtime DDL"
   }
 ]

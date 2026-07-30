@@ -9,54 +9,7 @@ import { ensureSearchFtsTables } from './services/search-fts';
 let __pcSchemaReady = false;
 let __pcSchemaInit: Promise<void> | null = null;
 let __pcSchemaProbeAt = 0;
-let __pcReadFastGuardsReady = false;
-let __pcReadFastGuardsInit: Promise<void> | null = null;
 const PC_SCHEMA_PROBE_TTL_MS = 10 * 60_000;
-
-const PC_REQUIRED_QUERY_COLUMNS = [
-  'search_text_norm',
-  'archived',
-  'archived_at',
-  'archived_reason',
-  'archived_note',
-  'archived_by',
-  'inventory_status',
-  'inventory_at',
-  'inventory_issue_type',
-  'manufacture_ts',
-  'warranty_end_ts',
-];
-const PC_REQUIRED_QUERY_COLUMN_LIST = PC_REQUIRED_QUERY_COLUMNS.map((column) => `'${column}'`).join(',');
-const PC_REQUIRED_TRIGGER_NAMES = [
-  'trg_pc_assets_serial_non_blank_insert',
-  'trg_pc_assets_serial_non_blank_update',
-];
-const PC_REQUIRED_TRIGGER_LIST = PC_REQUIRED_TRIGGER_NAMES.map((name) => `'${name}'`).join(',');
-
-async function probePcReadFastGuards(db: D1Database) {
-  const checks = await db.batch([
-    db.prepare(`SELECT COUNT(*) AS c FROM pragma_table_info('pc_assets') WHERE name IN (${PC_REQUIRED_QUERY_COLUMN_LIST})`),
-    db.prepare(`SELECT COUNT(*) AS c FROM sqlite_master WHERE type='trigger' AND name IN (${PC_REQUIRED_TRIGGER_LIST})`),
-  ]);
-  const columnsReady = Number((checks[0] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_QUERY_COLUMNS.length;
-  const triggersReady = Number((checks[1] as any)?.results?.[0]?.c || 0) >= PC_REQUIRED_TRIGGER_NAMES.length;
-  return columnsReady && triggersReady;
-}
-
-
-export async function ensurePcReadFastGuards(db: D1Database) {
-  if (__pcReadFastGuardsReady) return;
-  if (__pcReadFastGuardsInit) return __pcReadFastGuardsInit;
-
-  __pcReadFastGuardsInit = (async () => {
-    const ready = await probePcReadFastGuards(db).catch(() => false);
-    __pcReadFastGuardsReady = ready;
-  })().finally(() => {
-    __pcReadFastGuardsInit = null;
-  });
-
-  return __pcReadFastGuardsInit;
-}
 
 async function probePcSchemaReady(db: D1Database) {
   try {
@@ -75,7 +28,6 @@ async function probePcSchemaReady(db: D1Database) {
 }
 
 export async function ensurePcSchemaIfAllowed(db: D1Database, _env: unknown, _url: URL) {
-  await ensurePcReadFastGuards(db);
   if (__pcSchemaReady) return;
   if (Date.now() - __pcSchemaProbeAt >= PC_SCHEMA_PROBE_TTL_MS) {
     __pcSchemaProbeAt = Date.now();

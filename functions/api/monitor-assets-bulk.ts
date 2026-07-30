@@ -1,7 +1,7 @@
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
 import { logAudit, logAuditBatch } from './_audit';
-import { ensureMonitorReadFastGuards, ensureMonitorSchemaIfAllowed } from './_monitor';
+import { ensureMonitorSchemaIfAllowed } from './_monitor';
 import { getSystemSettings } from './services/system-settings';
 import { parseArchiveMeta, parseOwnerInput } from './services/asset-ledger';
 import {
@@ -35,10 +35,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (!ids.length) throw Object.assign(new Error('请选择至少一条显示器台账'), { status: 400 });
     await assertMonitorAssetIdsDataScopeAccess(env.DB, user, ids, '显示器批量操作');
 
-    if (action === 'restore') {
-      if (timing?.measure) await timing.measure('schema_fast', () => ensureMonitorReadFastGuards(env.DB));
-      else await ensureMonitorReadFastGuards(env.DB);
-    } else {
+    if (action !== 'restore') {
       const url = new URL(request.url);
       if (timing?.measure) await timing.measure('schema', () => ensureMonitorSchemaIfAllowed(env.DB, env, url));
       else await ensureMonitorSchemaIfAllowed(env.DB, env, url);

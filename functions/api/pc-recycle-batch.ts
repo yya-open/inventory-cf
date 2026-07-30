@@ -1,6 +1,6 @@
 import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
-import { ensurePcSchema, must, optional, normalizeText, pcRecycleNo } from './_pc';
+import { ensurePcSchemaIfAllowed, must, optional, normalizeText, pcRecycleNo } from './_pc';
 import { pcRecycleAuditAction, pcStatusAfterRecycle } from './services/asset-write';
 import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
@@ -34,7 +34,7 @@ type Item = {
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const user = await requireAuthWithDataScope(env, request, 'operator');
   if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-  await ensurePcSchema(env.DB);
+  await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
 
   const body = await request.json().catch(() => ({} as any));
   const items: Item[] = Array.isArray(body?.items) ? body.items : [];

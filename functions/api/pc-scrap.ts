@@ -1,18 +1,18 @@
 import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
-import { ensurePcSchema, optional, pcScrapNo } from './_pc';
+import { ensurePcSchemaIfAllowed, optional, pcScrapNo } from './_pc';
 import { applyPcScrap } from './services/asset-write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const user = await requireAuthWithDataScope(env, request, 'viewer');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
-    assertAssetWarehouseAccess(user, '电脑仓', '电脑报废');
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+  const url = new URL(request.url);
+  await ensurePcSchemaIfAllowed(env.DB, env, url);
+  assertAssetWarehouseAccess(user, '电脑仓', '电脑报废');
 
-    const url = new URL(request.url);
-    const scrap_no = (url.searchParams.get('scrap_no') || '').trim();
+  const scrap_no = (url.searchParams.get('scrap_no') || '').trim();
     if (!scrap_no) return Response.json({ ok: false, message: 'scrap_no 不能为空' }, { status: 400 });
 
     const rows = await env.DB.prepare(
@@ -32,8 +32,8 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request, waitUntil }) => {
   const user = await requireAuthWithDataScope(env, request, 'operator');
-    if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
-    await ensurePcSchema(env.DB);
+  if (!env.DB) return Response.json({ ok: false, message: '未绑定 D1 数据库(DB)' }, { status: 500 });
+  await ensurePcSchemaIfAllowed(env.DB, env, new URL(request.url));
 
     const body = await request.json().catch(() => ({} as any));
     const { no: scrap_no } = buildWriteNo('PCSCRAP', pcScrapNo, body?.client_request_id);
