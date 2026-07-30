@@ -145,9 +145,30 @@ wrangler d1 execute inventory_db --remote --file=sql/migrate_auth_token_version.
 - Build command：`npm run build`
 - Build output directory：`dist`
 - D1 绑定：`DB`
+- R2 绑定：`BACKUP_BUCKET`
+- Queue Producer 绑定：`ASYNC_JOB_QUEUE` → 队列 `inventory-async-jobs`
 - 环境变量：`JWT_SECRET`
 
 部署后可直接访问站点并使用登录页进入系统。
+
+## 异步任务队列与定时维护
+
+导出、备份、二维码批量生成等重任务走 `async_jobs` 表。Pages Functions 只做入队,真正的执行放在独立的消费者 Worker 上,避免 Pages 请求撞上 CPU 时间上限。
+
+一次性资源准备:
+
+```bash
+wrangler queues create inventory-async-jobs
+wrangler queues create inventory-async-jobs-dlq
+wrangler deploy -c wrangler.async-jobs-consumer.jsonc
+```
+
+然后在 Pages 项目里加 Queue Producer 绑定 `ASYNC_JOB_QUEUE`(指向 `inventory-async-jobs`),并重新部署一次让绑定生效。
+
+- 消费者 Worker:`inventory-cf-async-jobs-consumer`,`workers_dev: false`,只接队列消息和 cron,不暴露公开 HTTP 入口
+- 失败重试:`max_retries: 3`,超限进 `inventory-async-jobs-dlq`
+- cron `*/15 * * * *` 驱动 5 项维护:过期任务清理、审计日志保留清理、审计容量统计刷新、审计归档巡检、观测数据清理
+- 没有绑定 `ASYNC_JOB_QUEUE` 时会退化成在请求内直接执行(小任务可用,大导出容易超时);把环境变量 `ASYNC_JOB_QUEUE_REQUIRED` 设为 `1` 可以禁掉这种退化,缺队列时直接返回 503
 
 ## 常见维护命令
 
@@ -180,7 +201,7 @@ npm run audit:stats -- --db inventory_db --remote
 npm run audit:cleanup -- --db inventory_db --remote
 ```
 
-观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)按 `observability_retention_policy` 的保留天数删除。自动清理挂在 `workers/async-jobs-consumer.ts` 的 cron(`*/15 * * * *`)上,只有部署了该 Worker(`wrangler deploy -c wrangler.async-jobs-consumer.jsonc`,需先把配置里的 D1 database_id 与 R2 bucket 占位符替换为真实值)才会生效;未部署时用下面的命令手动清理:
+观测数据清理(慢请求/错误请求/浏览器性能与埋点日志)按 `observability_retention_policy` 的保留天数删除,已挂在消费者 Worker 的 cron 上(见上文「异步任务队列与定时维护」)。需要手动补一次时:
 
 ```bash
 npm run obs:cleanup -- --db inventory_db --remote
