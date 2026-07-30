@@ -3,17 +3,18 @@
   "name": "inventory-cf-async-jobs-consumer",
   "main": "workers/async-jobs-consumer.ts",
   "compatibility_date": "2026-03-30",
+  "workers_dev": false,
   "d1_databases": [
     {
       "binding": "DB",
       "database_name": "inventory_db",
-      "database_id": "REPLACE_WITH_YOUR_D1_DATABASE_ID"
+      "database_id": "a40be859-8c89-432c-bbe8-3f715e8e0dd6"
     }
   ],
   "r2_buckets": [
     {
       "binding": "BACKUP_BUCKET",
-      "bucket_name": "REPLACE_WITH_YOUR_R2_BUCKET"
+      "bucket_name": "inventory-backup"
     }
   ],
   "queues": {
@@ -31,5 +32,8 @@
     "crons": [
       "*/15 * * * *"
     ]
+  },
+  "observability": {
+    "enabled": true
   }
 }
