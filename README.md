@@ -147,7 +147,17 @@ wrangler d1 execute inventory_db --remote --file=sql/migrate_auth_token_version.
 - D1 绑定：`DB`
 - R2 绑定：`BACKUP_BUCKET`
 - Queue Producer 绑定：`ASYNC_JOB_QUEUE` → 队列 `inventory-async-jobs`
-- 环境变量：`JWT_SECRET`
+- 加密变量(Secret,面板/API 都读不到明文):`JWT_SECRET`、`TURNSTILE_SECRET`
+- 普通变量:`VITE_TURNSTILE_SITEKEY`(构建期注入前端)、`NODE_VERSION`、`AUTH_MAX_FAILS`、`AUTH_LOCK_MIN`、`AUTH_CAPTCHA_AFTER`、`DISABLE_SCHEMA_HEALING`
+
+密钥用 Secret 类型写入,不要用普通变量:
+
+```bash
+wrangler pages secret put JWT_SECRET --project-name inventory-cf
+wrangler pages secret put TURNSTILE_SECRET --project-name inventory-cf
+```
+
+改完环境变量要重新部署一次才生效(每个部署带的是自己那份环境快照)。`JWT_SECRET` 换值等于让所有已登录会话立即失效。
 
 部署后可直接访问站点并使用登录页进入系统。
 
