@@ -173,6 +173,7 @@ import { apiDelete, apiPost, apiPut } from '../api/client';
 import { withBlockingActionFeedback } from '../utils/operationFeedback';
 import { confirmAction, notifyAction, showApiError, showInfo, showSuccess, showWarning } from '../utils/feedback';
 import { countPcAssets, getPcAssetInventorySummary, invalidateAssetInventorySummaryCache, listPcAssets } from '../api/assetLedgers';
+import { postAssetImportInChunks } from '../api/assetImport';
 import { invalidateAssetHistoryCache } from '../api/assetHistory';
 import { useInventoryBatchStore } from '../composables/useInventoryBatchStore';
 import { useAssetLedgerPage } from '../composables/useAssetLedgerPage';
@@ -1019,11 +1020,13 @@ async function onImportAssetsFile(uploadFile: any) {
       return showWarning(`出厂时间必填，缺失行号：${missingManufactureDate.join(', ')}${missingManufactureDate.length >= 15 ? ' …' : ''}`);
     }
 
-    const result: any = await apiPost('/api/pc-in-batch', { items });
-    const failed = Number(result?.failed || 0);
-    if (failed > 0) {
-      showWarning(`导入完成：成功 ${result.success} 条，失败 ${failed} 条（请查看控制台/接口返回 errors）`);
-      console.warn('pc-in-batch errors', result?.errors);
+    const result = await postAssetImportInChunks('/api/pc-in-batch', items);
+    if (result.errors.length) console.warn('pc-in-batch errors', result.errors);
+
+    if (result.abortedMessage) {
+      showWarning(`导入中断：${result.abortedMessage}（已成功 ${result.success} 条，剩余行未提交,请重试）`);
+    } else if (result.failed > 0) {
+      showWarning(`导入完成：成功 ${result.success} 条，失败 ${result.failed} 条（请查看控制台/接口返回 errors）`);
     } else {
       showSuccess(`导入完成：成功 ${result.success} 条`);
     }

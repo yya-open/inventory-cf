@@ -263,5 +263,10 @@
     "id": "202607300020_async_jobs_lease",
     "file": "sql/migrate_async_jobs_lease.sql",
     "description": "async job lease/claim columns and job_type indexes required by the async jobs readiness probe"
+  },
+  {
+    "id": "202607310010_pc_assets_serial_norm_index",
+    "file": "sql/migrate_pc_assets_serial_norm_index.sql",
+    "description": "expression index on UPPER(TRIM(pc_assets.serial_no)) used by every batch import lookup"
   }
 ]

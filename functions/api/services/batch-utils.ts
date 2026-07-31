@@ -144,32 +144,13 @@ export function safeIdentifier(name: string): string {
 }
 
 /**
- * 批量执行 D1PreparedStatement 并收集结果
+ * 单次批量导入允许的最大行数。
+ *
+ * D1 没有「每批 100 条语句」的限制,真正的约束是单条语句最多 100 个绑定参数、
+ * 每次 Worker 调用最多 1000 次子请求(一次 db.batch() 只算一次)。
+ * 单行导入最多展开 4 条语句,200 行 => 约 800 条语句 / 1 次子请求,留足余量。
  */
-export async function executeBatchStatements(
-  db: D1Database,
-  statements: D1PreparedStatement[],
-  options?: { throwOnError?: boolean }
-): Promise<D1Result[]> {
-  if (!statements.length) return [];
-
-  // D1 batch 限制：每批最多 100 条语句
-  const batchSize = 100;
-  const results: D1Result[] = [];
-
-  for (let i = 0; i < statements.length; i += batchSize) {
-    const batch = statements.slice(i, i + batchSize);
-    try {
-      const batchResults = await db.batch(batch);
-      results.push(...batchResults);
-    } catch (error) {
-      if (options?.throwOnError) throw error;
-      // 记录错误但继续执行
-      console.warn('[batch-utils] Batch execution error:', error);
-    }
-  }
-  return results;
-}
+export const ASSET_BATCH_MAX_ROWS = 200;
 
 /**
  * 生成批量插入的占位符

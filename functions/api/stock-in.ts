@@ -2,7 +2,7 @@ import { withErrorHandling } from './_error';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { logAudit } from "./_audit";
 import { normalizeClientRequestId, toRidRefNo } from "../_idempotency";
-import { GuardRollbackError, isGuardRollback } from "./_write";
+import { GuardRollbackError, guardSql, isGuardRollback } from "./_write";
 import { sqlNowStored } from "./_time";
 import { apiFail, apiOk } from './_response';
 
@@ -54,13 +54,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
            DO UPDATE SET qty = qty + excluded.qty, updated_at=${sqlNowStored()};`
         ).bind(item_id, allowedWarehouseId, q),
         // 3) Guard: if tx row exists, stock must have been updated exactly once; else updated 0 times.
-        // Trigger JSON path error to rollback the whole batch if mismatch.
+        // The guard row errors and rolls the whole batch back if mismatch.
         env.DB.prepare(
-          `SELECT CASE
-             WHEN (SELECT changes()) = (CASE WHEN EXISTS (SELECT 1 FROM stock_tx WHERE tx_no=?) THEN 1 ELSE 0 END)
-               THEN 1
-             ELSE json_extract('[]', '$[')
-           END AS guard_ok;`
+          guardSql("(SELECT changes()) = (CASE WHEN EXISTS (SELECT 1 FROM stock_tx WHERE tx_no=?) THEN 1 ELSE 0 END)")
         ).bind(no),
       ]);
     } catch (e: any) {

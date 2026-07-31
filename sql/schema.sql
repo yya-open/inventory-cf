@@ -253,6 +253,8 @@ CREATE INDEX IF NOT EXISTS idx_pc_assets_inventory_status_id ON pc_assets(invent
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_reason_id ON pc_assets(archived, archived_reason, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_mfgts_status_id ON pc_assets(archived, manufacture_ts, status, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_warranty_ts_id ON pc_assets(warranty_end_ts, id);
+-- 表达式索引：批量导入按 UPPER(TRIM(serial_no)) 匹配,裸列索引无法服务该谓词
+CREATE INDEX IF NOT EXISTS idx_pc_assets_serial_norm ON pc_assets(UPPER(TRIM(serial_no)));
 
 CREATE TABLE IF NOT EXISTS pc_in (
   id INTEGER PRIMARY KEY AUTOINCREMENT,

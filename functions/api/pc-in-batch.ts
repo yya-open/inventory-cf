@@ -5,14 +5,16 @@ import { normalizePcSerialNo } from './services/asset-write';
 import { createTiming } from './_timing';
 import { assertDateText, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertPcBrandDictionaryValue } from './services/master-data';
-import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { buildChildWriteNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 import { ensureSearchFtsTables } from './services/search-fts';
 import { sqlNowStored } from './_time';
 import { buildPcAssetSearchText, pcDateTextToUnixTs } from './services/asset-ledger';
 import { syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { batchFindExistingByNo, batchFindAssetsBySerial } from './services/batch-utils';
+import { ASSET_BATCH_MAX_ROWS, batchFindExistingByNo, batchFindAssetsBySerial } from './services/batch-utils';
+import { runBatchWithGuard, GuardRollbackError, guardRowCountSql } from './_write';
+import { chunkValues } from './services/sql-batch';
 
 type Item = {
   brand: string;
@@ -39,6 +41,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const items: Item[] = Array.isArray(body?.items) ? body.items : [];
   await t.measure('search_fts', () => ensureSearchFtsTables(env.DB, ['pc']));
   if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
+  if (items.length > ASSET_BATCH_MAX_ROWS) {
+    return Response.json({ ok: false, message: `单次最多导入 ${ASSET_BATCH_MAX_ROWS} 条,请拆分后重试` }, { status: 400 });
+  }
 
   // 预生成所有幂等号
   const itemNos = items.map((_, i) => {
@@ -68,28 +73,29 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     batchFindAssetsBySerial(env.DB, [...serialMap.keys()], 'pc_assets')
   );
 
-  // 预加载品牌字典（只调用一次）
+  // 预校验品牌字典:getEnabledDictionaryLabels 按 isolate 缓存(TTL 60s),
+  // 因此这里逐个断言只会产生一次实际查询。
   const allBrands = [...new Set(items.map(it => it?.brand).filter(Boolean))];
   for (const brand of allBrands) {
     await assertPcBrandDictionaryValue(env.DB, brand, '电脑品牌');
   }
 
-  let success = 0;
   let duplicated = 0;
   const errors: { row: number; message: string }[] = [];
 
-  // 收集需要执行的语句
-  const auditRecords: Array<{ no: string; data: any }> = [];
+  // 只累积语句,最后一次性提交:整批要么全部生效,要么全部回滚。
+  const stmts: D1PreparedStatement[] = [];
+  const auditRecords: Array<{ no: string; data: Record<string, unknown> }> = [];
   const processedSerials = new Set<string>();
+  const writtenNos: string[] = [];
 
   for (let i = 0; i < items.length; i++) {
     try {
-      const it: any = items[i] || {};
+      const it: Partial<Item> = items[i] || {};
       const no = itemNos[i];
 
       // 检查幂等
       if (existingByNoMap.has(no)) {
-        success++;
         duplicated++;
         continue;
       }
@@ -118,7 +124,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       if (existingAsset?.id) {
         // 更新已存在的资产
         const assetId = Number(existingAsset.id);
-        const statements = [
+        stmts.push(
           env.DB.prepare(
             `UPDATE pc_assets
              SET brand=?, serial_no=?, model=?, manufacture_date=?, warranty_end=?, manufacture_ts=?, warranty_end_ts=?,
@@ -138,13 +144,12 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
             `INSERT INTO pc_asset_latest_state (asset_id, last_in_id, updated_at)
              VALUES (?, (SELECT id FROM pc_in WHERE in_no=? LIMIT 1), ${sqlNowStored()})`
           ).bind(assetId, no),
-        ];
-        await t.measure('batch_execute_row', () => env.DB.batch(statements));
+        );
 
         auditRecords.push({ no, data: { asset_id: assetId, brand, serial_no, model, manufacture_date } });
       } else {
         // 创建新资产
-        const statements = [
+        stmts.push(
           env.DB.prepare(
             `INSERT INTO pc_assets (brand, serial_no, model, manufacture_date, warranty_end, manufacture_ts, warranty_end_ts, disk_capacity, memory_size, remark, search_text_norm, status, created_at, updated_at)
              VALUES (?,?,?,?,?,?,?,?,?,?,?, 'IN_STOCK', ${sqlNowStored()}, ${sqlNowStored()})`
@@ -170,19 +175,41 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
                ${sqlNowStored()}
              )`
           ).bind(no, no),
-        ];
-        await t.measure('batch_execute_row', () => env.DB.batch(statements));
+        );
 
         auditRecords.push({ no, data: { brand, serial_no, model, manufacture_date } });
       }
 
-      success++;
-    } catch (e: any) {
-      errors.push({ row: i + 2, message: e?.message || '导入失败' });
+      writtenNos.push(no);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '';
+      errors.push({ row: i + 2, message: message || '导入失败' });
     }
   }
 
-  if (success > duplicated) {
+  // 守卫:断言本次每个入库单号都已落库,任何一条缺失都触发整批回滚。
+  // 单条语句的绑定参数上限为 100,故按 chunkValues 默认粒度切成多条守卫。
+  for (const chunk of chunkValues(writtenNos)) {
+    stmts.push(
+      env.DB.prepare(guardRowCountSql('pc_in', 'in_no', chunk.length)).bind(...chunk, chunk.length)
+    );
+  }
+
+  if (stmts.length) {
+    try {
+      await t.measure('batch_execute', () => runBatchWithGuard(env.DB, stmts));
+    } catch (e) {
+      if (e instanceof GuardRollbackError) {
+        return Response.json({ ok: false, message: '批量入库写入异常,本次已全部回滚(请重试)' }, { status: 409 });
+      }
+      throw e;
+    }
+  }
+
+  const written = writtenNos.length;
+  const success = duplicated + written;
+
+  if (written > 0) {
     // 同步字典计数
     await syncSystemDictionaryUsageCounters(env.DB, ['pc_brand']).catch(() => {});
 
@@ -190,8 +217,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     for (const record of auditRecords) {
       waitUntil(logAudit(env.DB, request, user, 'PC_IN_BATCH', 'pc_in', record.no, record.data).catch(() => {}));
     }
+
+    invalidateAssetListCache('pc-assets');
   }
 
-  if (success > duplicated) invalidateAssetListCache('pc-assets');
   return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
 });

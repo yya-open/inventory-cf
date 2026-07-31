@@ -1,7 +1,7 @@
 import { withErrorHandling } from '../_error';
 import { assertPartsWarehouseAccess, requireAuthWithDataScope } from '../services/data-scope';
 import { logAudit } from "../_audit";
-import { runBatchWithGuard, GuardRollbackError, safeToken } from "../_write";
+import { runBatchWithGuard, GuardRollbackError, safeToken, guardRowCountSql } from "../_write";
 import { sqlNowStored } from "../_time";
 import { resolveItemsByName } from "../services/item-names";
 
@@ -165,14 +165,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     );
   }
 
-  const phTx = txNos.map(() => "?").join(",");
   stmts.push(
     env.DB.prepare(
-      `SELECT CASE
-         WHEN (SELECT COUNT(*) FROM stock_tx WHERE tx_no IN (${phTx})) = ?
-         THEN 1
-         ELSE json_extract('{"a":1}', '$[')
-       END AS ok`
+      guardRowCountSql("stock_tx", "tx_no", txNos.length)
     ).bind(...txNos, txNos.length)
   );
 

@@ -195,6 +195,7 @@ import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiGet, apiPost } from "../api/client";
 import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { postAssetImportInChunks } from "../api/assetImport";
 import { invalidateAssetHistoryCache } from "../api/assetHistory";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
@@ -368,15 +369,16 @@ async function onImportOutFile(uploadFile: any) {
     }).filter(Boolean);
     if (frontErrors.length) { showWarning(summarizeValidationErrors(frontErrors, 3)); return; }
 
-    const res: any = await apiPost("/api/pc-out-batch", { items });
-    const okSum = Number(res?.success || 0);
-    const failSum = Number(res?.failed || 0);
-    if (okSum > 0) notifyPcAssetsChanged();
-    if (failSum > 0) {
-      console.warn("pc-out-batch errors", res?.errors);
-      showWarning(`导入完成：成功 ${okSum} 条，失败 ${failSum} 条（详情见控制台/接口返回 errors）`);
+    const res = await postAssetImportInChunks("/api/pc-out-batch", items);
+    if (res.errors.length) console.warn("pc-out-batch errors", res.errors);
+    if (res.success > 0) notifyPcAssetsChanged();
+
+    if (res.abortedMessage) {
+      showError(`导入中断：${res.abortedMessage}（已成功 ${res.success} 条，剩余行未提交,请重试）`);
+    } else if (res.failed > 0) {
+      showWarning(`导入完成：成功 ${res.success} 条，失败 ${res.failed} 条（详情见控制台/接口返回 errors）`);
     } else {
-      showSuccess(`导入完成：成功 ${okSum} 条`);
+      showSuccess(`导入完成：成功 ${res.success} 条`);
     }
 
     if (settings.value.ui_write_local_refresh && items.length && assetOptions.value.length) {

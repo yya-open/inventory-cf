@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202607300020_async_jobs_lease";
+export const REQUIRED_SCHEMA_VERSION = "202607310010_pc_assets_serial_norm_index";
 
 type SchemaStatus = {
   ok: boolean;
@@ -76,6 +76,7 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'async_jobs.lease_until', label: '异步任务租约到期字段', ok: asyncJobColumns.has('lease_until'), need: 'async_jobs.lease_until' },
     { key: 'idx_async_jobs_job_type_status_created_at', label: '异步任务类型状态索引', ok: indexes.has('idx_async_jobs_job_type_status_created_at'), need: 'idx_async_jobs_job_type_status_created_at' },
     { key: 'idx_async_jobs_created_by_job_type_status', label: '异步任务创建人类型索引', ok: indexes.has('idx_async_jobs_created_by_job_type_status'), need: 'idx_async_jobs_created_by_job_type_status' },
+    { key: 'idx_pc_assets_serial_norm', label: '电脑序列号归一化索引', ok: indexes.has('idx_pc_assets_serial_norm'), need: 'idx_pc_assets_serial_norm' },
   ];
 
   checks.push(

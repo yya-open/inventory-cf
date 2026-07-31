@@ -3,9 +3,15 @@ import { withErrorHandling } from '../_error';
 import { requireConfirm } from "../../_confirm";
 import { logAudit } from "../_audit";
 import { ensurePcSchemaIfAllowed } from "../_pc";
-import { recalcPcAssetStatuses } from "./_recalc";
+import { GuardRollbackError, guardRowCountSql, runBatchWithGuard } from "../_write";
+import { buildPcAssetRecalcStatements } from "./_recalc";
+import { ensurePcLatestStateTable } from '../services/pc-latest-state';
+import { ASSET_BATCH_MAX_ROWS } from '../services/batch-utils';
 import { syncSystemDictionaryUsageCounters } from '../services/system-dictionaries';
-import { D1_REPEATED_ID_BATCH_SIZE, chunkValues, deleteRowsByIdChunks, selectDistinctNumberColumnByIdChunks } from '../services/sql-batch';
+import { D1_REPEATED_ID_BATCH_SIZE, chunkValues, d1Changes, normalizePositiveIds, selectDistinctNumberColumnByIdChunks } from '../services/sql-batch';
+
+const PC_TX_TABLES = ['pc_in', 'pc_out', 'pc_recycle', 'pc_scrap'] as const;
+type PcTxTable = (typeof PC_TX_TABLES)[number];
 
 type Entry = { id: number; type: string };
 
@@ -18,7 +24,7 @@ type PcLatestEvent = {
   last_recycle_id: number | null;
 };
 
-function normTable(t: string) {
+function normTable(t: string): PcTxTable | '' {
   const x = String(t || '').toUpperCase();
   if (x === 'IN') return 'pc_in';
   if (x === 'OUT') return 'pc_out';
@@ -27,12 +33,12 @@ function normTable(t: string) {
   return '';
 }
 
-function toDeleteLookup(groups: Record<string, number[]>) {
+function toDeleteLookup(groups: Record<PcTxTable, number[]>) {
   return {
-    pc_in: new Set(groups.pc_in || []),
-    pc_out: new Set(groups.pc_out || []),
-    pc_recycle: new Set(groups.pc_recycle || []),
-    pc_scrap: new Set(groups.pc_scrap || []),
+    pc_in: new Set(groups.pc_in),
+    pc_out: new Set(groups.pc_out),
+    pc_recycle: new Set(groups.pc_recycle),
+    pc_scrap: new Set(groups.pc_scrap),
   };
 }
 
@@ -135,27 +141,66 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         .filter((e:Entry) => Number.isFinite(e.id) && e.id > 0 && !!normTable(e.type))
     : [];
   if (!entries.length) return Response.json({ ok:false, message:"请选择要删除的记录" }, { status:400 });
-
-  const groups: Record<string, number[]> = { pc_in: [], pc_out: [], pc_recycle: [], pc_scrap: [] };
-  for (const e of entries) groups[normTable(e.type)].push(e.id);
-
-  const assetIds: number[] = [];
-  for (const [table, ids] of Object.entries(groups)) {
-    if (!ids.length) continue;
-    assetIds.push(...await selectDistinctNumberColumnByIdChunks(env.DB, table, 'asset_id', ids));
+  if (entries.length > ASSET_BATCH_MAX_ROWS) {
+    return Response.json({ ok:false, message:`一次最多删除 ${ASSET_BATCH_MAX_ROWS} 条` }, { status:400 });
   }
-  const dedupAssetIds = [...new Set(assetIds.map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0))];
+
+  const groups: Record<PcTxTable, number[]> = { pc_in: [], pc_out: [], pc_recycle: [], pc_scrap: [] };
+  for (const entry of entries) {
+    const table = normTable(entry.type);
+    if (table) groups[table].push(entry.id);
+  }
+
+  // 以下三步都是读：先确定受影响资产、再判断哪些资产需要重算，写入统一放到后面的单个批次里
+  const assetIds: number[] = [];
+  for (const table of PC_TX_TABLES) {
+    if (!groups[table].length) continue;
+    assetIds.push(...await selectDistinctNumberColumnByIdChunks(env.DB, table, 'asset_id', groups[table]));
+  }
+  const dedupAssetIds = normalizePositiveIds(assetIds);
   const latestByAsset = await listPcLatestEvents(env.DB, dedupAssetIds);
   const deleteLookup = toDeleteLookup(groups);
   const recalcAssetIds = dedupAssetIds.filter((assetId) => pcAssetNeedsRecalc(latestByAsset.get(assetId), deleteLookup));
 
-  let deleted = 0;
-  for (const [table, ids] of Object.entries(groups)) {
-    if (!ids.length) continue;
-    deleted += await deleteRowsByIdChunks(env.DB, table, ids);
+  // 建表是 DDL，不能进事务批次，必须提前完成
+  await ensurePcLatestStateTable(env.DB);
+
+  const deleteChunks: Array<{ table: PcTxTable; ids: number[] }> = [];
+  for (const table of PC_TX_TABLES) {
+    for (const chunkIds of chunkValues(normalizePositiveIds(groups[table]))) deleteChunks.push({ table, ids: chunkIds });
   }
 
-  if (recalcAssetIds.length) await recalcPcAssetStatuses(env.DB, recalcAssetIds);
+  // 一个批次 = 一个事务：删除台账 -> 重算 pc_assets.status -> 重建 pc_asset_latest_state -> 守卫行
+  const stmts: D1PreparedStatement[] = [];
+  for (const chunk of deleteChunks) {
+    const placeholders = chunk.ids.map(() => '?').join(',');
+    stmts.push(env.DB.prepare(`DELETE FROM ${chunk.table} WHERE id IN (${placeholders})`).bind(...chunk.ids));
+  }
+  const deleteStatementCount = stmts.length;
+  if (recalcAssetIds.length) stmts.push(...buildPcAssetRecalcStatements(env.DB, recalcAssetIds));
+  // 守卫行：断言请求删除的台账行确实已经不存在，否则整批回滚
+  for (const chunk of deleteChunks) {
+    stmts.push(
+      env.DB.prepare(
+        guardRowCountSql(chunk.table, 'id', chunk.ids.length)
+      ).bind(...chunk.ids, 0)
+    );
+  }
+
+  let batchResults: D1Result[] = [];
+  try {
+    const outcome = await runBatchWithGuard(env.DB, stmts);
+    batchResults = outcome.results;
+  } catch (e) {
+    if (e instanceof GuardRollbackError) {
+      return Response.json({ ok:false, message:"台账记录删除校验未通过，本次已全部回滚（请刷新后重试）" }, { status:409 });
+    }
+    throw e;
+  }
+
+  let deleted = 0;
+  for (let index = 0; index < deleteStatementCount; index += 1) deleted += d1Changes(batchResults[index]);
+
   await syncSystemDictionaryUsageCounters(env.DB, []);
   await logAudit(env.DB, request, actor, "PC_TX_DELETE", "pc_tx", null, {
     count: entries.length,

@@ -134,6 +134,7 @@ import { parseXlsx, downloadTemplate } from "../utils/excel";
 import type { FormInstance, FormRules } from "element-plus";
 import { apiPost } from "../api/client";
 import { invalidateAssetInventorySummaryCache } from "../api/assetLedgers";
+import { postAssetImportInChunks } from "../api/assetImport";
 import { invalidateAssetHistoryCache } from "../api/assetHistory";
 import { fetchSystemSettings, getCachedSystemSettings } from "../api/systemSettings";
 import { invalidatePagedListNamespace } from "../composables/usePagedAssetList";
@@ -258,27 +259,29 @@ async function onImportFile(uploadFile: any) {
       return;
     }
 
-    const res: any = await apiPost("/api/pc-in-batch", { items });
-    const failed = Number(res?.failed || 0);
-    if (failed > 0) {
-      showWarning(`导入完成：成功 ${res.success} 条，失败 ${failed} 条`);
-      const errors: any[] = Array.isArray(res?.errors) ? res.errors : [];
-      if (errors.length) {
-        const lines = errors.slice(0, 20).map((e: any) => `第 ${e.row} 行：${e.message || "错误"}`);
-        const more = errors.length > 20 ? `\n... 还有 ${errors.length - 20} 条错误` : "";
-        await alertAction({
-          message: lines.join('\n') + more,
-          title: '导入失败明细',
-          type: 'warning',
-          confirmButtonText: '我知道了',
-        });
-      }
-      console.warn("pc-in-batch errors", errors);
-    } else {
+    const res = await postAssetImportInChunks("/api/pc-in-batch", items);
+    if (res.errors.length) console.warn("pc-in-batch errors", res.errors);
 
+    if (res.abortedMessage) {
+      showError(`导入中断：${res.abortedMessage}（已成功 ${res.success} 条，剩余行未提交,请重试）`);
+    } else if (res.failed > 0) {
+      showWarning(`导入完成：成功 ${res.success} 条，失败 ${res.failed} 条`);
+    } else {
       showSuccess(`导入完成：成功 ${res.success} 条`);
     }
-    if (Number(res?.success || 0) > 0) notifyPcAssetsChanged();
+
+    if (res.errors.length) {
+      const lines = res.errors.slice(0, 20).map((e) => `第 ${e.row} 行：${e.message}`);
+      const more = res.errors.length > 20 ? `\n... 还有 ${res.errors.length - 20} 条错误` : "";
+      await alertAction({
+        message: lines.join('\n') + more,
+        title: '导入失败明细',
+        type: 'warning',
+        confirmButtonText: '我知道了',
+      });
+    }
+
+    if (res.success > 0) notifyPcAssetsChanged();
 
   } catch (e: any) {
     showError(e?.message || "导入失败");

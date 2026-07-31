@@ -82,27 +82,36 @@ export async function upsertPcLatestState(db: D1Database, assetId: number, patch
   ).run();
 }
 
-export async function rebuildPcLatestStateForAssets(db: D1Database, assetIds: Array<number | string>) {
-  await ensurePcLatestStateTable(db);
+/**
+ * 生成 pc_asset_latest_state 的重建语句（纯 SQL，不预读）。
+ * 调用方可以把这些语句和台账写入放进同一个 db.batch()，保证派生状态与台账原子一致。
+ * 注意：调用前需先 await ensurePcLatestStateTable(db)（建表是 DDL，不能放进批次）。
+ */
+export function buildPcLatestStateRebuildStatements(db: D1Database, assetIds: Array<number | string>): D1PreparedStatement[] {
   const ids = Array.from(new Set((assetIds || []).map((id) => Number(id)).filter((id) => Number.isFinite(id) && id > 0)));
-  if (!ids.length) return;
-  const seen = new Set<number>();
+  if (!ids.length) return [];
+  const statements: D1PreparedStatement[] = [];
   for (const chunkIds of chunkValues(ids)) {
     const placeholders = chunkIds.map(() => '?').join(',');
-    const { results } = await db.prepare(
-      `SELECT
-         a.id AS asset_id,
-         a.status,
-         lo.id AS last_out_id,
-         lo.employee_no AS current_employee_no,
-         lo.employee_name AS current_employee_name,
-         lo.department AS current_department,
-         lo.config_date AS last_config_date,
-         lo.created_at AS last_out_at,
-         li.id AS last_in_id,
-         li.created_at AS last_in_at,
-         lr.id AS last_recycle_id,
-         lr.recycle_date AS last_recycle_date
+    statements.push(db.prepare(
+      `INSERT INTO pc_asset_latest_state (
+         asset_id, last_out_id, last_in_id, last_recycle_id,
+         current_employee_no, current_employee_name, current_department,
+         last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
+       )
+       SELECT
+         a.id,
+         lo.id,
+         li.id,
+         lr.id,
+         CASE WHEN a.status = 'ASSIGNED' THEN lo.employee_no ELSE NULL END,
+         CASE WHEN a.status = 'ASSIGNED' THEN lo.employee_name ELSE NULL END,
+         CASE WHEN a.status = 'ASSIGNED' THEN lo.department ELSE NULL END,
+         lo.config_date,
+         lo.created_at,
+         li.created_at,
+         lr.recycle_date,
+         ${sqlNowStored()}
        FROM pc_assets a
        LEFT JOIN pc_out lo ON lo.id = (
          SELECT id FROM pc_out WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
@@ -113,51 +122,32 @@ export async function rebuildPcLatestStateForAssets(db: D1Database, assetIds: Ar
        LEFT JOIN pc_recycle lr ON lr.id = (
          SELECT id FROM pc_recycle WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
        )
-       WHERE a.id IN (${placeholders})`
-    ).bind(...chunkIds).all<any>();
-    const statements: D1PreparedStatement[] = [];
-    for (const row of results || []) {
-      const assetId = Number(row?.asset_id || 0);
-      if (!assetId) continue;
-      seen.add(assetId);
-      const assigned = String(row?.status || '') === 'ASSIGNED';
-      statements.push(db.prepare(
-        `INSERT INTO pc_asset_latest_state (
-          asset_id, last_out_id, last_in_id, last_recycle_id,
-          current_employee_no, current_employee_name, current_department,
-          last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
-        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ${sqlNowStored()})
-        ON CONFLICT(asset_id) DO UPDATE SET
-          last_out_id=excluded.last_out_id,
-          last_in_id=excluded.last_in_id,
-          last_recycle_id=excluded.last_recycle_id,
-          current_employee_no=excluded.current_employee_no,
-          current_employee_name=excluded.current_employee_name,
-          current_department=excluded.current_department,
-          last_config_date=excluded.last_config_date,
-          last_out_at=excluded.last_out_at,
-          last_in_at=excluded.last_in_at,
-          last_recycle_date=excluded.last_recycle_date,
-          updated_at=${sqlNowStored()}`
-      ).bind(
-        assetId,
-        row?.last_out_id ?? null,
-        row?.last_in_id ?? null,
-        row?.last_recycle_id ?? null,
-        assigned ? row?.current_employee_no ?? null : null,
-        assigned ? row?.current_employee_name ?? null : null,
-        assigned ? row?.current_department ?? null : null,
-        row?.last_config_date ?? null,
-        row?.last_out_at ?? null,
-        row?.last_in_at ?? null,
-        row?.last_recycle_date ?? null,
-      ));
-    }
-    for (const assetId of chunkIds) {
-      if (!seen.has(assetId)) {
-        statements.push(db.prepare(`DELETE FROM pc_asset_latest_state WHERE asset_id=?`).bind(assetId));
-      }
-    }
-    if (statements.length) await db.batch(statements);
+       WHERE a.id IN (${placeholders})
+       ON CONFLICT(asset_id) DO UPDATE SET
+         last_out_id=excluded.last_out_id,
+         last_in_id=excluded.last_in_id,
+         last_recycle_id=excluded.last_recycle_id,
+         current_employee_no=excluded.current_employee_no,
+         current_employee_name=excluded.current_employee_name,
+         current_department=excluded.current_department,
+         last_config_date=excluded.last_config_date,
+         last_out_at=excluded.last_out_at,
+         last_in_at=excluded.last_in_at,
+         last_recycle_date=excluded.last_recycle_date,
+         updated_at=${sqlNowStored()}`
+    ).bind(...chunkIds));
+    // 资产已不存在（例如被删除）时，清掉残留的派生行
+    statements.push(db.prepare(
+      `DELETE FROM pc_asset_latest_state
+        WHERE asset_id IN (${placeholders})
+          AND NOT EXISTS (SELECT 1 FROM pc_assets a WHERE a.id = pc_asset_latest_state.asset_id)`
+    ).bind(...chunkIds));
   }
+  return statements;
+}
+
+export async function rebuildPcLatestStateForAssets(db: D1Database, assetIds: Array<number | string>) {
+  await ensurePcLatestStateTable(db);
+  const statements = buildPcLatestStateRebuildStatements(db, assetIds);
+  if (statements.length) await db.batch(statements);
 }

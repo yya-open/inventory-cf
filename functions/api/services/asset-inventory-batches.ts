@@ -1,4 +1,6 @@
 import { sqlNowStored } from "../_time";
+import { throwHttpError } from "../_error";
+import { GuardRollbackError, guardSql, runBatchWithGuard } from "../_write";
 import { invalidateInventorySummaryCache } from "./asset-inventory-summary-cache";
 
 export type AssetInventoryKind = "pc" | "monitor";
@@ -315,46 +317,102 @@ export async function startInventoryBatch(
   const cfg = KIND_CONFIG[kind];
   const normalizedName = String(name || '').trim() || await buildDefaultBatchName(db, kind);
   const existingActive = await getActiveInventoryBatch(db, kind);
+
+  // 「关旧批次 + 开新批次 + 资产表重置」必须同事务，否则中途失败会留下
+  // ACTIVE 批次与资产批次归属不一致（或半重置）的脏状态。
+  const stmts: D1PreparedStatement[] = [];
+
+  // 1) 结束上一轮 ACTIVE 批次（含汇总快照）
   if (existingActive?.id) {
-    await closeInventoryBatch(db, kind, createdBy, existingActive.id);
+    const close = await buildCloseInventoryBatchStatements(db, kind, createdBy, existingActive.id);
+    stmts.push(...close.stmts);
   }
 
-  const inserted = await db
-    .prepare(
-      `INSERT INTO asset_inventory_batch (kind, name, status, started_at, created_by, updated_at)
-     VALUES (?, ?, 'ACTIVE', ${sqlNowStored()}, ?, ${sqlNowStored()})`,
-    )
-    .bind(kind, normalizedName, createdBy)
-    .run();
-  const batchId = Number(
-    (inserted as any)?.meta?.last_row_id ||
-      (inserted as any)?.meta?.lastRowId ||
-      0,
+  // 2) 兜底：同一类型只允许一条 ACTIVE 批次。历史脏数据可能残留多条 ACTIVE，
+  //    在同一事务里一并关闭，保证下面用子查询解析新批次 id 时结果唯一。
+  stmts.push(
+    db
+      .prepare(
+        `UPDATE asset_inventory_batch
+            SET status='CLOSED',
+                closed_at=COALESCE(closed_at, ${sqlNowStored()}),
+                closed_by=COALESCE(?, closed_by),
+                updated_at=${sqlNowStored()}
+          WHERE kind=? AND status='ACTIVE'`,
+      )
+      .bind(createdBy, kind),
   );
 
-  await db
-    .prepare(
-      `UPDATE ${cfg.assetTable}
-        SET inventory_status='UNCHECKED',
-            inventory_at=NULL,
-            inventory_issue_type=NULL,
-            inventory_batch_id=?,
-            updated_at=${sqlNowStored()}`,
-    )
-    .bind(batchId)
-    .run();
+  // 3) 开启新批次
+  stmts.push(
+    db
+      .prepare(
+        `INSERT INTO asset_inventory_batch (kind, name, status, started_at, created_by, updated_at)
+       VALUES (?, ?, 'ACTIVE', ${sqlNowStored()}, ?, ${sqlNowStored()})`,
+      )
+      .bind(kind, normalizedName, createdBy),
+  );
+
+  // 4) 资产表重置为未盘点并挂到新批次。
+  //    事务内取不到 last_row_id，改用子查询解析新批次 id（此刻该类型仅有一条 ACTIVE）。
+  //    WHERE 只跳过「已经完全处于目标状态」的行：写入结果与整表重写等价，但避免无谓写放大。
+  //    批次 id 比较必须用 null 安全的 IS NOT，否则 inventory_batch_id 为 NULL 的行会被漏掉。
+  const activeBatchIdSql = `(SELECT id FROM asset_inventory_batch WHERE kind=? AND status='ACTIVE' ORDER BY id DESC LIMIT 1)`;
+  stmts.push(
+    db
+      .prepare(
+        `UPDATE ${cfg.assetTable}
+            SET inventory_status='UNCHECKED',
+                inventory_at=NULL,
+                inventory_issue_type=NULL,
+                inventory_batch_id=${activeBatchIdSql},
+                updated_at=${sqlNowStored()}
+          WHERE inventory_status IS NOT 'UNCHECKED'
+             OR inventory_at IS NOT NULL
+             OR inventory_issue_type IS NOT NULL
+             OR inventory_batch_id IS NOT ${activeBatchIdSql}`,
+      )
+      .bind(kind, kind),
+  );
+
+  // 5) 守卫行：该类型必须只剩一条 ACTIVE 批次，且资产表没有仍指向旧批次的行；
+  //    否则守卫行报错，让整批事务回滚。
+  stmts.push(
+    db
+      .prepare(
+        guardSql(`(
+             (SELECT COUNT(1) FROM asset_inventory_batch WHERE kind=? AND status='ACTIVE')
+             + (SELECT COUNT(1) FROM ${cfg.assetTable} WHERE inventory_batch_id IS NOT ${activeBatchIdSql})
+           ) = ?`),
+      )
+      .bind(kind, kind, 1),
+  );
+
+  try {
+    await runBatchWithGuard(db, stmts);
+  } catch (e) {
+    if (e instanceof GuardRollbackError) {
+      throwHttpError('开启盘点批次异常，本次已全部回滚（请重试）', 409);
+    }
+    throw e;
+  }
 
   await invalidateInventorySummaryCache(db, kind);
   await pruneInventoryBatchHistory(db, kind);
   return getActiveInventoryBatch(db, kind);
 }
 
-export async function closeInventoryBatch(
+/**
+ * 生成「结束盘点批次」的写语句（只读汇总在这里完成，不含缓存失效与历史裁剪）。
+ * 抽成语句构造器，便于 startInventoryBatch 把关旧批次拼进自己的事务批次。
+ * 目标批次不存在时返回空语句列表（targetId=0）。
+ */
+export async function buildCloseInventoryBatchStatements(
   db: D1Database,
   kind: AssetInventoryKind,
   closedBy: string | null,
   batchId?: number | null,
-) {
+): Promise<{ targetId: number; stmts: D1PreparedStatement[] }> {
   const target =
     batchId && Number(batchId) > 0
       ? await db
@@ -370,16 +428,19 @@ export async function closeInventoryBatch(
           .bind(kind)
           .first<any>();
   const normalized = normalizeBatchRow(target);
-  if (!normalized?.id) return getLatestInventoryBatch(db, kind);
+  if (!normalized?.id) return { targetId: 0, stmts: [] };
   const summary = await getInventoryBatchSummaryForAssets(
     db,
     kind,
     normalized.id,
   );
   const issueBreakdown = await getInventoryIssueBreakdownForBatchLogs(db, kind, normalized.id);
-  await db
-    .prepare(
-      `UPDATE asset_inventory_batch
+  return {
+    targetId: normalized.id,
+    stmts: [
+      db
+        .prepare(
+          `UPDATE asset_inventory_batch
         SET status='CLOSED',
             closed_at=COALESCE(closed_at, ${sqlNowStored()}),
             closed_by=COALESCE(?, closed_by),
@@ -390,18 +451,30 @@ export async function closeInventoryBatch(
             summary_issue_breakdown=?,
             updated_at=${sqlNowStored()}
       WHERE kind=? AND id=?`,
-    )
-    .bind(
-      closedBy,
-      summary.total,
-      summary.checked_ok,
-      summary.checked_issue,
-      summary.unchecked,
-      JSON.stringify(issueBreakdown),
-      kind,
-      normalized.id,
-    )
-    .run();
+        )
+        .bind(
+          closedBy,
+          summary.total,
+          summary.checked_ok,
+          summary.checked_issue,
+          summary.unchecked,
+          JSON.stringify(issueBreakdown),
+          kind,
+          normalized.id,
+        ),
+    ],
+  };
+}
+
+export async function closeInventoryBatch(
+  db: D1Database,
+  kind: AssetInventoryKind,
+  closedBy: string | null,
+  batchId?: number | null,
+) {
+  const { targetId, stmts } = await buildCloseInventoryBatchStatements(db, kind, closedBy, batchId);
+  if (!targetId) return getLatestInventoryBatch(db, kind);
+  await runBatchWithGuard(db, stmts);
   await invalidateInventorySummaryCache(db, kind);
   await pruneInventoryBatchHistory(db, kind);
   return getLatestInventoryBatch(db, kind);

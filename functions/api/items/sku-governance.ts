@@ -1,7 +1,7 @@
 import { requireAuth } from '../_auth';
 import { logAudit } from '../_audit';
 import { withErrorHandling } from '../_error';
-import { runBatchWithGuard, GuardRollbackError } from '../_write';
+import { runBatchWithGuard, GuardRollbackError, guardSql } from '../_write';
 import { aliasInsertStatement, ensureItemSkuAliasSchema } from '../services/item-sku-aliases';
 import {
   precheckSkuGovernanceUpdates,
@@ -64,21 +64,13 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   if (aliasGuardItems.length) {
     const aliasGuardWhere = aliasGuardItems.map(() => '(item_id=? AND alias_sku=? AND active=1)').join(' OR ');
     stmts.push(env.DB.prepare(
-      `SELECT CASE
-         WHEN (SELECT COUNT(*) FROM item_sku_aliases WHERE ${aliasGuardWhere}) = ?
-         THEN 1
-         ELSE json_extract('[]', '$[')
-       END AS ok`
+      guardSql(`(SELECT COUNT(*) FROM item_sku_aliases WHERE ${aliasGuardWhere}) = ?`)
     ).bind(...aliasGuardItems.flatMap((item) => [item.id, item.oldSku]), aliasGuardItems.length));
   }
 
   const guardWhere = items.map(() => '(id=? AND sku=?)').join(' OR ');
   stmts.push(env.DB.prepare(
-    `SELECT CASE
-       WHEN (SELECT COUNT(*) FROM items WHERE ${guardWhere}) = ?
-       THEN 1
-       ELSE json_extract('[]', '$[')
-     END AS ok`
+    guardSql(`(SELECT COUNT(*) FROM items WHERE ${guardWhere}) = ?`)
   ).bind(...items.flatMap((item) => [item.id, item.newSku]), items.length));
 
   try {

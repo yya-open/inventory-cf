@@ -11,12 +11,13 @@ import {
 import { createTiming } from './_timing';
 import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
-import { buildChildWriteNo, findExistingByNo } from './services/write-idempotency';
+import { buildChildWriteNo } from './services/write-idempotency';
 import { assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 import { sqlNowStored } from './_time';
-import { syncSystemDictionaryUsageCounters } from './services/system-dictionaries';
-import { batchFindExistingByNo, batchFindAssetsByIds, batchFindAssetsBySerial } from './services/batch-utils';
+import { ASSET_BATCH_MAX_ROWS, batchFindExistingByNo, batchFindAssetsByIds, batchFindAssetsBySerial } from './services/batch-utils';
+import { runBatchWithGuard, GuardRollbackError, guardRowCountSql } from './_write';
+import { chunkValues } from './services/sql-batch';
 
 type Item = {
   employee_no: string;
@@ -40,6 +41,9 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
   const quality = await t.measure('settings', () => getDataQualitySettings(env.DB));
   const items: Item[] = Array.isArray(body?.items) ? body.items : [];
   if (!items.length) return Response.json({ ok: false, message: 'items 不能为空' }, { status: 400 });
+  if (items.length > ASSET_BATCH_MAX_ROWS) {
+    return Response.json({ ok: false, message: `单次最多导入 ${ASSET_BATCH_MAX_ROWS} 条,请拆分后重试` }, { status: 400 });
+  }
 
   // 预生成所有幂等号
   const itemNos = items.map((_, i) => {
@@ -90,11 +94,13 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     await assertDepartmentDictionaryValue(env.DB, dept, '领用部门');
   }
 
-  let success = 0;
   let duplicated = 0;
   const errors: { row: number; message: string }[] = [];
+  // 只累积语句,最后一次性提交:整批要么全部生效,要么全部回滚。
   const statements: D1PreparedStatement[] = [];
-  const auditRecords: Array<{ no: string; data: any }> = [];
+  const auditRecords: Array<{ no: string; data: Record<string, unknown> }> = [];
+  const writtenNos: string[] = [];
+  const processedAssetIds = new Set<number>();
 
   for (let i = 0; i < items.length; i++) {
     try {
@@ -103,7 +109,6 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
       // 检查幂等
       if (existingByNoMap.has(no)) {
-        success++;
         duplicated++;
         continue;
       }
@@ -127,9 +132,16 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
 
       if (!isInStockStatus(asset.status)) throw new Error('该电脑当前不是"在库"，无法出库');
 
+      // 同一批里同一台电脑只能出库一次,否则守卫会因第二条记录插不进去而整批回滚
+      if (processedAssetIds.has(Number(asset.id))) {
+        throw new Error('本次导入中存在重复电脑（同一台电脑重复出库）');
+      }
+      processedAssetIds.add(Number(asset.id));
+
       const afterStatus = toAssetStatusAfterOut(null);
 
-      // 插入出库记录
+      // 插入出库记录：以 status='IN_STOCK' 为前置条件,资产被并发出库时插入 0 行,
+      // 由本批末尾的守卫检测并整批回滚,避免产生幽灵出库流水。
       statements.push(
         env.DB.prepare(
           `INSERT INTO pc_out (
@@ -138,20 +150,23 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
             brand, serial_no, model,
             config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
             remark, created_by, created_at
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+          )
+          SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()}
+            FROM pc_assets WHERE id=? AND status='IN_STOCK'`
         ).bind(
           no, asset.id,
           employee_no, department, employee_name, is_employed,
           asset.brand, asset.serial_no, asset.model,
           config_date, asset.manufacture_date ?? null, asset.warranty_end ?? null,
           asset.disk_capacity ?? null, asset.memory_size ?? null,
-          remark, user.username
+          remark, user.username,
+          asset.id
         )
       );
 
-      // 更新资产状态
+      // 更新资产状态（同样带上前置条件,不覆盖并发结果）
       statements.push(
-        env.DB.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`)
+        env.DB.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=? AND status='IN_STOCK'`)
           .bind(afterStatus, asset.id)
       );
 
@@ -184,29 +199,42 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
         no,
         data: { asset_id: asset.id, serial_no: asset.serial_no, employee_no, department, employee_name, status_after: afterStatus },
       });
-      success++;
-    } catch (e: any) {
-      errors.push({ row: i + 2, message: e?.message || '导入失败' });
+      writtenNos.push(no);
+    } catch (e) {
+      const message = e instanceof Error ? e.message : '';
+      errors.push({ row: i + 2, message: message || '导入失败' });
     }
   }
 
-  // 批量执行所有语句
-  if (statements.length > 0) {
-    await t.measure('batch_execute', async () => {
-      const batchSize = 100;
-      for (let i = 0; i < statements.length; i += batchSize) {
-        const batch = statements.slice(i, i + batchSize);
-        await env.DB.batch(batch);
-      }
-    });
+  // 守卫：断言本次每个出库单号都已落库。任何一条因并发抢占插入 0 行都会触发整批回滚。
+  // 单条语句的绑定参数上限为 100,故按 chunkValues 默认粒度切成多条守卫。
+  for (const chunk of chunkValues(writtenNos)) {
+    statements.push(
+      env.DB.prepare(guardRowCountSql('pc_out', 'out_no', chunk.length)).bind(...chunk, chunk.length)
+    );
+  }
 
-    await syncSystemDictionaryUsageCounters(env.DB, []).catch(() => {});
+  if (statements.length > 0) {
+    try {
+      await t.measure('batch_execute', () => runBatchWithGuard(env.DB, statements));
+    } catch (e) {
+      if (e instanceof GuardRollbackError) {
+        return Response.json(
+          { ok: false, message: '批量出库写入异常（可能有电脑已被并发出库），本次已全部回滚（请刷新后重试）' },
+          { status: 409 },
+        );
+      }
+      throw e;
+    }
 
     for (const record of auditRecords) {
       waitUntil(logAudit(env.DB, request, user, 'PC_OUT_BATCH', 'pc_out', record.no, record.data).catch(() => {}));
     }
   }
 
-  if (success > duplicated) invalidateAssetListCache('pc-assets');
+  const written = writtenNos.length;
+  const success = duplicated + written;
+
+  if (written > 0) invalidateAssetListCache('pc-assets');
   return Response.json({ ok: true, success, duplicated, failed: errors.length, errors });
 });
