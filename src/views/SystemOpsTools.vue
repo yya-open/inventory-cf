@@ -252,17 +252,16 @@
 import { ElDescriptions, ElDescriptionsItem } from 'element-plus/es/components/descriptions/index';
 import { ElTabPane, ElTabs } from 'element-plus/es/components/tabs/index';
 import { ElProgress } from 'element-plus/es/components/progress/index';
-import { ref, reactive, onMounted, onBeforeUnmount, computed, watch } from 'vue';
-import { confirmAction, showError, showPending, showSuccess, showWarning } from '../utils/feedback';
-import { apiGet, apiPost, apiPut } from '../api/client';
+import { ref, reactive, onMounted, computed } from 'vue';
+import { showError, showSuccess } from '../utils/feedback';
+import { apiGet, apiPost } from '../api/client';
 import { getSystemHealth } from '../api/systemHealth';
 import { confirmRiskAction } from '../utils/riskAction';
-import { downloadJobResultCached, openJobResultCached } from '../utils/jobResultCache';
-import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
+import { buildAsyncJobTypeGroups, canDeleteJob, formatAsyncJobType, formatBytes, formatDuration, statusText, statusType } from '../utils/asyncJobUi';
 import { useSystemPageLoader } from '../composables/useSystemPageLoader';
+import { useAsyncJobs, type AsyncJobRow } from '../composables/useAsyncJobs';
 
 const autoScanMinutes = 15;
-type JobRow = any;
 const tab = ref('repair');
 const schema = reactive<any>({ ok: true, missing: [] });
 const dashboard = reactive<any>({ slow_request_count: 0, error_request_count: 0, async_job_count: 0, queued_job_count: 0, failed_job_count: 0, repair_problem_count: 0 });
@@ -270,11 +269,11 @@ const scan = reactive<any>({ total_problem_count: 0, affected_rows: 0, last_scan
 const health = reactive<any>({ schema: { ok: true }, metrics: {}, scan: null });
 const slowRows = ref<any[]>([]);
 const errorRows = ref<any[]>([]);
-const jobs = ref<JobRow[]>([]);
 const repairHistory = ref<any[]>([]);
 const JOB_RENDER_STEP = 40;
 const HISTORY_RENDER_STEP = 30;
 const OBS_RENDER_STEP = 30;
+const JOB_LIST_LIMIT = 100;
 const jobsRenderLimit = ref(JOB_RENDER_STEP);
 const historyRenderLimit = ref(HISTORY_RENDER_STEP);
 const obsRenderLimit = ref(OBS_RENDER_STEP);
@@ -282,35 +281,67 @@ const scanning = ref(false);
 const running = ref('');
 const lastRepair = ref('');
 const snapshotPrecomputing = ref(false);
-const deletingJobId = ref<number | null>(null);
-const batchDeletingJobs = ref(false);
 const jobFilter = reactive({ status: '', job_type: '', mine: true, days: 7 });
 const jobsTableRef = ref<any>(null);
-const selectedJobIds = ref<number[]>([]);
 const diffDialog = reactive<any>({ visible: false, title: '', rows: [], columns: [] });
 const jobDetail = reactive<any>({ visible: false, title: '任务详情', row: null });
-const asyncJobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
 const loadedTabs = reactive<Record<string, boolean>>({ repair: false, jobs: false, obs: false, health: false, history: false });
-const JOB_LIST_LIMIT = 100;
-const JOB_POLL_FAST_MS = 4000;
-const JOB_POLL_IDLE_MS = 15000;
-const JOB_POLL_HIDDEN_MS = 30000;
-const jobPollTimer = ref<number | null>(null);
-const jobPollInFlight = ref(false);
-const jobsLastSyncedAt = ref('');
-const jobsLastSyncMode = ref<'full' | 'delta'>('full');
-let jobsRequestSeq = 0;
-let jobsAbortController: AbortController | null = null;
-const deletableSelectedJobsCount = computed(() => {
-  if (!selectedJobIds.value.length) return 0;
-  const selected = new Set(selectedJobIds.value);
-  return jobs.value.filter((row: any) => selected.has(Number(row?.id || 0)) && canDeleteJob(row)).length;
+
+const {
+  jobs,
+  lastSyncMode,
+  lastSyncedAt,
+  documentHidden,
+  pollDelayMs,
+  deletingJobId,
+  batchDeleting: batchDeletingJobs,
+  deletableSelectedCount: deletableSelectedJobsCount,
+  loadJobs,
+  applyFilters: applyJobFilters,
+  retryJob,
+  cancelJob,
+  cleanupJobs,
+  deleteJob,
+  deleteSelectedJobs,
+  onSelectionChange: onJobsSelectionChange,
+  downloadJob,
+  previewJob,
+  printJob,
+  fetchJobDetail,
+  schedulePoll: scheduleJobsPolling,
+  clearPollTimer: clearJobsPollTimer,
+  startVisibilityTracking,
+} = useAsyncJobs(jobFilter, {
+  limit: JOB_LIST_LIMIT,
+  maxRows: JOB_LIST_LIMIT,
+  fastPollMs: 4000,
+  idlePollMs: 15000,
+  hiddenPollMs: 30000,
+  canPoll: () => String(tab.value || '') === 'jobs' && loadedTabs.jobs,
+  onLoaded: ({ usedDelta }) => {
+    if (!usedDelta) jobsRenderLimit.value = JOB_RENDER_STEP;
+    loadedTabs.jobs = true;
+  },
+  onJobsRemoved: (removedIds) => {
+    const current = Number(jobDetail.row?.id || 0);
+    if (current > 0 && removedIds.includes(current)) {
+      jobDetail.visible = false;
+      jobDetail.row = null;
+    }
+  },
+  clearTableSelection: () => jobsTableRef.value?.clearSelection?.(),
 });
+
+const asyncJobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
+const renderedJobs = computed(() => jobs.value.slice(0, jobsRenderLimit.value));
+const renderedRepairHistory = computed(() => repairHistory.value.slice(0, historyRenderLimit.value));
+const renderedSlowRows = computed(() => slowRows.value.slice(0, obsRenderLimit.value));
+const renderedErrorRows = computed(() => errorRows.value.slice(0, obsRenderLimit.value));
 const jobAutoRefreshText = computed(() => {
-  const mode = jobsLastSyncMode.value === 'delta' ? '增量刷新' : '全量刷新';
-  const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
-  const base = document.hidden ? `后台 ${Math.round(JOB_POLL_HIDDEN_MS / 1000)}s` : (active ? `${Math.round(JOB_POLL_FAST_MS / 1000)}s` : `${Math.round(JOB_POLL_IDLE_MS / 1000)}s`);
-  const last = jobsLastSyncedAt.value ? `，上次 ${formatTime(jobsLastSyncedAt.value)}` : '';
+  const mode = lastSyncMode.value === 'delta' ? '增量刷新' : '全量刷新';
+  const seconds = Math.round(pollDelayMs.value / 1000);
+  const base = documentHidden.value ? `后台 ${seconds}s` : `${seconds}s`;
+  const last = lastSyncedAt.value ? `，上次 ${formatTime(lastSyncedAt.value)}` : '';
   return `自动刷新：${mode}，${base}${last}`;
 });
 
@@ -318,17 +349,6 @@ function formatTime(v?: string | null) {
   if (!v) return '';
   return String(v).replace('T', ' ').replace(/\.\d+Z?$/, '');
 }
-
-function formatDuration(ms?: number | null) {
-  const value = Number(ms || 0);
-  if (!value) return '-';
-  if (value >= 1000 * 60 * 60 * 24) return `${Math.floor(value / 1000 / 60 / 60 / 24)}天`;
-  if (value >= 1000 * 60 * 60) return `${Math.floor(value / 1000 / 60 / 60)}小时`;
-  if (value >= 1000 * 60) return `${Math.floor(value / 1000 / 60)}分钟`;
-  if (value >= 1000) return `${Math.floor(value / 1000)}秒`;
-  return `${value}ms`;
-}
-
 
 async function runSnapshotPrecompute() {
   snapshotPrecomputing.value = true;
@@ -341,13 +361,6 @@ async function runSnapshotPrecompute() {
   } finally {
     snapshotPrecomputing.value = false;
   }
-}
-
-function formatBytes(value?: number | null) {
-  const size = Number(value || 0);
-  if (!size) return '-';
-  if (size >= 1024 * 1024) return `${(size / 1024 / 1024).toFixed(2)} MB`;
-  return `${(size / 1024).toFixed(1)} KB`;
 }
 
 function columnLabel(key: string) {
@@ -367,23 +380,6 @@ function mismatchLabel(key: string) {
     search_text_norm: '搜索字段',
   };
   return map[key] || key;
-}
-
-function statusType(status: string) {
-  if (status === 'success') return 'success';
-  if (status === 'failed') return 'danger';
-  if (status === 'canceled') return 'info';
-  if (status === 'running') return 'warning';
-  return 'info';
-}
-
-function statusText(status: string) {
-  const map: Record<string, string> = { queued: '排队中', running: '执行中', success: '成功', failed: '失败', canceled: '已取消' };
-  return map[status] || status;
-}
-
-function canDeleteJob(row: any) {
-  return !['queued', 'running'].includes(String(row?.status || ''));
 }
 
 function applySchema(data:any) { Object.assign(schema, data || {}); }
@@ -535,127 +531,11 @@ async function runRepair(action: string) {
   }
 }
 
-function clearJobsPollTimer() {
-  if (jobPollTimer.value != null) {
-    window.clearTimeout(jobPollTimer.value);
-    jobPollTimer.value = null;
-  }
-}
-
-function shouldUseIncrementalJobsRefresh() {
-  return !String(jobFilter.status || '').trim();
-}
-
-function applyJobFilters() {
-  jobsLastSyncMode.value = 'full';
-  void loadJobs({ incremental: false });
-}
-
-function currentJobsPollDelay() {
-  if (document.hidden) return JOB_POLL_HIDDEN_MS;
-  const active = jobs.value.some((row: any) => ['queued', 'running'].includes(String(row?.status || '')));
-  return active ? JOB_POLL_FAST_MS : JOB_POLL_IDLE_MS;
-}
-
-function mergeJobsRows(existing: any[], incoming: any[], limit = JOB_LIST_LIMIT) {
-  const map = new Map<number, any>();
-  for (const row of Array.isArray(existing) ? existing : []) {
-    const id = Number(row?.id || 0);
-    if (id > 0) map.set(id, row);
-  }
-  for (const row of Array.isArray(incoming) ? incoming : []) {
-    const id = Number(row?.id || 0);
-    if (id > 0) map.set(id, row);
-  }
-  return Array.from(map.values()).sort((a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0)).slice(0, limit);
-}
-
-function scheduleJobsPolling(immediate = false) {
-  clearJobsPollTimer();
-  if (String(tab.value || '') !== 'jobs' || !loadedTabs.jobs) return;
-  const delay = immediate ? 800 : currentJobsPollDelay();
-  jobPollTimer.value = window.setTimeout(async () => {
-    if (jobPollInFlight.value || String(tab.value || '') !== 'jobs') {
-      scheduleJobsPolling();
-      return;
-    }
-    try {
-      await loadJobs({ incremental: shouldUseIncrementalJobsRefresh(), silent: true });
-    } catch {}
-  }, delay);
-}
-
-function handleJobsVisibilityChange() {
-  if (String(tab.value || '') !== 'jobs') return;
-  scheduleJobsPolling(!document.hidden);
-}
-
-async function loadJobs(options: { incremental?: boolean; silent?: boolean } = {}) {
-  const requestSeq = ++jobsRequestSeq;
-  if (jobsAbortController) {
-    try { jobsAbortController.abort(); } catch {}
-  }
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  jobsAbortController = controller;
-
-  const q = new URLSearchParams();
-  if (jobFilter.status) q.set('status', jobFilter.status);
-  if (jobFilter.job_type) q.set('job_type', jobFilter.job_type);
-  if (jobFilter.mine) q.set('mine', '1');
-  q.set('days', String(jobFilter.days));
-  q.set('limit', String(JOB_LIST_LIMIT));
-
-  const allowDelta = !!options.incremental && shouldUseIncrementalJobsRefresh() && jobs.value.length > 0;
-  const activeIds = Array.from(new Set(jobs.value.filter((row: any) => ['queued', 'running'].includes(String(row?.status || ''))).map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0))).slice(0, JOB_LIST_LIMIT);
-  const maxId = jobs.value.reduce((max: number, row: any) => Math.max(max, Number(row?.id || 0)), 0);
-  if (allowDelta && (maxId > 0 || activeIds.length > 0)) {
-    if (maxId > 0) q.set('after_id', String(maxId));
-    if (activeIds.length > 0) q.set('ids', activeIds.join(','));
-  }
-
-  jobPollInFlight.value = true;
-  try {
-    const r:any = await apiGet(`/api/jobs?${q.toString()}`, controller ? { signal: controller.signal } : {});
-    if (requestSeq !== jobsRequestSeq) return;
-    const rows = Array.isArray(r.data) ? r.data : [];
-    const usedDelta = allowDelta && (q.has('after_id') || q.has('ids'));
-    jobs.value = usedDelta ? mergeJobsRows(jobs.value, rows, JOB_LIST_LIMIT) : rows;
-    if (!usedDelta) jobsRenderLimit.value = JOB_RENDER_STEP;
-    jobsLastSyncMode.value = usedDelta ? 'delta' : 'full';
-    jobsLastSyncedAt.value = new Date().toISOString();
-    loadedTabs.jobs = true;
-  } catch (error: any) {
-    if (requestSeq !== jobsRequestSeq) return;
-    if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
-    if (!options.silent) showError(error?.message || '加载任务列表失败');
-  } finally {
-    if (jobsAbortController === controller) jobsAbortController = null;
-    jobPollInFlight.value = false;
-    if (String(tab.value || '') === 'jobs') scheduleJobsPolling();
-  }
-}
-
 async function loadRepairHistory() {
   const r:any = await apiGet('/api/system-tools?section=history');
   repairHistory.value = Array.isArray(r.data?.history) ? r.data.history : [];
   historyRenderLimit.value = HISTORY_RENDER_STEP;
   loadedTabs.history = true;
-}
-
-async function cleanupJobs() {
-  await confirmRiskAction({ title: '自动清理历史任务', actionLabel: '清理异步任务历史', detail: '会清理过期结果、自动取消排队过久的任务，并删除长期无结果的旧任务。', affectedRows: jobs.value.length, irreversible: false });
-  const r:any = await apiPut('/api/jobs', { action: 'cleanup' });
-  showSuccess(r.message || '已自动清理');
-  await loadJobs();
-}
-
-function buildJobResultUrl(row:any, opts: { inline?: boolean; print?: boolean } = {}) {
-  const id = Number(row?.id || 0);
-  if (!id) return '';
-  const q = new URLSearchParams({ id: String(id) });
-  if (opts.inline) q.set('inline', '1');
-  if (opts.print) q.set('print', '1');
-  return `/api/jobs-download?${q.toString()}`;
 }
 
 function canPreviewJob(row:any) {
@@ -670,129 +550,10 @@ function canPrintJob(row:any) {
   return contentType.includes('text/html') || filename.endsWith('.html');
 }
 
-async function downloadJob(row:any) {
-  const url = buildJobResultUrl(row);
-  if (!url) return;
-  try {
-    const file = await downloadJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) showSuccess('已从最近下载缓存读取结果');
-  } catch (e:any) {
-    showError(e?.message || '下载任务结果失败');
-  }
-}
-
-async function previewJob(row:any) {
-  const url = buildJobResultUrl(row, { inline: true });
-  if (!url) return;
-  try {
-    const file = await openJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) showSuccess('已从最近预览缓存打开结果');
-  } catch (e:any) {
-    showError(e?.message || '预览任务结果失败');
-  }
-}
-
-async function printJob(row:any) {
-  const url = buildJobResultUrl(row, { inline: true, print: true });
-  if (!url) return;
-  try {
-    const file = await openJobResultCached(url, row?.result_filename || undefined);
-    if (file.fromCache) showSuccess('已从最近打印缓存打开结果');
-  } catch (e:any) {
-    showError(e?.message || '打开打印页失败');
-  }
-}
-
-async function retryJob(id:number) {
-  await confirmRiskAction({ title: '重试异步任务', actionLabel: '重试失败任务', detail: `任务 #${id} 会重新入队执行。`, irreversible: false });
-  const r:any = await apiPut('/api/jobs', { action: 'retry', id });
-  showSuccess(r.message || '已重试');
-  await loadJobs();
-}
-async function openJobDetail(row:any) {
-  try {
-    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90&detail=1`);
-    jobDetail.row = Array.isArray(r?.data) ? (r.data[0] || row) : row;
-  } catch {
-    jobDetail.row = row;
-  }
+async function openJobDetail(row: AsyncJobRow) {
+  jobDetail.row = await fetchJobDetail(row);
   jobDetail.title = `${formatAsyncJobType(jobDetail.row?.job_type)} · 任务详情`;
   jobDetail.visible = true;
-}
-
-async function deleteJob(row:any) {
-  if (batchDeletingJobs.value) return;
-  await confirmAction({ title: '提示', message: `确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, type: 'warning' });
-  deletingJobId.value = Number(row?.id || 0) || null;
-  try {
-    await apiPut('/api/jobs', { action: 'delete', id: row.id });
-    if (Number(jobDetail.row?.id || 0) === Number(row.id || 0)) {
-      jobDetail.visible = false;
-      jobDetail.row = null;
-    }
-    showSuccess('任务已删除');
-    await loadJobs();
-  } finally {
-    deletingJobId.value = null;
-  }
-}
-
-function onJobsSelectionChange(rows: any[]) {
-  selectedJobIds.value = (rows || [])
-    .map((row: any) => Number(row?.id || 0))
-    .filter((id: number) => Number.isFinite(id) && id > 0);
-}
-
-async function deleteSelectedJobs() {
-  if (batchDeletingJobs.value) return;
-  const selected = new Set(selectedJobIds.value);
-  const selectedRows = jobs.value.filter((row: any) => selected.has(Number(row?.id || 0)));
-  if (!selectedRows.length) return showWarning('请先勾选任务');
-  const deletableRows = selectedRows.filter((row: any) => canDeleteJob(row));
-  const blocked = Math.max(0, selectedRows.length - deletableRows.length);
-  if (!deletableRows.length) return showWarning('选中任务均为运行中/排队中，无法删除');
-
-  await confirmAction({
-    title: '批量删除任务',
-    message: blocked
-      ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
-      : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-  });
-
-  const loading = showPending('正在批量删除任务，请稍候…');
-  batchDeletingJobs.value = true;
-  let success = 0;
-  let failed = 0;
-  try {
-    const result: any = await apiPut('/api/jobs', { action: 'delete_batch', ids: deletableRows.map((row: any) => Number(row.id)) });
-    success = Number(result?.data?.deleted ?? result?.deleted ?? 0);
-    failed = Number(result?.data?.failed ?? result?.failed ?? 0);
-    if (Number(jobDetail.row?.id || 0) > 0 && selected.has(Number(jobDetail.row?.id || 0))) {
-      jobDetail.visible = false;
-      jobDetail.row = null;
-    }
-    loading.close();
-    if (failed) showWarning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
-    else showSuccess(`批量删除完成：共删除 ${success} 条`);
-    selectedJobIds.value = [];
-    jobsTableRef.value?.clearSelection?.();
-    await loadJobs();
-  } catch (error: any) {
-    loading.close();
-    showError(error?.message || '批量删除任务失败');
-  } finally {
-    batchDeletingJobs.value = false;
-  }
-}
-
-async function cancelJob(id:number) {
-  await confirmRiskAction({ title: '取消异步任务', actionLabel: '取消任务', detail: `任务 #${id} 将被取消或进入取消中状态。`, irreversible: false });
-  const r:any = await apiPut('/api/jobs', { action: 'cancel', id });
-  showSuccess(r.message || '已取消');
-  await loadJobs();
 }
 
 function openDiff(row:any) {
@@ -801,16 +562,6 @@ function openDiff(row:any) {
   diffDialog.columns = diffDialog.rows.length ? Object.keys(diffDialog.rows[0]) : [];
   diffDialog.visible = true;
 }
-
-watch(jobs, () => {
-  if (!selectedJobIds.value.length) return;
-  const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
-  selectedJobIds.value = selectedJobIds.value.filter((id) => keep.has(id));
-});
-const renderedJobs = computed(() => jobs.value.slice(0, jobsRenderLimit.value));
-const renderedRepairHistory = computed(() => repairHistory.value.slice(0, historyRenderLimit.value));
-const renderedSlowRows = computed(() => slowRows.value.slice(0, obsRenderLimit.value));
-const renderedErrorRows = computed(() => errorRows.value.slice(0, obsRenderLimit.value));
 
 const repairBaseLoader = useSystemPageLoader<any>('system-ops::repair-base', {
   ttlMs: 60_000,
@@ -846,18 +597,7 @@ const healthLoader = useSystemPageLoader<any>('system-ops::health', {
 
 onMounted(() => {
   ensureTabLoaded('repair');
-  document.addEventListener('visibilitychange', handleJobsVisibilityChange);
-  window.addEventListener('focus', handleJobsVisibilityChange);
-});
-
-onBeforeUnmount(() => {
-  clearJobsPollTimer();
-  if (jobsAbortController) {
-    try { jobsAbortController.abort(); } catch {}
-    jobsAbortController = null;
-  }
-  document.removeEventListener('visibilitychange', handleJobsVisibilityChange);
-  window.removeEventListener('focus', handleJobsVisibilityChange);
+  startVisibilityTracking();
 });
 </script>
 

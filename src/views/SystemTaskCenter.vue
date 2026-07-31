@@ -5,7 +5,7 @@
         <el-tag :type="hasActiveJobs ? 'warning' : 'success'">{{ hasActiveJobs ? '存在运行中任务' : '当前无运行中任务' }}</el-tag>
         <el-button v-if="canManageSystemTools" :loading="snapshotSubmitting" @click="createSnapshotJob">提交看板快照任务</el-button>
         <el-button @click="cleanupJobs">自动清理历史</el-button>
-        <el-button @click="loadJobs({ force: true, includeBase: true, reset: true })">刷新</el-button>
+        <el-button @click="loadJobs()">刷新</el-button>
       </div>
     </div>
 
@@ -30,7 +30,7 @@
             <el-option v-for="item in group.options" :key="item.value" :label="item.label" :value="item.value" />
           </el-option-group>
         </el-select>
-        <el-select v-model="filter.days" class="task-w-140" @change="applyFilters(true)">
+        <el-select v-model="filter.days" class="task-w-140" @change="applyFilters">
           <el-option label="最近 7 天" :value="7" />
           <el-option label="最近 15 天" :value="15" />
           <el-option label="最近 30 天" :value="30" />
@@ -95,7 +95,7 @@
           <template #default="{ row }">{{ formatAsyncJobType(row.job_type) }}</template>
         </el-table-column>
         <el-table-column label="状态" width="110">
-          <template #default="{ row }"><el-tag :type="statusTag(row.status)">{{ statusText(row.status) }}</el-tag></template>
+          <template #default="{ row }"><el-tag :type="statusType(row.status)">{{ statusText(row.status) }}</el-tag></template>
         </el-table-column>
         <el-table-column label="进度" width="160">
           <template #default="{ row }">
@@ -120,7 +120,7 @@
               <el-button v-if="canOpenFailedAssets(row)" class="task-action-btn task-action-btn--wide" text type="primary" @click="openFailedAssets(row)">异常资产</el-button>
               <el-button v-if="row.status==='failed'" class="task-action-btn" text type="warning" @click="retryJob(row)">重试</el-button>
               <el-button v-if="row.status==='queued' || row.status==='running'" class="task-action-btn" text type="danger" @click="cancelJob(row)">取消</el-button>
-              <el-button v-if="canDelete(row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
+          <el-button v-if="canDeleteJob(row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(row.id)" :disabled="deletingJobId===Number(row.id) || batchDeleting" @click="deleteJob(row)">{{ deletingJobId===Number(row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </template>
         </el-table-column>
@@ -151,7 +151,7 @@
               <el-button v-if="canOpenFailedAssets(entry.row)" class="task-action-btn task-action-btn--wide" text type="primary" @click="openFailedAssets(entry.row)">异常资产</el-button>
               <el-button v-if="entry.row.status==='failed'" class="task-action-btn" text type="warning" @click="retryJob(entry.row)">重试</el-button>
               <el-button v-if="entry.row.status==='queued' || entry.row.status==='running'" class="task-action-btn" text type="danger" @click="cancelJob(entry.row)">取消</el-button>
-              <el-button v-if="canDelete(entry.row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
+              <el-button v-if="canDeleteJob(entry.row)" class="task-action-btn" text type="danger" :loading="deletingJobId===Number(entry.row.id)" :disabled="deletingJobId===Number(entry.row.id) || batchDeleting" @click="deleteJob(entry.row)">{{ deletingJobId===Number(entry.row.id) ? '删除中' : '删除' }}</el-button>
             </div>
           </div>
         </div>
@@ -193,53 +193,79 @@
 </template>
 
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, reactive, ref, watch } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { useRouter } from 'vue-router';
-import { apiDownload, apiGet, apiPost, apiPut } from '../api/client';
-import { confirmAction, showError, showPending, showSuccess, showWarning } from '../utils/feedback';
+import { apiPost } from '../api/client';
+import { showSuccess, showWarning } from '../utils/feedback';
 import { canCapability } from '../store/auth';
-import { buildAsyncJobTypeGroups, formatAsyncJobType } from '../utils/asyncJobUi';
+import { buildAsyncJobTypeGroups, canDeleteJob, formatAsyncJobType, formatBytes, formatDuration, statusText, statusType } from '../utils/asyncJobUi';
+import { useAsyncJobs, type AsyncJobRow } from '../composables/useAsyncJobs';
 
 const COMPACT_STORAGE_KEY = 'system_task_center_compact_mode';
 const PERF_STORAGE_KEY = 'system_task_center_perf_mode';
 const PERF_HINT_DISMISSED_KEY = 'system_task_center_perf_hint_dismissed';
-const loading = ref(false);
-const router = useRouter();
-const loadingMore = ref(false);
-const snapshotSubmitting = ref(false);
-const deletingJobId = ref<number | null>(null);
-const batchDeleting = ref(false);
-const jobs = ref<any[]>([]);
-const jobsTableRef = ref<any>(null);
-const selectedJobIds = ref<number[]>([]);
-const summary = reactive({ async_job_count: 0, queued_job_count: 0, failed_job_count: 0, slow_request_count: 0 });
-const filter = reactive({ status: '', job_type: '', days: 7, mine: false });
-const lastSyncedAt = ref('');
-const pageSize = ref(40);
-const hasMore = ref(false);
-const cursorId = ref<number | null>(null);
-const compactMode = ref(false);
-const perfMode = ref(false);
-const perfHintDismissed = ref(false);
-const pollEnabled = ref(true);
-const detailVisible = ref(false);
-const detailRow = ref<any | null>(null);
-const canManageSystemTools = computed(() => canCapability('system.tools.manage'));
-const baseSummaryAvailable = ref(true);
-let pollTimer: ReturnType<typeof setTimeout> | null = null;
-let lastBaseLoadedAt = 0;
-let jobsRequestSeq = 0;
-let jobsAbortController: AbortController | null = null;
-const BASE_REFRESH_MS = 60_000;
-const ACTIVE_POLL_MS = 8_000;
-const IDLE_POLL_MS = 180_000;
+const DEFAULT_PAGE_SIZE = 40;
 const RENDER_LIMIT_COMPACT = 30;
 const VIRTUAL_ROW_HEIGHT = 72;
 const VIRTUAL_OVERSCAN = 8;
+
+const router = useRouter();
+const snapshotSubmitting = ref(false);
+const jobsTableRef = ref<any>(null);
+const summary = reactive({ async_job_count: 0, queued_job_count: 0, failed_job_count: 0, slow_request_count: 0 });
+const filter = reactive({ status: '', job_type: '', days: 7, mine: false });
+const compactMode = ref(false);
+const perfMode = ref(false);
+const perfHintDismissed = ref(false);
+const detailVisible = ref(false);
+const detailRow = ref<any | null>(null);
+const canManageSystemTools = computed(() => canCapability('system.tools.manage'));
 const virtualWrapRef = ref<HTMLElement | null>(null);
 const virtualScrollTop = ref(0);
+
+const {
+  jobs,
+  pageSize,
+  loading,
+  loadingMore,
+  lastSyncedAt,
+  pollEnabled,
+  documentHidden,
+  hasMore,
+  deletingJobId,
+  batchDeleting,
+  deletableSelectedCount,
+  hasActiveJobs,
+  loadJobs,
+  loadMoreJobs,
+  applyFilters,
+  retryJob,
+  cancelJob,
+  cleanupJobs,
+  deleteJob,
+  deleteSelectedJobs,
+  onSelectionChange: onJobSelectionChange,
+  downloadJob,
+  fetchJobDetail,
+  startVisibilityTracking,
+  handlePollToggle,
+} = useAsyncJobs(filter, {
+  limit: DEFAULT_PAGE_SIZE,
+  fastPollMs: 8_000,
+  idlePollMs: 180_000,
+  hiddenPollMs: 0,
+  onLoaded: () => syncSummaryFromJobs(),
+  onJobsRemoved: (removedIds) => {
+    const current = Number(detailRow.value?.id || 0);
+    if (detailVisible.value && current > 0 && removedIds.includes(current)) {
+      detailVisible.value = false;
+      detailRow.value = null;
+    }
+  },
+  clearTableSelection: () => jobsTableRef.value?.clearSelection?.(),
+});
+
 const jobTypeGroups = computed(() => buildAsyncJobTypeGroups(jobs.value.map((row) => row?.job_type)));
-const hasActiveJobs = computed(() => jobs.value.some((row) => ['queued', 'running'].includes(String(row?.status || ''))));
 const renderedJobs = computed(() => {
   if (compactMode.value) return jobs.value.slice(0, Math.min(jobs.value.length, RENDER_LIMIT_COMPACT));
   return jobs.value;
@@ -257,26 +283,17 @@ const virtualRows = computed(() => {
   const end = virtualEndIndex.value;
   return jobs.value.slice(start, end).map((row, index) => ({ row, top: (start + index) * VIRTUAL_ROW_HEIGHT }));
 });
-const deletableSelectedCount = computed(() => {
-  if (!selectedJobIds.value.length) return 0;
-  const selected = new Set(selectedJobIds.value);
-  return jobs.value.filter((row) => selected.has(Number(row?.id || 0)) && canDelete(row)).length;
-});
 const refreshHint = computed(() => {
   if (!pollEnabled.value) return lastSyncedAt.value ? `自动刷新已关闭 · 上次 ${formatTime(lastSyncedAt.value)}` : '自动刷新已关闭';
-  const hidden = typeof document !== 'undefined' && document.visibilityState === 'hidden';
+  const hidden = documentHidden.value;
   const mode = hasActiveJobs.value
     ? (hidden ? '页面隐藏中，已暂停自动轮询' : '检测到运行中任务，将自动轮询')
     : (hidden ? '页面隐藏中，暂停轮询' : '当前无运行中任务，超低频轮询（约 3 分钟）');
   return lastSyncedAt.value ? `${mode} · 上次 ${formatTime(lastSyncedAt.value)}` : mode;
 });
-function statusTag(status: string) { if (status === 'success') return 'success'; if (status === 'failed') return 'danger'; if (status === 'running') return 'warning'; return 'info'; }
-function statusText(status: string) { return ({ queued: '排队中', running: '执行中', success: '成功', failed: '失败', canceled: '已取消' } as Record<string, string>)[status] || status || '-'; }
+
 function formatTime(value: any) { if (!value) return '-'; const d = new Date(value); if (Number.isNaN(d.getTime())) return String(value); return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')} ${String(d.getHours()).padStart(2,'0')}:${String(d.getMinutes()).padStart(2,'0')}`; }
-function formatDuration(ms: any) { const value = Number(ms || 0); if (!value || value < 0) return '-'; if (value < 1000) return `${value} ms`; const sec = value/1000; if (sec < 60) return `${sec.toFixed(sec < 10 ? 1 : 0)} s`; const min = Math.floor(sec/60); return `${min} 分 ${Math.round(sec % 60)} 秒`; }
-function formatBytes(value: any) { const num = Number(value || 0); if (!num) return '-'; if (num < 1024) return `${num} B`; if (num < 1024*1024) return `${(num/1024).toFixed(1)} KB`; return `${(num/(1024*1024)).toFixed(1)} MB`; }
 function canDownload(row: any) { return ['success'].includes(String(row?.status || '')) && (Number(row?.result_available || 0) === 1 || !!row?.result_content_type); }
-function canDelete(row: any) { return !['queued', 'running'].includes(String(row?.status || '')); }
 function getAssetLink(row: any) {
   const link = row?.asset_link || {};
   const kind = String(link?.asset_kind || '').toLowerCase();
@@ -309,57 +326,18 @@ function openFailedAssets(row: any) {
     },
   });
 }
-function onJobSelectionChange(rows: any[]) {
-  selectedJobIds.value = (rows || [])
-    .map((row: any) => Number(row?.id || 0))
-    .filter((id: number) => Number.isFinite(id) && id > 0);
-}
 function displayIndex(index: number) { return index + 1; }
-function buildDownloadUrl(row: any) { const q = new URLSearchParams(); q.set('id', String(row.id)); return `/api/jobs-download?${q.toString()}`; }
-async function downloadJob(row: any) {
-  try {
-    await apiDownload(buildDownloadUrl(row), row?.result_filename || undefined);
-  } catch (error: any) {
-    showError(error?.message || '下载任务结果失败');
-  }
-}
-function syncSummaryFromJobs(rows = jobs.value) {
-  const list = Array.isArray(rows) ? rows : [];
+// 汇总卡片按已加载列表统计；system-tools base 接口在高负载时会 524，
+// 任务中心不再依赖它，slow_request_count 因此保持 0。
+function syncSummaryFromJobs() {
+  const list = jobs.value;
   summary.async_job_count = list.length;
   summary.queued_job_count = list.filter((row) => String(row?.status || '') === 'queued').length;
   summary.failed_job_count = list.filter((row) => String(row?.status || '') === 'failed').length;
-  if (!baseSummaryAvailable.value) summary.slow_request_count = 0;
 }
-async function openDetail(row: any) {
-  try {
-    const r:any = await apiGet(`/api/jobs?ids=${encodeURIComponent(String(row.id))}&limit=1&days=90&detail=1`);
-    const found = normalizeJobRowsResponse(r)?.[0] || row;
-    detailRow.value = found;
-    detailVisible.value = true;
-  } catch {
-    detailRow.value = row;
-    detailVisible.value = true;
-  }
-}
-async function loadBase() {
-  try {
-    const r:any = await apiGet('/api/system-tools?section=base');
-    const dashboard = r?.data?.dashboard || {};
-    summary.async_job_count = Number(dashboard.async_job_count || 0);
-    summary.queued_job_count = Number(dashboard.queued_job_count || 0);
-    summary.failed_job_count = Number(dashboard.failed_job_count || 0);
-    summary.slow_request_count = Number(dashboard.slow_request_count || 0);
-    baseSummaryAvailable.value = true;
-    lastBaseLoadedAt = Date.now();
-  } catch {
-    baseSummaryAvailable.value = false;
-    syncSummaryFromJobs();
-    lastBaseLoadedAt = Date.now();
-  }
-}
-function clearPollTimer() {
-  if (pollTimer) clearTimeout(pollTimer);
-  pollTimer = null;
+async function openDetail(row: AsyncJobRow) {
+  detailRow.value = await fetchJobDetail(row);
+  detailVisible.value = true;
 }
 function onVirtualScroll(event: Event) {
   const target = event.target as HTMLElement | null;
@@ -371,213 +349,15 @@ function scrollVirtualTop() {
     virtualScrollTop.value = 0;
   }
 }
-function schedulePoll() {
-  clearPollTimer();
-  if (!pollEnabled.value) return;
-  if (typeof document !== 'undefined' && document.visibilityState === 'hidden') return;
-  pollTimer = setTimeout(() => {
-    void loadJobs({ silent: true, includeBase: Date.now() - lastBaseLoadedAt > BASE_REFRESH_MS, reset: true });
-  }, hasActiveJobs.value ? ACTIVE_POLL_MS : IDLE_POLL_MS);
-}
-function buildQuery(options: { afterId?: number | null; ids?: number[] } = {}) {
-  const q = new URLSearchParams();
-  q.set('limit', String(pageSize.value || 40));
-  q.set('days', String(filter.days || 7));
-  if (filter.status) q.set('status', filter.status);
-  if (filter.job_type) q.set('job_type', filter.job_type);
-  if (filter.mine) q.set('mine', '1');
-  if (options.afterId) q.set('after_id', String(options.afterId));
-  if (Array.isArray(options.ids) && options.ids.length) q.set('ids', options.ids.join(','));
-  return q.toString();
-}
-function normalizeJobRowsResponse(payload: any) {
-  if (Array.isArray(payload)) return payload;
-  if (Array.isArray(payload?.items)) return payload.items;
-  if (Array.isArray(payload?.data)) return payload.data;
-  if (Array.isArray(payload?.data?.items)) return payload.data.items;
-  return [];
-}
-function mergeJobs(rows: any[], append = false) {
-  const next = append ? [...jobs.value, ...rows] : rows;
-  const seen = new Set<number>();
-  jobs.value = next.filter((row) => {
-    const id = Number(row?.id || 0);
-    if (!id || seen.has(id)) return false;
-    seen.add(id);
-    return true;
-  });
-  cursorId.value = jobs.value.length ? Number(jobs.value[jobs.value.length - 1]?.id || 0) : null;
-}
-
-function mergeJobsDelta(rows: any[]) {
-  const map = new Map<number, any>();
-  for (const row of jobs.value) {
-    const id = Number(row?.id || 0);
-    if (id > 0) map.set(id, row);
-  }
-  for (const row of rows) {
-    const id = Number(row?.id || 0);
-    if (id > 0) map.set(id, row);
-  }
-  jobs.value = Array.from(map.values()).sort((a: any, b: any) => Number(b?.id || 0) - Number(a?.id || 0));
-  cursorId.value = jobs.value.length ? Number(jobs.value[jobs.value.length - 1]?.id || 0) : null;
-}
-
-async function loadJobs(opts: { force?: boolean; includeBase?: boolean; silent?: boolean; reset?: boolean } = {}) {
-  if (loading.value && !opts.silent) return;
-  const requestSeq = ++jobsRequestSeq;
-  if (jobsAbortController) {
-    try { jobsAbortController.abort(); } catch {}
-  }
-  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
-  jobsAbortController = controller;
-  if (!opts.silent) loading.value = true;
-  try {
-    // 系统工具 base 接口在高负载时可能出现 524，任务中心列表不应依赖它。
-    // 这里统一改为仅按 jobs 列表渲染汇总，避免 base 超时拖累页面可用性。
-    const activeIds = Array.from(new Set(
-      jobs.value
-        .filter((row) => ['queued', 'running'].includes(String(row?.status || '')))
-        .map((row) => Number(row?.id || 0))
-        .filter((id) => Number.isFinite(id) && id > 0)
-    )).slice(0, 200);
-    const maxId = jobs.value.reduce((max, row) => Math.max(max, Number(row?.id || 0)), 0);
-    const useDelta = !opts.force && jobs.value.length > 0 && (maxId > 0 || activeIds.length > 0);
-    const query = useDelta
-      ? buildQuery({ afterId: maxId > 0 ? maxId : undefined, ids: activeIds })
-      : buildQuery();
-    const r:any = await apiGet(`/api/jobs?${query}`, controller ? { signal: controller.signal } : {});
-    if (requestSeq !== jobsRequestSeq) return;
-    const rows = normalizeJobRowsResponse(r);
-    if (useDelta) {
-      mergeJobsDelta(rows);
-    } else {
-      mergeJobs(rows, false);
-      hasMore.value = rows.length >= Number(pageSize.value || 40);
-    }
-    syncSummaryFromJobs();
-    lastSyncedAt.value = new Date().toISOString();
-  } catch (error: any) {
-    if (requestSeq !== jobsRequestSeq) return;
-    if (controller?.signal?.aborted || String(error?.name || '') === 'AbortError') return;
-    if (!opts.silent) showError(error?.message || '加载任务列表失败');
-    hasMore.value = false;
-  } finally {
-    if (jobsAbortController === controller) jobsAbortController = null;
-    if (requestSeq === jobsRequestSeq) loading.value = false;
-    schedulePoll();
-  }
-}
-async function loadMoreJobs() {
-  if (!hasMore.value || !cursorId.value || loadingMore.value) return;
-  loadingMore.value = true;
-  try {
-    const r:any = await apiGet(`/api/jobs?${buildQuery({ afterId: cursorId.value })}`);
-    const rows = normalizeJobRowsResponse(r);
-    mergeJobs(rows, true);
-    if (!baseSummaryAvailable.value) syncSummaryFromJobs();
-    hasMore.value = rows.length >= Number(pageSize.value || 40);
-    lastSyncedAt.value = new Date().toISOString();
-  } catch (error: any) {
-    showError(error?.message || '加载更多任务失败');
-  } finally {
-    loadingMore.value = false;
-  }
-}
 async function createSnapshotJob() {
   snapshotSubmitting.value = true;
   try {
     await apiPost('/api/system-tools', { action: 'dashboard_precompute' });
     showSuccess('已提交看板快照任务');
-    await loadJobs({ force: true, includeBase: true, reset: true });
+    await loadJobs();
   } finally {
     snapshotSubmitting.value = false;
   }
-}
-async function retryJob(row: any) {
-  await confirmAction({ title: '提示', message: `确定重试任务 #${row.id} 吗？`, type: 'warning' });
-  await apiPut('/api/jobs', { action: 'retry', id: row.id });
-  showSuccess('已提交重试');
-  await loadJobs({ force: true, includeBase: true, reset: true });
-}
-async function cancelJob(row: any) {
-  await confirmAction({ title: '提示', message: `确定取消任务 #${row.id} 吗？`, type: 'warning' });
-  await apiPut('/api/jobs', { action: 'cancel', id: row.id });
-  showSuccess('任务已取消');
-  await loadJobs({ force: true, includeBase: true, reset: true });
-}
-async function cleanupJobs() {
-  await confirmAction({ title: '提示', message: '自动清理会删除较旧的成功/失败历史任务，是否继续？', type: 'warning' });
-  await apiPut('/api/jobs', { action: 'cleanup' });
-  showSuccess('已提交清理任务');
-  await loadJobs({ force: true, includeBase: true, reset: true });
-}
-async function deleteJob(row: any) {
-  if (batchDeleting.value) return;
-  await confirmAction({ title: '提示', message: `确定删除任务“${formatAsyncJobType(row?.job_type)}”吗？删除后不可恢复。`, type: 'warning' });
-  deletingJobId.value = Number(row?.id || 0) || null;
-  try {
-    await apiPut('/api/jobs', { action: 'delete', id: row.id });
-    if (detailVisible.value && Number(detailRow.value?.id || 0) === Number(row.id || 0)) {
-      detailVisible.value = false;
-      detailRow.value = null;
-    }
-    showSuccess('任务已删除');
-    await loadJobs({ force: true, includeBase: true, reset: true });
-  } finally {
-    deletingJobId.value = null;
-  }
-}
-
-async function deleteSelectedJobs() {
-  if (batchDeleting.value) return;
-  const selected = new Set(selectedJobIds.value);
-  const selectedRows = jobs.value.filter((row) => selected.has(Number(row?.id || 0)));
-  if (!selectedRows.length) return showWarning('请先勾选任务');
-  const deletableRows = selectedRows.filter((row) => canDelete(row));
-  const blocked = Math.max(0, selectedRows.length - deletableRows.length);
-  if (!deletableRows.length) return showWarning('选中任务均为运行中/排队中，无法删除');
-
-  await confirmAction({
-    title: '批量删除任务',
-    message: blocked
-      ? `确定批量删除 ${deletableRows.length} 条任务吗？其中 ${blocked} 条运行中/排队中任务会自动跳过。`
-      : `确定批量删除 ${deletableRows.length} 条任务吗？删除后不可恢复。`,
-    type: 'warning',
-    confirmButtonText: '删除',
-    cancelButtonText: '取消',
-  });
-
-  const loading = showPending('正在批量删除任务，请稍候…');
-  batchDeleting.value = true;
-  let success = 0;
-  let failed = 0;
-  try {
-    const result: any = await apiPut('/api/jobs', { action: 'delete_batch', ids: deletableRows.map((row) => Number(row.id)) });
-    success = Number(result?.data?.deleted ?? result?.deleted ?? 0);
-    failed = Number(result?.data?.failed ?? result?.failed ?? 0);
-    if (detailVisible.value && selected.has(Number(detailRow.value?.id || 0))) {
-      detailVisible.value = false;
-      detailRow.value = null;
-    }
-    loading.close();
-    if (failed) showWarning(`批量删除完成：成功 ${success} 条，失败 ${failed} 条`);
-    else showSuccess(`批量删除完成：共删除 ${success} 条`);
-    selectedJobIds.value = [];
-    jobsTableRef.value?.clearSelection?.();
-    await loadJobs({ force: true, includeBase: true, reset: true });
-  } catch (error: any) {
-    loading.close();
-    showError(error?.message || '批量删除任务失败');
-  } finally {
-    batchDeleting.value = false;
-  }
-}
-
-function applyFilters(forceBase = false) {
-  hasMore.value = false;
-  cursorId.value = null;
-  void loadJobs({ force: true, includeBase: forceBase, reset: true });
 }
 function persistCompactMode() {
   try { localStorage.setItem(COMPACT_STORAGE_KEY, compactMode.value ? '1' : '0'); } catch {}
@@ -593,29 +373,6 @@ function dismissPerfHint() {
   perfHintDismissed.value = true;
   try { localStorage.setItem(PERF_HINT_DISMISSED_KEY, '1'); } catch {}
 }
-function handlePollToggle() {
-  if (!pollEnabled.value) {
-    clearPollTimer();
-    return;
-  }
-  void loadJobs({ includeBase: false, silent: true, reset: true });
-}
-function onVisibilityChange() {
-  if (typeof document !== 'undefined' && document.visibilityState === 'visible' && pollEnabled.value) {
-    void loadJobs({ includeBase: Date.now() - lastBaseLoadedAt > BASE_REFRESH_MS, silent: true, reset: true });
-  } else {
-    clearPollTimer();
-  }
-}
-watch(() => [filter.status, filter.job_type, filter.days, filter.mine, pageSize.value], () => {
-  hasMore.value = false;
-  cursorId.value = null;
-});
-watch(jobs, () => {
-  if (!selectedJobIds.value.length) return;
-  const keep = new Set(jobs.value.map((row: any) => Number(row?.id || 0)).filter((id: number) => id > 0));
-  selectedJobIds.value = selectedJobIds.value.filter((id) => keep.has(id));
-});
 onMounted(() => {
   try {
     compactMode.value = localStorage.getItem(COMPACT_STORAGE_KEY) === '1' || window.innerWidth < 1360;
@@ -626,16 +383,8 @@ onMounted(() => {
     perfMode.value = false;
     perfHintDismissed.value = false;
   }
-  void loadJobs({ includeBase: true, reset: true });
-  document.addEventListener('visibilitychange', onVisibilityChange);
-});
-onBeforeUnmount(() => {
-  clearPollTimer();
-  if (jobsAbortController) {
-    try { jobsAbortController.abort(); } catch {}
-    jobsAbortController = null;
-  }
-  document.removeEventListener('visibilitychange', onVisibilityChange);
+  void loadJobs();
+  startVisibilityTracking();
 });
 </script>
 

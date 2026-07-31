@@ -82,10 +82,6 @@ function escapeHtml(value: any) {
     .replaceAll("'", '&#39;');
 }
 
-function escapeXml(value: any) {
-  return escapeHtml(value);
-}
-
 function escapeAttr(value: any) {
   return escapeHtml(value);
 }
@@ -1645,7 +1641,7 @@ export async function assertAsyncJobDownloadAccess(db: D1Database, row: any, act
   await assertAssetInventoryBatchDataScopeAccess(db, scope, kind as 'pc' | 'monitor', batchId);
 }
 
-export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null; assetScope?: UserDataScope | null } = {}, bucket?: AsyncJobResultBucket) {
+export async function listAsyncJobs(db: D1Database, options: { limit?: number; status?: string | null; job_type?: string | null; created_by?: number | null; days?: number | null; ids?: number[] | null; after_id?: number | null; before_id?: number | null; detail?: boolean | null; skipEnsure?: boolean | null; assetScope?: UserDataScope | null } = {}, bucket?: AsyncJobResultBucket) {
   if (!options.skipEnsure) await ensureAsyncJobsTable(db);
   const limit = Math.max(1, Math.min(200, Number(options.limit || 100)));
   const where: string[] = [];
@@ -1655,6 +1651,13 @@ export async function listAsyncJobs(db: D1Database, options: { limit?: number; s
   if (options.created_by) { where.push(`created_by=?`); binds.push(Number(options.created_by)); }
   if (options.days) { where.push(`created_at >= datetime('now','+8 hours', ?)`); binds.push(`-${Math.max(1, Math.min(90, Number(options.days || 7)))} day`); }
 
+  // 向后翻页：id < ? 取更早的任务。必须与基础筛选 AND，不能并入下面的 deltaParts —
+  // deltaParts 内部是 OR（after_id 或 ids 命中即返回），把收窄条件混进去会让它失效。
+  const beforeId = Number(options.before_id || 0);
+  if (Number.isFinite(beforeId) && beforeId > 0) {
+    where.push(`id < ?`);
+    binds.push(Math.trunc(beforeId));
+  }
   const deltaParts: string[] = [];
   const deltaBinds: any[] = [];
   const afterId = Number(options.after_id || 0);

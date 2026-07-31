@@ -70,6 +70,8 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const days = Math.max(1, Math.min(90, Number(url.searchParams.get('days') || 7)));
   const mineOnly = ['1', 'true'].includes(String(url.searchParams.get('mine') || '').toLowerCase());
   const afterId = Math.max(0, Math.trunc(Number(url.searchParams.get('after_id') || 0)));
+  // 向后翻页游标：取比它更早（id 更小）的任务。与 after_id 语义相反，同时传时以 after_id 为准。
+  const beforeId = Math.max(0, Math.trunc(Number(url.searchParams.get('before_id') || 0)));
   const detail = ['1', 'true'].includes(String(url.searchParams.get('detail') || '').toLowerCase());
   const ids = String(url.searchParams.get('ids') || '')
     .split(',')
@@ -78,8 +80,8 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
     .slice(0, 200);
   const assetScope = getAuthUserDataScope(actor);
   const data = timing?.measure
-    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET))
-    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET);
+    ? await timing.measure('jobs_query', () => listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, before_id: afterId ? null : (beforeId || null), ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET))
+    : await listAsyncJobs(env.DB, { limit, status: jobStatus, job_type: jobType, days, created_by: mineOnly ? actor.id : null, after_id: afterId || null, before_id: afterId ? null : (beforeId || null), ids, detail, skipEnsure: true, assetScope }, env.BACKUP_BUCKET);
   return json(true, data);
 });
 
