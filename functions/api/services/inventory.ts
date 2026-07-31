@@ -510,14 +510,18 @@ export function buildWarningsQuery(url: URL): WarningsListQuery {
 }
 
 export function buildWarningsBaseSql() {
+  // latest_tx only ever projects created_at, so MAX(created_at) GROUP BY item_id is
+  // equivalent to the previous ROW_NUMBER() OVER (PARTITION BY item_id ORDER BY
+  // created_at DESC, id DESC) + rn=1 filter — the id tiebreak decided WHICH row won,
+  // never the created_at value that comes out. The aggregate form is served directly by
+  // idx_stock_tx_wh_item_created instead of ranking every transaction in the warehouse,
+  // so cost scales with the item catalogue rather than with total ledger history.
   return `
     WITH latest_tx AS (
-      SELECT
-        tx.item_id,
-        tx.created_at,
-        ROW_NUMBER() OVER (PARTITION BY tx.item_id ORDER BY tx.created_at DESC, tx.id DESC) AS rn
+      SELECT tx.item_id, MAX(tx.created_at) AS created_at
       FROM stock_tx tx
       WHERE tx.warehouse_id=?
+      GROUP BY tx.item_id
     )
     SELECT
       i.id as item_id,
@@ -528,7 +532,7 @@ export function buildWarningsBaseSql() {
       lt.created_at as last_tx_at
     FROM items i
     LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
-    LEFT JOIN latest_tx lt ON lt.item_id=i.id AND lt.rn=1
+    LEFT JOIN latest_tx lt ON lt.item_id=i.id
     WHERE %WHERE%
   `;
 }
@@ -554,12 +558,10 @@ export async function listWarningsExportRows(db: D1Database, query: WarningsList
   const paged = options && Number.isFinite(options.limit);
   const sql = `
     WITH latest_tx AS (
-      SELECT
-        tx.item_id,
-        tx.created_at,
-        ROW_NUMBER() OVER (PARTITION BY tx.item_id ORDER BY tx.created_at DESC, tx.id DESC) AS rn
+      SELECT tx.item_id, MAX(tx.created_at) AS created_at
       FROM stock_tx tx
       WHERE tx.warehouse_id=?
+      GROUP BY tx.item_id
     )
     SELECT
       i.sku, i.name, i.brand, i.model, i.category,
@@ -570,7 +572,7 @@ export async function listWarningsExportRows(db: D1Database, query: WarningsList
       ${sqlBjDateTime('lt.created_at')} as last_tx_at_bj
     FROM items i
     LEFT JOIN stock s ON s.item_id=i.id AND s.warehouse_id=?
-    LEFT JOIN latest_tx lt ON lt.item_id=i.id AND lt.rn=1
+    LEFT JOIN latest_tx lt ON lt.item_id=i.id
     WHERE ${query.whereSql}
     ORDER BY ${query.orderBy}${paged ? ' LIMIT ? OFFSET ?' : ''}
   `;

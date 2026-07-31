@@ -23,9 +23,21 @@ export const sqlStoredMinutesAgo = (minutes: number) => `datetime('now','${STORA
 /** Relative future timestamp in minutes. */
 export const sqlStoredMinutesFromNow = (minutes: number) => `datetime('now','${STORAGE_OFFSET}','+${Math.max(0, minutes)} minutes')`;
 
-/** SQL expr helpers for already-persisted timestamps. */
+/** SQL expr helper for an already-persisted timestamp. */
 export const sqlBjDateTime = (expr: string) => `datetime(${expr})`;
-export const sqlBjDate = (expr: string) => `date(${expr})`;
+
+/**
+ * Inclusive day-range predicate over a stored Beijing-text timestamp, binding (from, to).
+ *
+ * Prefer this to `date(col) BETWEEN date(?) AND date(?)`: wrapping the column in date()
+ * makes the predicate non-sargable, so composite indexes ending in created_at cannot be
+ * used and the query degrades to a full scan. Keeping the column bare and moving the
+ * arithmetic onto the bound parameters is equivalent — timestamps are stored as
+ * 'YYYY-MM-DD HH:MM:SS' Beijing text, which orders identically lexicographically and by
+ * time — while remaining index-friendly. The upper bound is exclusive against the day
+ * AFTER `to`, which is what keeps `to` itself fully included.
+ */
+export const sqlStoredDayRange = (expr: string) => `${expr} >= date(?) AND ${expr} < date(?, '+1 day')`;
 
 /** Build a Beijing-date-based filename suffix, e.g. 20260225 */
 export function beijingDateStampCompact(now = new Date()): string {

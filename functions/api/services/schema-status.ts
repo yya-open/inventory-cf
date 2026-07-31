@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202607310010_pc_assets_serial_norm_index";
+export const REQUIRED_SCHEMA_VERSION = "202607310020_stock_tx_warehouse_item_created_index";
 
 type SchemaStatus = {
   ok: boolean;
@@ -77,6 +77,7 @@ async function computeSchemaStatus(db: D1Database): Promise<SchemaStatus> {
     { key: 'idx_async_jobs_job_type_status_created_at', label: '异步任务类型状态索引', ok: indexes.has('idx_async_jobs_job_type_status_created_at'), need: 'idx_async_jobs_job_type_status_created_at' },
     { key: 'idx_async_jobs_created_by_job_type_status', label: '异步任务创建人类型索引', ok: indexes.has('idx_async_jobs_created_by_job_type_status'), need: 'idx_async_jobs_created_by_job_type_status' },
     { key: 'idx_pc_assets_serial_norm', label: '电脑序列号归一化索引', ok: indexes.has('idx_pc_assets_serial_norm'), need: 'idx_pc_assets_serial_norm' },
+    { key: 'idx_stock_tx_wh_item_created', label: '配件预警最近流水索引', ok: indexes.has('idx_stock_tx_wh_item_created'), need: 'idx_stock_tx_wh_item_created' },
   ];
 
   checks.push(

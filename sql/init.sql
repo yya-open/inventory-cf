@@ -86,6 +86,7 @@ CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_created_at ON stock_tx(warehouse_id, 
 CREATE INDEX IF NOT EXISTS idx_stock_tx_item_created_at ON stock_tx(item_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_type_created_at ON stock_tx(type, created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_type_created_at ON stock_tx(warehouse_id, type, created_at);
+CREATE INDEX IF NOT EXISTS idx_stock_tx_wh_item_created ON stock_tx(warehouse_id, item_id, created_at);
 CREATE INDEX IF NOT EXISTS idx_stock_tx_ref_type_ref_id_item_wh ON stock_tx(ref_type, ref_id, item_id, warehouse_id);
 CREATE INDEX IF NOT EXISTS idx_stock_wh_item ON stock(warehouse_id, item_id);
 CREATE INDEX IF NOT EXISTS idx_items_category ON items(category);

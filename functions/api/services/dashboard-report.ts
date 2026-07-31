@@ -1,4 +1,4 @@
-import { sqlBjDate } from '../_time';
+import { sqlStoredDayRange } from '../_time';
 import { throwHttpError } from '../_error';
 import { readDashboardSnapshots, refreshDashboardSnapshots } from './report-snapshot';
 import { resolvePartsWarehouseId, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
@@ -93,7 +93,7 @@ export async function buildGovernance(db: D1Database, scope?: UserDataScope | nu
   const restoreActions = [pcAllowed ? 'PC_ASSET_RESTORE' : null, monitorAllowed ? 'MONITOR_ASSET_RESTORE' : null].filter(Boolean) as string[];
   const purgeActions = [pcAllowed ? 'PC_ASSET_PURGE' : null, monitorAllowed ? 'MONITOR_ASSET_PURGE' : null].filter(Boolean) as string[];
   const auditCount = (actions: string[]) => actions.length
-    ? firstNumber(db, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN (${actions.map(() => '?').join(',')}) AND ${sqlBjDate('created_at')} BETWEEN date(?) AND date(?)`, [...actions, from, to])
+    ? firstNumber(db, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN (${actions.map(() => '?').join(',')}) AND ${sqlStoredDayRange('created_at')}`, [...actions, from, to])
     : 0;
   const [archived_pc_count, archived_monitor_count, total_pc_count, total_monitor_count, archive_events_30d, restore_events_30d, purge_events_30d] = await Promise.all([
     pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere ? `${pcDeptWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, pcBind) : 0,
@@ -220,7 +220,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
               COALESCE(NULLIF(brand,''),'') || CASE WHEN brand IS NOT NULL AND brand<>'' THEN ' · ' ELSE '' END || COALESCE(NULLIF(serial_no,''),'(无SN)') AS name,
               COUNT(*) AS qty
        FROM ${table} t ${scopeJoin}
-       WHERE ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere} ${whereExtra}
+       WHERE ${sqlStoredDayRange('t.created_at')} ${scopeWhere} ${whereExtra}
        GROUP BY COALESCE(NULLIF(model,''),'(未填型号)'), COALESCE(NULLIF(brand,''),''), COALESCE(NULLIF(serial_no,''),'(无SN)')
        ORDER BY qty DESC, MAX(created_at) DESC
        LIMIT 10`
@@ -228,7 +228,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     const qCatPc = (table: string, catExpr: string, whereExtra = '') => db.prepare(
       `SELECT ${catExpr} AS category, COUNT(*) AS qty
        FROM ${table} t ${scopeJoin}
-       WHERE ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere} ${whereExtra}
+       WHERE ${sqlStoredDayRange('t.created_at')} ${scopeWhere} ${whereExtra}
        GROUP BY category ORDER BY qty DESC LIMIT 20`
     );
     const [{ results: topOut }, { results: topIn }, { results: topReturn }, { results: topRecycle }, { results: topScrap }, { results: catOut }, { results: catIn }, { results: catReturn }, { results: catRecycle }, { results: catScrap }] = await Promise.all([
@@ -255,7 +255,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
               COALESCE(NULLIF(t.brand,''),'') || CASE WHEN t.brand IS NOT NULL AND t.brand<>'' THEN ' · ' ELSE '' END || COALESCE(NULLIF(t.sn,''),'(无SN)') AS name,
               COUNT(*) AS qty
        FROM monitor_tx t
-       WHERE t.tx_type=? AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere}
+       WHERE t.tx_type=? AND ${sqlStoredDayRange('t.created_at')} ${scopeWhere}
        GROUP BY COALESCE(NULLIF(t.model,''),'(未填型号)'), COALESCE(NULLIF(t.brand,''),''), COALESCE(NULLIF(t.sn,''),'(无SN)')
        ORDER BY qty DESC, MAX(t.created_at) DESC
        LIMIT 10`
@@ -263,7 +263,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     const qCatMonitor = (txType: string, expr: string) => db.prepare(
       `SELECT ${expr} AS category, COUNT(*) AS qty
        FROM monitor_tx t
-       WHERE t.tx_type=? AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?) ${scopeWhere}
+       WHERE t.tx_type=? AND ${sqlStoredDayRange('t.created_at')} ${scopeWhere}
        GROUP BY category ORDER BY qty DESC LIMIT 20`
     ).bind(txType, from, to, ...scopeBinds).all<any>();
     const [topOut, topIn, topReturn, topTransfer, topScrap, catOut, catIn, catReturn, catTransfer, catScrap] = await Promise.all([
@@ -289,7 +289,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     db.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlStoredDayRange('t.created_at')}
        GROUP BY t.item_id
        ORDER BY qty DESC
        LIMIT 10`
@@ -297,7 +297,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     db.prepare(
       `SELECT i.sku, i.name, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlStoredDayRange('t.created_at')}
        GROUP BY t.item_id
        ORDER BY qty DESC
        LIMIT 10`
@@ -305,7 +305,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     db.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='OUT' AND ${sqlStoredDayRange('t.created_at')}
        GROUP BY category
        ORDER BY qty DESC
        LIMIT 20`
@@ -313,7 +313,7 @@ export async function getDashboardDetail(db: D1Database, user: UserDataScope, pa
     db.prepare(
       `SELECT COALESCE(i.category,'未分类') AS category, SUM(t.qty) AS qty
        FROM stock_tx t JOIN items i ON i.id=t.item_id
-       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlBjDate('t.created_at')} BETWEEN date(?) AND date(?)
+       WHERE t.warehouse_id=? AND t.type='IN' AND ${sqlStoredDayRange('t.created_at')}
        GROUP BY category
        ORDER BY qty DESC
        LIMIT 20`
