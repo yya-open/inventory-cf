@@ -107,12 +107,11 @@ export async function bumpAuthFail(
   maxFails: number,
   windowMin: number,
   lockMin: number,
-  lockEnabled = true,
 ) {
   const sql = `
     INSERT INTO auth_login_throttle (ip, username, fail_count, first_fail_at, last_fail_at, locked_until, updated_at)
     VALUES (?, ?, 1, ${sqlNowStored()}, ${sqlNowStored()},
-            CASE WHEN ${lockEnabled ? 1 : 0}=1 AND 1 >= ${maxFails} THEN ${sqlStoredMinutesFromNow(lockMin)} ELSE NULL END,
+            CASE WHEN 1 >= ${maxFails} THEN ${sqlStoredMinutesFromNow(lockMin)} ELSE NULL END,
             ${sqlNowStored()})
     ON CONFLICT(ip, username) DO UPDATE SET
       fail_count = CASE
@@ -136,9 +135,9 @@ export async function bumpAuthFail(
             THEN 1
             ELSE auth_login_throttle.fail_count + 1
           END
-        ) >= ${maxFails} AND ${lockEnabled ? 1 : 0}=1
+        ) >= ${maxFails}
         THEN ${sqlStoredMinutesFromNow(lockMin)}
-        ELSE NULL
+        ELSE auth_login_throttle.locked_until
       END,
       updated_at = ${sqlNowStored()};
   `;

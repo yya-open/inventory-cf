@@ -32,7 +32,7 @@
     "audit:stats": "node scripts/audit-capacity-report.mjs",
     "obs:cleanup": "node scripts/observability-cleanup.mjs",
     "typecheck:functions": "tsc --noEmit -p tsconfig.functions.json",
-    "test:guards": "vitest run tests/auth.regressions.test.ts tests/backup.stream.test.ts tests/data-integrity.test.ts --pool=threads --maxWorkers=1",
+    "test:guards": "vitest run tests/auth.regressions.test.ts tests/auth.login-lockout.test.ts tests/auth.turnstile-diagnostics.test.ts tests/backup.stream.test.ts tests/data-integrity.test.ts --pool=threads --maxWorkers=1",
     "check:backup-restore-guards": "node scripts/check-backup-restore-guards.mjs",
     "db:integrity": "node scripts/db-integrity-check.mjs",
     "db:schema-check": "node scripts/schema-state-check.mjs",

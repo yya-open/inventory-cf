@@ -15,6 +15,14 @@ import {
   getRecentAuthFailCount,
 } from '../services/rate-limit';
 
+function readSiteverify(payload: unknown): { success: boolean; codes: string[] | null } {
+  if (!payload || typeof payload !== 'object') return { success: false, codes: null };
+  const success = 'success' in payload && payload.success === true;
+  const raw = 'error-codes' in payload ? payload['error-codes'] : null;
+  const codes = Array.isArray(raw) ? raw.filter((code: unknown): code is string => typeof code === 'string') : null;
+  return { success, codes };
+}
+
 async function verifyTurnstile(secret: string, token: string, ip?: string) {
   const form = new FormData();
   form.append('secret', secret);
@@ -24,8 +32,14 @@ async function verifyTurnstile(secret: string, token: string, ip?: string) {
     method: 'POST',
     body: form,
   });
-  const j: any = await r.json().catch(() => ({}));
-  return !!j?.success;
+  const { success, codes } = readSiteverify(await r.json().catch(() => null));
+  if (!success) {
+    // `invalid-input-secret` here means TURNSTILE_SECRET itself is wrong/garbled; without this
+    // log it is indistinguishable from a visitor simply failing the challenge. Never log the
+    // secret or the visitor's response token.
+    console.error('turnstile siteverify rejected', JSON.stringify({ status: r.status, codes }));
+  }
+  return success;
 }
 
 function datetimeToMsBj(dt: string | null) {
@@ -65,8 +79,8 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       }
       const okCaptcha = await verifyTurnstile(turnstileSecret, String(turnstile_token), ip);
       if (!okCaptcha) {
-        await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin, true);
-        await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin, true);
+        await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin);
+        await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin);
         return json(false, { require_captcha: true }, '验证码验证失败', 403);
       }
     }
@@ -93,15 +107,15 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
 
     if (!row || Number(row.is_active) !== 1) {
-      await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin, !needCaptcha);
-      await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin, !needCaptcha);
+      await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin);
+      await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin);
       return json(false, null, '账号或密码错误', 401);
     }
 
     const ok = await verifyPassword(p, row.password_hash);
     if (!ok) {
-      await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin, !needCaptcha);
-      await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin, !needCaptcha);
+      await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin);
+      await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin);
       return json(false, null, '账号或密码错误', 401);
     }
 
