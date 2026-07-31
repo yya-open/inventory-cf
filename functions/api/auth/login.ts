@@ -48,6 +48,12 @@ function datetimeToMsBj(dt: string | null) {
   return Number.isFinite(ms) ? ms : null;
 }
 
+// Fixed decoy credential for timing equalization on the account-not-found path. This is a real
+// PBKDF2-SHA256 output at the same 100000 iterations `hashPassword` uses, derived from a random
+// throwaway secret that was never recorded, so no live password can ever verify against it. It
+// exists purely so the miss path performs the same key derivation as the hit path.
+const DUMMY_PASSWORD_HASH = 'pbkdf2$100000$DTL6yy-pF5-zlK7KpuIlvg$zdevqb6j0_S-fiqSkELk4YRnFxUIkauwqUW2GWnl5Po';
+
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string }>(async ({ env, request }) => {
   const { username, password, turnstile_token } = await request.json();
     const u = (username || '').trim();
@@ -107,6 +113,12 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
 
     if (!row || Number(row.is_active) !== 1) {
+      // Timing equalization (CWE-208): the branch below always pays a full 100000-iteration PBKDF2
+      // verify, even when the password is wrong. Skipping that work here made a missing or
+      // deactivated account answer measurably faster, which let an unauthenticated caller
+      // enumerate valid usernames well before the lockout or captcha thresholds engaged. Spend the
+      // identical cost against the fixed decoy hash; the result is discarded by design.
+      await verifyPassword(p, DUMMY_PASSWORD_HASH);
       await bumpAuthFail(env.DB, ip, u, maxFails, windowMin, lockMin);
       await bumpAuthFail(env.DB, ip, '*', maxFails, windowMin, lockMin);
       return json(false, null, '账号或密码错误', 401);

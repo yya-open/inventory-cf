@@ -73,7 +73,7 @@ vi.mock('../functions/_permissions', () => {
   };
 });
 
-import { buildAuthCookie, requireAuth, signJwt } from '../functions/_auth';
+import { buildAuthCookie, requireAuth, signJwt, verifyJwt } from '../functions/_auth';
 import { hashPassword } from '../functions/_password';
 import { invalidateCachedMe, onRequestGet as meHandler } from '../functions/api/auth/me';
 import { onRequestPost as changePasswordHandler } from '../functions/api/auth/change-password';
@@ -459,5 +459,57 @@ describe('auth regression fixes', () => {
     expect(afterBody.data.user.permission_template_code).toBe('operator_plus');
     expect(afterBody.data.user.data_scope_value).toBe('IT');
     expect(env.DB.__getUser(2)?.acl_version).toBeGreaterThan(0);
+  });
+});
+
+function b64uEncode(bytes: Uint8Array) {
+  let s = '';
+  for (let i = 0; i < bytes.length; i++) s += String.fromCharCode(bytes[i]);
+  return btoa(s).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/g, '');
+}
+
+// signJwt hardcodes a valid HS256 header and always sets exp, so malformed-claim
+// cases have to be forged here with a genuinely valid signature.
+async function signRawJwt(header: Record<string, unknown>, payload: Record<string, unknown>, secret: string) {
+  const encoder = new TextEncoder();
+  const data = `${b64uEncode(encoder.encode(JSON.stringify(header)))}.${b64uEncode(encoder.encode(JSON.stringify(payload)))}`;
+  const key = await crypto.subtle.importKey('raw', encoder.encode(secret), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+  const sig = new Uint8Array(await crypto.subtle.sign('HMAC', key, encoder.encode(data)));
+  return `${data}.${b64uEncode(sig)}`;
+}
+
+describe('verifyJwt claim hardening', () => {
+  const secret = 'test-secret';
+  const now = () => Math.floor(Date.now() / 1000);
+
+  it('rejects a validly signed token that omits the exp claim', async () => {
+    const token = await signRawJwt({ alg: 'HS256', typ: 'JWT' }, { sub: 2, u: 'alice', r: 'viewer', tv: 0, iat: now() }, secret);
+
+    await expect(verifyJwt(token, secret)).resolves.toBeNull();
+  });
+
+  it('rejects a validly signed token whose header alg is not HS256', async () => {
+    const payload = { sub: 2, u: 'alice', r: 'viewer', tv: 0, iat: now(), exp: now() + 3600 };
+
+    await expect(signRawJwt({ alg: 'none', typ: 'JWT' }, payload, secret).then((t) => verifyJwt(t, secret))).resolves.toBeNull();
+    await expect(signRawJwt({ alg: 'HS512', typ: 'JWT' }, payload, secret).then((t) => verifyJwt(t, secret))).resolves.toBeNull();
+  });
+
+  it('still accepts a token issued by signJwt and rejects it once expired', async () => {
+    const valid = await signJwt({ sub: 2, u: 'alice', r: 'viewer', tv: 0 }, secret, 3600);
+    await expect(verifyJwt(valid, secret)).resolves.toMatchObject({ sub: 2, r: 'viewer' });
+
+    const expired = await signRawJwt(
+      { alg: 'HS256', typ: 'JWT' },
+      { sub: 2, u: 'alice', r: 'viewer', tv: 0, iat: now() - 7200, exp: now() - 3600 },
+      secret,
+    );
+    await expect(verifyJwt(expired, secret)).resolves.toBeNull();
+  });
+
+  it('rejects a token with a non-numeric exp claim', async () => {
+    const token = await signRawJwt({ alg: 'HS256', typ: 'JWT' }, { sub: 2, u: 'alice', r: 'viewer', tv: 0, exp: 'later' }, secret);
+
+    await expect(verifyJwt(token, secret)).resolves.toBeNull();
   });
 });

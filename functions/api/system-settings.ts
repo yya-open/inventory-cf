@@ -1,6 +1,6 @@
 import { json, requireAuth } from './_auth';
 import { withErrorHandling } from './_error';
-import { requirePermission } from '../_permissions';
+import { requireCapability } from '../_capabilities';
 import { getSystemSettings, updateSystemSettings } from './services/system-settings';
 
 type Env = { DB: D1Database; JWT_SECRET?: string };
@@ -16,7 +16,7 @@ export const onRequestGet = withErrorHandling<Env>(async ({ env, request }) => {
 });
 
 export const onRequestPut = withErrorHandling<Env>(async ({ env, request }) => {
-  const user = await requirePermission(env, request, 'system_settings_write', 'viewer');
+  const user = await requireCapability(env, request, 'system.settings.manage');
   const body = await request.json().catch(() => ({}));
   const data = await updateSystemSettings(env.DB, body || {}, user.username || null);
   return json(true, data, '保存成功');

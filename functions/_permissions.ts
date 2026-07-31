@@ -1,4 +1,4 @@
-import { requireAuth, type AuthUser } from './_auth';
+import { requireAuth, roleLevel, type AuthUser } from './_auth';
 import { sqlNowStored } from './api/_time';
 
 export type PermissionCode =
@@ -151,9 +151,18 @@ export function defaultTemplateForRole(role: string | null | undefined): Permiss
   return 'readonly';
 }
 
+function normalizeRole(role: string | null | undefined): 'admin' | 'operator' | 'viewer' {
+  const r = String(role || '').trim();
+  return r === 'admin' ? 'admin' : r === 'operator' ? 'operator' : 'viewer';
+}
+
 export function normalizePermissionTemplateCode(role: string | null | undefined, templateCode: string | null | undefined): PermissionTemplateCode {
   const raw = String(templateCode || '').trim() as PermissionTemplateCode;
-  return ALL_PERMISSION_TEMPLATE_CODES.includes(raw) ? raw : defaultTemplateForRole(role);
+  if (!ALL_PERMISSION_TEMPLATE_CODES.includes(raw)) return defaultTemplateForRole(role);
+  // A template may never grant beyond the account's role floor: if its role_hint outranks
+  // the user's role, fall back to that role's default template.
+  if (roleLevel(PERMISSION_TEMPLATES[raw].role_hint) > roleLevel(normalizeRole(role))) return defaultTemplateForRole(role);
+  return raw;
 }
 
 export function getPermissionTemplateMap(role: string | null | undefined, templateCode: string | null | undefined) {
@@ -165,9 +174,10 @@ export async function getUserPermissionMap(db: D1Database, userId: number, role:
   const template = getPermissionTemplateMap(role, templateCode);
   const map: Record<string, boolean> = {};
   for (const code of ALL_PERMISSION_CODES) map[code] = !!template.permissions[code];
-  // admin_full grants everything and ignores per-user overrides (see requirePermission);
-  // skip the user_permissions read so it stays consistent and off the /api/auth/me hot path.
-  if (template.code === 'admin_full') return map as Record<PermissionCode, boolean>;
+  // admin_full grants everything and ignores per-user overrides (see requirePermission), but only
+  // for real admins; any other role falls through to the user_permissions read so a mis-assigned
+  // template cannot lift the role floor. Keeps the admin /api/auth/me path off the extra query.
+  if (template.code === 'admin_full' && normalizeRole(role) === 'admin') return map as Record<PermissionCode, boolean>;
   await ensureUserPermissionsTable(db);
   await ensureUserPermissionTemplateColumn(db);
   const { results } = await db.prepare(

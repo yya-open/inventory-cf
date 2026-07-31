@@ -4,12 +4,9 @@ import { clampInt } from '../../utils/numeric';
 export { clampInt };
 
 export function getClientIp(request: Request) {
-  const ip =
-    request.headers.get('CF-Connecting-IP') ||
-    request.headers.get('x-forwarded-for')?.split(',')[0]?.trim() ||
-    request.headers.get('X-Forwarded-For')?.split(',')[0]?.trim() ||
-    '';
-  return ip || '0.0.0.0';
+  // X-Forwarded-For is client-controlled and trivially spoofable; only CF-Connecting-IP is set by the edge and trustworthy.
+  // Absent CF-Connecting-IP means unknown origin -> shared '0.0.0.0' bucket, so lockout/throttle can never be evaded by header rotation.
+  return request.headers.get('CF-Connecting-IP') || '0.0.0.0';
 }
 
 export function datetimeTextToMsBj(dt: string | null) {

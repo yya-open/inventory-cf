@@ -85,25 +85,36 @@ export async function signJwt(payload: any, secret: string, expSeconds: number) 
   return `${data}.${b64uEncode(sig)}`;
 }
 
+// JWT claims are attacker-supplied until the signature checks out, so every claim
+// stays `unknown`; the index signature keeps arbitrary claim reads at call sites.
+type JwtClaims = { [claim: string]: unknown };
+
 export async function verifyJwt(token: string, secret: string) {
   try {
     const parts = token.split(".");
     if (parts.length !== 3) return null;
     const [h, p, s] = parts;
+
+    // signJwt only ever issues HS256; reject any other algorithm before the
+    // signature is touched so no alternative alg can be honoured.
+    const header: unknown = JSON.parse(new TextDecoder().decode(b64uDecode(h)));
+    if (!header || typeof header !== "object") return null;
+    if (!("alg" in header) || header.alg !== "HS256") return null;
+
     const data = `${h}.${p}`;
     const key = await importHmacKey(secret);
     const ok = await crypto.subtle.verify("HMAC", key, b64uDecode(s), new TextEncoder().encode(data));
     if (!ok) return null;
-    const payload = JSON.parse(new TextDecoder().decode(b64uDecode(p)));
+    const payload: JwtClaims | null = JSON.parse(new TextDecoder().decode(b64uDecode(p)));
     if (!payload || typeof payload !== "object") return null;
 
     const now = Math.floor(Date.now() / 1000);
-    const expRaw = (payload as any).exp;
-    if (expRaw !== undefined) {
-      const exp = Number(expRaw);
-      if (!Number.isFinite(exp)) return null;
-      if (now >= exp) return null;
-    }
+    const expRaw = payload.exp;
+    // exp claim required: without it the token would never expire (fail-open).
+    if (expRaw === undefined) return null;
+    const exp = Number(expRaw);
+    if (!Number.isFinite(exp)) return null;
+    if (now >= exp) return null;
     return payload;
   } catch {
     return null;
