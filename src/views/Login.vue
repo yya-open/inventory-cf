@@ -106,59 +106,71 @@ const requireCaptcha = ref(false);
 const turnstileToken = ref("");
 const turnstileEl = ref<HTMLElement | null>(null);
 let widgetId: string | null = null;
-let turnstileScriptPromise: Promise<void> | null = null;
 
-function loadTurnstileScript() {
-  if (typeof window === 'undefined') return Promise.resolve();
-  if ((window as any).turnstile?.render) return Promise.resolve();
-  if (turnstileScriptPromise) return turnstileScriptPromise;
+function ensureTurnstileScript() {
+  if (typeof window === 'undefined') return;
+  if ((window as any).turnstile?.render) return;
+  if (document.querySelector('script[data-inventory-turnstile]')) return;
 
-  turnstileScriptPromise = new Promise((resolve, reject) => {
-    const existing = document.querySelector<HTMLScriptElement>('script[data-inventory-turnstile]');
-    if (existing) {
-      existing.addEventListener('load', () => resolve(), { once: true });
-      existing.addEventListener('error', () => reject(new Error('Turnstile script failed to load')), { once: true });
-      return;
-    }
+  const script = document.createElement('script');
+  script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
+  script.async = true;
+  script.defer = true;
+  script.dataset.inventoryTurnstile = '1';
+  document.head.appendChild(script);
+}
 
-    const script = document.createElement('script');
-    script.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
-    script.async = true;
-    script.defer = true;
-    script.dataset.inventoryTurnstile = '1';
-    script.addEventListener('load', () => resolve(), { once: true });
-    script.addEventListener('error', () => reject(new Error('Turnstile script failed to load')), { once: true });
-    document.head.appendChild(script);
+// `turnstile.ready()` only replays its callback for handlers registered while api.js is still
+// booting; registering after the load event leaves the callback pending forever. Poll for the
+// capability instead so an already-initialised API renders immediately.
+function waitForTurnstileApi(timeoutMs = 10000) {
+  return new Promise<any | null>((resolve) => {
+    const deadline = Date.now() + timeoutMs;
+    const tick = () => {
+      const ts: any = (window as any).turnstile;
+      if (ts?.render) return resolve(ts);
+      if (Date.now() > deadline) return resolve(null);
+      window.setTimeout(tick, 100);
+    };
+    tick();
   });
-
-  return turnstileScriptPromise;
 }
 
 async function renderTurnstile() {
   if (!siteKey || !requireCaptcha.value) return;
-  await loadTurnstileScript();
+  ensureTurnstileScript();
   await nextTick();
   const el = turnstileEl.value;
-  const ts: any = (window as any).turnstile;
-  if (!el || !ts?.render) return;
+  const ts = await waitForTurnstileApi();
+  if (!el || !ts) {
+    showError("验证码组件加载失败，请刷新页面后重试");
+    return;
+  }
+
+  if (widgetId) {
+    try { ts.remove(widgetId); } catch {}
+    widgetId = null;
+  }
 
   try {
-    if (widgetId) {
-      ts.remove(widgetId);
-      widgetId = null;
-    }
-  } catch {}
+    widgetId = ts.render(el, {
+      sitekey: siteKey,
+      callback: (t: string) => { turnstileToken.value = t; },
+      "expired-callback": () => { turnstileToken.value = ""; },
+      "error-callback": () => { turnstileToken.value = ""; },
+    });
+  } catch {
+    showError("验证码组件加载失败，请刷新页面后重试");
+  }
+}
 
-  ts.ready(() => {
-    try {
-      widgetId = ts.render(el, {
-        sitekey: siteKey,
-        callback: (t: string) => { turnstileToken.value = t; },
-        "expired-callback": () => { turnstileToken.value = ""; },
-        "error-callback": () => { turnstileToken.value = ""; },
-      });
-    } catch {}
-  });
+// Turnstile responses are single-use: once an attempt has been answered, the cached
+// token is dead and replaying it would fail siteverify (and cost the user two fail counters).
+function consumeTurnstileToken() {
+  turnstileToken.value = "";
+  const ts: any = (window as any).turnstile;
+  if (!ts?.reset || !widgetId) return;
+  try { ts.reset(widgetId); } catch {}
 }
 
 onBeforeUnmount(() => {
@@ -190,6 +202,7 @@ async function doLogin() {
       const dt = new Date(Number(e.locked_until_ms));
       const pad = (n: number) => String(n).padStart(2, "0");
       const s = `${dt.getFullYear()}-${pad(dt.getMonth() + 1)}-${pad(dt.getDate())} ${pad(dt.getHours())}:${pad(dt.getMinutes())}:${pad(dt.getSeconds())}`;
+      consumeTurnstileToken();
       showError(`尝试次数过多，请稍后再试（锁定至 ${s}）`);
       return;
     }
@@ -201,6 +214,7 @@ async function doLogin() {
       else showWarning("请先完成验证码验证");
       return;
     }
+    consumeTurnstileToken();
     showError(e.message || "登录失败");
   } finally {
     loading.value = false;
