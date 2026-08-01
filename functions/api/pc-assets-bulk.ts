@@ -89,7 +89,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     if (action === 'status') {
       const status = String(body?.status || '').trim();
       if (!ALLOWED_STATUS.has(status)) throw Object.assign(new Error('不支持的目标状态'), { status: 400 });
-      const result = await bulkUpdatePcStatus(env.DB, ids, status);
+      const result = await bulkUpdatePcStatus(env.DB, ids, status, { createdBy: user.username, remark: '批量状态调整' });
       if (result.changed) invalidateAssetListCache('pc-assets');
       await logAudit(env.DB, request, user, 'PC_ASSET_STATUS_BATCH', 'pc_assets', String(ids.length), {
         ids: result.ids,

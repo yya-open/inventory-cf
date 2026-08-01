@@ -1,9 +1,11 @@
 import { sqlNowStored } from '../_time';
 import { throwHttpError } from '../_error';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
-import { rebuildPcLatestStateForAssets } from './pc-latest-state';
+import { buildPcLatestStateRebuildStatements, ensurePcLatestStateTable } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
 import { getAuditClientIp } from './client-ip';
+import { guardRowCountSql, guardSql, runBatchWithGuard } from '../_write';
+import { pcEventCreatedAtAfterLatest } from '../pc-tx/_recalc';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
 export type PcRecycleAction = 'RETURN' | 'RECYCLE';
@@ -400,9 +402,17 @@ type ApplyPcOutArgs = {
   statusAfter: string;
 };
 
+/**
+ * 单台出库：前置条件必须进 SQL，不能只靠调用方的 JS 判断。
+ *
+ * 背景：调用方 pc-out.ts 先 SELECT 出资产、在 JS 里判断 isInStockStatus，然后这里
+ * 无条件 `UPDATE ... WHERE id=?`。两个并发请求（不同 client_request_id）会双双通过
+ * JS 判断并各自提交：产生两条 pc_out，同一台机器发给两个人，派生表取决于谁最后落地，
+ * 两个请求都返回 200。姊妹接口 pc-out-batch.ts 早就把条件写进了 SQL，这里补齐。
+ */
 export async function applyPcOut(args: ApplyPcOutArgs) {
   const { db, outNo, asset, employeeNo, department, employeeName, isEmployed = null, configDate = null, remark = null, createdBy, statusAfter } = args;
-  await db.batch([
+  await runBatchWithGuard(db, [
     db.prepare(
       `INSERT INTO pc_out (
         out_no, asset_id,
@@ -410,7 +420,9 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
         brand, serial_no, model,
         config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
         remark, created_by, created_at
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+      )
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${pcEventCreatedAtAfterLatest('pc_assets.id')}
+        FROM pc_assets WHERE id=? AND status='IN_STOCK'`
     ).bind(
       outNo,
       asset.id,
@@ -428,8 +440,9 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
       asset.memory_size ?? null,
       remark,
       createdBy,
+      asset.id,
     ),
-    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
+    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=? AND status='IN_STOCK'`).bind(statusAfter, asset.id),
     db.prepare(
       `INSERT INTO pc_asset_latest_state (
         asset_id, last_out_id, last_in_id, last_recycle_id,
@@ -453,6 +466,8 @@ export async function applyPcOut(args: ApplyPcOutArgs) {
         last_recycle_date=NULL,
         updated_at=${sqlNowStored()}`
     ).bind(asset.id, outNo, employeeNo, employeeName, department, configDate, outNo),
+    // 守卫：出库单必须已落库，否则说明资产被并发出库，整批回滚
+    db.prepare(guardRowCountSql('pc_out', 'out_no', 1)).bind(outNo, 1),
   ]);
   await syncSystemDictionaryUsageCounters(db, []);
 }
@@ -468,17 +483,24 @@ type ApplyPcRecycleArgs = {
   createdBy: string;
 };
 
+/**
+ * 单台回收/归还：与 applyPcOut 同理，前置条件 status='ASSIGNED' 必须进 SQL。
+ * 否则「并发出库 + 并发回收」会互相覆盖，还会违反 pc-scrap.ts 自己的
+ * 「已领用不得报废」规则。
+ */
 export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
   const { db, recycleNo, action, asset, lastOut, recycleDate, remark = null, createdBy } = args;
   const statusAfter = pcStatusAfterRecycle(action);
-  await db.batch([
+  await runBatchWithGuard(db, [
     db.prepare(
       `INSERT INTO pc_recycle (
         recycle_no, action, asset_id,
         employee_no, department, employee_name, is_employed,
         brand, serial_no, model,
-        recycle_date, remark, created_by
-      ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)`
+        recycle_date, remark, created_by, created_at
+      )
+      SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?, ${pcEventCreatedAtAfterLatest('pc_assets.id')}
+        FROM pc_assets WHERE id=? AND status='ASSIGNED'`
     ).bind(
       recycleNo,
       action,
@@ -493,8 +515,9 @@ export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
       recycleDate,
       remark,
       createdBy,
+      asset.id,
     ),
-    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`).bind(statusAfter, asset.id),
+    db.prepare(`UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=? AND status='ASSIGNED'`).bind(statusAfter, asset.id),
     db.prepare(
       `INSERT INTO pc_asset_latest_state (
         asset_id, last_out_id, last_in_id, last_recycle_id,
@@ -512,6 +535,8 @@ export async function applyPcRecycle(args: ApplyPcRecycleArgs) {
         current_department=NULL,
         updated_at=${sqlNowStored()}`
     ).bind(asset.id, recycleNo, recycleDate, recycleNo),
+    // 守卫：回收单必须已落库，否则说明资产被并发处理，整批回滚
+    db.prepare(guardRowCountSql('pc_recycle', 'recycle_no', 1)).bind(recycleNo, 1),
   ]);
   await syncSystemDictionaryUsageCounters(db, []);
   return statusAfter;
@@ -526,19 +551,36 @@ type ApplyPcScrapArgs = {
   createdBy: string;
 };
 
+/**
+ * 报废：台账、状态与派生表必须在同一个批次里落地。
+ *
+ * 背景：过去是 `await db.batch(stmts)` 之后再 `await rebuildPcLatestStateForAssets(...)`。
+ * 两个 await 之间（或第二步失败时）资产已经是 SCRAPPED 且有 pc_scrap 行，而
+ * pc_asset_latest_state.current_employee_* 还留着最后一任领用人 —— 清空这几列正是重建
+ * SQL 的 `CASE WHEN a.status='ASSIGNED'` 负责的事。结果是报废的机器仍然挂着领用人，
+ * 并继续计入那个部门的统计。
+ */
 export async function applyPcScrap(args: ApplyPcScrapArgs) {
   const { db, scrapNo, rows, scrapDate, reason = null, createdBy } = args;
+  const assetIds = rows.map((row) => Number(row.id || 0)).filter((id) => id > 0);
+  if (!assetIds.length) return;
+
+  // 建表是 DDL，不能进事务批次
+  await ensurePcLatestStateTable(db);
+
   const stmts: D1PreparedStatement[] = [];
   for (const row of rows) {
     stmts.push(
-      db.prepare(`UPDATE pc_assets SET status='SCRAPPED', updated_at=${sqlNowStored()} WHERE id=?`).bind(row.id),
+      db.prepare(`UPDATE pc_assets SET status='SCRAPPED', updated_at=${sqlNowStored()} WHERE id=? AND status NOT IN ('ASSIGNED','SCRAPPED')`).bind(row.id),
       db.prepare(
         `INSERT INTO pc_scrap (
           scrap_no, asset_id,
           brand, serial_no, model,
           manufacture_date, warranty_end, disk_capacity, memory_size, remark,
           scrap_date, reason, created_by, created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+        )
+        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?, ${pcEventCreatedAtAfterLatest('pc_assets.id')}
+          FROM pc_assets WHERE id=? AND status='SCRAPPED'`
       ).bind(
         scrapNo,
         row.id,
@@ -553,10 +595,18 @@ export async function applyPcScrap(args: ApplyPcScrapArgs) {
         scrapDate,
         reason,
         createdBy,
+        row.id,
       )
     );
   }
-  await db.batch(stmts);
-  await rebuildPcLatestStateForAssets(db, rows.map((row) => Number(row.id || 0)));
+  // 派生表重建与台账写入同批：状态在同批内先写后读可见
+  stmts.push(...buildPcLatestStateRebuildStatements(db, assetIds));
+  // 守卫：本次报废单必须恰好落 rows.length 行。同一张报废单号覆盖多台资产，
+  // 因此这里断言行数而不是单号数量；任何一台被并发领用/报废都会让它的 INSERT 落 0 行，
+  // 触发整批回滚。
+  stmts.push(
+    db.prepare(guardSql(`(SELECT COUNT(*) FROM pc_scrap WHERE scrap_no=?) = ?`)).bind(scrapNo, rows.length)
+  );
+  await runBatchWithGuard(db, stmts);
   await syncSystemDictionaryUsageCounters(db, []);
 }

@@ -7,17 +7,29 @@ import {
   monitorAssetRestoreSql,
   pcAssetArchiveSql,
   pcAssetBulkOwnerSql,
-  pcAssetBulkStatusSql,
   pcAssetRestoreSql,
   buildMonitorAssetSearchText,
 } from './asset-ledger';
 import { ensurePcLatestStateTable } from './pc-latest-state';
+import { buildPcAssetRecalcStatements, pcEventCreatedAtAfterLatest } from '../pc-tx/_recalc';
 import { type AssetArchiveKind } from './asset-archive';
 import { sqlNowStored } from '../_time';
-import { pcOutNo } from '../_pc';
+import { pcOutNo, pcRecycleNo, pcScrapNo } from '../_pc';
 import { monitorTxNo } from '../_monitor';
+import { guardRowCountSql, runBatchWithGuard } from '../_write';
 
 const DEFAULT_BATCH_SIZE = 100;
+
+/**
+ * 目标状态 -> 用来证明这个状态的台账事件。
+ * 键集合必须与 pc-assets-bulk.ts 的 ALLOWED_STATUS 一致（IN_STOCK / RECYCLED / SCRAPPED）；
+ * ASSIGNED 不在其中——它需要领用人信息，走 bulkUpdatePcOwner。
+ */
+const PC_STATUS_EVENT: Record<string, { table: 'pc_recycle' | 'pc_scrap'; noColumn: string; action: string | null }> = {
+  IN_STOCK: { table: 'pc_recycle', noColumn: 'recycle_no', action: 'RETURN' },
+  RECYCLED: { table: 'pc_recycle', noColumn: 'recycle_no', action: 'RECYCLE' },
+  SCRAPPED: { table: 'pc_scrap', noColumn: 'scrap_no', action: null },
+};
 
 type AssetRow = Record<string, any> & { id: number; status?: string | null; archived?: number | null };
 
@@ -43,6 +55,11 @@ type BulkOwnerWriteOptions = {
   createdBy?: string | null;
   ip?: string | null;
   ua?: string | null;
+};
+
+type BulkStatusWriteOptions = {
+  createdBy?: string | null;
+  remark?: string | null;
 };
 
 function uniquePositiveIds(ids: number[]) {
@@ -76,7 +93,7 @@ export async function loadAssetRows(
   const clauses = [`id IN (${validIds.map(() => '?').join(',')})`];
   const binds: any[] = [...validIds];
   if (options.archived === 0 || options.archived === 1) {
-    clauses.push('COALESCE(archived, 0)=?');
+    clauses.push('archived=?');
     binds.push(options.archived);
   }
   const statuses = (options.statuses || []).map((status) => String(status || '').trim()).filter(Boolean);
@@ -125,20 +142,94 @@ export async function bulkRestoreAssets(
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
 
+/**
+ * 批量改状态：必须写入一条与目标状态对应的台账事件，而不是直接 UPDATE pc_assets.status。
+ *
+ * 背景（本轮修复的核心）：这里过去只发 `UPDATE pc_assets SET status=?`，不写任何事件。
+ * 而 pc-tx/_recalc.ts 把 status 定义为「最新一条 pc_in/pc_out/pc_recycle/pc_scrap 事件」的
+ * 纯函数，admin/_restore_finalize.ts 又会在任何一次恢复完成后把每一行资产都重算一遍
+ * （pc-tx/delete.ts 也会重算它碰到的资产）。于是本操作写下的状态不只是「与重算不一致」，
+ * 而是**不持久**：下一次重算会把它按台账重新推回去，管理员的动作静默蒸发。
+ *
+ * 修法沿用姊妹函数 bulkUpdatePcOwner 已有的做法——补一条事件，让重算能复现同一个状态：
+ *   IN_STOCK  -> pc_recycle(action='RETURN')
+ *   RECYCLED  -> pc_recycle(action='RECYCLE')
+ *   SCRAPPED  -> pc_scrap
+ * 状态本身不再由本函数直接写，改由 buildPcAssetRecalcStatements 在同一批次内从台账推导，
+ * 派生表 pc_asset_latest_state 也在同一批次重建（employee_* 的清空由重建 SQL 的
+ * `CASE WHEN a.status='ASSIGNED'` 负责，不需要再单独发清空语句）。
+ *
+ * 事件行里的领用人快照走 `ORDER BY created_at DESC, id DESC` 的最新 pc_out，与
+ * services/pc-latest-state.ts 的口径一致（历史实现用 `HAVING id = MAX(id)`，在
+ * created_at 与 id 次序不一致时会取到另一行）。
+ */
 export async function bulkUpdatePcStatus(
   db: D1Database,
   ids: number[],
   status: string,
+  options: BulkStatusWriteOptions = {},
 ): Promise<BulkUpdateSummary> {
   const rows = await loadAssetRows(db, 'pc', ids, { archived: 0 });
   const targetIds = rows.map((row) => row.id);
   const skippedIds = missingRequestedIds(ids, targetIds);
-  const statements = targetIds.map((id) => db.prepare(pcAssetBulkStatusSql()).bind(status, id));
-  await runBatchStatements(db, statements);
-  if (targetIds.length && status !== 'ASSIGNED') {
-    const clearStatements = targetIds.map((id) => db.prepare(`UPDATE pc_asset_latest_state SET current_employee_no=NULL, current_employee_name=NULL, current_department=NULL, updated_at=${sqlNowStored()} WHERE asset_id=?`).bind(id));
-    await runBatchStatements(db, clearStatements);
+  if (!targetIds.length) return { changed: 0, skipped: skippedIds.length, ids: [], skippedIds };
+
+  const event = PC_STATUS_EVENT[status];
+  if (!event) throw Object.assign(new Error('不支持的目标状态'), { status: 400 });
+  const createdBy = options.createdBy || null;
+  const remark = options.remark ?? null;
+
+  // 建表是 DDL，不能进事务批次
+  await ensurePcLatestStateTable(db);
+
+  const noByAsset = new Map<number, string>(targetIds.map((id) => [id, event.table === 'pc_scrap' ? pcScrapNo() : pcRecycleNo()]));
+  const stmts: D1PreparedStatement[] = [];
+  for (const assetId of targetIds) {
+    const no = noByAsset.get(assetId) as string;
+    stmts.push(
+      event.table === 'pc_scrap'
+        ? db.prepare(
+            `INSERT INTO pc_scrap (
+               scrap_no, asset_id,
+               brand, serial_no, model,
+               manufacture_date, warranty_end, disk_capacity, memory_size, remark,
+               scrap_date, reason, created_by, created_at
+             )
+             SELECT ?, a.id,
+                    a.brand, a.serial_no, a.model,
+                    a.manufacture_date, a.warranty_end, a.disk_capacity, a.memory_size, ?,
+                    date('now','+8 hours'), ?, ?, ${pcEventCreatedAtAfterLatest('a.id')}
+               FROM pc_assets a
+              WHERE a.id=? AND a.archived=0`
+          ).bind(no, remark, remark, createdBy, assetId)
+        : db.prepare(
+            `INSERT INTO pc_recycle (
+               recycle_no, action, asset_id,
+               employee_no, department, employee_name, is_employed,
+               brand, serial_no, model,
+               recycle_date, remark, created_by, created_at
+             )
+             SELECT ?, ?, a.id,
+                    lo.employee_no, lo.department, lo.employee_name, lo.is_employed,
+                    a.brand, a.serial_no, a.model,
+                    date('now','+8 hours'), ?, ?, ${pcEventCreatedAtAfterLatest('a.id')}
+               FROM pc_assets a
+               LEFT JOIN pc_out lo ON lo.id = (
+                 SELECT id FROM pc_out WHERE asset_id = a.id ORDER BY created_at DESC, id DESC LIMIT 1
+               )
+              WHERE a.id=? AND a.archived=0`
+          ).bind(no, event.action, remark, createdBy, assetId)
+    );
   }
+  // 状态与派生表都从台账推导，保证与 recalc 的定义一致
+  stmts.push(...buildPcAssetRecalcStatements(db, targetIds));
+  // 守卫行：每个资产都必须恰好留下一条事件，否则整批回滚
+  stmts.push(
+    db.prepare(guardRowCountSql(event.table, event.noColumn, targetIds.length))
+      .bind(...targetIds.map((id) => noByAsset.get(id) as string), targetIds.length)
+  );
+
+  await runBatchWithGuard(db, stmts);
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
 
@@ -245,6 +336,24 @@ export async function bulkUpdateMonitorOwner(
   return { changed: targetIds.length, skipped: skippedIds.length, ids: targetIds, skippedIds };
 }
 
+/**
+ * 批量改领用人：必须原子地发 pc_out + 重算状态 + 重建 pc_asset_latest_state，不可撕裂。
+ *
+ * 背景：过去分两批：batch(pc_out + UPDATE pc_assets) -> batch(pc_asset_latest_state)。
+ * 中间边界是撕裂的：第一批提交后、第二批发出前如果 Worker 超时/崩溃/重启，资产状态
+ * 停在 ASSIGNED 但 pc_asset_latest_state 还是旧人，前端显示的「当前领用人」就错了。
+ * 而且第一批里的 `UPDATE pc_assets SET status='ASSIGNED'` 又是无事件的直接状态写，
+ * 与刚修完的 F3 (bulkUpdatePcStatus) 犯同一个错 —— 下次 recalc 会按台账把它推回去。
+ *
+ * 修法：
+ *   1. pc_out、pc_assets.status 重算（内含派生表重建）全进一个批次，用守卫行收尾。
+ *   2. 状态不再直接写，改由 buildPcAssetRecalcStatements 从台账推导，与 recalc 定义一致。
+ *   3. 守卫断言每个资产都恰好留下一条 pc_out，否则整批回滚。
+ *
+ * 幂等性与去重：外层 loadAssetRows 过滤 archived=0 且 status='ASSIGNED'，这里再按
+ * 「新老领用人完全相同」去重，留下 effectiveIds。一个资产只有领用人真的变了才发事件，
+ * 避免无意义写放大（管理员勾 50 台、实际只有 3 台需要改，只发 3 条 pc_out）。
+ */
 export async function bulkUpdatePcOwner(
   db: D1Database,
   ids: number[],
@@ -282,12 +391,26 @@ export async function bulkUpdatePcOwner(
   });
   const effectiveIdSet = new Set(effectiveIds);
   const extraSkippedIds = targetIds.filter((id) => !effectiveIdSet.has(id));
+  if (!effectiveIds.length) {
+    return {
+      changed: 0,
+      skipped: skippedIds.length + extraSkippedIds.length,
+      ids: [],
+      skippedIds: [...skippedIds, ...extraSkippedIds],
+      latestOutIds,
+    };
+  }
+
+  // 建表是 DDL，不能进事务批次
+  await ensurePcLatestStateTable(db);
+
   const outNoByAsset = new Map<number, string>(effectiveIds.map((assetId) => [assetId, pcOutNo()]));
-  const statements = effectiveIds.flatMap((assetId) => {
+  const stmts: D1PreparedStatement[] = [];
+  for (const assetId of effectiveIds) {
     const latest = latestByAsset.get(assetId) || {};
-    const outNo = outNoByAsset.get(assetId) || pcOutNo();
+    const outNo = outNoByAsset.get(assetId) as string;
     const department = owner.department ?? latest.department ?? null;
-    return [
+    stmts.push(
       db.prepare(
         `INSERT INTO pc_out (
           out_no, asset_id,
@@ -295,7 +418,9 @@ export async function bulkUpdatePcOwner(
           brand, serial_no, model,
           config_date, manufacture_date, warranty_end, disk_capacity, memory_size,
           remark, created_by, created_at
-        ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${sqlNowStored()})`
+        )
+        SELECT ?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?, ${pcEventCreatedAtAfterLatest('a.id')}
+          FROM pc_assets a WHERE a.id=? AND a.archived=0`
       ).bind(
         outNo,
         assetId,
@@ -313,31 +438,19 @@ export async function bulkUpdatePcOwner(
         latest.memory_size ?? null,
         null,
         options.createdBy || null,
-      ),
-      db.prepare(`UPDATE pc_assets SET status='ASSIGNED', updated_at=${sqlNowStored()} WHERE id=?`).bind(assetId),
-    ];
-  });
-  await runBatchStatements(db, statements);
-  await ensurePcLatestStateTable(db);
-  const latestStateStmts = effectiveIds.map((assetId) =>
-    db.prepare(
-      `INSERT INTO pc_asset_latest_state (
-        asset_id, last_out_id, last_in_id, last_recycle_id,
-        current_employee_no, current_employee_name, current_department,
-        last_config_date, last_out_at, last_in_at, last_recycle_date, updated_at
-      ) VALUES (?, (SELECT id FROM pc_out WHERE out_no=? LIMIT 1), NULL, NULL, ?, ?, ?, NULL, ${sqlNowStored()}, NULL, NULL, ${sqlNowStored()})
-      ON CONFLICT(asset_id) DO UPDATE SET
-        current_employee_no=excluded.current_employee_no,
-        current_employee_name=excluded.current_employee_name,
-        current_department=excluded.current_department,
-        last_out_id=excluded.last_out_id,
-        last_out_at=${sqlNowStored()},
-        last_recycle_id=NULL,
-        last_recycle_date=NULL,
-        updated_at=${sqlNowStored()}`
-    ).bind(assetId, outNoByAsset.get(assetId) || '', owner.employee_no, owner.employee_name, owner.department ?? latestByAsset.get(assetId)?.department ?? null)
+        assetId,
+      )
+    );
+  }
+  // 状态与派生表都从台账推导，保证与 recalc 的定义一致
+  stmts.push(...buildPcAssetRecalcStatements(db, effectiveIds));
+  // 守卫行：每个资产都必须恰好留下一条 pc_out，否则整批回滚
+  stmts.push(
+    db.prepare(guardRowCountSql('pc_out', 'out_no', effectiveIds.length))
+      .bind(...effectiveIds.map((id) => outNoByAsset.get(id) as string), effectiveIds.length)
   );
-  await runBatchStatements(db, latestStateStmts);
+
+  await runBatchWithGuard(db, stmts);
   return {
     changed: effectiveIds.length,
     skipped: skippedIds.length + extraSkippedIds.length,

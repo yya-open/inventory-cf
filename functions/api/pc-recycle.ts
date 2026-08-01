@@ -2,6 +2,7 @@ import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, must, optional, getPcAssetByIdOrSerial, normalizeText, pcRecycleNo } from './_pc';
 import { applyPcRecycle, pcRecycleAuditAction } from './services/asset-write';
+import { GuardRollbackError } from './_write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { createTiming } from './_timing';
 import { assertPcAssetDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
@@ -48,24 +49,34 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const recycle_date = must(body?.recycle_date, '回收/归还日期', 40);
     const remark = optional(body?.remark, 2000);
 
+    // 「最新一条 pc_out」的口径与 services/pc-latest-state.ts 一致：created_at DESC, id DESC。
+    // 只按 id DESC 在补录/导入/恢复导致 created_at 与 id 次序不一致时会取到另一行。
     const lastOut = await t.measure('lookup_last_out', () => env.DB.prepare(
       `SELECT employee_no, department, employee_name, is_employed
        FROM pc_out
        WHERE asset_id=?
-       ORDER BY id DESC
+       ORDER BY created_at DESC, id DESC
        LIMIT 1`
     ).bind(asset.id).first<any>());
 
-    const afterStatus = await t.measure('write', () => applyPcRecycle({
-      db: env.DB,
-      recycleNo: no,
-      action,
-      asset,
-      lastOut,
-      recycleDate: recycle_date,
-      remark,
-      createdBy: user.username,
-    }));
+    let afterStatus: string;
+    try {
+      afterStatus = await t.measure('write', () => applyPcRecycle({
+        db: env.DB,
+        recycleNo: no,
+        action,
+        asset,
+        lastOut,
+        recycleDate: recycle_date,
+        remark,
+        createdBy: user.username,
+      }));
+    } catch (e) {
+      if (e instanceof GuardRollbackError) {
+        return Response.json({ ok: false, message: '该电脑已被并发处理，本次已回滚（请刷新后重试）' }, { status: 409 });
+      }
+      throw e;
+    }
     invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, pcRecycleAuditAction(action), 'pc_recycle', no, {

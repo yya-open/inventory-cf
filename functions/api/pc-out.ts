@@ -10,6 +10,7 @@ import {
   toAssetStatusAfterOut,
 } from './_pc';
 import { applyPcOut } from './services/asset-write';
+import { GuardRollbackError } from './_write';
 import { createTiming } from './_timing';
 import { assertDateText, assertEmployeeNo, getDataQualitySettings, trimRemarkByRule } from './services/data-quality';
 import { assertDepartmentDictionaryValue } from './services/master-data';
@@ -54,19 +55,26 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     }
 
     const afterStatus = toAssetStatusAfterOut(null);
-    await t.measure('write', () => applyPcOut({
-      db: env.DB,
-      outNo: no,
-      asset,
-      employeeNo: employee_no,
-      department,
-      employeeName: employee_name,
-      isEmployed: is_employed,
-      configDate: config_date,
-      remark,
-      createdBy: user.username,
-      statusAfter: afterStatus,
-    }));
+    try {
+      await t.measure('write', () => applyPcOut({
+        db: env.DB,
+        outNo: no,
+        asset,
+        employeeNo: employee_no,
+        department,
+        employeeName: employee_name,
+        isEmployed: is_employed,
+        configDate: config_date,
+        remark,
+        createdBy: user.username,
+        statusAfter: afterStatus,
+      }));
+    } catch (e) {
+      if (e instanceof GuardRollbackError) {
+        return Response.json({ ok: false, message: '该电脑已被并发出库，本次已回滚（请刷新后重试）' }, { status: 409 });
+      }
+      throw e;
+    }
     invalidateAssetListCache('pc-assets');
 
     waitUntil(logAudit(env.DB, request, user, 'PC_OUT', 'pc_out', no, {

@@ -32,6 +32,31 @@ function pcLatestStatusExpr() {
 }
 
 /**
+ * 一个严格晚于该资产现有全部台账事件的 created_at 表达式。
+ *
+ * 为什么需要：上面的状态推导按 `created_at DESC, rid DESC` 取最新事件，而 rid 是
+ * **每张表各自的**自增主键 —— 跨表比较 pc_out.id 与 pc_recycle.id 毫无意义。两条不同类型
+ * 的事件落在同一秒时，二级键无法定序，SQLite 返回哪一条是任意的（已在 SQLite 3.x 上验证：
+ * 同秒的 OUT 与 RETURN，推导结果稳定地取到了 OUT）。
+ *
+ * 而「紧接着上一条事件再写一条」正是台账写入的常态：出库后立刻归还、管理员批量改状态、
+ * 导入脚本连续处理同一台设备。同秒撞车不是边角情况。
+ *
+ * 时间戳只精确到秒，信息本身就不足以定序，所以只能让写入方把自己的时间推到既有事件之后：
+ * 取 max(现在, 最新事件 + 1 秒)。距上一次事件已超过 1 秒时它就等于现在，不会人为放大时间。
+ *
+ * `assetExpr` 是外层语句中指向资产主键的表达式（例如 'a.id' 或 'pc_assets.id'）。
+ */
+export function pcEventCreatedAtAfterLatest(assetExpr: string) {
+  return `max(${sqlNowStored()}, datetime((SELECT COALESCE(MAX(created_at), '0000-01-01 00:00:00') FROM (
+      SELECT created_at FROM pc_in WHERE asset_id = ${assetExpr}
+      UNION ALL SELECT created_at FROM pc_out WHERE asset_id = ${assetExpr}
+      UNION ALL SELECT created_at FROM pc_recycle WHERE asset_id = ${assetExpr}
+      UNION ALL SELECT created_at FROM pc_scrap WHERE asset_id = ${assetExpr}
+    )), '+1 second'))`;
+}
+
+/**
  * 生成 pc_assets.status 的重算语句（纯 SQL，不预读）。
  * 状态在写事务内由 SQL 推导，避免"先 SELECT 后 UPDATE"被并发写入覆盖。
  * 每条语句最多 D1_SAFE_ID_BATCH_SIZE(50) 个绑定参数，远低于 D1 单语句 100 个的上限。
