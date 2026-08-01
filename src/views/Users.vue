@@ -552,7 +552,11 @@ function userErrorHint(e: unknown) {
   return '';
 }
 
+// 与 usePagedAssetList 一致的过期响应保护：慢的旧请求不得覆盖新请求的数据。
+let requestSeq = 0;
+
 async function load() {
+  const currentSeq = ++requestSeq;
   loading.value = true;
   try {
     const qs = new URLSearchParams();
@@ -564,12 +568,14 @@ async function load() {
     qs.set("_ts", String(Date.now()));
     qs.set("view", "lite");
     const r = await apiGet<{ ok:boolean; data: Row[]; meta?: { total?: number } }>("/api/users?" + qs.toString(), { cache: "no-store" });
+    if (currentSeq !== requestSeq) return;
     rows.value = r.data || [];
     total.value = Number((r as any).meta?.total || 0);
   } catch (e:any) {
+    if (currentSeq !== requestSeq) return;
     showError(userErrorHint(e) || e.message || "加载失败");
   } finally {
-    loading.value = false;
+    if (currentSeq === requestSeq) loading.value = false;
   }
 }
 

@@ -155,9 +155,17 @@ async function syncSelection() {
   syncingSelection.value = false;
 }
 
-watch(() => [renderRows.value, props.selectedIds], () => {
+// syncSelection 只关心「渲染行的 id 集合」和「选中 id 集合」，
+// 深度监听会遍历每一行的每个字段（本组件承载两个资产台账，代价是全局的），因此改为监听派生标量键。
+const selectionSyncKey = computed(() => {
+  const rowIds = renderRows.value.map((row) => String(row.id)).join(',');
+  const selectedIds = (props.selectedIds || []).map((item) => String(item)).join(',');
+  return `${rowIds}|${selectedIds}`;
+});
+
+watch(selectionSyncKey, () => {
   nextTick(syncSelection);
-}, { deep: true, immediate: true });
+}, { immediate: true });
 
 watch(() => [props.useLightweightStage, props.initialLoading, props.loading, renderRows.value.length, props.mobileMode], ([useStage, initialLoading, loading, rowCount, isMobile]) => {
   if (!useStage) {

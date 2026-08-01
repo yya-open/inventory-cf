@@ -586,7 +586,7 @@ import { ElUpload } from 'element-plus/es/components/upload/index';
 import { ElDivider } from 'element-plus/es/components/divider/index';
 import { ElProgress } from 'element-plus/es/components/progress/index';
 import { ElRadio, ElRadioGroup } from 'element-plus/es/components/radio/index';
-import { ref, computed, watch } from "vue";
+import { ref, computed, watch, onBeforeUnmount } from "vue";
 import { promptAction, showError, showSuccess, showWarning } from "../utils/feedback";
 import { apiPostForm, apiGet, apiPost } from "../api/client";
 import { formatBeijingNowDateTime } from "../utils/datetime";
@@ -970,10 +970,13 @@ async function createJob() {
 
 async function refreshStatus() {
   if (!jobId.value) return;
+  if (stopped) return;
   try {
     const r = await apiGet<any>(`/api/admin/restore_job/status?id=${encodeURIComponent(jobId.value)}`);
+    if (stopped) return;
     applyJobSnapshot(r.data);
   } catch (e:any) {
+    if (stopped) return;
     showError(e?.message || "刷新失败", ERROR_MESSAGE_OPTIONS);
   }
 }
@@ -990,29 +993,74 @@ function applyJobSnapshot(d: any) {
   if ("last_error" in d) jobLastError.value = d.last_error || "";
 }
 
+// 轮询生命周期：定时器与在途请求都必须能在组件卸载时终止，
+// 否则离开页面后循环会继续向 /api/admin/restore_job/run 发请求（再次进入页面还会叠加一条）。
+let requestSeq = 0;
+let abortController: AbortController | null = null;
+let pollTimer: number | null = null;
+let pollResolve: (() => void) | null = null;
+let stopped = false;
+
+function clearPollTimer() {
+  if (pollTimer != null) {
+    window.clearTimeout(pollTimer);
+    pollTimer = null;
+  }
+  if (pollResolve) {
+    const resolve = pollResolve;
+    pollResolve = null;
+    resolve();
+  }
+}
+
 function stopLoop() {
   running.value = false;
+  clearPollTimer();
 }
 
 function sleep(ms: number) {
-  return new Promise((r) => setTimeout(r, ms));
+  return new Promise<void>((resolve) => {
+    clearPollTimer();
+    pollResolve = resolve;
+    pollTimer = window.setTimeout(() => {
+      pollTimer = null;
+      pollResolve = null;
+      resolve();
+    }, ms);
+  });
 }
+
+onBeforeUnmount(() => {
+  stopped = true;
+  running.value = false;
+  requestSeq++;
+  clearPollTimer();
+  if (abortController) {
+    try { abortController.abort(); } catch {}
+    abortController = null;
+  }
+});
 
 async function startOrResume() {
   if (!jobId.value) {
     showWarning("请先创建恢复任务", WARNING_MESSAGE_OPTIONS);
     return;
   }
-  if (running.value) return;
+  if (running.value || stopped) return;
 
+  const seq = ++requestSeq;
+  const controller = typeof AbortController !== 'undefined' ? new AbortController() : null;
+  abortController = controller;
   running.value = true;
   try {
-    while (running.value) {
+    while (running.value && !stopped) {
       const r = await apiPost<any>("/api/admin/restore_job/run", {
         id: jobId.value,
         max_rows: 4000,
         max_ms: 12000,
-      });
+      }, controller ? { signal: controller.signal } : {});
+
+      if (stopped || seq !== requestSeq || controller?.signal?.aborted) return;
 
       applyJobSnapshot(r.data);
       const st = jobStatus.value;
@@ -1027,9 +1075,13 @@ async function startOrResume() {
       await sleep(more ? 150 : 1000);
     }
   } catch (e:any) {
+    if (stopped || seq !== requestSeq || controller?.signal?.aborted) return;
+    if (String(e?.name || '') === 'AbortError') return;
     stopLoop();
     showError(e?.message || "运行失败", ERROR_MESSAGE_OPTIONS);
     await refreshStatus();
+  } finally {
+    if (abortController === controller) abortController = null;
   }
 }
 
