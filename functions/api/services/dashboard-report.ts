@@ -67,7 +67,7 @@ export async function buildStability(db: D1Database) {
     firstNumber(db, `SELECT COUNT(*) AS c FROM async_jobs WHERE status IN ('failed','queued','running')`),
     db.prepare(`SELECT drill_at, outcome FROM backup_drill_runs ORDER BY id DESC LIMIT 1`).first<any>().catch(() => null),
     firstNumber(db, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open'`),
-    firstNumber(db, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')`),
+    firstNumber(db, `SELECT COUNT(*) AS c FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND rect_due_at < date('now','+8 hours')`),
   ]);
   return {
     failed_async_jobs,

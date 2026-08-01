@@ -27,7 +27,7 @@ const HEALTH_AGGREGATE_FIELDS: { key: string; expr: string }[] = [
   { key: 'error_5xx_last_24h', expr: `SELECT COUNT(*) AS v FROM request_error_log WHERE created_at >= datetime('now','+8 hours','-1 day') AND status >= 500` },
   { key: 'login_failures_last_24h', expr: `SELECT COALESCE(SUM(fail_count), 0) AS v FROM auth_login_throttle WHERE last_fail_at >= datetime('now','+8 hours','-1 day')` },
   { key: 'open_backup_drill_issue_count', expr: `SELECT COUNT(*) AS v FROM backup_drill_runs WHERE follow_up_status='open'` },
-  { key: 'overdue_backup_drill_issue_count', expr: `SELECT COUNT(*) AS v FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND date(rect_due_at) < date('now','+8 hours')` },
+  { key: 'overdue_backup_drill_issue_count', expr: `SELECT COUNT(*) AS v FROM backup_drill_runs WHERE follow_up_status='open' AND rect_due_at IS NOT NULL AND rect_due_at < date('now','+8 hours')` },
   { key: 'pc_latest_state_missing', expr: `SELECT COUNT(*) AS v FROM pc_assets a LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id WHERE s.asset_id IS NULL` },
 ];
 
