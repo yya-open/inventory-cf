@@ -1,4 +1,4 @@
-export const REQUIRED_SCHEMA_VERSION = "202607310020_stock_tx_warehouse_item_created_index";
+export const REQUIRED_SCHEMA_VERSION = "202608010010_drop_duplicate_indexes";
 
 type SchemaStatus = {
   ok: boolean;

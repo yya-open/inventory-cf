@@ -104,11 +104,11 @@ export async function queryInventorySummaryByWhere(
   query: Pick<QueryParts, 'where' | 'binds' | 'joins'>,
 ) {
   const rows = await db.prepare(
-    `SELECT COALESCE(a.inventory_status, 'UNCHECKED') AS inventory_status, COUNT(*) AS c
+    `SELECT a.inventory_status AS inventory_status, COUNT(*) AS c
        FROM ${tableWithAlias}
        ${query.joins || ''}
        ${query.where}
-      GROUP BY COALESCE(a.inventory_status, 'UNCHECKED')`
+      GROUP BY a.inventory_status`
   ).bind(...query.binds).all<any>();
 
   const summary = {

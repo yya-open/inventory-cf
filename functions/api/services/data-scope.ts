@@ -218,7 +218,7 @@ export async function assertAssetInventoryBatchDataScopeAccess(db: D1Database, s
   const table = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
   const departmentExpr = kind === 'pc' ? 's.current_department' : 'a.department';
   const join = kind === 'pc' ? ' LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id' : '';
-  const clauses = [`a.inventory_batch_id=?`, 'COALESCE(a.archived,0)=0'];
+  const clauses = [`a.inventory_batch_id=?`, 'a.archived=0'];
   const binds: any[] = [Math.trunc(batchId)];
   const requiredDepartment = getRequiredDepartment(scope);
   if (requiredDepartment) {
@@ -229,7 +229,7 @@ export async function assertAssetInventoryBatchDataScopeAccess(db: D1Database, s
     `SELECT COUNT(*) AS count FROM ${table} a${join} WHERE ${clauses.join(' AND ')}`
   ).bind(...binds).first<any>();
   const total = await db.prepare(
-    `SELECT COUNT(*) AS count FROM ${table} a WHERE a.inventory_batch_id=? AND COALESCE(a.archived,0)=0`
+    `SELECT COUNT(*) AS count FROM ${table} a WHERE a.inventory_batch_id=? AND a.archived=0`
   ).bind(Math.trunc(batchId)).first<any>();
   const totalCount = Number(total?.count || 0);
   const allowedCount = Number(allowed?.count || 0);

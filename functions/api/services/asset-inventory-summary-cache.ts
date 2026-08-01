@@ -39,11 +39,11 @@ async function computeDefaultInventorySummary(db: D1Database, kind: InventoryKin
   const query = buildDefaultQuery(kind, scope);
   const tableWithAlias = kind === 'pc' ? 'pc_assets a' : 'monitor_assets a';
   const { results } = await db.prepare(
-    `SELECT COALESCE(a.inventory_status, 'UNCHECKED') AS inventory_status, COUNT(*) AS c
+    `SELECT a.inventory_status AS inventory_status, COUNT(*) AS c
        FROM ${tableWithAlias}
        ${query.joins || ''}
        ${query.where}
-      GROUP BY COALESCE(a.inventory_status, 'UNCHECKED')`
+      GROUP BY a.inventory_status`
   ).bind(...query.binds).all<any>();
 
   const summary: CachedInventorySummary = { unchecked: 0, checked_ok: 0, checked_issue: 0, total: 0 };

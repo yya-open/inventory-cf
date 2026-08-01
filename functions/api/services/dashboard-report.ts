@@ -96,8 +96,8 @@ export async function buildGovernance(db: D1Database, scope?: UserDataScope | nu
     ? firstNumber(db, `SELECT COUNT(*) AS c FROM audit_log WHERE action IN (${actions.map(() => '?').join(',')}) AND ${sqlStoredDayRange('created_at')}`, [...actions, from, to])
     : 0;
   const [archived_pc_count, archived_monitor_count, total_pc_count, total_monitor_count, archive_events_30d, restore_events_30d, purge_events_30d] = await Promise.all([
-    pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere ? `${pcDeptWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, pcBind) : 0,
-    monitorAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere ? `${monitorWhere} AND COALESCE(a.archived,0)=1` : `WHERE COALESCE(a.archived,0)=1`}`, monitorBind) : 0,
+    pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere ? `${pcDeptWhere} AND a.archived=1` : `WHERE a.archived=1`}`, pcBind) : 0,
+    monitorAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere ? `${monitorWhere} AND a.archived=1` : `WHERE a.archived=1`}`, monitorBind) : 0,
     pcAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM pc_assets a ${pcDeptJoin} ${pcDeptWhere}`, pcBind) : 0,
     monitorAllowed ? firstNumber(db, `SELECT COUNT(*) AS c FROM monitor_assets a ${monitorWhere}`, monitorBind) : 0,
     auditCount(archiveActions),

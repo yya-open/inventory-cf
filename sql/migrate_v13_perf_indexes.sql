@@ -1,5 +1,6 @@
 -- v13 targeted indexes for hottest list/count paths
-CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_department_asset ON pc_asset_latest_state(current_department, asset_id);
+-- idx_pc_asset_latest_state_department_asset 是重复索引，已在 migrate_drop_duplicate_indexes.sql 中删除，
+-- 改由 idx_pc_asset_latest_state_current_department(current_department, asset_id) 承担。
 CREATE INDEX IF NOT EXISTS idx_pc_asset_latest_state_employee_asset ON pc_asset_latest_state(current_employee_no, asset_id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_status_warranty_id ON pc_assets(archived, status, warranty_end_ts, id);
 CREATE INDEX IF NOT EXISTS idx_pc_assets_archived_inventory_status_id ON pc_assets(archived, inventory_status, status, id);

@@ -134,7 +134,7 @@ function buildGroups(rows: AssetOwnershipAsset[], groupBy: AssetOwnershipGroupBy
 async function listPcOwnershipAssets(db: D1Database, scope: UserDataScope, keyword: string, limit: number) {
   if (!scopeAllowsAssetWarehouse(scope, PC_WAREHOUSE)) return [] as AssetOwnershipAsset[];
   const clauses = [
-    'COALESCE(a.archived, 0)=0',
+    'a.archived=0',
     "a.status='ASSIGNED'",
     "(COALESCE(s.current_employee_no, '')<>'' OR COALESCE(s.current_employee_name, '')<>'' OR COALESCE(s.current_department, '')<>'')",
   ];
@@ -177,7 +177,7 @@ async function listPcOwnershipAssets(db: D1Database, scope: UserDataScope, keywo
 async function listMonitorOwnershipAssets(db: D1Database, scope: UserDataScope, keyword: string, limit: number) {
   if (!scopeAllowsAssetWarehouse(scope, MONITOR_WAREHOUSE)) return [] as AssetOwnershipAsset[];
   const clauses = [
-    'COALESCE(a.archived, 0)=0',
+    'a.archived=0',
     "a.status='ASSIGNED'",
     "(COALESCE(a.employee_no, '')<>'' OR COALESCE(a.employee_name, '')<>'' OR COALESCE(a.department, '')<>'')",
   ];

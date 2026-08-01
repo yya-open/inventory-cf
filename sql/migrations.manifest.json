@@ -273,5 +273,10 @@
     "id": "202607310020_stock_tx_warehouse_item_created_index",
     "file": "sql/migrate_stock_tx_warehouse_item_created_index.sql",
     "description": "warehouse+item+created_at index serving the warnings latest-transaction aggregate"
+  },
+  {
+    "id": "202608010010_drop_duplicate_indexes",
+    "file": "sql/migrate_drop_duplicate_indexes.sql",
+    "description": "drop three duplicate indexes already covered by identical surviving indexes on stock_tx, audit_log and pc_asset_latest_state"
   }
 ]

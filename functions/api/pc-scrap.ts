@@ -2,6 +2,7 @@ import { withErrorHandling } from './_error';
 import { logAudit } from './_audit';
 import { ensurePcSchemaIfAllowed, optional, pcScrapNo } from './_pc';
 import { applyPcScrap } from './services/asset-write';
+import { GuardRollbackError } from './_write';
 import { buildWriteNo, findExistingByNo } from './services/write-idempotency';
 import { assertAssetWarehouseAccess, assertPcAssetIdsDataScopeAccess, requireAuthWithDataScope } from './services/data-scope';
 
@@ -52,7 +53,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
     const assets = await env.DB.prepare(
       `SELECT id, brand, serial_no, model, manufacture_date, warranty_end, disk_capacity, memory_size, remark, status
        FROM pc_assets
-       WHERE id IN (${placeholders}) AND COALESCE(archived,0)=0`
+       WHERE id IN (${placeholders}) AND archived=0`
     ).bind(...assetIds).all<any>();
 
     const rows: any[] = (assets as any)?.results || [];
@@ -67,14 +68,21 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       return Response.json({ ok: false, message: `以下资产已报废，无需重复报废：${already.join('、')}` }, { status: 400 });
     }
 
-    await applyPcScrap({
-      db: env.DB,
-      scrapNo: scrap_no,
-      rows,
-      scrapDate: scrap_date,
-      reason,
-      createdBy: user.username,
-    });
+    try {
+      await applyPcScrap({
+        db: env.DB,
+        scrapNo: scrap_no,
+        rows,
+        scrapDate: scrap_date,
+        reason,
+        createdBy: user.username,
+      });
+    } catch (e) {
+      if (e instanceof GuardRollbackError) {
+        return Response.json({ ok: false, message: '部分电脑已被并发处理，本次报废已全部回滚（请刷新后重试）' }, { status: 409 });
+      }
+      throw e;
+    }
 
     waitUntil(logAudit(env.DB, request, user, 'PC_SCRAP', 'pc_scrap', scrap_no, {
       scrap_no,
