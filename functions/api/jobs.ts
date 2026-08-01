@@ -1,11 +1,12 @@
 import { json, type AuthUser } from '../_auth';
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
-import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, createAsyncJobs, deleteAsyncJob, deleteAsyncJobs, listAsyncJobs, retryAsyncJob } from './services/async-jobs';
+import { cancelAsyncJob, cleanupAsyncJobHousekeeping, createAsyncJob, createAsyncJobs, deleteAsyncJob, deleteAsyncJobs, getAsyncJob, listAsyncJobs, retryAsyncJob, assertAsyncJobAccess } from './services/async-jobs';
 import { dispatchAsyncJobIds, isAsyncQueueRequired } from './services/async-job-queue';
 import { getSchemaStatus } from './services/schema-status';
 import { assertMonitorAssetIdsDataScopeAccess, assertPcAssetIdsDataScopeAccess, getAuthUserDataScope } from './services/data-scope';
 import { logAudit } from './_audit';
+import { resolveAsyncJobAuth } from './services/async-job-authz';
 
 const QR_EXPORT_TYPES = new Set(['PC_QR_CARDS_EXPORT', 'PC_QR_SHEET_EXPORT', 'MONITOR_QR_CARDS_EXPORT', 'MONITOR_QR_SHEET_EXPORT']);
 const QR_EXPORT_CHUNK_SIZE = 500;
@@ -87,9 +88,14 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
 
 export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any; ASYNC_JOB_QUEUE?: any; ASYNC_JOB_QUEUE_REQUIRED?: string | number | null }>(async (context) => {
   const { env, request, waitUntil } = context as any;
-  const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json();
+  const { job_type, request_json, permission_scope, retain_days, max_retries } = await request.json().catch(() => ({} as any));
   const jobType = String(job_type || '');
-  const actor = await requirePermission(env, request, QR_EXPORT_TYPES.has(jobType) ? 'qr_export' : 'async_job_manage', 'viewer');
+  // job_type 决定这个任务能做什么，因此必须先过运行时白名单，再按该类型要求的权限校验。
+  // 过去这里按 job_type 自行挑权限码（非 QR 导出一律 async_job_manage + viewer），
+  // 等于把「校验哪个权限」的决定权交给了请求方。
+  const jobAuth = resolveAsyncJobAuth(jobType);
+  if (!jobAuth) return json(false, null, '不支持的任务类型', 400);
+  const actor = await requirePermission(env, request, jobAuth.permission, jobAuth.minRole);
   const status = await getCachedJobsSchemaStatus(env.DB);
   if (!status.ok) return json(false, status, status.message, 409);
   if (QR_EXPORT_TYPES.has(jobType)) {
@@ -125,55 +131,82 @@ export const onRequestPut = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   const { env, request, waitUntil } = context as any;
   const timing = (env as any).__timing;
   const actor = await requirePermission(env, request, 'async_job_manage', 'viewer');
-    const body = await request.json().catch(() => ({}));
-    const action = String(body?.action || '').trim();
-    const id = Number(body?.id || 0);
-    if (action === 'cleanup') {
-      const result = await cleanupAsyncJobHousekeeping(env.DB, env.BACKUP_BUCKET);
-      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CLEANUP', 'async_jobs', 'housekeeping', result);
-      return json(true, result, `已清理：过期结果 ${result.expired_results}，删除旧任务 ${result.purged_rows}，自动取消超时任务 ${result.auto_canceled}`);
+  const scope = getAuthUserDataScope(actor);
+  const body = await request.json().catch(() => ({}));
+  const action = String(body?.action || '').trim();
+  const id = Number(body?.id || 0);
+  if (action === 'cleanup') {
+    await requirePermission(env, request, 'async_job_manage', 'admin');
+    const result = await cleanupAsyncJobHousekeeping(env.DB, env.BACKUP_BUCKET);
+    await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CLEANUP', 'async_jobs', 'housekeeping', result);
+    return json(true, result, `已清理：过期结果 ${result.expired_results}，删除旧任务 ${result.purged_rows}，自动取消超时任务 ${result.auto_canceled}`);
+  }
+  if (action === 'cancel') {
+    if (!id) return json(false, null, '缺少任务 id', 400);
+    const row = await getAsyncJob(env.DB, id);
+    if (!row) return json(false, null, '任务不存在', 404);
+    await assertAsyncJobAccess(env.DB, row, actor, scope);
+    await cancelAsyncJob(env.DB, id, env.BACKUP_BUCKET);
+    await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CANCEL', 'async_jobs', id, {});
+    return json(true, { id }, '已发出取消请求');
+  }
+  if (action === 'retry') {
+    if (!id) return json(false, null, '缺少任务 id', 400);
+    const row = await getAsyncJob(env.DB, id);
+    if (!row) return json(false, null, '任务不存在', 404);
+    await assertAsyncJobAccess(env.DB, row, actor, scope);
+    await retryAsyncJob(env.DB, id, env.BACKUP_BUCKET);
+    await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
+    await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
+    return json(true, { id }, '任务已重试，后台将继续处理');
+  }
+  if (action === 'delete') {
+    if (!id) return json(false, null, '缺少任务 id', 400);
+    const row = await getAsyncJob(env.DB, id);
+    if (!row) return json(false, null, '任务不存在', 404);
+    await assertAsyncJobAccess(env.DB, row, actor, scope);
+    await deleteAsyncJob(env.DB, id, env.BACKUP_BUCKET);
+    await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE', 'async_jobs', id, {});
+    return json(true, { id }, '任务已删除');
+  }
+  if (action === 'delete_batch') {
+    const ids = Array.isArray(body?.ids)
+      ? body.ids.map((value: any) => Math.trunc(Number(value || 0))).filter((value: number, index: number, arr: number[]) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index).slice(0, 500)
+      : [];
+    if (!ids.length) return json(false, null, '缺少有效任务 ids', 400);
+    // 逐个校验：admin 或本人。外部 id 一律 403，不静默跳过。
+    const CHUNK_SIZE = 100;
+    const rowMap = new Map<number, any>();
+    for (let i = 0; i < ids.length; i += CHUNK_SIZE) {
+      const chunk = ids.slice(i, i + CHUNK_SIZE);
+      const placeholders = chunk.map(() => '?').join(',');
+      const { results } = await env.DB.prepare(
+        `SELECT id, job_type, created_by FROM async_jobs WHERE id IN (${placeholders})`
+      ).bind(...chunk).all();
+      for (const row of results || []) rowMap.set(Number(row.id), row);
     }
-    if (action === 'cancel') {
-      if (!id) return json(false, null, '缺少任务 id', 400);
-      await cancelAsyncJob(env.DB, id, env.BACKUP_BUCKET);
-      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_CANCEL', 'async_jobs', id, {});
-      return json(true, { id }, '已发出取消请求');
+    for (const id of ids) {
+      const row = rowMap.get(id);
+      if (!row) continue;
+      await assertAsyncJobAccess(env.DB, row, actor, scope);
     }
-    if (action === 'retry') {
-      if (!id) return json(false, null, '缺少任务 id', 400);
-      await retryAsyncJob(env.DB, id, env.BACKUP_BUCKET);
-      await dispatchAsyncJobIds({ db: env.DB, ids: [id], queue: env.ASYNC_JOB_QUEUE, waitUntil, bucket: env.BACKUP_BUCKET, requireQueue: isAsyncQueueRequired(env) });
-      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_RETRY', 'async_jobs', id, {});
-      return json(true, { id }, '任务已重试，后台将继续处理');
-    }
-    if (action === 'delete') {
-      if (!id) return json(false, null, '缺少任务 id', 400);
-      await deleteAsyncJob(env.DB, id, env.BACKUP_BUCKET);
-      await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE', 'async_jobs', id, {});
-      return json(true, { id }, '任务已删除');
-    }
-    if (action === 'delete_batch') {
-      const ids = Array.isArray(body?.ids)
-        ? body.ids.map((value: any) => Math.trunc(Number(value || 0))).filter((value: number, index: number, arr: number[]) => Number.isFinite(value) && value > 0 && arr.indexOf(value) === index).slice(0, 500)
-        : [];
-      if (!ids.length) return json(false, null, '缺少有效任务 ids', 400);
-      const result = timing?.measure
-        ? await timing.measure('jobs_delete_batch_core', () => deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET))
-        : await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
-      const auditTask = async () => {
-        if (timing?.measure) {
-          await timing.measure('jobs_delete_batch_audit', () => logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result));
-        } else {
-          await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
-        }
-      };
-      if (typeof waitUntil === 'function') {
-        waitUntil(auditTask().catch(() => {}));
+    const result = timing?.measure
+      ? await timing.measure('jobs_delete_batch_core', () => deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET))
+      : await deleteAsyncJobs(env.DB, ids, env.BACKUP_BUCKET);
+    const auditTask = async () => {
+      if (timing?.measure) {
+        await timing.measure('jobs_delete_batch_audit', () => logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result));
       } else {
-        void auditTask().catch(() => {});
+        await logAudit(env.DB, request, actor, 'ADMIN_ASYNC_JOB_DELETE_BATCH', 'async_jobs', String(ids.length), result);
       }
-      const summary = `批量删除完成：删除 ${result.deleted} 条，跳过运行中 ${result.blocked} 条，缺失 ${result.missing} 条，失败 ${result.failed} 条`;
-      return json(true, result, summary);
+    };
+    if (typeof waitUntil === 'function') {
+      waitUntil(auditTask().catch(() => {}));
+    } else {
+      void auditTask().catch(() => {});
     }
-    return json(false, null, '不支持的操作', 400);
+    const summary = `批量删除完成：删除 ${result.deleted} 条，跳过运行中 ${result.blocked} 条，缺失 ${result.missing} 条，失败 ${result.failed} 条`;
+    return json(true, result, summary);
+  }
+  return json(false, null, '不支持的操作', 400);
 });

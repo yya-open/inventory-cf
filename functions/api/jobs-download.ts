@@ -1,7 +1,7 @@
 import { json } from '../_auth';
 import { withErrorHandling } from './_error';
 import { requirePermission } from '../_permissions';
-import { buildAsyncJobDownloadResponse, assertAsyncJobDownloadAccess, getAsyncJob } from './services/async-jobs';
+import { buildAsyncJobDownloadResponse, assertAsyncJobAccess, getAsyncJob } from './services/async-jobs';
 import { getAuthUserDataScope } from './services/data-scope';
 
 export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: string; BACKUP_BUCKET?: any }>(async ({ env, request }) => {
@@ -11,7 +11,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   if (!id) return json(false, null, 'id 无效', 400);
   const row = await getAsyncJob(env.DB, id, env.BACKUP_BUCKET);
   if (!row) return json(false, null, '任务不存在', 404);
-  await assertAsyncJobDownloadAccess(env.DB, row, actor, scope);
+  await assertAsyncJobAccess(env.DB, row, actor, scope);
   const url = new URL(request.url);
   const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
   const print = ['1', 'true'].includes(String(url.searchParams.get('print') || '').toLowerCase());

@@ -1,6 +1,6 @@
 import { json } from './_auth';
 import { withErrorHandling } from './_error';
-import { buildAsyncJobDownloadResponse, assertAsyncJobDownloadAccess, getAsyncJob } from './services/async-jobs';
+import { buildAsyncJobDownloadResponse, assertAsyncJobAccess, getAsyncJob } from './services/async-jobs';
 import { requireAuthWithDataScope } from './services/data-scope';
 
 function parseKind(input: any) {
@@ -22,7 +22,7 @@ export const onRequestGet = withErrorHandling<{ DB: D1Database; JWT_SECRET: stri
   if (!Number(batch.snapshot_job_id || 0)) return json(false, null, '该批次暂无可下载结果快照', 404);
   const row = await getAsyncJob(env.DB, Number(batch.snapshot_job_id), env.BACKUP_BUCKET);
   if (!row) return json(false, null, '结果快照任务不存在', 404);
-  await assertAsyncJobDownloadAccess(env.DB, row, actor, actor);
+  await assertAsyncJobAccess(env.DB, row, actor, actor);
   const inline = ['1', 'true'].includes(String(url.searchParams.get('inline') || '').toLowerCase());
   return await buildAsyncJobDownloadResponse(row, env.BACKUP_BUCKET, { inline, print: false });
 });
