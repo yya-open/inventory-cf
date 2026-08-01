@@ -2,7 +2,7 @@ import { sqlNowStored } from '../_time';
 import { throwHttpError } from '../_error';
 import { parseJsonSafe } from '../_json';
 import { initMissingAssetQrKeys } from './asset-qr';
-import { countAuditRows, listAuditRows, parseAuditListFilters } from './audit-log';
+import { countAuditRows, listAuditRows, parseAuditListFilters, type AuditKeysetCursor } from './audit-log';
 import { buildPcAssetQuery, countByWhere, listPcAssets, type QueryParts } from './asset-ledger';
 import { updateInventoryBatchSnapshotJobState, type AssetInventoryKind } from './asset-inventory-batches';
 import { applyDepartmentDataScopeClause, assertAssetInventoryBatchDataScopeAccess, scopeAllowsAssetWarehouse, type UserDataScope } from './data-scope';
@@ -334,18 +334,33 @@ ${pages.map((pageCards, index) => renderSheetPage(title, pageCards, index, pages
 </html>`;
 }
 
+/**
+ * 顺序走完整个结果集的导出：用 keyset（afterId）而不是递增 OFFSET。
+ * 旧写法每翻一页都要让 SQLite 重新产出并丢弃前面所有行，是平方级的。
+ * offset 只有 scope='current' 会传非 0，仅用于定位第一页，之后一律走游标。
+ */
 async function listPcAssetsForExport(db: D1Database, baseQuery: QueryParts, limit: number, offset = 0) {
   const rows: any[] = [];
   let remaining = Math.max(0, limit);
-  let currentOffset = Math.max(0, offset);
+  let firstOffset = Math.max(0, offset);
+  let afterId = 0;
   while (remaining > 0) {
     const chunkSize = Math.min(200, remaining);
-    const chunk = await listPcAssets(db, { ...baseQuery, page: 1, pageSize: chunkSize, offset: currentOffset, fast: false });
+    const chunk = await listPcAssets(db, {
+      ...baseQuery,
+      page: 1,
+      pageSize: chunkSize,
+      offset: firstOffset,
+      afterId,
+      fast: false,
+    });
     if (!chunk.length) break;
     rows.push(...chunk);
-    currentOffset += chunk.length;
+    afterId = Number((chunk[chunk.length - 1] as any)?.id || 0);
+    firstOffset = 0;
     remaining -= chunk.length;
     if (chunk.length < chunkSize) break;
+    if (!afterId) break;
   }
   return rows;
 }
@@ -490,7 +505,7 @@ async function forEachPcBatchAssetPage(db: D1Database, batchId: number, inventor
     const binds: any[] = [Number(batchId)];
     let statusSql = '';
     if (normalizedStatus) {
-      statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
+      statusSql = ` AND a.inventory_status=?`;
       binds.push(normalizedStatus);
     }
     binds.push(lastId, pageSize);
@@ -505,7 +520,7 @@ async function forEachPcBatchAssetPage(db: D1Database, batchId: number, inventor
        FROM pc_assets a
        LEFT JOIN pc_asset_latest_state s ON s.asset_id=a.id
       WHERE a.inventory_batch_id=?
-        AND COALESCE(a.archived, 0)=0${statusSql}
+        AND a.archived=0${statusSql}
         AND a.id>?
       ORDER BY a.id ASC
       LIMIT ?`
@@ -525,7 +540,7 @@ async function forEachMonitorBatchAssetPage(db: D1Database, batchId: number, inv
     const binds: any[] = [Number(batchId)];
     let statusSql = '';
     if (normalizedStatus) {
-      statusSql = ` AND COALESCE(a.inventory_status, 'UNCHECKED')=?`;
+      statusSql = ` AND a.inventory_status=?`;
       binds.push(normalizedStatus);
     }
     binds.push(lastId, pageSize);
@@ -538,7 +553,7 @@ async function forEachMonitorBatchAssetPage(db: D1Database, batchId: number, inv
        LEFT JOIN pc_locations l ON l.id = a.location_id
        LEFT JOIN pc_locations p ON p.id = l.parent_id
       WHERE a.inventory_batch_id=?
-        AND COALESCE(a.archived, 0)=0${statusSql}
+        AND a.archived=0${statusSql}
         AND a.id>?
       ORDER BY a.id ASC
       LIMIT ?`
@@ -589,10 +604,10 @@ function mapMonitorBatchWorkbookRows(rows: any[], startSeq = 0) {
 async function countInventoryBatchRows(db: D1Database, kind: AssetInventoryKind, batchId: number) {
   const table = kind === 'pc' ? 'pc_assets' : 'monitor_assets';
   const result = await db.prepare(
-    `SELECT COALESCE(inventory_status, 'UNCHECKED') AS status, COUNT(*) AS c
+    `SELECT inventory_status AS status, COUNT(*) AS c
        FROM ${table}
-      WHERE inventory_batch_id=? AND COALESCE(archived, 0)=0
-      GROUP BY COALESCE(inventory_status, 'UNCHECKED')`
+      WHERE inventory_batch_id=? AND archived=0
+      GROUP BY inventory_status`
   ).bind(batchId).all<any>();
   const counts: Record<string, number> = { CHECKED_OK: 0, UNCHECKED: 0, CHECKED_ISSUE: 0 };
   for (const row of result.results || []) {
@@ -743,7 +758,10 @@ export async function buildAuditExportCsvResult(db: D1Database, requestJson: any
   if (bucket) {
     const encoder = new TextEncoder();
     let emitted = 0;
-    let offset = baseOffset;
+    // 第一页可能需要 OFFSET 定位（scope='current'），之后一律用游标顺序推进：
+    // 递增 OFFSET 会让 SQLite 每页都重新产出并丢弃前面所有行（20 万行约 2010 万次行产出）。
+    let firstOffset = baseOffset;
+    let cursor: AuditKeysetCursor | null = null;
     const stream = new ReadableStream<Uint8Array>({
       start(controller) {
         controller.enqueue(encoder.encode('\ufeff' + AUDIT_EXPORT_HEADER + '\n'));
@@ -751,13 +769,19 @@ export async function buildAuditExportCsvResult(db: D1Database, requestJson: any
       async pull(controller) {
         if (emitted >= cap) return controller.close();
         const pageLimit = Math.min(AUDIT_EXPORT_PAGE_SIZE, cap - emitted);
-        const rows = pageLimit > 0 ? await listAuditRows(db, filters, { limit: pageLimit, offset }) : [];
+        const rows = pageLimit > 0
+          ? await listAuditRows(db, filters, cursor ? { limit: pageLimit, after: cursor } : { limit: pageLimit, offset: firstOffset })
+          : [];
         if (!rows.length) return controller.close();
         for (const row of rows) {
           controller.enqueue(encoder.encode(auditExportLine(row) + '\n'));
           emitted += 1;
         }
-        offset += rows.length;
+        const last = rows[rows.length - 1] as any;
+        const lastId = Number(last?.id || 0);
+        if (!lastId) return controller.close();
+        cursor = { id: lastId, created_at: String(last?.created_at || '') };
+        firstOffset = 0;
         if (rows.length < pageLimit) controller.close();
       },
     });
@@ -1231,8 +1255,8 @@ async function collectPcInventorySnapshotFailedAssetLinks(db: D1Database, batchI
     const placeholders = batchIds.map(() => '?').join(',');
     const clauses = [
       `a.inventory_batch_id IN (${placeholders})`,
-      'COALESCE(a.archived,0)=0',
-      "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
+      'a.archived=0',
+      "a.inventory_status='CHECKED_ISSUE'",
     ];
     const binds: any[] = [...batchIds];
     applyDepartmentDataScopeClause(clauses, binds, 's.current_department', scope);
@@ -1280,8 +1304,8 @@ async function collectMonitorInventorySnapshotFailedAssetLinks(db: D1Database, b
     const placeholders = batchIds.map(() => '?').join(',');
     const clauses = [
       `a.inventory_batch_id IN (${placeholders})`,
-      'COALESCE(a.archived,0)=0',
-      "COALESCE(a.inventory_status,'UNCHECKED')='CHECKED_ISSUE'",
+      'a.archived=0',
+      "a.inventory_status='CHECKED_ISSUE'",
     ];
     const binds: any[] = [...batchIds];
     applyDepartmentDataScopeClause(clauses, binds, 'a.department', scope);
@@ -1376,12 +1400,24 @@ function mapAsyncJobRow(row: any, options: { detail?: boolean; assetLinks?: Map<
   };
 }
 
-export async function assertAsyncJobDownloadAccess(db: D1Database, row: any, actor: { id: number; role: string }, scope: UserDataScope | null | undefined) {
+/**
+ * 任务级访问控制：下载结果与 cancel/retry/delete 共用同一把闸。
+ *
+ * 两类任务的产物本身就是特权数据，仅凭「我是创建者」不足以放行：
+ * BACKUP_EXPORT 是整库导出（含 users.password_hash），AUDIT_ARCHIVE_EXPORT 是审计归档，
+ * 它们的同步孪生接口都要求 admin。其余任务保持 admin-或-本人。
+ */
+const ADMIN_ONLY_RESULT_JOB_TYPES = new Set<string>(['BACKUP_EXPORT', 'AUDIT_ARCHIVE_EXPORT']);
+
+export async function assertAsyncJobAccess(db: D1Database, row: any, actor: { id: number; role: string }, scope: UserDataScope | null | undefined) {
   const jobType = String(row?.job_type || '');
   const ownerId = Number(row?.created_by || 0);
+  if (ADMIN_ONLY_RESULT_JOB_TYPES.has(jobType) && actor.role !== 'admin') {
+    throwHttpError('该任务结果仅管理员可访问', 403);
+  }
   if (jobType !== 'ASSET_INVENTORY_BATCH_SNAPSHOT_EXPORT') {
     if (actor.role !== 'admin' && (!ownerId || ownerId !== Number(actor.id))) {
-      throwHttpError('无权下载该任务结果', 403);
+      throwHttpError('无权访问该任务', 403);
     }
     return;
   }

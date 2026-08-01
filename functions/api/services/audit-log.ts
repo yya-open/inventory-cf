@@ -115,8 +115,13 @@ export function buildAuditWhere(filters: AuditListFilters) {
   const toSql = toSqlRange(filters.dateTo, true);
   if (fromSql) { wh.push('a.created_at >= ?'); binds.push(fromSql); }
   if (toSql) { wh.push('a.created_at <= ?'); binds.push(toSql); }
-  if (filters.module) { wh.push(`${AUDIT_MODULE_SQL} = ?`); binds.push(filters.module); }
-  if (filters.highRiskOnly) { wh.push(`${AUDIT_HIGH_RISK_SQL} = 1`); }
+  if (filters.module) {
+    // 已回填 module_code 的行直接命中 idx_audit_log_module_created_at，只有历史未回填的尾巴才付 CASE 的代价。
+    wh.push(`(a.module_code = ? OR (COALESCE(a.module_code, '') = '' AND ${AUDIT_MODULE_FALLBACK_SQL} = ?))`);
+    binds.push(filters.module, filters.module);
+  }
+  // high_risk 是 INTEGER NOT NULL DEFAULT 0，COALESCE 回退永远不会触发，裸列才能命中 idx_audit_log_high_risk_created_at。
+  if (filters.highRiskOnly) { wh.push('a.high_risk = 1'); }
 
   return {
     where: wh.length ? `WHERE ${wh.join(' AND ')}` : '',
@@ -125,8 +130,23 @@ export function buildAuditWhere(filters: AuditListFilters) {
 }
 
 function getAuditOrderBy(filters: AuditListFilters) {
-  const sortCol = filters.sortBy === 'created_at' ? 'a.created_at' : 'a.id';
-  return `${sortCol} ${filters.sortDir}`;
+  // created_at 会重复：必须补 a.id 作为决胜列，否则翻页边界会漏行/重复，游标也无法定位。
+  if (filters.sortBy === 'created_at') return `a.created_at ${filters.sortDir}, a.id ${filters.sortDir}`;
+  return `a.id ${filters.sortDir}`;
+}
+
+export type AuditKeysetCursor = { id: number; created_at: string };
+
+/** 与 getAuditOrderBy 的排序键严格对应的 keyset 条件；不用 SQLite 行值语法，保持 D1 兼容。 */
+function buildAuditKeysetClause(filters: AuditListFilters, after: AuditKeysetCursor): { sql: string; binds: (string | number)[] } {
+  const op = filters.sortDir === 'ASC' ? '>' : '<';
+  if (filters.sortBy === 'created_at') {
+    return {
+      sql: `(a.created_at ${op} ? OR (a.created_at = ? AND a.id ${op} ?))`,
+      binds: [after.created_at, after.created_at, after.id],
+    };
+  }
+  return { sql: `a.id ${op} ?`, binds: [after.id] };
 }
 
 export async function countAuditRows(db: D1Database, filters: AuditListFilters) {
@@ -136,12 +156,17 @@ export async function countAuditRows(db: D1Database, filters: AuditListFilters) 
   return Number(row?.c || 0);
 }
 
-export async function listAuditRows(db: D1Database, filters: AuditListFilters, options?: { limit?: number; offset?: number }) {
+export async function listAuditRows(db: D1Database, filters: AuditListFilters, options?: { limit?: number; offset?: number; after?: AuditKeysetCursor }) {
   if (filters.keyword) await ensureSearchFtsTables(db, ['audit']);
   const { where, binds } = buildAuditWhere(filters);
   const orderBy = getAuditOrderBy(filters);
   const limit = Number(options?.limit ?? filters.pageSize);
-  const offset = Number(options?.offset ?? filters.offset);
+  const keyset = options?.after ? buildAuditKeysetClause(filters, options.after) : null;
+  const pageWhere = keyset ? (where ? `${where} AND ${keyset.sql}` : `WHERE ${keyset.sql}`) : where;
+  const pageTail = keyset ? 'LIMIT ?' : 'LIMIT ? OFFSET ?';
+  const pageBinds = keyset
+    ? [...binds, ...keyset.binds, limit]
+    : [...binds, limit, Number(options?.offset ?? filters.offset)];
 
   const { results } = await db.prepare(
     `SELECT a.id, a.created_at, a.username, a.action, a.entity, a.entity_id, a.ip, a.ua, a.payload_json,
@@ -172,10 +197,10 @@ export async function listAuditRows(db: D1Database, filters: AuditListFilters, o
        ON a.entity = 'items' AND iitems.id = CAST(a.entity_id AS INTEGER)
      LEFT JOIN users u
        ON a.entity = 'users' AND u.id = CAST(a.entity_id AS INTEGER)
-     ${where}
+     ${pageWhere}
      ORDER BY ${orderBy}
-     LIMIT ? OFFSET ?`
-  ).bind(...binds, limit, offset).all<any>();
+     ${pageTail}`
+  ).bind(...pageBinds).all<any>();
 
   return results || [];
 }

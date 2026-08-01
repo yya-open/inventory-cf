@@ -8,7 +8,7 @@ import { parseMonitorAssetInput as parseMonitorAssetInputFromSchema, type Monito
 export { parseMonitorAssetInputFromSchema as parseMonitorAssetInput };
 export type { MonitorAssetInput };
 
-export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean; ftsKeys?: FtsTableKey[] };
+export type QueryParts = { where: string; binds: any[]; page: number; pageSize: number; offset: number; fast: boolean; joins?: string; usesFts?: boolean; ftsKeys?: FtsTableKey[]; afterId?: number };
 
 export type PcAssetInput = {
   brand: string;
@@ -29,6 +29,25 @@ export function getPageParams(url: URL, defaultPageSize = 50, maxPageSize = 200)
 
 function buildWhere(clauses: string[], binds: any[]) {
   return { where: clauses.length ? `WHERE ${clauses.join(' AND ')}` : '', binds };
+}
+
+/**
+ * 页窗口：给定 afterId 时走 keyset（a.id > ?），否则保持原有的 OFFSET 分页。
+ *
+ * 深 OFFSET 会让 SQLite 把前面每一页的行重新产出再丢弃，导出这种「顺序走完全表」的
+ * 场景是平方级的。所有列表页 ORDER BY a.id ASC 且 id 是主键，因此 keyset 只需单列游标。
+ * 仅导出路径会传 afterId；普通分页不传，行为逐字节不变。
+ */
+function buildPageWindow(query: QueryParts): { where: string; tail: string; binds: unknown[] } {
+  const afterId = Number(query.afterId || 0);
+  if (afterId > 0) {
+    return {
+      where: query.where ? `${query.where} AND a.id > ?` : 'WHERE a.id > ?',
+      tail: 'LIMIT ?',
+      binds: [...query.binds, afterId, query.pageSize],
+    };
+  }
+  return { where: query.where, tail: 'LIMIT ? OFFSET ?', binds: [...query.binds, query.pageSize, query.offset] };
 }
 
 function escapeSqlLike(value: string) {
@@ -95,7 +114,7 @@ export function buildPcAssetQuery(url: URL, scope?: UserDataScope | null) {
     binds.push(status);
   }
   if (inventoryStatus) {
-    clauses.push("COALESCE(a.inventory_status, 'UNCHECKED')=?");
+    clauses.push('a.inventory_status=?');
     binds.push(inventoryStatus);
   }
   if (!scopeAllowsAssetWarehouse(scope, '电脑仓')) clauses.push('1=0');
@@ -169,7 +188,7 @@ export function buildMonitorAssetQuery(url: URL, scope?: UserDataScope | null) {
     binds.push(status);
   }
   if (inventoryStatus) {
-    clauses.push("COALESCE(a.inventory_status, 'UNCHECKED')=?");
+    clauses.push('a.inventory_status=?');
     binds.push(inventoryStatus);
   }
   if (!scopeAllowsAssetWarehouse(scope, '显示器仓')) clauses.push('1=0');
@@ -224,6 +243,7 @@ export async function countByWhere(db: D1Database, tableWithAlias: string, query
 
 export async function listPcAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db, query.ftsKeys || ['pc', 'monitor', 'audit']);
+  const pageWindow = buildPageWindow(query);
   if (query.fast) {
     const joins = /\bpc_asset_latest_state\b/i.test(String(query.joins || ''))
       ? String(query.joins || '')
@@ -244,11 +264,11 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
         NULL AS previous_assigned_at
       FROM pc_assets a
       ${joins}
-      ${query.where}
+      ${pageWindow.where}
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
+      ${pageWindow.tail}
     `;
-    const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+    const result = await db.prepare(sql).bind(...pageWindow.binds).all();
     return result.results || [];
   }
   const sql = `
@@ -256,9 +276,9 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
       SELECT a.id
       FROM pc_assets a
       ${query.joins || ''}
-      ${query.where}
+      ${pageWindow.where}
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
+      ${pageWindow.tail}
     ),
     prev_pc_out_candidates AS (
       SELECT
@@ -307,12 +327,13 @@ export async function listPcAssets(db: D1Database, query: QueryParts) {
     LEFT JOIN prev_pc_out po ON po.asset_id = a.id
     ORDER BY a.id ASC
   `;
-  const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+  const result = await db.prepare(sql).bind(...pageWindow.binds).all();
   return result.results || [];
 }
 
 export async function listMonitorAssets(db: D1Database, query: QueryParts) {
   if (query.usesFts) await ensureSearchFtsTables(db, query.ftsKeys || ['pc', 'monitor', 'audit']);
+  const pageWindow = buildPageWindow(query);
   if (query.fast) {
     const sql = `
       SELECT
@@ -326,20 +347,20 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
       FROM monitor_assets a
       LEFT JOIN pc_locations l ON l.id = a.location_id
       LEFT JOIN pc_locations p ON p.id = l.parent_id
-      ${query.where}
+      ${pageWindow.where}
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
+      ${pageWindow.tail}
     `;
-    const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+    const result = await db.prepare(sql).bind(...pageWindow.binds).all();
     return result.results || [];
   }
   const sql = `
     WITH page_a AS (
       SELECT a.id
       FROM monitor_assets a
-      ${query.where}
+      ${pageWindow.where}
       ORDER BY a.id ASC
-      LIMIT ? OFFSET ?
+      ${pageWindow.tail}
     ),
     prev_monitor_tx_candidates AS (
       SELECT
@@ -384,7 +405,7 @@ export async function listMonitorAssets(db: D1Database, query: QueryParts) {
     LEFT JOIN prev_monitor_tx pm ON pm.asset_id = a.id
     ORDER BY a.id ASC
   `;
-  const result = await db.prepare(sql).bind(...query.binds, query.pageSize, query.offset).all();
+  const result = await db.prepare(sql).bind(...pageWindow.binds).all();
   return result.results || [];
 }
 
@@ -473,11 +494,6 @@ export function monitorAssetRestoreSql() {
     WHERE id=?
   `;
 }
-
-export function pcAssetBulkStatusSql() {
-  return `UPDATE pc_assets SET status=?, updated_at=${sqlNowStored()} WHERE id=?`;
-}
-
 export function monitorAssetBulkStatusSql() {
   return `
     UPDATE monitor_assets

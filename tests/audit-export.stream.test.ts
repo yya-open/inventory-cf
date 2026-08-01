@@ -34,14 +34,23 @@ class FakeStatement {
 
   async all<T = any>() {
     const normalized = this.sql.replace(/\s+/g, ' ').trim().toLowerCase();
-    if (normalized.startsWith('select a.id, a.created_at')) {
-      // Binds end with ...limit, offset (no keyword filters => no leading binds).
+    if (!normalized.startsWith('select a.id, a.created_at')) {
+      throw new Error(`Unhandled all() SQL: ${this.sql}`);
+    }
+    // 两种页窗口形态，绑定尾部不同：
+    //   OFFSET 形态 -> [..., limit, offset]
+    //   keyset 形态 -> [..., cursor..., limit]
+    // 这个 fake 只模拟「有序序列的翻页」，不模拟排序方向；方向与重复排序键的正确性
+    // 由 tests/export.keyset-pagination.test.ts 在真实 SQLite 上覆盖。
+    if (normalized.includes('limit ? offset ?')) {
       const limit = Number(this.params[this.params.length - 2] || 0);
       const offset = Number(this.params[this.params.length - 1] || 0);
-      const page = this.rows.slice(offset, offset + limit);
-      return { results: page } as any;
+      return { results: this.rows.slice(offset, offset + limit) } as any;
     }
-    throw new Error(`Unhandled all() SQL: ${this.sql}`);
+    const limit = Number(this.params[this.params.length - 1] || 0);
+    const afterId = Number(this.params[this.params.length - 2] || 0);
+    const startIndex = this.rows.findIndex((row) => row.id === afterId) + 1;
+    return { results: this.rows.slice(startIndex, startIndex + limit) } as any;
   }
 }
 
