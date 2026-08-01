@@ -3,13 +3,14 @@ import { throwHttpError } from '../_error';
 import { buildMonitorAssetSearchText, buildPcAssetSearchText, pcDateTextToUnixTs } from './asset-ledger';
 import { rebuildPcLatestStateForAssets } from './pc-latest-state';
 import { syncSystemDictionaryUsageCounters } from './system-dictionaries';
+import { getAuditClientIp } from './client-ip';
 
 export type MonitorMovementType = 'IN' | 'OUT' | 'RETURN' | 'TRANSFER' | 'SCRAP';
 export type PcRecycleAction = 'RETURN' | 'RECYCLE';
 
 export function getRequestClientMeta(request: Request) {
   return {
-    ip: request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '',
+    ip: getAuditClientIp(request),
     ua: request.headers.get('user-agent') || '',
   };
 }

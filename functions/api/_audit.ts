@@ -2,6 +2,7 @@ import type { AuthUser } from '../_auth';
 import { sqlNowStored } from './_time';
 import { normalizeSearchText } from './_search';
 import { clampInt } from '../utils/numeric';
+import { getAuditClientIp } from './services/client-ip';
 
 const DEFAULT_RETENTION_DAYS = 180;
 const DEFAULT_ARCHIVE_AFTER_DAYS = 90;
@@ -460,15 +461,6 @@ export function materializeAuditFields(action: string, entity: string | null | u
   };
 }
 
-function getIp(request: Request) {
-  const h = request.headers;
-  const cf = h.get('CF-Connecting-IP') || h.get('cf-connecting-ip');
-  const xff = h.get('x-forwarded-for');
-  if (cf) return cf;
-  if (xff) return xff.split(',')[0].trim();
-  return null;
-}
-
 export type AuditLogBatchEntry = {
   action: string;
   entity?: string | null;
@@ -484,7 +476,7 @@ function buildAuditInsertStatement(
 ) {
   const normalizedAction = normalizeAuditAction(entry.action);
   const normalizedEntity = entry.entity ?? null;
-  const ip = getIp(request);
+  const ip = getAuditClientIp(request);
   const ua = request.headers.get('user-agent');
   const enrichedPayload = enrichAuditPayload(entry.payload);
   const payload_json = enrichedPayload === undefined ? null : JSON.stringify(enrichedPayload);

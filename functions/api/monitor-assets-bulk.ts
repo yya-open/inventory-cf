@@ -18,6 +18,7 @@ import { invalidateSystemDictionaryReferenceCache, syncSystemDictionaryUsageCoun
 import { assertArchiveReasonDictionaryValue, assertDepartmentDictionaryValue } from './services/master-data';
 import { invalidateAssetListCache } from './services/asset-list-cache';
 import { assertDepartmentScopeAccess, assertMonitorAssetIdsDataScopeAccess, getAuthUserDataScope } from './services/data-scope';
+import { getAuditClientIp } from './services/client-ip';
 
 const ALLOWED_STATUS = new Set(['IN_STOCK', 'RECYCLED', 'SCRAPPED']);
 
@@ -274,7 +275,7 @@ export const onRequestPost = withErrorHandling<{ DB: D1Database; JWT_SECRET: str
       if (owner.department) assertDepartmentScopeAccess(user, owner.department, '显示器批量领用人更新');
       const result = await bulkUpdateMonitorOwner(env.DB, ids, owner, {
         createdBy: user.username || null,
-        ip: request.headers.get('cf-connecting-ip') || request.headers.get('x-forwarded-for') || '',
+        ip: getAuditClientIp(request),
         ua: request.headers.get('user-agent') || '',
       });
       invalidateSystemDictionaryReferenceCache();
