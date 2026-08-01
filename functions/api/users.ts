@@ -153,7 +153,7 @@ export const onRequestPost = withErrorHandling<Env>(async ({ env, request }) => 
     if (newId) {
       const template = await setUserPermissionTemplate(env.DB, newId, r, permission_template_code);
       const dataScope = await setUserDataScope(env.DB, newId, validatedScope.data_scope_type, validatedScope.data_scope_value, validatedScope.data_scope_value2);
-      if (permissions && typeof permissions === 'object') await setUserPermissions(env.DB, newId, permissions, actor.username);
+      if (permissions && typeof permissions === 'object') await setUserPermissions(env.DB, newId, r, permissions, actor.username);
       if (created) Object.assign(created, { permission_template_code: template, ...dataScope });
       resolvedTemplateCode = template;
       resolvedDataScope = dataScope;
@@ -228,7 +228,7 @@ export const onRequestPut = withErrorHandling<Env>(async ({ env, request }) => {
       aclVersionChanged = true;
     }
     if (permissions && typeof permissions === 'object') {
-      await setUserPermissions(env.DB, uid, permissions, actor.username);
+      await setUserPermissions(env.DB, uid, finalRole, permissions, actor.username);
       changes.permissions = permissions;
       aclVersionChanged = true;
     }

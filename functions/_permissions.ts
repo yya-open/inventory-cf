@@ -156,6 +156,38 @@ function normalizeRole(role: string | null | undefined): 'admin' | 'operator' | 
   return r === 'admin' ? 'admin' : r === 'operator' ? 'operator' : 'viewer';
 }
 
+/**
+ * 角色可授予上限（权限天花板）：某角色可以持有的权限 = 该角色的默认权限 ∪ 所有 role_hint
+ * 不高于该角色的模板所授予的权限。
+ *
+ * normalizePermissionTemplateCode 已经守住了「模板不得越过角色」，但 user_permissions 里的
+ * 逐用户覆盖过去是无条件生效的：viewer 可以被写入 async_job_manage / ops_tools /
+ * asset_purge / system_settings_write。而仓库里每一处 requirePermission 都只要求
+ * minRole 'viewer'，权限位是唯一的闸门，越权由此可达。
+ *
+ * 在模块加载时算一次并缓存：requirePermission 处于认证热路径，不能每次调用都重算。
+ */
+const ROLE_GRANTABLE_PERMISSIONS: Record<'admin' | 'operator' | 'viewer', ReadonlySet<PermissionCode>> = (() => {
+  const roles = ['admin', 'operator', 'viewer'] as const;
+  const templates = Object.values(PERMISSION_TEMPLATES);
+  const built = {} as Record<'admin' | 'operator' | 'viewer', ReadonlySet<PermissionCode>>;
+  for (const role of roles) {
+    const codes = new Set<PermissionCode>();
+    for (const code of ALL_PERMISSION_CODES) if (roleDefaultPermission(role, code)) codes.add(code);
+    for (const template of templates) {
+      if (roleLevel(template.role_hint) > roleLevel(role)) continue;
+      for (const code of ALL_PERMISSION_CODES) if (template.permissions[code]) codes.add(code);
+    }
+    built[role] = codes;
+  }
+  return built;
+})();
+
+/** 该权限是否允许授予给该角色。拒绝（allowed=0）不受此限制，只有授予需要落在上限内。 */
+export function isPermissionGrantableToRole(role: string | null | undefined, code: PermissionCode) {
+  return ROLE_GRANTABLE_PERMISSIONS[normalizeRole(role)].has(code);
+}
+
 export function normalizePermissionTemplateCode(role: string | null | undefined, templateCode: string | null | undefined): PermissionTemplateCode {
   const raw = String(templateCode || '').trim() as PermissionTemplateCode;
   if (!ALL_PERMISSION_TEMPLATE_CODES.includes(raw)) return defaultTemplateForRole(role);
@@ -186,15 +218,25 @@ export async function getUserPermissionMap(db: D1Database, userId: number, role:
   for (const row of results || []) {
     const code = String(row?.permission_code || '').trim() as PermissionCode;
     if (!ALL_PERMISSION_CODES.includes(code)) continue;
-    map[code] = Number(row?.allowed || 0) === 1;
+    const allowed = Number(row?.allowed || 0) === 1;
+    // 拒绝永远生效；授予必须落在角色上限内，否则这条覆盖（历史遗留或越权写入）一律忽略。
+    if (allowed && !isPermissionGrantableToRole(role, code)) continue;
+    map[code] = allowed;
   }
   return map as Record<PermissionCode, boolean>;
 }
 
-export async function setUserPermissions(db: D1Database, userId: number, permissions: Partial<Record<PermissionCode, boolean>>, updatedBy: string | null) {
+export async function setUserPermissions(db: D1Database, userId: number, role: string | null | undefined, permissions: Partial<Record<PermissionCode, boolean>>, updatedBy: string | null) {
   await ensureUserPermissionsTable(db);
   const changedCodes = ALL_PERMISSION_CODES.filter((code) => code in permissions);
   if (!changedCodes.length) return;
+
+  // 越过角色上限的授予直接报错而不是静默落库：否则记录写进去了，读取时被
+  // getUserPermissionMap 忽略，管理端会以为授权成功。
+  for (const code of changedCodes) {
+    if (!permissions[code] || isPermissionGrantableToRole(role, code)) continue;
+    throw Object.assign(new Error(`权限「${code}」超出角色 ${normalizeRole(role)} 的可授予上限，请先调整该用户的角色`), { status: 400 });
+  }
 
   const existingMap = new Map<PermissionCode, number>();
   const { results: existingRows } = await db

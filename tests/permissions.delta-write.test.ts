@@ -48,7 +48,7 @@ describe('setUserPermissions delta write', () => {
   it('skips writes when values do not change', async () => {
     const db = new FakePermDB();
     db.rows = [{ permission_code: 'audit_export', allowed: 1 }];
-    await setUserPermissions(db as any, 2, { audit_export: true }, 'admin');
+    await setUserPermissions(db as any, 2, 'admin', { audit_export: true }, 'admin');
     expect(db.batchCount).toBe(0);
   });
 
@@ -58,7 +58,7 @@ describe('setUserPermissions delta write', () => {
       { permission_code: 'audit_export', allowed: 1 },
       { permission_code: 'bulk_operation', allowed: 0 },
     ];
-    await setUserPermissions(db as any, 2, { audit_export: false, bulk_operation: false }, 'admin');
+    await setUserPermissions(db as any, 2, 'admin', { audit_export: false, bulk_operation: false }, 'admin');
     expect(db.batchCount).toBe(1);
     expect(db.rows.find((r) => r.permission_code === 'audit_export')?.allowed).toBe(0);
     expect(db.rows.find((r) => r.permission_code === 'bulk_operation')?.allowed).toBe(0);
